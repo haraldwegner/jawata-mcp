@@ -85,8 +85,14 @@ class StoreCorpusTest {
 
         assertNotSame(before, after, "a written row must invalidate the snapshot");
         assertTrue(holds(after.all(), added), "the new row must be in the corpus");
-        assertTrue(LexicalIndex.scoredIn("molybdenum", after.words()).byId().containsKey(added),
-            "and the word index must be rebuilt with it, or recall cannot find it by its words");
+        boolean scoredInSomeLane = false;
+        for (KnowledgeLane lane : KnowledgeLane.values()) {
+            scoredInSomeLane |= LexicalIndex.scoredIn("molybdenum", after.lane(lane).words())
+                .byId().containsKey(added);
+        }
+        assertTrue(scoredInSomeLane,
+            "and the word index of the row's own lane must be rebuilt with it, or recall cannot"
+                + " find it by its words");
     }
 
     @Test

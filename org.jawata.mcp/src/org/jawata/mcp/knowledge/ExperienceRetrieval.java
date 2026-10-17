@@ -269,6 +269,15 @@ public final class ExperienceRetrieval {
                 + " it.");
         }
 
+        // Sprint 28g S22 — HOW MANY ROWS EACH SEARCHED LANE HELD, so "found nothing" is told
+        // apart from "looked at nothing": a lessons-only search over a store whose lessons are
+        // few says that it searched few, not that the store knows nothing.
+        Map<String, Integer> scanned = new LinkedHashMap<>();
+        for (KnowledgeLane knowledgeLane : q.scope().lanes()) {
+            scanned.put(knowledgeLane.wire(), StoreCorpus.of(store).lane(knowledgeLane).live().size());
+        }
+        out.put("scanned", scanned);
+
         // Sprint 27 D2 — THE KIND SPLIT, as ROUTING rather than as a second
         // pipeline (Harald's ruling, 2026-07-21).
         //
@@ -311,10 +320,21 @@ public final class ExperienceRetrieval {
         // One semantic scan serves BOTH uses below: tie-breaking the fit set's
         // ordering, and nominating analogies. (Brute-force cosine scans the
         // store either way; scanning once is just not paying twice.)
-        Map<String, Double> meaning = meaningScores(q);
+        //
+        // Sprint 28g S22 — one scan PER LANE in the scope: each lane's vectors are scanned on
+        // their own, so a lane's nominees are its own nearest and never what is left over once
+        // another lane's rows have taken the shortlist. The union only feeds the fit set's
+        // tie-break, where a row is compared with rows of its own lane anyway.
+        Map<KnowledgeLane, Map<String, Double>> meaningByLane = new LinkedHashMap<>();
+        Map<String, Double> meaning = new LinkedHashMap<>();
+        for (KnowledgeLane knowledgeLane : q.scope().lanes()) {
+            Map<String, Double> laneMeaning = meaningScores(q, knowledgeLane);
+            meaningByLane.put(knowledgeLane, laneMeaning);
+            meaning.putAll(laneMeaning);
+        }
 
         List<ExperienceAnalogies.Analogy> analogies =
-            analogies(q, fitting, turnedAwayExperience, meaning);
+            analogies(q, fitting, turnedAwayExperience, meaning, meaningByLane);
 
         if (fitting.isEmpty()) {
             if (analogies.isEmpty()) {
@@ -626,8 +646,14 @@ public final class ExperienceRetrieval {
      * recall took 1.5–1.6 s, 61% of CPU reading the rows and 18% rebuilding this
      * index, against the hook's 1.2 s budget. So the rows and the index are now held by
      * {@link StoreCorpus}, rebuilt only when the store's change stamp moves.</p>
+     *
+     * <p><b>Per lane (Sprint 28g S22).</b> The word index and the rarity weights are those of
+     * {@code knowledgeLane}'s own rows: a word common in the code lane is weighed by how rare it
+     * is among the lessons when the lessons are what is searched.</p>
+     *
+     * @param knowledgeLane the one lane whose rows are scored
      */
-    private LexicalIndex.Scores lexicalScores(RecallQuery q) {
+    private LexicalIndex.Scores lexicalScores(RecallQuery q, KnowledgeLane knowledgeLane) {
         String cue = cueText(q);
         if (cue.isBlank()) {
             return LexicalIndex.Scores.NONE;
@@ -639,7 +665,7 @@ public final class ExperienceRetrieval {
         // the suite missed it because the guarding test's fixture holds one row
         // whose words the cue does not contain. The snapshot's word index is built
         // over its LIVE rows only, so the rule holds there.
-        return LexicalIndex.scoredIn(cue, StoreCorpus.of(store).words());
+        return LexicalIndex.scoredIn(cue, StoreCorpus.of(store).lane(knowledgeLane).words());
     }
 
     /**
@@ -664,8 +690,10 @@ public final class ExperienceRetrieval {
      * Empty when there is no index, it is unavailable, or the cue is blank —
      * the degrade path, in which the tie-break simply contributes 0s and the
      * ordering falls back to what the word stream and recency give.
+     *
+     * @param knowledgeLane the one lane whose vectors are scanned (Sprint 28g S22)
      */
-    private Map<String, Double> meaningScores(RecallQuery q) {
+    private Map<String, Double> meaningScores(RecallQuery q, KnowledgeLane knowledgeLane) {
         if (index == null || !index.available()) {
             return Map.of();
         }
@@ -674,7 +702,8 @@ public final class ExperienceRetrieval {
             return Map.of();
         }
         Map<String, Double> scores = new LinkedHashMap<>();
-        for (EmbeddingIndex.Hit h : index.nearestEntries(cue, Integer.MAX_VALUE, 0.0)) {
+        for (EmbeddingIndex.Hit h : index.nearestEntries(cue, Integer.MAX_VALUE, 0.0,
+                List.of(knowledgeLane.wire()))) {
             scores.put(h.id(), h.score());
         }
         return scores;
@@ -696,11 +725,19 @@ public final class ExperienceRetrieval {
      * <p>With no index, or an unavailable one, this returns empty — which is the
      * degrade path, and leaves recall behaving exactly as it did before
      * semantic retrieval existed.</p>
+     *
+     * <p><b>Per lane (Sprint 28g S22).</b> Each lane in the scope nominates on its own — its
+     * own meaning scores, its own word scores, its own {@link AnalogyPolicy} cut — and the
+     * nominations are interleaved, so the shortlist holds each lane's nearest rows and a lane
+     * is never emptied by another lane's better-scoring rows.</p>
+     *
+     * @param meaning every scored id across the lanes, for the final ranking's tie-break
+     * @param meaningByLane the meaning scores of each lane in the scope, keyed by lane
      */
     private List<ExperienceAnalogies.Analogy> analogies(RecallQuery q,
                                                        List<StoredEntry> alreadyReturned,
                                                        List<StoredEntry> turnedAway,
-                                                       Map<String, Double> meaning) {
+                                                       Map<String, Double> meaning, Map<KnowledgeLane, Map<String, Double>> meaningByLane) {
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (StoredEntry e : alreadyReturned) {
             seen.add(e.id());                 // never say the same thing twice
@@ -737,8 +774,29 @@ public final class ExperienceRetrieval {
         // pushed out of the answer entirely. It still ADMITS exactly what it
         // always did; what changed is where it lands. Saying otherwise would
         // assert an invariant three lines above the call site that breaks it.
-        Map<String, Double> lexical = lexicalScores(q).byId();
-        List<String> nominated = AnalogyPolicy.nominate(meaning, lexical);
+        Map<String, Double> lexical = new LinkedHashMap<>();
+        List<List<String>> nominatedByLane = new ArrayList<>();
+        for (KnowledgeLane knowledgeLane : q.scope().lanes()) {
+            Map<String, Double> laneLexical = lexicalScores(q, knowledgeLane).byId();
+            lexical.putAll(laneLexical);
+            nominatedByLane.add(AnalogyPolicy.nominate(
+                meaningByLane.getOrDefault(knowledgeLane, Map.of()), laneLexical));
+        }
+        // Interleaved round-robin, so the cap below takes the same number of nominees from
+        // each lane before it takes a second from any.
+        List<String> nominated = new ArrayList<>();
+        for (int rank = 0;; rank++) {
+            boolean any = false;
+            for (List<String> laneNominated : nominatedByLane) {
+                if (rank < laneNominated.size()) {
+                    nominated.add(laneNominated.get(rank));
+                    any = true;
+                }
+            }
+            if (!any) {
+                break;
+            }
+        }
         List<String> ids = new ArrayList<>();
         for (String id : nominated) {
             if (seen.add(id)) {
@@ -761,19 +819,11 @@ public final class ExperienceRetrieval {
                 pool.add(e);
             }
         }
-        // Sprint 28f Stage 5 — THE LANE FILTER REACHES THE RANKED PATH TOO.
-        //
-        // The keyword query filters by lane in SQL. The pool above has TWO OTHER sources —
-        // rows the fit gate turned away, and rows meaning/lexical nominated — and neither
-        // passes through that statement. Filtering only the SQL leaves a caller who asked
-        // for one lane reading rows from every other one, which presents as the filter
-        // half working: `RulePromotionTest` caught exactly that, because its rows are
-        // recorded inline and therefore carry vectors, where the earlier lane fixtures
-        // took the bulk path and had none.
-        //
-        // Applied once over the assembled pool, for the reason the block above gives about
-        // status: a per-source filter is a rule a fourth source can be added without.
-        pool.removeIf(e -> !inScope(q.scope(), e));
+        // Sprint 28g S22 — NO LANE FILTER HERE ANY MORE. The pool's three sources are all
+        // lane-scoped before they reach it: the keyword query selects `lane IN (scope)` in SQL,
+        // and the meaning and word nominations above scan only the lanes in the scope. The
+        // filter that stood here ran AFTER the search and was the reason a lesson could be
+        // pushed out by code rows it was never meant to compete with.
         if (pool.isEmpty()) {
             return List.of();
         }
@@ -796,7 +846,7 @@ public final class ExperienceRetrieval {
             ? java.util.Set.of()
             : index.unembeddedAmong(rankedIds);
         return ExperienceAnalogies.rank(pool, q, meaning, lexical, nominated,
-            AnalogyPolicy.MAX_NOMINEES, jdt, unembedded);
+            AnalogyPolicy.MAX_NOMINEES * Math.max(1, q.scope().lanes().size()), jdt, unembedded);
     }
 
     /** The text a cue is embedded as — its words, in the order a human would say them. */
@@ -1016,12 +1066,6 @@ public final class ExperienceRetrieval {
         return lane.equals(KnowledgeLane.wireOf(e.type(), e.facets().provenanceKind()));
     }
 
-    /** Whether this row lives in one of the lanes the call may search. */
-    private static boolean inScope(LaneScope scope, StoredEntry e) {
-        KnowledgeLane lane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
-        return lane != null && scope.contains(lane);
-    }
-
     /** The lane the catalogue's patterns live in, derived rather than spelled twice. */
     private static KnowledgeLane catalogueLaneOf() {
         return KnowledgeLane.of("reference", CatalogueManifest.PROVENANCE);
@@ -1083,44 +1127,48 @@ public final class ExperienceRetrieval {
         // would drift, and the sprint already has one rendering path that lapsed
         // while its twin kept the rules.
         RecallQuery q = new RecallQuery(null, null, null, question, null);
-        LexicalIndex.Scores words = lexicalScores(q);
-
-        // D13: three cosines against three FIELDS, plus the word lane. The old
-        // ranking here added one cosine to one raw BM25 weight — 0..1 plus an
-        // unbounded number — so the sum was the word score with a rounding error
-        // attached and the meaning half could not move the order at all. That was
-        // invisible while the store held twelve rows and every row was a
-        // candidate; 187 catalogue entries made it the whole answer.
-        Map<EmbeddingService.Lane, Map<String, Double>> lanes = index == null
-            || !index.available() ? Map.of() : index.entryLaneScores(question);
-        // null means the lane scan FAILED, which is not the same as finding
-        // nothing — and the difference has to reach the CALLER, not just the log.
-        // A word-only ranking reads exactly like a meaning-weighted one; the only
-        // person who could notice is the one holding the answer, and they cannot
-        // see the resident's log.
-        boolean meaningLanesFailed = lanes == null;
-        if (meaningLanesFailed) {
-            lanes = Map.of();
-        }
-        Map<String, RelevanceMerge.Score> scores = RelevanceMerge.scoreAll(
-            lanes.get(EmbeddingService.Lane.SITUATION),
-            lanes.get(EmbeddingService.Lane.SUMMARY),
-            lanes.get(EmbeddingService.Lane.DETAILS),
-            words);
-
+        // Sprint 28g S22 — EACH LANE IS SCORED, RANKED AND CUT ON ITS OWN. The scope is chosen
+        // before any scoring: a lane's word rarity is counted over that lane's rows, its meaning
+        // scan reads only that lane's vectors, and its shortlist is its own, so a lesson is
+        // never ranked against — or pushed out by — a row of another lane.
+        Map<String, RelevanceMerge.Score> scores = new LinkedHashMap<>();
         Map<String, StoredEntry> byId = new LinkedHashMap<>();
+        Map<KnowledgeLane, List<StoredEntry>> rankedByLane = new LinkedHashMap<>();
+        Map<String, Integer> scanned = new LinkedHashMap<>();
+        java.util.Set<String> embeddedIds = new java.util.HashSet<>();
+        boolean meaningLanesFailed = false;
         int otherWorkspace = 0;
-        for (StoredEntry e : StoreCorpus.of(store).live()) {
-            // The lane narrows the POOL and never the scoring, which is the whole of why it
-            // is safe here: the ranking below is untouched, so no bar arrives with it.
-            //
-            // Sprint 28g D42(b) — A NOMINATION'S CUE IS PROSE, so it is never code-shaped and
-            // the code lane is excluded unless the caller asked for it by name. This is the
-            // deliverable's sharpest clause ("prose → experience and patterns and NEVER code")
-            // and the path it is sharpest about: a question in words, ranked by meaning against
-            // ~10,000 rows that describe what members are for, returns the jobs whose wording
-            // happens to be nearest and reads as if the store had an opinion about the question.
-            if (isLive(e) && inScope(scope, e)) {
+        for (KnowledgeLane knowledgeLane : scope.lanes()) {
+            StoreCorpus.LaneCorpus corpus = StoreCorpus.of(store).lane(knowledgeLane);
+            scanned.put(knowledgeLane.wire(), corpus.live().size());
+            LexicalIndex.Scores words = lexicalScores(q, knowledgeLane);
+
+            // D13: three cosines against three FIELDS, plus the word lane. The old
+            // ranking here added one cosine to one raw BM25 weight — 0..1 plus an
+            // unbounded number — so the sum was the word score with a rounding error
+            // attached and the meaning half could not move the order at all. That was
+            // invisible while the store held twelve rows and every row was a
+            // candidate; 187 catalogue entries made it the whole answer.
+            Map<EmbeddingService.Lane, Map<String, Double>> lanes = index == null
+                || !index.available() ? Map.of()
+                : index.entryLaneScores(question, List.of(knowledgeLane.wire()));
+            // null means the lane scan FAILED, which is not the same as finding
+            // nothing — and the difference has to reach the CALLER, not just the log.
+            // A word-only ranking reads exactly like a meaning-weighted one; the only
+            // person who could notice is the one holding the answer, and they cannot
+            // see the resident's log.
+            if (lanes == null) {
+                meaningLanesFailed = true;
+                lanes = Map.of();
+            }
+            Map<String, RelevanceMerge.Score> laneScores = RelevanceMerge.scoreAll(
+                lanes.get(EmbeddingService.Lane.SITUATION),
+                lanes.get(EmbeddingService.Lane.SUMMARY),
+                lanes.get(EmbeddingService.Lane.DETAILS),
+                words);
+
+            List<StoredEntry> laneRows = new ArrayList<>();
+            for (StoredEntry e : corpus.live()) {
                 // D8d — THE CODE LANE IS KEYED BY WORKSPACE. The store is shared by every
                 // workspace on the machine and each row is stamped with the one that wrote it;
                 // the map a session opens with was ranked over the whole lane, so a session on
@@ -1130,33 +1178,42 @@ public final class ExperienceRetrieval {
                     otherWorkspace++;
                     continue;
                 }
+                laneRows.add(e);
                 byId.put(e.id(), e);
+                if (hasAnyMeaningScore(lanes, e.id())) {
+                    embeddedIds.add(e.id());
+                }
             }
-        }
+            scores.putAll(laneScores);
 
-        // RELEVANCE ONLY. Nothing below reads an entry's outcome, its origin, its
-        // age or its size, and RelevanceMerge could not see them if it wanted to —
-        // they are not parameters of it. Nothing filters on score either:
-        // AnalogyPolicy's own javadoc records that no threshold separates nonsense
-        // from an answer on this corpus, so the caller judges and an empty
-        // selection is the honest outcome.
-        final Map<String, RelevanceMerge.Score> ranking = scores;
-        List<StoredEntry> ranked = new ArrayList<>(byId.values());
-        ranked.sort(Comparator
-            .comparingDouble((StoredEntry e) -> {
-                RelevanceMerge.Score s = ranking.get(e.id());
-                return s == null ? 0.0 : s.total();
-            })
-            .reversed()
-            .thenComparing(StoredEntry::id));
+            // RELEVANCE ONLY. Nothing below reads an entry's outcome, its origin, its
+            // age or its size, and RelevanceMerge could not see them if it wanted to —
+            // they are not parameters of it. Nothing filters on score either:
+            // AnalogyPolicy's own javadoc records that no threshold separates nonsense
+            // from an answer on this corpus, so the caller judges and an empty
+            // selection is the honest outcome.
+            laneRows.sort(Comparator
+                .comparingDouble((StoredEntry e) -> {
+                    RelevanceMerge.Score s = laneScores.get(e.id());
+                    return s == null ? 0.0 : s.total();
+                })
+                .reversed()
+                .thenComparing(StoredEntry::id));
+            rankedByLane.put(knowledgeLane, laneRows);
+        }
+        out.put("scanned", scanned);
 
         List<Map<String, Object>> candidates = new ArrayList<>();
-        for (StoredEntry e : ranked) {
-            if (candidates.size() >= MAX_CANDIDATES) {
+        for (Map.Entry<KnowledgeLane, List<StoredEntry>> laneRanked : rankedByLane.entrySet()) {
+          int taken = 0;
+          for (StoredEntry e : laneRanked.getValue()) {
+            if (taken >= MAX_CANDIDATES) {
                 break;
             }
+            taken++;
             Map<String, Object> c = new LinkedHashMap<>();
             c.put("id", e.id());
+            c.put("lane", laneRanked.getKey().wire());
             // Sprint 28f Stage 8 D1 — WHAT KIND OF ROW THIS IS, so a caller can group the
             // shortlist without asking the store a second time. The code lane's answer is
             // two different things in one list — the areas that describe a package and the
@@ -1242,6 +1299,7 @@ public final class ExperienceRetrieval {
             why.put("total", s == null ? 0.0 : round(s.total()));
             c.put("scores", why);
             candidates.add(c);
+          }
         }
 
         out.put("result", RESULT_NOMINATED);
@@ -1270,12 +1328,7 @@ public final class ExperienceRetrieval {
         // The caller could not see any of that, and this block is the same rule the
         // failed/ok distinction above already obeys: the difference has to reach the
         // CALLER, not just the log.
-        int embeddedHere = 0;
-        for (String id : byId.keySet()) {
-            if (hasAnyMeaningScore(lanes, id)) {
-                embeddedHere++;
-            }
-        }
+        int embeddedHere = embeddedIds.size();
         int liveHere = byId.size();
         out.put("meaning_coverage", Map.of("embedded", embeddedHere, "entries", liveHere));
         // The COUNT, never a diagnosis of it. Coverage can be short because a

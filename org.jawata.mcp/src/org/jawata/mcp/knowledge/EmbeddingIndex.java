@@ -6,6 +6,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 
@@ -132,12 +133,24 @@ public final class EmbeddingIndex {
 
     /** Meaning-nearest knowledge entries for {@code cue}; empty when unavailable. */
     public List<Hit> nearestEntries(String cue, int k, double floor) {
-        return nearest("experience_entry", "id", cue, k, floor);
+        return nearest("experience_entry", "id", cue, k, floor, null);
+    }
+
+    /**
+     * Meaning-nearest entries of the NAMED lanes only (Sprint 28g S22): rows of any other lane
+     * are never scored, so a search of one lane costs that lane, and the cut to {@code k} is
+     * taken over that lane's rows rather than over the whole store.
+     *
+     * @param knowledgeLanes wire names of the lanes to scan
+     */
+    public List<Hit> nearestEntries(String cue, int k, double floor,
+            Collection<String> knowledgeLanes) {
+        return nearest("experience_entry", "id", cue, k, floor, knowledgeLanes);
     }
 
     /** Meaning-nearest tool-experience rows for {@code cue}; empty when unavailable. */
     public List<Hit> nearestToolExperience(String cue, int k, double floor) {
-        return nearest("tool_experience", "id", cue, k, floor);
+        return nearest("tool_experience", "id", cue, k, floor, null);
     }
 
     /**
@@ -150,7 +163,7 @@ public final class EmbeddingIndex {
     public java.util.Map<String, Double> toolExperienceProfile(String cue) {
         java.util.Map<String, Double> profile = new java.util.LinkedHashMap<>();
         for (Hit h : nearest("tool_experience", "id", cue,
-                Integer.MAX_VALUE, Double.NEGATIVE_INFINITY)) {
+                Integer.MAX_VALUE, Double.NEGATIVE_INFINITY, null)) {
             profile.put(h.id(), h.score());
         }
         return profile;
@@ -162,7 +175,7 @@ public final class EmbeddingIndex {
         return nearestEntries(cue, DEFAULT_K, NOMINATION_FLOOR);
     }
 
-    private List<Hit> nearest(String table, String idColumn, String cue, int k, double floor) {
+    private List<Hit> nearest(String table, String idColumn, String cue, int k, double floor, Collection<String> lanes) {
         float[] q = embeddings.embed(cue);
         if (q == null) {
             return List.of();                 // unavailable or blank cue - not "nothing matched"
@@ -173,6 +186,11 @@ public final class EmbeddingIndex {
         }
         List<Hit> hits = new ArrayList<>();
         for (int i = 0; i < vectors.ids().length; i++) {
+            // A row outside the named lanes is never scored: the lane is chosen before the scan.
+            if (lanes != null && (vectors.lanes()[i] == null
+                    || !lanes.contains(vectors.lanes()[i]))) {
+                continue;
+            }
             double score = EmbeddingService.cosine(q, vectors.vectors()[i]);
             if (score >= floor) {
                 hits.add(new Hit(vectors.ids()[i], score));
@@ -469,13 +487,15 @@ public final class EmbeddingIndex {
      * meaning-weighted one — the failure this codebase has paid for more than
      * once. The caller states the degradation in its own response, because
      * nobody reading an answer sees the resident's log.</p>
+     * @param knowledgeLanes the wire names of the knowledge lanes to scan (Sprint 28g S22);
+     *     {@code null} scans every row. Not to be confused with the three FIELD lanes of one
+     *     row — situation, summary and details — that the result is keyed by.
      *
      * @return one map per lane, keyed as {@link EmbeddingService.Lane}; empty maps
      *     when the embedder is unavailable or the cue is blank (a supported degrade
      *     path), or {@code null} when the scan itself failed
      */
-    public java.util.Map<EmbeddingService.Lane, java.util.Map<String, Double>> entryLaneScores(
-            String cue) {
+    public java.util.Map<EmbeddingService.Lane,java.util.Map<String,Double>> entryLaneScores(String cue, Collection<String> knowledgeLanes) {
         java.util.Map<EmbeddingService.Lane, java.util.Map<String, Double>> out =
             new java.util.EnumMap<>(EmbeddingService.Lane.class);
         for (EmbeddingService.Lane lane : EmbeddingService.Lane.values()) {
@@ -490,11 +510,22 @@ public final class EmbeddingIndex {
         for (EmbeddingService.Lane lane : lanes) {
             cols.append(", ").append(lane.column());
         }
+        // The knowledge lanes are chosen BEFORE the scan: only their rows are read, so a search
+        // of one lane costs that lane and its scores are never ranked against another's.
+        String scope = knowledgeLanes == null ? ""
+            : " AND lane IN (" + String.join(",", java.util.Collections.nCopies(
+                knowledgeLanes.size(), "?")) + ")";
         String sql = "SELECT " + cols + " FROM experience_entry"
             + " WHERE embedder_identity = ?"
-            + " AND status NOT IN ('rejected', 'superseded')";
+            + " AND status NOT IN ('rejected', 'superseded')" + scope;
         try (PreparedStatement ps = store.sharedConnection().prepareStatement(sql)) {
             ps.setString(1, currentIdentity("experience_entry"));
+            int bind = 2;
+            if (knowledgeLanes != null) {
+                for (String wire : knowledgeLanes) {
+                    ps.setString(bind++, wire);
+                }
+            }
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     String id = rs.getString(1);
@@ -535,7 +566,7 @@ public final class EmbeddingIndex {
     }
 
     /** The comparable vectors of one table, as read under one key. */
-    private record Vectors(String key, String[] ids, float[][] vectors) {
+    private record Vectors(String key, String[] ids, float[][] vectors, String[] lanes) {
     }
 
     /**
@@ -573,10 +604,14 @@ public final class EmbeddingIndex {
         // The tool_experience lane carries no status column, hence the guard.
         String statusFilter = "experience_entry".equals(table)
             ? " AND status NOT IN ('rejected', 'superseded')" : "";
-        String sql = "SELECT " + idColumn + ", embedding FROM " + table
+        // The lane rides with the vector so a scan can take only the lanes a call named. Only
+        // the knowledge table has one; the tool-experience table is not a knowledge lane.
+        String laneColumn = "experience_entry".equals(table) ? ", lane" : ", NULL";
+        String sql = "SELECT " + idColumn + ", embedding" + laneColumn + " FROM " + table
             + " WHERE embedding IS NOT NULL AND embedder_identity = ?" + statusFilter;
         List<String> ids = new ArrayList<>();
         List<float[]> vecs = new ArrayList<>();
+        List<String> laneOfRow = new ArrayList<>();
         try (PreparedStatement ps = store.sharedConnection().prepareStatement(sql)) {
             ps.setString(1, identity);
             try (ResultSet rs = ps.executeQuery()) {
@@ -587,6 +622,7 @@ public final class EmbeddingIndex {
                     }
                     ids.add(rs.getString(1));
                     vecs.add(v);
+                    laneOfRow.add(rs.getString(3));
                 }
             }
         } catch (SQLException e) {
@@ -595,7 +631,7 @@ public final class EmbeddingIndex {
             return null;
         }
         Vectors loaded = new Vectors(key, ids.toArray(new String[0]),
-            vecs.toArray(new float[0][]));
+            vecs.toArray(new float[0][]), laneOfRow.toArray(new String[0]));
         if (key != null) {
             ENTRY_VECTORS.put(store, loaded);
         }

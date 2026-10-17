@@ -263,11 +263,14 @@ class LaneMigrationTest {
                     + " WHERE type IN ('hazard', '" + DispatchRecall.SEAT_RUN_TYPE + "')");
                 s.execute("UPDATE schema_version SET version = 23");
             }
-            for (Ruled r : RULED) {
-                if (r.lane() == KnowledgeLane.PATTERNS) {
-                    assertEquals("experience", laneOf(store, ids.get(r)),
-                        "PROOF OF LIFE: the pattern starts in the lane the old ruling gave it");
-                }
+            List<Ruled> patterns = RULED.stream()
+                .filter(r -> r.lane() == KnowledgeLane.PATTERNS).toList();
+            assertEquals(false, patterns.isEmpty(),
+                "PROOF OF LIFE: the ruled set holds at least one pattern, or the check below"
+                    + " would loop over nothing and pass");
+            for (Ruled r : patterns) {
+                assertEquals("experience", laneOf(store, ids.get(r)),
+                    "PROOF OF LIFE: the pattern starts in the lane the old ruling gave it");
             }
             assertEquals(23, SchemaMigrations.detectVersion(c), "the wind-back must take");
 

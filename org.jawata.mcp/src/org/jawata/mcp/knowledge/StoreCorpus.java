@@ -2,6 +2,7 @@ package org.jawata.mcp.knowledge;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -35,9 +36,25 @@ import java.util.WeakHashMap;
  */
 public final class StoreCorpus {
 
-    /** The entries as of one stamp: all of them, the live ones, and the word index over the live ones. */
+    /**
+     * One lane's live rows with the word index built over THOSE rows alone (Sprint 28g S22).
+     *
+     * <p>Word rarity is a property of the corpus it is counted over. Counted over the whole store,
+     * which is 96% code descriptions, a word that is common in code and rare in lessons is judged
+     * non-discriminating and a lesson sharing only that word scores nothing; counted per lane, the
+     * lessons are weighed against the lessons.</p>
+     */
+    public record LaneCorpus(KnowledgeLane lane, List<StoredEntry> live, LexicalIndex.Corpus words) {
+    }
+
+    /** The entries as of one stamp: all of them, the live ones, and one corpus per lane. */
     public record Snapshot(String stamp, List<StoredEntry> all, List<StoredEntry> live,
-            LexicalIndex.Corpus words) {
+            Map<KnowledgeLane, LaneCorpus> lanes) {
+
+        /** The corpus of one lane; an empty one when the lane holds nothing. */
+        public LaneCorpus lane(KnowledgeLane lane) {
+            return lanes.get(lane);
+        }
     }
 
     private static final Map<ExperienceStore, Snapshot> SNAPSHOTS =
@@ -78,7 +95,21 @@ public final class StoreCorpus {
                 live.add(e);
             }
         }
+        Map<KnowledgeLane, List<StoredEntry>> byLane = new EnumMap<>(KnowledgeLane.class);
+        for (StoredEntry e : live) {
+            // A row whose type no ruling covers is in no lane, so it is in no lane's corpus.
+            KnowledgeLane lane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
+            if (lane != null) {
+                byLane.computeIfAbsent(lane, k -> new ArrayList<>()).add(e);
+            }
+        }
+        Map<KnowledgeLane, LaneCorpus> lanes = new EnumMap<>(KnowledgeLane.class);
+        for (KnowledgeLane lane : KnowledgeLane.values()) {
+            List<StoredEntry> rows = Collections.unmodifiableList(
+                byLane.getOrDefault(lane, List.of()));
+            lanes.put(lane, new LaneCorpus(lane, rows, LexicalIndex.index(rows)));
+        }
         return new Snapshot(stamp, all, Collections.unmodifiableList(live),
-            LexicalIndex.index(live));
+            Collections.unmodifiableMap(lanes));
     }
 }
