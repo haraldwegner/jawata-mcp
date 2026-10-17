@@ -124,6 +124,8 @@ def timed(label, calls):
     ms = []; misses = 0; unchecked = 0
     for c in calls:
         a = time.time(); d = (call(c).get("data") or {}); ms.append((time.time() - a) * 1000)
+        if isinstance(d, str):  # the text form is what a hook asks for after a compaction
+            d = {"entries": [1] if d.strip() else []}
         if c.get("kind") == "recall" and not (d.get("entries") or []): misses += 1
         if c.get("kind") == "transcript_verify" and d.get("checked") is False: unchecked += 1
     ms.sort()
@@ -149,7 +151,9 @@ serve = int(os.environ.get("PROBE_SERVE", "0"))
 if serve:
     open(os.path.join(os.environ["PROBE_EVIDENCE"], "ready"), "w").write(os.environ["PROBE_PID"])
     end = time.time() + serve
-    mix = search_calls[::5] + verify_calls[::5] + recent_calls[::5]
+    # interleaved, so a profile of any one of the three sees its calls from the first second
+    a, b, c = search_calls[::5], verify_calls[::5], recent_calls[::5]
+    mix = [x for trio in zip(a, b, c) for x in trio] + a[len(c):] + b[len(c):]
     n = 0
     while time.time() < end:
         call(mix[n % len(mix)]); n += 1
