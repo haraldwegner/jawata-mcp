@@ -199,7 +199,7 @@ public final class ExperienceRetrieval {
         // D7h, and it sits HERE rather than beside the hits deliberately: the exclusion is a
         // property of the filter, so it must be stated whatever the outcome — including the
         // ABSENCE branch below, which is exactly the answer the defect makes unreadable.
-        noteCatalogueExclusion(out, q == null ? null : q.lane());
+        noteCatalogueExclusion(out, q == null ? null : q.scope());
         if (q == null || q.isEmpty()) {
             out.put("result", RESULT_ABSENCE);
             out.put("reason", "no cue provided");
@@ -252,9 +252,7 @@ public final class ExperienceRetrieval {
         // costs is reading rows nobody will use, and expressing "every lane except code" in that
         // statement means a second, negated lane parameter there. Recorded as available rather
         // than done.
-        if (!q.hasLane() && !q.isCodeShaped()) {
-            candidates = new ArrayList<>(candidates);
-            candidates.removeIf(ExperienceRetrieval::isCodeLane);
+        if (q.scope().derived() && !q.scope().contains(KnowledgeLane.CODE)) {
             // AND IT SAYS SO. The deliverable's own words are that an uncategorised question
             // "cannot SILENTLY answer from all three lanes" — the first version of this stopped
             // the answering and left the silence, which is half the clause. This file already
@@ -775,21 +773,7 @@ public final class ExperienceRetrieval {
         //
         // Applied once over the assembled pool, for the reason the block above gives about
         // status: a per-source filter is a rule a fourth source can be added without.
-        if (q.hasLane()) {
-            pool.removeIf(e -> !inLane(q.lane(), e));
-        } else if (!q.isCodeShaped()) {
-            // Sprint 28g D42(b) — THE LANE IS DERIVED FROM THE CUE WHEN THE CALLER NAMED NONE.
-            // A cue that is not asking about code must not be answered out of the code lane:
-            // ~10,000 job and area rows, regenerated from the code they came from, which a
-            // symptom or an operation has no business ranking against. Without this an
-            // uncategorised question answers from every lane and cannot say that it did.
-            //
-            // It sits in the SAME branch as the override rather than beside it, so the two
-            // cannot both apply and a reader meets one decision about lanes in one place —
-            // and `hasLane()` winning is the override the deliverable asks to be tested,
-            // including the case that matters most: lane=code on a cue that is not code-shaped.
-            pool.removeIf(ExperienceRetrieval::isCodeLane);
-        }
+        pool.removeIf(e -> !inScope(q.scope(), e));
         if (pool.isEmpty()) {
             return List.of();
         }
@@ -962,29 +946,31 @@ public final class ExperienceRetrieval {
      * {@code SeatAsksByMeaningTest} holds a sub-floor pair open against exactly that.</p>
      *
      * @param question     the caller's own words
-     * @param lane         the wire name of the lifecycle that may answer, or null for all
+     * @param scope        the lanes that may answer, or null for the one derived from a question
+     *                     in prose (never the code lane)
      * @param budgetMillis the caller's deadline
      */
-    public Map<String, Object> nominate(String question, String lane, long budgetMillis) {
+    public Map<String, Object> nominate(String question, LaneScope scope, long budgetMillis) {
+        LaneScope asked = scope == null ? LaneScope.derivedFor(false) : scope;
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("question", question);
-        if (lane != null && !lane.isBlank()) {
-            out.put("lane", lane);
+        if (!asked.derived()) {
+            out.put("lane", String.join(",", asked.wires()));
         }
         // D7h — a DESIGN question is the case the report hit, and the one where a silently
         // pattern-free answer costs most: this is the path the architect seat asks on.
-        noteCatalogueExclusion(out, lane);
+        noteCatalogueExclusion(out, asked);
         // Sprint 28g D42(b) — and the SAME rule for the lane this path derives. A nomination's
         // cue is prose, so it is never code-shaped and the code lane is excluded unless the
         // caller named it; D7h's own argument applies unchanged, one lane over.
-        if (lane == null || lane.isBlank()) {
+        if (asked.derived()) {
             out.put("lanes_not_searched", List.of(KnowledgeLane.CODE.wire()));
             out.put("lane_note", "A question in prose names no code, so the CODE lane was not"
                 + " searched — ranking ~10,000 rows that say what members are FOR against a"
                 + " question in words returns whichever is nearest in wording and reads as an"
                 + " opinion about the question. Ask with lane=code to search it.");
         }
-        return within(() -> nominateFromStore(question, lane, out), out, budgetMillis);
+        return within(() -> nominateFromStore(question, asked, out), out, budgetMillis);
     }
 
     /**
@@ -1002,13 +988,14 @@ public final class ExperienceRetrieval {
      * itself: recall and nomination ask the same question, and a copied sentence is how the
      * two would come to differ.</p>
      */
-    private static void noteCatalogueExclusion(Map<String, Object> out, String lane) {
-        if (!KnowledgeLane.excludesCatalogue(lane)) {
+    private static void noteCatalogueExclusion(Map<String, Object> out, LaneScope scope) {
+        if (scope == null || scope.derived() || scope.contains(catalogueLaneOf())) {
             return;
         }
+        String lane = String.join(",", scope.wires());
         String reach = KnowledgeLane.catalogueLane();
         out.put("catalogueExcluded", true);
-        out.put("catalogueExclusionNote", "lane=" + lane.strip() + " CANNOT return a catalogue "
+        out.put("catalogueExclusionNote", "lane=" + lane + " CANNOT return a catalogue "
             + "pattern. A borrowed pattern is typed `reference` with catalogue provenance, "
             + "which this store rules into the `" + reach + "` lane — so an answer here "
             + "carrying no pattern means the patterns were NOT SEARCHED, not that none fits. "
@@ -1027,6 +1014,17 @@ public final class ExperienceRetrieval {
      */
     private static boolean inLane(String lane, StoredEntry e) {
         return lane.equals(KnowledgeLane.wireOf(e.type(), e.facets().provenanceKind()));
+    }
+
+    /** Whether this row lives in one of the lanes the call may search. */
+    private static boolean inScope(LaneScope scope, StoredEntry e) {
+        KnowledgeLane lane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
+        return lane != null && scope.contains(lane);
+    }
+
+    /** The lane the catalogue's patterns live in, derived rather than spelled twice. */
+    private static KnowledgeLane catalogueLaneOf() {
+        return KnowledgeLane.of("reference", CatalogueManifest.PROVENANCE);
     }
 
     /**
@@ -1078,8 +1076,7 @@ public final class ExperienceRetrieval {
         return Math.round(v * 1000.0) / 1000.0;
     }
 
-    private Map<String, Object> nominateFromStore(
-            String question, String lane, Map<String, Object> out) {
+    private Map<String,Object> nominateFromStore(String question, LaneScope scope, Map<String,Object> out) {
         // The question is carried as the SYMPTOM cue: it is prose describing a
         // situation, which is exactly what that slot means. Reusing the existing
         // scorer rather than adding a second one is the point — two ranking paths
@@ -1112,7 +1109,6 @@ public final class ExperienceRetrieval {
             words);
 
         Map<String, StoredEntry> byId = new LinkedHashMap<>();
-        boolean narrowed = lane != null && !lane.isBlank();
         int otherWorkspace = 0;
         for (StoredEntry e : StoreCorpus.of(store).live()) {
             // The lane narrows the POOL and never the scoring, which is the whole of why it
@@ -1124,7 +1120,7 @@ public final class ExperienceRetrieval {
             // and the path it is sharpest about: a question in words, ranked by meaning against
             // ~10,000 rows that describe what members are for, returns the jobs whose wording
             // happens to be nearest and reads as if the store had an opinion about the question.
-            if (isLive(e) && (narrowed ? inLane(lane, e) : !isCodeLane(e))) {
+            if (isLive(e) && inScope(scope, e)) {
                 // D8d — THE CODE LANE IS KEYED BY WORKSPACE. The store is shared by every
                 // workspace on the machine and each row is stamped with the one that wrote it;
                 // the map a session opens with was ranked over the whole lane, so a session on

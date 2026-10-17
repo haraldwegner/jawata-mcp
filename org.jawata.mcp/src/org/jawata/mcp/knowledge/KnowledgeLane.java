@@ -125,6 +125,19 @@ public enum KnowledgeLane {
      */
     public static final Set<String> CODE_TYPES = CodeKind.wires();
 
+    /**
+     * The two types the ENGINE writes about something that happened, which no ruling covered
+     * until a lane was applied before the search (Sprint 28g S22).
+     *
+     * <p>A {@code hazard} is what the advisor records when a plan it flagged was applied anyway,
+     * and a {@code seat_run} is one journaled run of a seat. Both are things that HAPPENED and
+     * were judged, which is what the experience lane holds; neither is derived from code, and
+     * neither is a fact that is corrected when wrong. They were invisible to the lane for as long
+     * as every call could search without naming one, because a row whose lane is empty is in no
+     * lane, and a search that names its lanes cannot reach it.</p>
+     */
+    public static final Set<String> EVENT_TYPES = Set.of("hazard", DispatchRecall.SEAT_RUN_TYPE);
+
     /** A published pattern the catalogue lent us — somebody else's experience. */
     private static final String REFERENCE_TYPE = "reference";
 
@@ -147,7 +160,7 @@ public enum KnowledgeLane {
             return null;
         }
         String t = type.strip().toLowerCase(Locale.ROOT);
-        if (EntryForm.EXPERIENCE_TYPES.contains(t)) {
+        if (EntryForm.EXPERIENCE_TYPES.contains(t) || EVENT_TYPES.contains(t)) {
             return EXPERIENCE;
         }
         if (RULE_TYPE.equals(t)) {

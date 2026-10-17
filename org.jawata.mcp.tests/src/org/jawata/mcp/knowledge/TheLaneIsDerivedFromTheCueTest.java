@@ -149,11 +149,16 @@ class TheLaneIsDerivedFromTheCueTest {
     }
 
     private static RecallQuery bySymptom(String lane) {
-        return new RecallQuery(null, null, null, SHARED_WORDS, null, lane);
+        return new RecallQuery(null, null, null, SHARED_WORDS, null, scopeOf(lane));
     }
 
     private static RecallQuery bySymbol(String lane) {
-        return new RecallQuery(ANCHOR, null, null, null, null, lane);
+        return new RecallQuery(ANCHOR, null, null, null, null, scopeOf(lane));
+    }
+
+    /** No lane named means the scope derived from the cue, which a null scope asks for. */
+    private static LaneScope scopeOf(String lane) {
+        return lane == null ? null : LaneScope.parse(lane);
     }
 
     /**
@@ -220,7 +225,7 @@ class TheLaneIsDerivedFromTheCueTest {
      */
     @Test
     void a_prose_nomination_is_not_answered_out_of_the_code_lane() {
-        Set<String> overridden = typesFrom(retrieval.nominate(SHARED_WORDS, "code", 15_000));
+        Set<String> overridden = typesFrom(retrieval.nominate(SHARED_WORDS, LaneScope.parse("code"), 15_000));
         assertTrue(overridden.contains("job"),
             () -> "PROOF OF LIFE: lane=code must nominate the job row, or the exclusion below"
                 + " measures nothing. Found " + overridden);

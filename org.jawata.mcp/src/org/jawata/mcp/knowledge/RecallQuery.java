@@ -11,18 +11,20 @@ package org.jawata.mcp.knowledge;
  * @param operation      the operation about to run (e.g. {@code rename_symbol})
  * @param symptom        an observed symptom / cue phrase (alias-normalized on match)
  * @param externalSystem an external dependency implicated in a symptom
- * @param lane           Sprint 28f Stage 5 — a FILTER, not a cue. See below.
+ * @param scope          Sprint 28g S22 — which lanes may answer, chosen BEFORE the search. A FILTER
+ *                       on the corpus, never a cue: it is the lanes the search looks in, so a lane
+ *                       is searched and ranked on its own and nothing is dropped afterwards.
  */
 public record RecallQuery(String symbol, String packageName, String operation,
-                          String symptom, String externalSystem, String lane) {
+                          String symptom, String externalSystem, LaneScope scope) {
 
     /**
-     * The five-cue form: every cue, no lane filter.
+     * The five-cue form: every cue, and the scope the engine derives from them.
      *
-     * <p>Kept because {@code lane} arrived after 64 construction sites existed, and widening
-     * a record's canonical constructor breaks every one of them. The same move {@code Finding}
-     * made in 28d for the same reason: a convenience constructor is one line, and rewriting 64
-     * call sites to pass a literal {@code null} is 64 chances to pass the wrong one.</p>
+     * <p>Kept until the call that names no lane is refused (S22, architecture step M6), because
+     * the scope arrived after 64 construction sites existed and widening a record's canonical
+     * constructor breaks every one of them. A cue naming a symbol or a package asks about code
+     * and may be answered by any lane; any other cue is never answered out of the code lane.</p>
      *
      * @param symbol         an FQN the agent is working on
      * @param packageName    a package the agent is working in
@@ -32,7 +34,15 @@ public record RecallQuery(String symbol, String packageName, String operation,
      */
     public RecallQuery(String symbol, String packageName, String operation,
                        String symptom, String externalSystem) {
-        this(symbol, packageName, operation, symptom, externalSystem, null);
+        this(symbol, packageName, operation, symptom, externalSystem,
+            LaneScope.derivedFor(!blank(symbol) || !blank(packageName)));
+    }
+
+    /** A query built without a scope gets the one derived from its cues. */
+    public RecallQuery {
+        if (scope == null) {
+            scope = LaneScope.derivedFor(!blank(symbol) || !blank(packageName));
+        }
     }
 
     private static boolean blank(String s) {
@@ -42,11 +52,11 @@ public record RecallQuery(String symbol, String packageName, String operation,
     /**
      * True when no cue is set — an empty query resolves to absence, never a scan.
      *
-     * <p><b>{@code lane} is deliberately NOT read here, and that is the design.</b> The cues
-     * say WHAT to look for; the lane says which part of the corpus may answer. A query
-     * carrying only a lane asks "give me the domain layer", which is the scan this method
-     * exists to refuse — reading {@code lane} here would turn {@code recall(lane=domain)}
-     * into a whole-corpus sweep that returns whatever happens to sort first.</p>
+     * <p><b>{@code scope} is deliberately NOT read here, and that is the design.</b> The cues
+     * say WHAT to look for; the scope says which lanes may answer. A query carrying only a scope
+     * asks "give me the domain layer", which is the scan this method exists to refuse — reading
+     * {@code scope} here would turn {@code recall(lane=domain)} into a whole-corpus sweep that
+     * returns whatever happens to sort first.</p>
      */
     public boolean isEmpty() {
         return blank(symbol) && blank(packageName) && blank(operation)
@@ -123,10 +133,10 @@ public record RecallQuery(String symbol, String packageName, String operation,
     }
 
     /**
-     * Whether the {@code lane} filter is set.
-     * @return {@code true} when {@code lane} is non-null and non-blank
+     * Whether the caller NAMED the lanes, rather than the engine deriving them from the cue.
+     * @return {@code true} when {@link #scope()} came from the caller
      */
-    public boolean hasLane() {
-        return !blank(lane);
+    public boolean namesScope() {
+        return !scope.derived();
     }
 }

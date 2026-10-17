@@ -106,10 +106,19 @@ class LaneMigrationTest {
                 + " about the world either, because rewriting the method rewrites it"),
         new Ruled("area", null, KnowledgeLane.CODE,
             "RULED: an area is one package's summary, derived the same way and regenerated"
-                + " the same way"));
+                + " the same way"),
+        // Sprint 28g S22 — THE TWO TYPES THE ENGINE WRITES ABOUT SOMETHING THAT HAPPENED.
+        // Both were unruled, so their lane stayed NULL, and a search that names its lanes cannot
+        // reach a row that is in none. `hazard` was this class's own UNRULED control until then.
+        new Ruled("hazard", null, KnowledgeLane.EXPERIENCE,
+            "RULED: a hazard is what happened when a flagged plan was applied anyway — an event"
+                + " that was judged, which is what the experience lane holds"),
+        new Ruled(DispatchRecall.SEAT_RUN_TYPE, null, KnowledgeLane.EXPERIENCE,
+            "RULED: a seat run is one journaled run of a seat, judged by a human — an experience"
+                + " that arrives as an analogy and never as a rule"));
 
     /** A type no ruling covers. Deliberately NOT in any of the sets {@link KnowledgeLane} reads. */
-    private static final String UNRULED_TYPE = "hazard";
+    private static final String UNRULED_TYPE = "scratch_note";
 
     @Test
     void every_ruled_type_maps_to_its_lane() {

@@ -151,13 +151,19 @@ class ALaneFilterThatExcludesThePatternsSaysSoTest {
         // exist. The note's whole job is to separate "no pattern fits" from "patterns were
         // never searched"; a third state, "that is not a lane", was being answered as the
         // second.
-        Map<String, Object> data = recall(ANCHOR, "domian");
-        assertNull(data.get("catalogueExcluded"),
-            () -> "a lane nobody can ask for excludes nothing, so there is nothing to claim: "
-                + data.keySet());
-        assertNull(data.get("catalogueExclusionNote"),
-            () -> "and no note either — naming a lane to ask for INSTEAD of a typo is the "
-                + "confidently-wrong half: " + data.get("catalogueExclusionNote"));
+        //
+        // S22: a name that is not a lane is now REFUSED outright, which is the same promise kept
+        // more strongly — the caller is told it is not a lane and shown the ones that are,
+        // instead of being handed an answer that claims nothing.
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("kind", "recall");
+        args.put("symbol", ANCHOR);
+        args.put("lane", "domian");
+        ToolResponse refused = new ExperienceTool(() -> null, store).execute(args);
+        assertFalse(refused.isSuccess(), "a misspelled lane must be refused, not answered");
+        String said = String.valueOf(refused.getError());
+        assertTrue(said.contains("'domian' is not a lane") && said.contains("domain"),
+            () -> "and the refusal must name the lanes that exist: " + said);
     }
 
     @Test

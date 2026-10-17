@@ -64,7 +64,8 @@ class LaneQueryTest {
                     + unfiltered);
 
             Set<String> domain =
-                typesOf(store.query(new RecallQuery(CUE, null, null, null, null, "domain")));
+                typesOf(store.query(new RecallQuery(CUE, null, null, null, null,
+                    LaneScope.parse("domain"))));
             assertTrue(domain.contains("domain_fact"),
                 () -> "lane=domain must still answer the domain row; found " + domain);
             assertFalse(domain.contains("lesson"),
@@ -74,7 +75,8 @@ class LaneQueryTest {
                     + " Found " + domain);
 
             Set<String> experience =
-                typesOf(store.query(new RecallQuery(CUE, null, null, null, null, "experience")));
+                typesOf(store.query(new RecallQuery(CUE, null, null, null, null,
+                    LaneScope.parse("experience"))));
             assertTrue(experience.contains("lesson"),
                 () -> "lane=experience must still answer the lesson; found " + experience);
             assertFalse(experience.contains("domain_fact"),
@@ -94,11 +96,11 @@ class LaneQueryTest {
      */
     @Test
     void a_lane_on_its_own_is_not_a_query() {
-        assertTrue(new RecallQuery(null, null, null, null, null, "domain").isEmpty(),
+        assertTrue(new RecallQuery(null, null, null, null, null, LaneScope.parse("domain")).isEmpty(),
             "A LANE IS A FILTER, NOT A CUE. With no cue beside it the query is empty and"
                 + " resolves to absence; a lane that made a query non-empty would scan the"
                 + " whole corpus and return whatever came first.");
-        assertFalse(new RecallQuery(CUE, null, null, null, null, "domain").isEmpty(),
+        assertFalse(new RecallQuery(CUE, null, null, null, null, LaneScope.parse("domain")).isEmpty(),
             "the control: a cue WITH a lane is a real query");
         assertFalse(new RecallQuery(CUE, null, null, null, null).isEmpty(),
             "and so is a cue without one");
@@ -162,7 +164,9 @@ class LaneQueryTest {
     @Test
     void the_five_cue_form_filters_nothing() {
         RecallQuery q = new RecallQuery(CUE, "com.example", "rename_symbol", "a symptom", "h2");
-        assertFalse(q.hasLane(), "the compatibility form must not filter by lane");
-        assertEquals(null, q.lane(), "and it carries no lane value to be misread downstream");
+        assertFalse(q.namesScope(), "the compatibility form must not claim the caller named a lane");
+        assertTrue(q.scope().derived(), "its scope is the one derived from the cues");
+        assertTrue(q.scope().contains(KnowledgeLane.CODE),
+            "and a cue naming a symbol or package may be answered by any lane, code included");
     }
 }

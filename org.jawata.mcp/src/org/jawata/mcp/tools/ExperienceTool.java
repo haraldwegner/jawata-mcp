@@ -2867,7 +2867,8 @@ public final class ExperienceTool implements Tool {
             }
             asked.add(m.name());
             Map<String, Object> nomination = retrieval.nominate(
-                m.asQuestion(), org.jawata.mcp.knowledge.KnowledgeLane.CODE.wire(), budget);
+                m.asQuestion(), org.jawata.mcp.knowledge.LaneScope.of(
+                    org.jawata.mcp.knowledge.KnowledgeLane.CODE), budget);
             Map<String, Object> hit = firstAnchored(nomination);
             if (hit != null) {
                 Map<String, Object> nominee = new java.util.LinkedHashMap<>();
@@ -2984,7 +2985,8 @@ public final class ExperienceTool implements Tool {
         Map<String, Object> result = retrieval.recall(
             new org.jawata.mcp.knowledge.RecallQuery(
                 null, pkg, null, null, null,
-                org.jawata.mcp.knowledge.KnowledgeLane.CODE.wire()),
+                org.jawata.mcp.knowledge.LaneScope.of(
+                    org.jawata.mcp.knowledge.KnowledgeLane.CODE)),
             "describe_area", budgetIn(args));
         // The package the answer is ABOUT, so a caller can memo on it. The hook shows this
         // once per package per session and cannot do that without being told which.
@@ -3317,19 +3319,40 @@ public final class ExperienceTool implements Tool {
         return facts;
     }
 
+    /**
+     * The lanes the caller named: {@code lanes} (a list) or {@code lane} (one name, or several
+     * separated by commas). Neither given answers {@code null}, which the retrieval reads as the
+     * scope derived from the cue — until a call that names no lane is refused (S22, step M6).
+     *
+     * @throws org.jawata.mcp.knowledge.LaneScope.Refused when a name is not a lane
+     */
+    private org.jawata.mcp.knowledge.LaneScope scopeOf(JsonNode args) {
+        List<String> many = strings(args, "lanes");
+        if (!many.isEmpty()) {
+            return org.jawata.mcp.knowledge.LaneScope.parse(many);
+        }
+        String one = text(args, "lane");
+        return one == null || one.isBlank() ? null : org.jawata.mcp.knowledge.LaneScope.parse(one);
+    }
+
     private ToolResponse recall(JsonNode args) {
         // Sprint 28f Stage 5: the lane is carried by EVERY cue below, not only the singular
         // one. A filter honoured on one query and dropped on the others would narrow the
         // first cue's answer and let the rest back in — which reads as the filter half
         // working, the hardest kind of wrong to notice.
-        String lane = text(args, "lane");
+        org.jawata.mcp.knowledge.LaneScope scope;
+        try {
+            scope = scopeOf(args);
+        } catch (org.jawata.mcp.knowledge.LaneScope.Refused refused) {
+            return ToolResponse.invalidParameter("lane", refused.getMessage());
+        }
         RecallQuery q = new RecallQuery(
             text(args, "symbol"),
             text(args, "package"),
             text(args, "operation"),
             text(args, "symptom"),
             text(args, "external_system"),
-            lane);
+            scope);
         // Sprint 27 D6: the caller may name the surface it is asking from
         // ("seat" for a seat run's recall). Absent = the ordinary question hook.
         // Retrieval is identical either way; only the counter differs.
@@ -3365,10 +3388,10 @@ public final class ExperienceTool implements Tool {
             String op = text(args, "operation");
             String ext = text(args, "external_system");
             for (String s : moreSymbols) {
-                cues.add(new RecallQuery(s, pkg, op, null, ext, lane));
+                cues.add(new RecallQuery(s, pkg, op, null, ext, scope));
             }
             for (String s : moreSymptoms) {
-                cues.add(new RecallQuery(null, pkg, op, s, ext, lane));
+                cues.add(new RecallQuery(null, pkg, op, s, ext, scope));
             }
             result = retrieval.recallAll(cues, counted, budgetIn(args), text(args, "session"));
         }
@@ -3402,8 +3425,13 @@ public final class ExperienceTool implements Tool {
         // the same filter recall takes. The map a task opens with asks the code lane and
         // nothing else; omitting it keeps every lane, which is what every caller before
         // this stage did and goes on doing.
-        Map<String, Object> result =
-            retrieval.nominate(question, text(args, "lane"), budgetIn(args));
+        org.jawata.mcp.knowledge.LaneScope scope;
+        try {
+            scope = scopeOf(args);
+        } catch (org.jawata.mcp.knowledge.LaneScope.Refused refused) {
+            return ToolResponse.invalidParameter("lane", refused.getMessage());
+        }
+        Map<String, Object> result = retrieval.nominate(question, scope, budgetIn(args));
         if (ExperienceRetrieval.RESULT_UNAVAILABLE.equals(result.get("result"))) {
             return respond(args, result);
         }

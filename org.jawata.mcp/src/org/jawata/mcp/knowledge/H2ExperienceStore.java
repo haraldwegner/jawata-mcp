@@ -1872,11 +1872,14 @@ public final class H2ExperienceStore implements ExperienceStore {
         //
         // Bound after the cue parameters because the clause is appended after them; a lane
         // clause spliced into the OR would have to renumber every cue bind above.
-        String laneClause = "";
-        if (q.hasLane()) {
-            laneClause = " AND lane = ?";
-            params.add(q.lane());
-        }
+        //
+        // Sprint 28g S22: EVERY query carries a scope now — the caller's, or the one derived
+        // from its cues — so the lane is part of the gather and never a filter applied to what
+        // came back. A row whose lane is NULL (a type no ruling covers) is in no scope.
+        List<String> scoped = q.scope().wires();
+        String laneClause = " AND lane IN (" + String.join(",", java.util.Collections.nCopies(
+            scoped.size(), "?")) + ")";
+        params.addAll(scoped);
         // Sprint 28f Stage 5: a RETIRED rule stopped applying, so it must not be handed to
         // an agent as live guidance — that is the whole content of retiring one. It stays
         // READABLE through `list` and `get`, which do not come through here: retiring is
