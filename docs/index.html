@@ -153,6 +153,9 @@
     h2 { font-size: 1.55rem; letter-spacing: -.01em; color: #f8fafc; margin-bottom: .5rem; font-weight: 680; }
     .lede { color: var(--text-soft); max-width: 46rem; margin-bottom: 1.6rem; }
     .lead-p { max-width: 46rem; }
+    .lead-list { max-width: 46rem; padding-left: 1.3rem; }
+    .lead-list li { margin-bottom: 1rem; }
+    .lead-p strong, .lead-list strong { color: var(--gold); font-weight: 700; }
 
     /* install */
     .install { display: flex; align-items: center; gap: .8rem; background: var(--bg-code);
@@ -278,14 +281,21 @@
 
     <section>
       <p class="lead-p">Semantic Java is table stakes now. Bridges expose the compiler over
-      MCP; fleet platforms run recipe migrations across a hundred thousand repos. jawata is
-      neither — it is the layer where the actual work happens: your agent, your
-      machine, your working tree, today's change. A full refactoring engine the
-      agent composes freely — not a recipe library. Moving a codebase from Java 8 to 21 is a
-      recipe. Turning its classes into records, sealed hierarchies and design patterns is
-      modernization and design change, and that is the work jawata does. A grounded memory of your
-      codebase's lessons. Enforcement that keeps the agent on the compiler
-      instead of drifting back to grep. And your code never leaves your machine.</p>
+      MCP; fleet platforms run recipe migrations across a hundred thousand repos.</p>
+      <p class="lead-p"><strong>jawata</strong> is neither:</p>
+      <ul class="lead-list">
+        <li>It is the layer where the actual work happens: your agent, your
+        machine, your working tree, today's change.</li>
+        <li>A full refactoring engine the agent composes freely — not a recipe
+        library. Moving a codebase from Java 8 to 21 is a recipe. Turning its classes into
+        records, sealed hierarchies and design patterns is modernization and design change, and
+        that is the work <strong>jawata</strong> does.</li>
+        <li>A grounded memory of your codebase's lessons. Enforcement that keeps the
+        agent on the compiler. And your code never leaves your machine.</li>
+      </ul>
+      <p class="lead-p">And it solves our pain in agentic development: Every prompt, every tool is
+      optional falling back to grep and sed, a patch on a patch, rotten architecture, searching
+      for immediate green and skipping the complex tasks and wiring.</p>
     </section>
 
     <section id="install">
