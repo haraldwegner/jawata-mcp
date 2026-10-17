@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- S10-10: PIT's JUnit 5 plugin with one difference, a test that ABORTS under a mutation (having
+     passed before it) is reported as its own kind of kill. Ships in the dist tools/ directory and is
+     put on PIT's classpath by the mutation run only. It is a jar of its own, and not part of the
+     test runner's, because it registers a JUnit listener by service file: in the runner's jar that
+     listener would load into every user test run. PIT, its JUnit 5 plugin and the platform launcher
+     are provided by PIT's own JVMs; the jar stays dependency-free. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.jawata</groupId>
+        <artifactId>org.jawata.build</artifactId>
+        <version>4.4.8</version>
+    </parent>
+
+    <artifactId>org.jawata.pitplugin</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest</artifactId>
+            <version>1.25.7</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-entry</artifactId>
+            <version>1.25.7</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-junit5-plugin</artifactId>
+            <version>1.2.3</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <version>1.14.4</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+</project>

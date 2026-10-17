@@ -35,6 +35,7 @@
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core.tests</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp.tests</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.testrunner</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.pitplugin</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
     </dependencies>
 
     <build>
@@ -136,6 +137,9 @@
                                 <artifactItem><groupId>org.pitest</groupId><artifactId>pitest-entry</artifactId><version>1.25.7</version></artifactItem>
                                 <artifactItem><groupId>org.pitest</groupId><artifactId>pitest-command-line</artifactId><version>1.25.7</version></artifactItem>
                                 <artifactItem><groupId>org.pitest</groupId><artifactId>pitest-junit5-plugin</artifactId><version>1.2.3</version></artifactItem>
+                                <!-- S10-10: the same plugin where a test that ABORTS under a mutation is
+                                     reported as its own kind of kill (PIT counts an abort as a pass) -->
+                                <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.pitplugin</artifactId><version>${project.version}</version></artifactItem>
                                 <!-- the junit5 plugin needs the platform LAUNCHER at runtime;
                                      projects' jupiter aggregates don't carry it -->
                                 <artifactItem><groupId>org.junit.platform</groupId><artifactId>junit-platform-launcher</artifactId><version>1.11.4</version></artifactItem>
@@ -303,6 +307,7 @@
                                         <file>${project.build.directory}/dist/tools/pitest-entry-1.25.7.jar</file>
                                         <file>${project.build.directory}/dist/tools/pitest-command-line-1.25.7.jar</file>
                                         <file>${project.build.directory}/dist/tools/pitest-junit5-plugin-1.2.3.jar</file>
+                                        <file>${project.build.directory}/dist/tools/org.jawata.pitplugin-${project.version}.jar</file>
                                         <file>${project.build.directory}/dist/tools/junit-platform-launcher-1.11.4.jar</file>
                                         <file>${project.build.directory}/dist/tools/commons-text-1.12.0.jar</file>
                                         <file>${project.build.directory}/dist/tools/commons-lang3-3.14.0.jar</file>

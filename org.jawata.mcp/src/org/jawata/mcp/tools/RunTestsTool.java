@@ -1855,21 +1855,35 @@ public class RunTestsTool extends AbstractTool {
             Map<String, Object> summary = new LinkedHashMap<>();
             summary.put("killed", r.killed);
             summary.put("survived", r.survived);
+            summary.put("abortConverted", r.abortConverted);
             summary.put("timedOutMutations", r.timedOutMutations);
             summary.put("noCoverage", r.noCoverage);
             data.put("summary", summary);
-            // The one count a hire gate reads: surviving mutations, i.e. changes no test noticed.
-            // Absent on the no-result path above ON PURPOSE — a run that produced nothing must read
-            // as "did not answer", never as zero survivors.
-            data.put("errorCount", r.survived);
+            // The one count a hire gate reads: the mutations nothing rejected, i.e. the survivors (changes
+            // no test noticed) and the abort conversions (changes a test aborted under instead of failing,
+            // which PIT itself counts as survivors). Absent on the no-result path above ON PURPOSE — a run
+            // that produced nothing must read as "did not answer", never as zero.
+            data.put("errorCount", r.errorCount());
             data.put("survivors", r.survivors);
+            data.put("abortConversions", r.abortConversions);
+            StringBuilder note = new StringBuilder();
             if (r.survived > 0) {
-                data.put("note", "SURVIVING mutations = code changes no test noticed — each "
-                    + "survivor carries a candidate missing-assertion location.");
+                note.append("SURVIVING mutations = code changes no test noticed — each "
+                    + "survivor carries a candidate missing-assertion location. ");
+            }
+            if (r.abortConverted > 0) {
+                note.append("ABORT-CONVERTED mutations = a test that passed before the change ABORTED under it "
+                    + "(a failed assumption or a skip) where it should have failed, so a gate is swallowing the "
+                    + "defect. Not a survivor: the test ran and stopped. Each row names the aborting test. "
+                    + "Reported when the first test to reject the mutation aborted; another test may also have "
+                    + "failed it.");
+            }
+            if (note.length() > 0) {
+                data.put("note", note.toString().strip());
             }
             return ToolResponse.success(data, ResponseMeta.builder()
-                .totalCount(r.killed + r.survived + r.timedOutMutations + r.noCoverage)
-                .returnedCount(r.survivors.size()).build());
+                .totalCount(r.mutationsConsidered())
+                .returnedCount(r.survivors.size() + r.abortConversions.size()).build());
         } catch (Exception e) {
             log.warn("coverage_mutation failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);

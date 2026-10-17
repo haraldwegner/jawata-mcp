@@ -79,8 +79,10 @@ class CoverageMutationTest {
         // The gate contract (a hired run's step answers only with an errorCount): the count a
         // mutation run publishes is its SURVIVORS, the changes no test noticed. Without it a
         // mutation step in a hire reads "did not answer" however well the run went.
-        assertEquals(weakSummary.get("survived"), weak.get("errorCount"),
-            "errorCount IS the survivor count; got: " + weak);
+        assertEquals(((Number) weakSummary.get("survived")).intValue()
+                + ((Number) weakSummary.get("abortConverted")).intValue(),
+            ((Number) weak.get("errorCount")).intValue(),
+            "errorCount IS the survivors plus the abort conversions (none here); got: " + weak);
 
         // Well-tested: CoveredTest asserts alwaysCalled's value — mutants die.
         Map<String, Object> strong = mutation("com.example.cov.Covered",
@@ -93,8 +95,10 @@ class CoverageMutationTest {
             "no survivor may hide in the value-asserted method; got: " + strong.get("survivors"));
         assertTrue(((Number) strong.get("timeMs")).longValue() < bound * 1000L,
             "within the declared bound; got: " + strong.get("timeMs") + " ms");
-        assertEquals(strongSummary.get("survived"), strong.get("errorCount"),
-            "the well-tested class publishes its own (smaller) survivor count; got: " + strong);
+        assertEquals(((Number) strongSummary.get("survived")).intValue()
+                + ((Number) strongSummary.get("abortConverted")).intValue(),
+            ((Number) strong.get("errorCount")).intValue(),
+            "the well-tested class publishes its own (smaller) count; got: " + strong);
     }
 
     private Map<String, Object> mutation(String targetClass, List<String> targetTests, int bound) {

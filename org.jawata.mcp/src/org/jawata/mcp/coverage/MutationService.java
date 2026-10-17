@@ -36,6 +36,15 @@ public final class MutationService {
 
     private static final Logger log = LoggerFactory.getLogger(MutationService.class);
 
+    /**
+     * The two strings the engine and the PIT plugin in org.jawata.testrunner share: the system
+     * property naming the file of tests that abort before any mutation, and the mark the plugin
+     * appends to the name of a test that aborted under one. They are written twice, once on each side
+     * of a jar boundary, and AbortConversionTest is what fails if they drift: no abort is reported.
+     */
+    static final String ABORT_BASELINE_PROPERTY = "jawata.pit.abortBaseline";
+    static final String ABORT_MARK = " [ABORTED UNDER MUTATION]";
+
     public static final class Result {
         public boolean ran;
         public String note;
@@ -43,7 +52,28 @@ public final class MutationService {
         public int survived;
         public int timedOutMutations;
         public int noCoverage;
+        /**
+         * Mutations a test ABORTED under, having passed before them: the gate swallowed the defect
+         * (sprint spec D41). Not in {@link #killed} and not in {@link #survived}, which is where
+         * PIT itself puts them, because it counts an abort as a pass.
+         */
+        public int abortConverted;
+        public List<Map<String, Object>> abortConversions = new ArrayList<>();
         public List<Map<String, Object>> survivors = new ArrayList<>();
+
+        /**
+         * The one count a hire's gate reads: the mutations nothing rejected, which are the survivors
+         * (changes no test noticed) and the abort conversions (changes a test aborted under instead of
+         * failing, which PIT itself counts as survivors).
+         */
+        public int errorCount() {
+            return survived + abortConverted;
+        }
+
+        /** Every mutation the run classified, whatever came of it. */
+        public int mutationsConsidered() {
+            return killed + survived + abortConverted + timedOutMutations + noCoverage;
+        }
         public long timeMs;
         public String stderrTail = "";
     }
@@ -65,6 +95,10 @@ public final class MutationService {
         cp.add(RunnerClasspath.toolJar("pitest-entry-"));
         cp.add(RunnerClasspath.toolJar("pitest-1"));
         cp.add(RunnerClasspath.toolJar("pitest-junit5-plugin-"));
+        // The same plugin with one difference (S10-10): a test that ABORTS under a mutation, having
+        // passed before it, is reported as the mutation's killer under a mark, so the report can tell
+        // an abort from a survivor. PIT's own plugin counts an abort as a pass.
+        cp.add(RunnerClasspath.toolJar("org.jawata.pitplugin-"));
         // The junit5 plugin needs the platform launcher; user projects'
         // jupiter aggregates don't carry it.
         cp.add(RunnerClasspath.toolJar("junit-platform-launcher-"));
@@ -103,6 +137,10 @@ public final class MutationService {
         cmd.add("XML");
         cmd.add("--timestampedReports");
         cmd.add("false");
+        // The file PIT's coverage JVM writes the tests that abort UNMUTATED to, and its mutation JVM
+        // reads: such a test aborts under every mutation too, so it converted nothing.
+        cmd.add("--jvmArgs");
+        cmd.add("-D" + ABORT_BASELINE_PROPERTY + "=" + reportDir.resolve("aborting-before-mutation.txt"));
 
         long start = System.nanoTime();
         // The SPAWN crosses the boundary; the two streams stay here, because
@@ -163,30 +201,53 @@ public final class MutationService {
         for (int i = 0; i < mutations.getLength(); i++) {
             Element m = (Element) mutations.item(i);
             String status = m.getAttribute("status");
+            // The killer is the first test to reject the mutation. Our plugin marks one that ABORTED
+            // under it (a failed assumption), where PIT's own would have counted a pass.
+            String killer = text(m, "killingTest");
+            boolean aborted = "KILLED".equals(status) && killer.contains(ABORT_MARK);
             switch (status) {
-                case "KILLED" -> result.killed++;
+                case "KILLED" -> {
+                    if (aborted) {
+                        result.abortConverted++;
+                    } else {
+                        result.killed++;
+                    }
+                }
                 case "SURVIVED" -> result.survived++;
                 case "TIMED_OUT" -> result.timedOutMutations++;
                 case "NO_COVERAGE" -> result.noCoverage++;
                 default -> { }
             }
             if ("SURVIVED".equals(status)) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                String clazz = text(m, "mutatedClass");
-                String method = text(m, "mutatedMethod");
-                row.put("symbol", clazz + "#" + method);
-                row.put("line", Integer.parseInt(text(m, "lineNumber")));
-                row.put("mutator", text(m, "mutator").replaceAll(".*\\.", ""));
-                row.put("description", text(m, "description"));
-                row.put("candidateAssertion", "assert the behavior of " + clazz + "#"
-                    + method + " at line " + text(m, "lineNumber")
-                    + " — the mutation '" + text(m, "description")
+                Map<String, Object> row = mutationRow(m);
+                row.put("candidateAssertion", "assert the behavior of " + row.get("symbol")
+                    + " at line " + row.get("line")
+                    + " — the mutation '" + row.get("description")
                     + "' changed the code and NO test noticed");
                 result.survivors.add(row);
             }
+            if (aborted) {
+                Map<String, Object> row = mutationRow(m);
+                row.put("abortedTests", killer.replace(ABORT_MARK, ""));
+                row.put("candidateAssertion", "the test aborted instead of failing under the mutation '"
+                    + row.get("description") + "' in " + row.get("symbol") + " at line " + row.get("line")
+                    + " — an assumption or a skip swallowed the defect; make the check an assertion");
+                result.abortConversions.add(row);
+            }
         }
-        log.info("PIT: {} killed, {} survived, {} timed out, {} no-coverage",
-            result.killed, result.survived, result.timedOutMutations, result.noCoverage);
+        log.info("PIT: {} killed, {} survived, {} aborted under mutation, {} timed out, {} no-coverage",
+            result.killed, result.survived, result.abortConverted, result.timedOutMutations,
+            result.noCoverage);
+    }
+
+    /** Where a mutation is, in the terms every row of the report shares. */
+    private static Map<String, Object> mutationRow(Element mutation) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("symbol", text(mutation, "mutatedClass") + "#" + text(mutation, "mutatedMethod"));
+        row.put("line", Integer.parseInt(text(mutation, "lineNumber")));
+        row.put("mutator", text(mutation, "mutator").replaceAll(".*\\.", ""));
+        row.put("description", text(mutation, "description"));
+        return row;
     }
 
     private static String text(Element parent, String tag) {
