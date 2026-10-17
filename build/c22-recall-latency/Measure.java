@@ -33,6 +33,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  *
  * <h2>What it does NOT measure, said here so a reader does not infer it</h2>
  *
+ * <p>The duplicate check (a write that adds a method) is not here: it parses the draft with the
+ * JDT, whose classes need the bundle runtime and cannot load from a plain classpath.</p>
+ *
  * <p>The corpus has the live store's PROPORTIONS but, at a scale below 1, fewer rows, because every
  * row is embedded on write and the embedder's speed bounds how large a corpus can be built. The
  * scale used is printed with the figures.</p>
@@ -76,9 +79,6 @@ public final class Measure {
         occasions.put("tool call naming a member", before
             ? List.of(call(mapper, "recall", "symbol", member))
             : List.of(call(mapper, "recall", "symbol", member, "lane", "experience,code")));
-        occasions.put("write that adds a method", List.of(
-            duplicate(mapper, "/p/src/Other.java",
-                "private static Report " + word(7) + "(Suite s) { return null; } // " + words)));
         occasions.put("a design question (nominate, lessons and patterns)", List.of(
             before ? call(mapper, "nominate", "question", question)
                    : call(mapper, "nominate", "question", question, "lane", "experience,patterns")));
@@ -127,10 +127,6 @@ public final class Measure {
         ObjectNode n = call(m, "nominate", "question", question, "lane", "code");
         n.put("format", "text");
         return n;
-    }
-
-    private static ObjectNode duplicate(ObjectMapper m, String file, String draft) {
-        return call(m, "duplicate_check", "filePath", file, "draft", draft);
     }
 
     private static String word(int i) {

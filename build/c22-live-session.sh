@@ -124,7 +124,7 @@ def session(name, prompt, turns=10):
     out = os.path.join(EVIDENCE, name + ".jsonl")
     run = subprocess.run(
         ["claude", "-p", prompt, "--setting-sources", "project", "--output-format",
-         "stream-json", "--verbose", "--max-turns", str(turns), "--model", MODEL,
+         "stream-json", "--verbose", "--include-hook-events", "--max-turns", str(turns), "--model", MODEL,
          "--permission-mode", "acceptEdits"],
         cwd=PROJECT, capture_output=True, text=True, timeout=900)
     open(out, "w").write(run.stdout)
@@ -139,8 +139,10 @@ def events(text):
 
 print("\n--- 1. a typed message: the lesson arrives, no code map -----------------------")
 t1 = session("1-typed-message",
-             "Quick question, no changes please: our ledger totals drift by a cent after "
-             "rounding. Have we learned anything about that?")
+             # The hook takes its cues from the FIRST words of a message (cue.rs: the first trigram and
+             # two bigrams), so the lesson's subject comes first, as a person describing a problem writes it.
+             "Rounding drift in the ledger totals: have we learned anything about that? "
+             "No changes please.")
 if "JAWATA MAP" in t1:
     bad("a typed message brought the code map")
 elif "Round once at the edge" in t1:
@@ -197,22 +199,23 @@ if any(" :: " in l for l in lines):
 else:
     bad("no declaration line with a job location in the signal log (%d lines found)" % len(lines))
 
-print("\n--- the whole run: no experience call failed, and the log CAN see one fail ------")
+print("\n--- the whole run: no hook call was refused for a missing lane ------------------")
 import re
-def failed_experience_calls():
-    return len(re.findall(r"Tool experience completed.*success=false", open(RLOG).read()))
-before = failed_experience_calls()
+def lane_refusals():
+    return len(re.findall(r"lane refused for kind=", open(RLOG).read()))
+before = lane_refusals()
 # A gate that cannot see zero is not a gate: make one lane-less call ON PURPOSE and require the
 # log to count it, so a zero before it means something.
 call({"kind": "recall", "symptom": "a probe that names no lane on purpose"})
-after = failed_experience_calls()
+after = lane_refusals()
 if after != before + 1:
-    unknown("the resident log did not count a deliberate refusal (before %d, after %d), so a "
+    unknown("the resident log did not count a deliberate lane refusal (before %d, after %d), so a "
             "zero before it proves nothing" % (before, after))
 elif before == 0:
-    ok("no experience call failed during the session (and the log counted the deliberate one)")
+    ok("the engine refused no hook call for a missing lane during the session (and its log "
+       "counted the deliberate one)")
 else:
-    bad("%d experience call(s) failed during the session — a hook was refused" % before)
+    bad("%d call(s) were refused for a missing lane during the session" % before)
 
 print("\nC22-LIVE-SESSION passed=%d failed=%d unproven=%d" % (passed, failed, unproven))
 raise SystemExit(1 if failed else (3 if unproven else 0))

@@ -3341,11 +3341,20 @@ public final class ExperienceTool implements Tool {
      * @throws org.jawata.mcp.knowledge.LaneScope.Refused when no lane is named, or a name is not a lane
      */
     private org.jawata.mcp.knowledge.LaneScope scopeOf(JsonNode args) {
-        List<String> many = strings(args, "lanes");
-        if (!many.isEmpty()) {
-            return org.jawata.mcp.knowledge.LaneScope.parse(many);
+        try {
+            List<String> many = strings(args, "lanes");
+            if (!many.isEmpty()) {
+                return org.jawata.mcp.knowledge.LaneScope.parse(many);
+            }
+            return org.jawata.mcp.knowledge.LaneScope.parse(text(args, "lane"));
+        } catch (org.jawata.mcp.knowledge.LaneScope.Refused refused) {
+            // Said in the resident's log, because the caller is usually a hook that fails open
+            // and says nothing: a studio and an engine that are not the same pair show up HERE,
+            // as a stream of refusals nobody else sees.
+            org.slf4j.LoggerFactory.getLogger(ExperienceTool.class)
+                .warn("lane refused for kind={}: {}", text(args, "kind"), refused.getMessage());
+            throw refused;
         }
-        return org.jawata.mcp.knowledge.LaneScope.parse(text(args, "lane"));
     }
 
     private ToolResponse recall(JsonNode args) {
