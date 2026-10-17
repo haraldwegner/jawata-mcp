@@ -289,9 +289,7 @@ class HotspotTest {
         assertTrue(wallSymbols.contains("com.example.debug.WallTimeTarget#burnCpu"),
             "and wall counts on-CPU elapsed time too, so the CPU-burning method is here as"
                 + " well — wall is not lock-time renamed: " + wallRows);
-        assertTrue(wallSymbols.stream().noneMatch(
-                symbol -> symbol.startsWith("jdk.internal.misc.Unsafe")
-                    || symbol.startsWith("java.lang.Object#wait")),
+        assertTrue(wallSymbols.stream().noneMatch(HotspotTest::isBareBlockingPrimitive),
             "and NO row is a bare JVM blocking primitive, which is the frame every blocked"
                 + " thread shares and the row this assertion used to be satisfied by: "
                 + wallRows);
@@ -834,5 +832,29 @@ class HotspotTest {
         hotspots.put("artifactId", "jfr-sample-nope");
         ToolResponse r = profile.execute(hotspots);
         assertFalse(r.isSuccess());
+    }
+
+    /**
+     * The frames every blocked thread shares: parking in {@code Unsafe} and waiting in {@code Object}.
+     * The wall dimension must name the method that blocked, never one of these.
+     *
+     * <p>This used to be every symbol starting {@code jdk.internal.misc.Unsafe}. The 4.4.8 release run on a
+     * shared runner failed on it: the recording caught one on-CPU sample (171 ms) inside
+     * {@code Unsafe#checkPointer}, JFR's own start-up work, which blocks nothing and is no part of the
+     * defect this clause guards. A predicate wider than the defect fails on a correct answer.</p>
+     */
+    static boolean isBareBlockingPrimitive(String symbol) {
+        return symbol.startsWith("jdk.internal.misc.Unsafe#park")
+            || symbol.startsWith("java.lang.Object#wait");
+    }
+
+    @Test
+    @DisplayName("a frame that merely lives in Unsafe is not a bare blocking primitive; the parking and waiting frames are")
+    void onlyTheParkingAndWaitingFramesAreBareBlockingPrimitives() {
+        assertFalse(isBareBlockingPrimitive("jdk.internal.misc.Unsafe#checkPointer"));
+        assertFalse(isBareBlockingPrimitive("com.example.debug.WallTimeTarget#waitOnLock"));
+        assertTrue(isBareBlockingPrimitive("jdk.internal.misc.Unsafe#park"));
+        assertTrue(isBareBlockingPrimitive("java.lang.Object#wait0"));
+        assertTrue(isBareBlockingPrimitive("java.lang.Object#wait"));
     }
 }
