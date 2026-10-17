@@ -700,7 +700,7 @@ esac
 # retrieval quality. The frozen five-question fixture above is the instrument
 # for that, and it predates the extractor for precisely this reason.
 SAMPLE_Q="one method here validates the input, does the arithmetic and builds the output text in a single pass, and the shape of what it does cannot be seen without reading every mechanical detail"
-SNOM="$(call experience "{\"kind\":\"nominate\",\"question\":\"$SAMPLE_Q\"}")"
+SNOM="$(call experience "{\"kind\":\"nominate\",\"lane\":\"experience,patterns,domain,code,rules\",\"question\":\"$SAMPLE_Q\"}")"
 SREF="$(printf '%s' "$SNOM" | grep -oE '"address":"catalogue:jawata-samples/[^"]+"' | head -1 | cut -d'"' -f4)"
 if [ -z "$SREF" ]; then
     fail "samples-address-opens a design question returned no catalogue:jawata-samples/ address at all — the specimen lane is seeded but unreachable by asking: $(printf '%s' "$SNOM" | head -c 300)"
@@ -739,7 +739,7 @@ fi
 # backlog — and "no candidates, nothing to count, skip it" is the optimisation
 # that deletes exactly that signal.
 DQ="a question about nothing this store has ever heard of, zylophantic breeb"
-NOM="$(call experience "{\"kind\":\"nominate\",\"question\":\"$DQ\"}")"
+NOM="$(call experience "{\"kind\":\"nominate\",\"lane\":\"experience,patterns,domain,code,rules\",\"question\":\"$DQ\"}")"
 case "$NOM" in
     *'"query_id"'*) pass "demand-and-delete a nomination returns a query id" ;;
     *) fail "demand-and-delete no query_id: $(printf '%s' "$NOM" | head -c 200)" ;;
