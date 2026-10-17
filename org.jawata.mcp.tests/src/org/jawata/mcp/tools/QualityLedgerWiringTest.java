@@ -167,6 +167,7 @@ class QualityLedgerWiringTest {
 
         var args = OM.createObjectNode();
         args.put("kind", "recall");
+        args.put("lane", "experience,patterns,domain,code,rules");
         args.put("symbol", "com.foo.Bar");
         ToolResponse r = tool.execute(args);
         assertTrue(r.isSuccess(), "precondition: the recall answered");
@@ -256,6 +257,7 @@ class QualityLedgerWiringTest {
 
         var args = OM.createObjectNode();
         args.put("kind", "recall");
+        args.put("lane", "experience,patterns,domain,code,rules");
         args.put("symbol", "com.foo.Bar");
         args.put("surface", "seat");
         assertTrue(tool.execute(args).isSuccess());
@@ -275,6 +277,7 @@ class QualityLedgerWiringTest {
 
         var args = OM.createObjectNode();
         args.put("kind", "recall");
+        args.put("lane", "experience,patterns,domain,code,rules");
         args.put("symbol", "com.foo.Bar");
         assertTrue(tool.execute(args).isSuccess());
         assertEquals(1L, counters().get("fired.question_hook"),

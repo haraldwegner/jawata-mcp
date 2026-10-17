@@ -970,18 +970,17 @@ public final class ExperienceRetrieval {
      * a method deletes the documentation of the FEATURE along with the overload, which is the
      * orphaned-comment hazard pointed the other way.</p>
      *
-     * <p>The map a task opens with asks the CODE lane and nothing else: an agent starting
-     * work wants the areas and jobs that describe what it is about to touch, and a lesson
-     * or a domain fact answering the same prose would be a different kind of answer wearing
-     * the same shape. The other lanes keep their own moments.</p>
+     * <p>The code lane answers "do we already have something that does this?" and is asked
+     * BY JOB, by the agent, when the talk turns to functionality — an agent about to touch a
+     * part of the code wants the areas and jobs that describe it, and a lesson or a domain
+     * fact answering the same prose would be a different kind of answer wearing the same
+     * shape. A hook does not ask it on a typed message.</p>
      *
-     * <p><b>It is the same FILTER the recall path uses, applied through the same
-     * predicate</b> — {@link #inLane} — and not a second rule that happens to agree today.
-     * A lane NARROWS what the cues found and never widens it, which is what makes it safe
-     * to hang on the ranking rather than on the scoring: nothing about the ORDER changes,
-     * and in particular <b>no score bar is introduced</b>. That matters more here than
-     * anywhere else in this file: Stage 0 measured that this corpus admits no cutoff, and
-     * {@code SeatAsksByMeaningTest} holds a sub-floor pair open against exactly that.</p>
+     * <p><b>The lanes are chosen BEFORE the search</b> (Sprint 28g S22): each lane named in
+     * {@code scope} is scored, ranked and cut on its own, and nothing is filtered afterwards.
+     * No score bar is introduced anywhere in that: Stage 0 measured that this corpus admits no
+     * cutoff, and {@code SeatAsksByMeaningTest} holds a sub-floor pair open against exactly
+     * that.</p>
      *
      * @param question     the caller's own words
      * @param scope        the lanes that may answer — named by the caller, never defaulted
@@ -1009,9 +1008,8 @@ public final class ExperienceRetrieval {
      * never searched"</b>. Those two answers want opposite next moves, and the steering this
      * store emits tells a caller to match one of the rows it returned.</p>
      *
-     * <p>Written onto BOTH answers from one place, for the reason {@link #inLane} gives about
-     * itself: recall and nomination ask the same question, and a copied sentence is how the
-     * two would come to differ.</p>
+     * <p>Written onto BOTH answers from one place: recall and nomination ask the same
+     * question, and a copied sentence is how the two would come to differ.</p>
      */
     private static void noteCatalogueExclusion(Map<String, Object> out, LaneScope scope) {
         if (scope == null || scope.contains(catalogueLaneOf())) {
@@ -1028,37 +1026,9 @@ public final class ExperienceRetrieval {
             + "anything about them.");
     }
 
-    /**
-     * Whether an entry belongs to the lifecycle a caller named.
-     *
-     * <p>ONE predicate, read by the recall path and the nomination path. It was a lambda
-     * body inside recall until the nomination needed the same question asked, and a copied
-     * line is how the two would have drifted — the lane is derived from the entry's type
-     * AND its provenance, so a second spelling that read only the type would agree on
-     * every fixture and disagree on the rows that actually matter.</p>
-     */
-    private static boolean inLane(String lane, StoredEntry e) {
-        return lane.equals(KnowledgeLane.wireOf(e.type(), e.facets().provenanceKind()));
-    }
-
     /** The lane the catalogue's patterns live in, derived rather than spelled twice. */
     private static KnowledgeLane catalogueLaneOf() {
         return KnowledgeLane.of("reference", CatalogueManifest.PROVENANCE);
-    }
-
-    /**
-     * Whether this entry lives in the CODE lane — Sprint 28g D42(b).
-     *
-     * <p>ONE predicate, read by both places that derive the lane from the cue: the ranked recall
-     * pool and the nomination pool. It exists for the reason {@link #inLane} gives about itself —
-     * the lane is derived from the entry's type AND its provenance, so a second spelling that
-     * read only the type would agree on every fixture and disagree on the rows that matter.</p>
-     *
-     * <p>It ASKS {@link KnowledgeLane} rather than restating which types are code, so a ruling
-     * that moves a type into or out of that lane moves this with it.</p>
-     */
-    private static boolean isCodeLane(StoredEntry e) {
-        return inLane(KnowledgeLane.CODE.wire(), e);
     }
 
     /**
@@ -1075,7 +1045,7 @@ public final class ExperienceRetrieval {
      * means nothing in another.</p>
      */
     private boolean foreignCode(StoredEntry e) {
-        if (!isCodeLane(e)) {
+        if (KnowledgeLane.of(e.type(), e.facets().provenanceKind()) != KnowledgeLane.CODE) {
             return false;
         }
         String mine = store.provenanceWorkspaceId();

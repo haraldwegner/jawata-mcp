@@ -110,8 +110,8 @@ record(type="lesson", symptoms=["the run reports fewer classes than it planned"]
        summary="A shard that dies takes its classes with it and the coverage report "
                "reads them as untested rather than as unrun.")
 
-print("\n--- MOMENT 1: the map, at the prompt ---------------------------------------")
-m = call("experience", {"kind": "nominate", "lane": "experience,patterns,domain,code,rules", "lane": "code", "format": "text",
+print("\n--- MOMENT 1: the code lane, asked BY JOB (the agent asks it; no hook does) ----")
+m = call("experience", {"kind": "nominate", "lane": "code", "format": "text",
                         "question": "which parts of the product did the checks "
                                     "actually exercise?"})
 text = str(m.get("data", ""))
@@ -119,9 +119,10 @@ if not m.get("success"):
     unknown("nominate refused, so this moment could not be put in a position to fire: %s"
             % json.dumps(m)[:200])
 elif text.startswith("JAWATA MAP —") and "job:" in text and "area:" in text:
-    ok("a prompt yields the MAP block, areas before jobs, each job anchored")
+    ok("the code lane answers a question about functionality with the MAP block, areas "
+       "before jobs, each job anchored")
 else:
-    bad("the prompt produced no map block: %r" % text[:240])
+    bad("the code lane produced no map block: %r" % text[:240])
 
 print("\n--- MOMENT 2: the experience lane, on a symptom -----------------------------")
 e = call("experience", {"kind": "recall", "lane": "experience,patterns,domain,code,rules", "format": "text",
@@ -223,37 +224,85 @@ elif HOOK and os.path.exists(HOOK):
             json.dump({"url": "http://127.0.0.1:%s/mcp" % PORT, "token": TOKEN,
                        "client": "claude-code", "timeout_ms": 20000}, f)
 
+        # The hooks write their signals under HOME; a scratch HOME keeps the probe off the
+        # developer's real log.
+        env = dict(os.environ, HOME=stage, USERPROFILE=stage)
+        userprompt = os.path.join(stage, "jawata-hook-userprompt")
+        shutil.copy2(HOOK, userprompt)
+
         # A real Write of a .java file, NESTED under tool_input the way one arrives — the
         # shape whose absence once made this gate inert on every real write.
-        payload = json.dumps({
+        write = {
             "tool_name": "Write",
             "tool_input": {
                 "file_path": "/p/src/Other.java",
                 "content": "/** Runs the tests in a forked machine and reports the lines "
                            "they reached. */\nclass O { Report exercise(Suite s){return null;} }"
-            }})
-        run = subprocess.run([recall], input=payload, capture_output=True,
-                             text=True, timeout=180)
-        if "CoverageRunner#runForked" in run.stdout:
-            ok("the hook binary, handed a real Write payload and told nothing else, "
-               "reached the store and emitted the nominee — THIS is the clause")
+            }}
+        run = subprocess.run([recall], input=json.dumps(write), capture_output=True,
+                             text=True, timeout=180, env=env)
+        if "CoverageRunner#runForked" in run.stdout and "deny" in run.stdout:
+            ok("a write re-deriving a known job is REFUSED by the hook binary, naming the "
+               "job's location — THIS is the signed refusal, restored")
+        elif "CoverageRunner#runForked" in run.stdout:
+            bad("the hook named the nominee but did not refuse the write: %r" % run.stdout[:240])
         elif run.stdout.strip():
             bad("the hook emitted something that is not the nominee: %r" % run.stdout[:240])
         else:
             bad("the hook emitted NOTHING on a payload that must fire the duplicate gate "
                 "(stderr: %r)" % run.stderr[:240])
 
+        # THE SAME WRITE, DECLARED THE WAY AN AGENT CAN: a write has no field to carry a
+        # declaration, so the agent says it in a SHELL command, the guard records it for the
+        # session, and the repeated write proceeds — once.
+        guard = os.path.join(stage, "jawata-hook-guard")
+        shutil.copy2(HOOK, guard)
+        for token, why in (("jawata-duplicate:", "the shared runner cannot see this format"),
+                           ("jawata-distinct:", "that job runs tests and this one runs a probe")):
+            session = {"session_id": "live-" + token.strip(":")}
+            said = dict(session, tool_name="Bash",
+                        tool_input={"command": "echo '%s %s'" % (token, why)})
+            subprocess.run([guard], input=json.dumps(said), capture_output=True,
+                           text=True, timeout=180, env=env)
+            again = dict(write, **session)
+            run3 = subprocess.run([recall], input=json.dumps(again), capture_output=True,
+                                  text=True, timeout=180, env=env)
+            if "deny" not in run3.stdout:
+                ok("the same write after a shell command carrying `%s` proceeds" % token)
+            else:
+                bad("the same write after `%s` was still refused: %r"
+                    % (token, run3.stdout[:240]))
+            third = subprocess.run([recall], input=json.dumps(again), capture_output=True,
+                                   text=True, timeout=180, env=env)
+            if "deny" in third.stdout:
+                ok("and the line covered ONE write: the next is refused again")
+            else:
+                bad("one declaration covered two writes: %r" % third.stdout[:240])
+
         # THE CONTROL, through the same binary: a bare Edit must produce nothing at all.
         bare = json.dumps({"tool_name": "Edit",
                            "tool_input": {"file_path": "/p/src/Other.java"}})
         run2 = subprocess.run([recall], input=bare, capture_output=True,
-                              text=True, timeout=180)
+                              text=True, timeout=180, env=env)
         if not run2.stdout.strip():
             ok("and a BARE edit through the same binary emits nothing — without this the "
-               "line above is satisfied by a hook that fires on everything, which is the "
-               "state D6 exists to end")
+               "refusal above is satisfied by a hook that fires on everything")
         else:
             bad("a bare edit produced output: %r" % run2.stdout[:240])
+
+        # (i) A TYPED MESSAGE BRINGS NO CODE MAP, and still reaches the lessons.
+        typed = json.dumps({"prompt": "which parts of the product did the checks actually "
+                                      "exercise? the run reports fewer classes than it planned"})
+        run4 = subprocess.run([userprompt], input=typed, capture_output=True,
+                              text=True, timeout=180, env=env)
+        if "JAWATA MAP" in run4.stdout:
+            bad("a typed message brought the code map: %r" % run4.stdout[:240])
+        elif "shard" in run4.stdout:
+            ok("a typed message brings the LESSON recorded for its words and no code map")
+        else:
+            unknown("a typed message brought no code map (right), but the lesson did not "
+                    "arrive either, so this run did not show the lessons lane firing: %r"
+                    % run4.stdout[:200])
     finally:
         shutil.rmtree(stage, ignore_errors=True)
 

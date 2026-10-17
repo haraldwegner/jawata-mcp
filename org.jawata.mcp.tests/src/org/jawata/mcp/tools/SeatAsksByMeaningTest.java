@@ -156,9 +156,9 @@ class SeatAsksByMeaningTest {
         ObjectNode a = json.createObjectNode();
         a.put("kind", "nominate");
         a.put("question", question);
-        if (lane != null) {
-            a.put("lane", lane);
-        }
+        // A caller names its lanes (S22). No lane argument here means every lane but the code
+        // lane — what a question in prose asks when it is not asking whether a job exists.
+        a.put("lane", lane == null ? "experience,patterns,domain,rules" : lane);
         ToolResponse r = tool.execute(a);
         assertTrue(r.isSuccess(), "got " + r.getError());
         Map<String, Object> data = (Map<String, Object>) r.getData();

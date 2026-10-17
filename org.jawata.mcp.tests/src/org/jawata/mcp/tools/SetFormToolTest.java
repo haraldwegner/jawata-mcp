@@ -123,6 +123,7 @@ class SetFormToolTest {
         // Recallable BY the new situation, through the production nomination.
         ObjectNode n = mapper.createObjectNode();
         n.put("kind", "nominate");
+        n.put("lane", "experience,patterns,domain,code,rules");
         n.put("question", "what happens when an amend races a cancel on a walrus ledger slot");
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> candidates =

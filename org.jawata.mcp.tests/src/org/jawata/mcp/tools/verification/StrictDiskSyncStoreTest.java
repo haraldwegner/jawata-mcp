@@ -91,6 +91,7 @@ class StrictDiskSyncStoreTest {
             // And recall's pointer resolution sees the reconciled model too.
             ObjectNode recall = mapper.createObjectNode();
             recall.put("kind", "recall");
+            recall.put("lane", "experience,patterns,domain,code,rules");
             recall.put("symbol", "com.example.HelloWorldRenamed");
             ToolResponse rec = registry.callTool("experience", recall);
             assertTrue(rec.isSuccess());

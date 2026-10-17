@@ -127,10 +127,12 @@ public final class ExperienceAdvisor implements Advisor {
             blankToNull(kind),                       // operation = the refactoring kind
             null,                                    // symptom
             null,                                    // external_system
-            // What was LEARNED about this symbol and operation, and the contracts and rules that
-            // bind it — never the code lane, which says what each member is FOR and is asked by
-            // the agent when the talk turns to functionality (Sprint 28g S22, ruling 1).
-            LaneScope.of(KnowledgeLane.EXPERIENCE, KnowledgeLane.DOMAIN, KnowledgeLane.RULES));
+            // A TOOL CALL asks the lessons and what the member is FOR (Sprint 28g S22, the
+            // lane table): what was learned about this symbol and operation, the contracts and
+            // rules that bind it, and the catalogued job that may already do the work. A TYPED
+            // MESSAGE is a different occasion and does not ask the code lane.
+            LaneScope.of(KnowledgeLane.EXPERIENCE, KnowledgeLane.DOMAIN, KnowledgeLane.RULES,
+                KnowledgeLane.CODE));
         if (q.isEmpty()) {
             return PriorWork.nothingToAsk();
         }

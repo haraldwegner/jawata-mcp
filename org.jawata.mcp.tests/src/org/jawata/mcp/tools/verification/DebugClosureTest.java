@@ -210,6 +210,7 @@ class DebugClosureTest {
         // knowledge store: what we learn at runtime is findable by the name the runtime used.
         ObjectNode recall = om.createObjectNode();
         recall.put("kind", "recall");
+        recall.put("lane", "experience,patterns,domain,code,rules");
         recall.put("symbol", symbol);
         ToolResponse recalled = experience.execute(recall);
         assertTrue(recalled.isSuccess(), "got: " + recalled.getError());

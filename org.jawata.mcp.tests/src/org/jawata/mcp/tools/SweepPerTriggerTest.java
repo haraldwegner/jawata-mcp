@@ -80,7 +80,7 @@ class SweepPerTriggerTest {
 
     /** Ask, and decline everything offered — which is what puts rows on both lists. */
     private void askAndKeepNothing(String question) {
-        Map<String, Object> nominated = data(exec("nominate", a -> a.put("question", question)));
+        Map<String, Object> nominated = data(exec("nominate", a -> { a.put("question", question); a.put("lane", "experience,patterns,domain,code,rules"); }));
         String queryId = String.valueOf(nominated.get("query_id"));
         data(exec("decide", a -> {
             a.put("query_id", queryId);
@@ -143,7 +143,7 @@ class SweepPerTriggerTest {
         // copied: a recall nothing can answer. Today it opens no demand row, which is the
         // very bound `backlogRecordedBy` publishes — so this call is what makes that claim
         // falsifiable instead of a second copy of the production literal.
-        exec("recall", a -> a.put("symptom", "a pangolin symptom this store cannot answer"));
+        exec("recall", a -> { a.put("symptom", "a pangolin symptom this store cannot answer"); a.put("lane", "experience,patterns,domain,code,rules"); });
 
         Map<String, Object> out = sweep();
 

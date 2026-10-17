@@ -101,9 +101,7 @@ class RulePromotionTest {
     private boolean recallReturns(String cue, String lane, String id) {
         ToolResponse r = exec("recall", a -> {
             a.put("symptom", cue);
-            if (lane != null) {
-                a.put("lane", lane);
-            }
+            a.put("lane", lane == null ? "experience,patterns,domain,code,rules" : lane);
         });
         assertTrue(r.isSuccess(), () -> "recall failed: " + r.getError());
         return String.valueOf(r.getData()).contains(id);

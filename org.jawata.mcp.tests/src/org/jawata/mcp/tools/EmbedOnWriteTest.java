@@ -120,7 +120,7 @@ class EmbedOnWriteTest {
         // row is searchable the moment it is written, so a reader who asks immediately
         // gets it. A sleep here would turn this into a test of eventual consistency,
         // which is the weaker property the store already had.
-        ToolResponse found = call("recall", "symptom", cue, "format", "text");
+        ToolResponse found = call("recall", "symptom", cue, "format", "text", "lane", "experience,patterns,domain,code,rules");
         assertTrue(found.isSuccess(), () -> "recall failed outright: " + found.getData());
 
         String answer = String.valueOf(found.getData());
