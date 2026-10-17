@@ -118,7 +118,10 @@ class ExperienceRetrievalTest {
         String text = ExperienceRetrieval.renderText(retrieval.recall(
             new RecallQuery("com.example.orders.RetryLoop", null, null, null, null, LaneScope.everyLane())));
 
-        assertEquals(1, text.split("\n").length,
+        // The SEARCHED trailer (Sprint 28g S22) is a line of its own about the search, not an
+        // entry; the contract is about the entries.
+        long entryLines = text.lines().filter(l -> !l.startsWith("SEARCHED:")).count();
+        assertEquals(1, entryLines,
             "one entry, one line, whatever the stored text contains: " + text);
     }
 

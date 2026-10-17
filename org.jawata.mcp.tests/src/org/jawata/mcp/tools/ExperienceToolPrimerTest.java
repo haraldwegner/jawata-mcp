@@ -103,6 +103,9 @@ class ExperienceToolPrimerTest {
         a.put("format", "text");
         ToolResponse r = tool.execute(a);
         assertInstanceOf(String.class, r.getData());
-        assertEquals("No known knowledge for this cue.", r.getData());
+        // Sprint 28g S22: the absence is followed by the line saying how much was searched.
+        String text = (String) r.getData();
+        assertEquals("No known knowledge for this cue.", text.lines().findFirst().orElse(""));
+        assertTrue(text.contains("\nSEARCHED: experience 0 rows"), () -> "what was searched: " + text);
     }
 }

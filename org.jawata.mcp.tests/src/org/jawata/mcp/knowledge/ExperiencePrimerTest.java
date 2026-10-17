@@ -71,6 +71,10 @@ class ExperiencePrimerTest {
     @Test
     void renderText_renders_message_for_absence() {
         Map<String, Object> r = retrieval.recall(new RecallQuery("com.nothing.Here", null, null, null, null, LaneScope.everyLane()));
-        assertEquals("No known knowledge for this cue.", ExperienceRetrieval.renderText(r));
+        String text = ExperienceRetrieval.renderText(r);
+        // Sprint 28g S22: an absence says how much it looked at, on the line after the message.
+        assertEquals("No known knowledge for this cue.", text.lines().findFirst().orElse(""));
+        assertTrue(text.contains("\nSEARCHED: experience 0 rows"),
+            () -> "the absence says what was searched: " + text);
     }
 }
