@@ -425,8 +425,21 @@ public final class TranscriptStore {
                                 String his = String.join("\n", decode(decompress(rs.getBytes(1)))
                                     .getOrDefault(Who.HE, List.of()));
                                 if (!his.isBlank()) {
-                                    insertHisTerms(conn, id, his);
-                                    filled++;
+                                    // One transaction per turn, so a failure part way leaves the
+                                    // turn with none, which the next open fills again, and never
+                                    // with some, which would read as complete.
+                                    boolean auto = conn.getAutoCommit();
+                                    conn.setAutoCommit(false);
+                                    try {
+                                        insertHisTerms(conn, id, his);
+                                        conn.commit();
+                                        filled++;
+                                    } catch (Exception e) {
+                                        conn.rollback();
+                                        throw e;
+                                    } finally {
+                                        conn.setAutoCommit(auto);
+                                    }
                                 }
                             }
                         }
