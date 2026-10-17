@@ -889,6 +889,10 @@ public final class ExperienceRetrieval {
         Map<String, Object> merged = null;
         List<Map<String, Object>> entries = new ArrayList<>();
         java.util.Set<String> seenIds = new java.util.LinkedHashSet<>();
+        // The cap is PER LANE, as it is for a single cue: one cap over the concatenated cues let
+        // the lane that answers first (the enum order puts the lessons first) fill the page and
+        // leave another lane's best row out.
+        Map<String, Integer> perLane = new LinkedHashMap<>();
         int asked = 0;
         for (RecallQuery q : cues == null ? List.<RecallQuery>of() : cues) {
             if (q == null || q.isEmpty()) {
@@ -904,10 +908,15 @@ public final class ExperienceRetrieval {
             }
             if (one.get("entries") instanceof List<?> list) {
                 for (Object o : list) {
-                    if (!(o instanceof Map<?, ?> m) || entries.size() >= MAX_TERMINAL) {
+                    if (!(o instanceof Map<?, ?> m)) {
+                        continue;
+                    }
+                    String laneOfRow = String.valueOf(m.get("lane"));
+                    if (perLane.getOrDefault(laneOfRow, 0) >= MAX_TERMINAL) {
                         continue;
                     }
                     if (seenIds.add(String.valueOf(m.get("id")))) {
+                        perLane.merge(laneOfRow, 1, Integer::sum);
                         @SuppressWarnings("unchecked")
                         Map<String, Object> row = (Map<String, Object>) m;
                         entries.add(row);
@@ -1085,7 +1094,6 @@ public final class ExperienceRetrieval {
         int otherWorkspace = 0;
         for (KnowledgeLane knowledgeLane : scope.lanes()) {
             StoreCorpus.LaneCorpus corpus = StoreCorpus.of(store).lane(knowledgeLane);
-            scanned.put(knowledgeLane.wire(), corpus.live().size());
             LexicalIndex.Scores words = lexicalScores(q, knowledgeLane);
 
             // D13: three cosines against three FIELDS, plus the word lane. The old
@@ -1130,6 +1138,10 @@ public final class ExperienceRetrieval {
                 }
             }
             scores.putAll(laneScores);
+            // What was RANKED, not what the lane holds: another workspace's code rows were
+            // withheld above and are counted in `foreign_workspace_withheld`, so the figure here
+            // is the number of rows this answer actually chose from.
+            scanned.put(knowledgeLane.wire(), laneRows.size());
 
             // RELEVANCE ONLY. Nothing below reads an entry's outcome, its origin, its
             // age or its size, and RelevanceMerge could not see them if it wanted to —
@@ -1513,7 +1525,10 @@ public final class ExperienceRetrieval {
         Object res = result.get("result");
         if (RESULT_ABSENCE.equals(res)) {
             Object msg = result.get("message");
-            return msg == null ? "No known knowledge for this cue." : msg.toString();
+            // The absence says how much it looked at: "found nothing in 221 lessons" and
+            // "looked at nothing" are different answers, and a text reader sees only this.
+            return (msg == null ? "No known knowledge for this cue." : msg.toString())
+                + searchedLine(result);
         }
         if (RESULT_UNAVAILABLE.equals(res)) {
             // #37: the text carrier renders it too, so a caller that renders BEFORE
@@ -1584,7 +1599,28 @@ public final class ExperienceRetrieval {
             }
             sb.append(renderAnalogyLine(a));
         }
+        if (sb.length() > 0) {
+            sb.append(searchedLine(result));
+        }
         return sb.toString();
+    }
+
+    /**
+     * One line saying which lanes were searched and how many rows each held — the figure the
+     * JSON answer carries as {@code scanned}, in words, because the hooks and the seats read the
+     * text. Empty when the answer carries none (a call that was refused before it searched).
+     */
+    private static String searchedLine(Map<String, Object> result) {
+        if (!(result.get("scanned") instanceof Map<?, ?> scanned) || scanned.isEmpty()) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder("\nSEARCHED:");
+        String sep = " ";
+        for (Map.Entry<?, ?> e : scanned.entrySet()) {
+            sb.append(sep).append(e.getKey()).append(' ').append(e.getValue()).append(" rows");
+            sep = ", ";
+        }
+        return sb.append('.').toString();
     }
 
     /**
@@ -1627,6 +1663,7 @@ public final class ExperienceRetrieval {
         if (message != null) {
             sb.append('\n').append(san(message));
         }
+        sb.append(searchedLine(result));
         return sb.toString();
     }
 

@@ -1,5 +1,6 @@
 package org.jawata.mcp.knowledge;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -174,7 +175,7 @@ class RetrievalLanesTest {
         Object scanned = answer.get("scanned");
         assertNotNull(scanned, () -> "the answer must say how many rows each lane searched: "
             + answer.keySet());
-        assertTrue(String.valueOf(scanned).contains("1"),
+        assertEquals(Map.of("experience", 1), scanned,
             () -> "the lessons lane holds one lesson, not the store's 53 rows: " + scanned);
     }
 

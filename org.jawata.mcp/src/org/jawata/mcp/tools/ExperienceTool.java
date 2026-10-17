@@ -319,7 +319,14 @@ public final class ExperienceTool implements Tool {
             facts, failure modes and hazards for THIS codebase.
 
             USAGE: experience(kind="record", type, summary, ...)
-                   experience(kind="recall", symbol?/package?/operation?/symptom?/external_system?)
+                   experience(kind="recall", lane=<one> | lanes=[<a>,<b>], symbol?/package?/operation?/symptom?/external_system?)
+
+            EVERY recall AND nominate NAMES ITS LANE(S), and a call that names none is refused
+            with the list of lanes. The lane is chosen BEFORE the search and each lane is ranked
+            on its own: experience (also lessons) = what was learned; patterns = the borrowed
+            design catalogue; domain (also business) = facts and contracts; rules; code = what
+            each member is FOR, asked by job to check whether something already exists, never to
+            read code (the compiler tools do that). "all" names every lane at once.
 
             Kinds:
             - record — store an observation as a candidate entry. Needs: type, summary.

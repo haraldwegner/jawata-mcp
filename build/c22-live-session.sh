@@ -15,7 +15,8 @@
 #
 # Usage:  build/c22-live-session.sh <hook-binary> [dist-dir] [evidence-dir]
 #           <hook-binary>  the jawata-hook built from the studio at the commit under test
-# Exit:   0 = nothing FAILED (UNPROVEN is reported, never counted as a pass) · 1 = a FAIL · 2 = could not run
+# Exit:   0 = every check PASSED · 1 = a FAIL · 2 = could not run · 3 = nothing failed but something is UNPROVEN
+#         (UNPROVEN is never a pass, so it does not exit 0)
 
 set -uo pipefail
 
@@ -168,13 +169,23 @@ if wrote:
 else:
     bad("the new method never reached the file")
 
-print("\n--- the whole run: no call refused for a missing lane --------------------------")
-log = open(RLOG).read()
-if "must name at least one lane" in log or "names no lane" in log:
-    bad("the engine refused a hook call for a missing lane")
+print("\n--- the whole run: no experience call failed, and the log CAN see one fail ------")
+import re
+def failed_experience_calls():
+    return len(re.findall(r"Tool experience completed.*success=false", open(RLOG).read()))
+before = failed_experience_calls()
+# A gate that cannot see zero is not a gate: make one lane-less call ON PURPOSE and require the
+# log to count it, so a zero before it means something.
+call({"kind": "recall", "symptom": "a probe that names no lane on purpose"})
+after = failed_experience_calls()
+if after != before + 1:
+    unknown("the resident log did not count a deliberate refusal (before %d, after %d), so a "
+            "zero before it proves nothing" % (before, after))
+elif before == 0:
+    ok("no experience call failed during the session (and the log counted the deliberate one)")
 else:
-    ok("the engine refused no call for a missing lane")
+    bad("%d experience call(s) failed during the session — a hook was refused" % before)
 
 print("\nC22-LIVE-SESSION passed=%d failed=%d unproven=%d" % (passed, failed, unproven))
-raise SystemExit(1 if failed else 0)
+raise SystemExit(1 if failed else (3 if unproven else 0))
 PY

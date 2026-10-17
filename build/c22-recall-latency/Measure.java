@@ -22,7 +22,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * program: it speaks only the published tool's wire arguments, which both builds accept, and the
  * one place the builds differ is named by the first argument.</p>
  *
- * <pre>  java -cp 'DIST/bundles/*' Measure.java old|new [repeats]</pre>
+ * <pre>  java --add-modules jdk.incubator.vector -cp 'DIST/bundles/*:DIST/slf4j-*.jar' Measure.java old|new [repeats] [scale]</pre>
  *
  * <h2>What the corpus is</h2>
  *
@@ -33,27 +33,30 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  *
  * <h2>What it does NOT measure, said here so a reader does not infer it</h2>
  *
- * <p>No embedding model is present, so the MEANING half of recall is absent from both builds and the
- * figures are the keyword and word-index paths only. The meaning scans are the part the lane change
- * narrows most, and they are measured by nothing here.</p>
+ * <p>The corpus has the live store's PROPORTIONS but, at a scale below 1, fewer rows, because every
+ * row is embedded on write and the embedder's speed bounds how large a corpus can be built. The
+ * scale used is printed with the figures.</p>
  */
 public final class Measure {
 
-    private static final int LESSONS = 221;
-    private static final int PATTERNS = 189;
-    private static final int DOMAIN = 77;
-    private static final int CODE = 10_791;
+    /** The live proportions at scale 1; a smaller scale keeps them and shrinks every lane alike. */
+    private static double scale = 1.0;
+    private static int lessons() { return (int) Math.round(221 * scale); }
+    private static int patterns() { return (int) Math.round(189 * scale); }
+    private static int domain() { return (int) Math.round(77 * scale); }
+    private static int code() { return (int) Math.round(10_791 * scale); }
     private static final int VOCAB = 2_500;
 
     public static void main(String[] args) throws Exception {
         boolean before = args.length > 0 && args[0].equals("old");
         int repeats = args.length > 1 ? Integer.parseInt(args[1]) : 30;
+        scale = args.length > 2 ? Double.parseDouble(args[2]) : 1.0;
 
         H2ExperienceStore store = H2ExperienceStore.openMemory();
         long built = System.nanoTime();
         fill(store);
         System.out.printf("corpus built in %d ms: %d lessons, %d patterns, %d domain facts, %d code rows%n",
-            (System.nanoTime() - built) / 1_000_000, LESSONS, PATTERNS, DOMAIN, CODE);
+            (System.nanoTime() - built) / 1_000_000, lessons(), patterns(), domain(), code());
 
         ExperienceTool tool = new ExperienceTool(() -> null, store);
         ObjectMapper mapper = new ObjectMapper();
@@ -144,7 +147,7 @@ public final class Measure {
 
     private static void fill(H2ExperienceStore store) {
         Random r = new Random(22);
-        for (int i = 0; i < LESSONS; i++) {
+        for (int i = 0; i < lessons(); i++) {
             store.put(ExperienceEntry.of(
                     SymbolFact.of("lesson", sentence(r, 14), Confidence.MEDIUM).build())
                 .status(ExperienceEntry.ACCEPTED)
@@ -152,19 +155,19 @@ public final class Measure {
                 .verdict("worked")
                 .build());
         }
-        for (int i = 0; i < PATTERNS; i++) {
+        for (int i = 0; i < patterns(); i++) {
             store.put(ExperienceEntry.of(
                     SymbolFact.of("reference", "Pattern " + sentence(r, 14), Confidence.MEDIUM).build())
                 .status(ExperienceEntry.ACCEPTED)
                 .provenanceKind(CatalogueManifest.PROVENANCE)
                 .build());
         }
-        for (int i = 0; i < DOMAIN; i++) {
+        for (int i = 0; i < domain(); i++) {
             store.put(ExperienceEntry.of(
                     SymbolFact.of("domain_fact", sentence(r, 16), Confidence.MEDIUM).build())
                 .status(ExperienceEntry.ACCEPTED).build());
         }
-        for (int i = 0; i < CODE; i++) {
+        for (int i = 0; i < code(); i++) {
             store.put(ExperienceEntry.of(
                     SymbolFact.of("job", sentence(r, 22), Confidence.MEDIUM)
                         .symbol("com.example.p" + (i % 40) + ".C" + (i % 400) + "#m" + (i % 4000))

@@ -1873,8 +1873,8 @@ public final class H2ExperienceStore implements ExperienceStore {
         // Bound after the cue parameters because the clause is appended after them; a lane
         // clause spliced into the OR would have to renumber every cue bind above.
         //
-        // Sprint 28g S22: EVERY query carries a scope now — the caller's, or the one derived
-        // from its cues — so the lane is part of the gather and never a filter applied to what
+        // Sprint 28g S22: EVERY query carries the scope its caller named — nothing is derived
+        // from the cues — so the lane is part of the gather and never a filter applied to what
         // came back. A row whose lane is NULL (a type no ruling covers) is in no scope.
         List<String> scoped = q.scope().wires();
         String laneClause = " AND lane IN (" + String.join(",", java.util.Collections.nCopies(

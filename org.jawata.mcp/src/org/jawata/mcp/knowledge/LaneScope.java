@@ -90,6 +90,10 @@ public record LaneScope(Set<KnowledgeLane> lanes) {
             if (name.isEmpty()) {
                 continue;
             }
+            if (name.equals(ALL)) {
+                set.addAll(everyLane().lanes());
+                continue;
+            }
             set.add(byName(name));
         }
         return new LaneScope(set);
@@ -99,6 +103,9 @@ public record LaneScope(Set<KnowledgeLane> lanes) {
     public static LaneScope parse(Collection<String> names) {
         return parse(names == null ? null : String.join(",", names));
     }
+
+    /** The explicit name for every lane at once; a caller still has to write it. */
+    public static final String ALL = "all";
 
     private static KnowledgeLane byName(String name) {
         for (KnowledgeLane lane : KnowledgeLane.values()) {
@@ -121,10 +128,5 @@ public record LaneScope(Set<KnowledgeLane> lanes) {
             out.add(lane.wire());
         }
         return out;
-    }
-
-    /** True when this scope names exactly one lane, and that lane is {@code lane}. */
-    public boolean isOnly(KnowledgeLane lane) {
-        return lanes.size() == 1 && lanes.contains(lane);
     }
 }
