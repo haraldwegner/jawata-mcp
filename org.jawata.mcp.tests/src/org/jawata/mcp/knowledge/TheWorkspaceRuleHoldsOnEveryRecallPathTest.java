@@ -80,10 +80,13 @@ class TheWorkspaceRuleHoldsOnEveryRecallPathTest {
         assertTrue(own.contains(MY_TEXT),
             "PROOF OF LIFE: this workspace's own job is found by its symbol: " + own);
 
-        String foreign = recallBySymbol(THEIRS).toString();
+        Map<String, Object> answer = recallBySymbol(THEIRS);
+        String foreign = answer.toString();
         assertFalse(foreign.contains(THEIR_TEXT),
             "another product's class described as an answer to this one, by the keyword path"
                 + " that applies no workspace rule: " + foreign);
+        assertEquals(1, answer.get("foreign_workspace_withheld"),
+            "an absence the filter caused must say so, or it reads as an empty store: " + foreign);
     }
 
     @Test
@@ -94,6 +97,72 @@ class TheWorkspaceRuleHoldsOnEveryRecallPathTest {
         assertEquals(1, ((Map<?, ?>) scanned).get("code"),
             "the lane holds two jobs but only this workspace's one answers here; the figure is"
                 + " the rows chosen from, the same meaning the nomination gives it: " + scanned);
+    }
+
+    private void area(String pkg, String summary) {
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "record");
+        a.put("type", "area");
+        a.put("summary", summary);
+        a.putArray("packages").add(pkg);
+        ToolResponse r = tool.execute(a);
+        assertTrue(r.isSuccess(), "fixture area refused: " + r.getError());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> recall(ObjectNode cue, String lane) {
+        cue.put("kind", "recall");
+        cue.putArray("lanes").add(lane);
+        ToolResponse r = tool.execute(cue);
+        assertTrue(r.isSuccess(), "got " + r.getError());
+        return (Map<String, Object>) r.getData();
+    }
+
+    /**
+     * The analogy path is a second way rows reach a recall answer: rows the cue did not fit but
+     * whose words or meaning are near. An area has no Java anchor, so it is the one code-lane type
+     * that path would admit, and a package cue is the cue that targets areas.
+     */
+    @Test
+    void aForeignAreaDoesNotArriveAsAnAnalogyEither() {
+        String theirArea = "The tool surface where every registry call is checked and published.";
+        store.setProvenance("jawata", null);
+        area("org.jawata.mcp.tools", theirArea);
+        store.setProvenance("orb-strategy", null);
+        area("pipeline", "Where a strategy's slots are claimed, worked and released.");
+
+        ObjectNode own = json.createObjectNode();
+        own.put("package", "pipeline");
+        own.put("symptom", "slots claimed worked released");
+        assertTrue(recall(own, "code").toString().contains("slots are claimed"),
+            "PROOF OF LIFE: this workspace's own area answers its package cue");
+
+        ObjectNode foreign = json.createObjectNode();
+        foreign.put("package", "pipeline");
+        foreign.put("symptom", "registry call checked published tool surface");
+        String answer = recall(foreign, "code").toString();
+        assertFalse(answer.contains(theirArea),
+            "another product's area arrived beside this workspace's package cue, as a nominee"
+                + " or an entry: " + answer);
+    }
+
+    @Test
+    void knowledgeAboutWorkStillTravelsBetweenWorkspaces() {
+        store.setProvenance("jawata", null);
+        ObjectNode lesson = json.createObjectNode();
+        lesson.put("kind", "record");
+        lesson.put("type", "lesson");
+        lesson.put("symbol", "com.example.Ledger#amend");
+        lesson.put("summary", "Amend carries the total, not the remainder.");
+        lesson.put("situation", "when an order is amended after a partial fill");
+        lesson.put("verdict", "worked");
+        assertTrue(tool.execute(lesson).isSuccess(), "fixture lesson refused");
+        store.setProvenance("orb-strategy", null);
+
+        ObjectNode cue = json.createObjectNode();
+        cue.put("symbol", "com.example.Ledger#amend");
+        assertTrue(recall(cue, "experience").toString().contains("Amend carries the total"),
+            "a lesson learned in another workspace is knowledge ABOUT work and must still answer");
     }
 
     @Test

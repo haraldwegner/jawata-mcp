@@ -269,11 +269,18 @@ public final class ExperienceRetrieval {
         // product's code row; the lane decides which rows answer here, as it does for a nomination.
         String ownWorkspace = store.provenanceWorkspaceId();
         List<StoredEntry> candidates = new ArrayList<>();
+        int withheld = 0;
         for (StoredEntry e : store.query(q)) {
-            KnowledgeLane rowLane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
-            if (rowLane == null || rowLane.answersFor(ownWorkspace, e.workspaceId())) {
+            if (answersHere(e)) {
                 candidates.add(e);
+            } else {
+                withheld++;
             }
+        }
+        if (withheld > 0) {
+            // An absence the FILTER caused reads exactly like an absence in the store, so the
+            // answer says how many it held back, as a nomination does.
+            out.put("foreign_workspace_withheld", withheld);
         }
 
         // Sprint 28g S22 — HOW MANY ROWS EACH SEARCHED LANE CHOSE FROM, so "found nothing" is told
@@ -839,7 +846,11 @@ public final class ExperienceRetrieval {
             // is the choke point every nomination converges on, so enforcing it
             // HERE makes the invariant stream-independent: a fourth nominator
             // cannot reintroduce the bug a fourth time.
-            if (KnowledgeKind.of(e).isExperience() && isLive(e)) {
+            //
+            // And the WORKSPACE rule holds here too (ARCH-C22-4): an area has no Java anchor, so
+            // it is the code-lane row this pool admits, and without the rule another product's
+            // package description arrived beside this one's cue as a nominee.
+            if (KnowledgeKind.of(e).isExperience() && isLive(e) && answersHere(e)) {
                 pool.add(e);
             }
         }
@@ -1094,6 +1105,15 @@ public final class ExperienceRetrieval {
      */
     private static double round(double v) {
         return Math.round(v * 1000.0) / 1000.0;
+    }
+
+    /**
+     * Whether a stored row may be shown as an answer to this workspace: the row's lane decides
+     * (KnowledgeLane#answersFor), and a row that is in no lane is not keyed by workspace.
+     */
+    private boolean answersHere(StoredEntry e) {
+        KnowledgeLane lane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
+        return lane == null || lane.answersFor(store.provenanceWorkspaceId(), e.workspaceId());
     }
 
     /**
