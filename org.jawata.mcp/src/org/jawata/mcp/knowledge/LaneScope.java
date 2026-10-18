@@ -139,7 +139,7 @@ public record LaneScope(Set<KnowledgeLane> lanes) {
         for (KnowledgeLane lane : lanes) {
             out.put(lane, valueOf.apply(lane));
         }
-        return out;
+        return java.util.Collections.unmodifiableMap(out);
     }
 
     /** The wire names of the lanes, in lane order. */

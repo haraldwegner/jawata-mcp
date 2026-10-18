@@ -87,6 +87,31 @@ class LaneOwnsItsWalkAndItsRowsTest {
             "a lane outside the scope must not appear in the gather");
     }
 
+    /**
+     * The retrieval walks the scope's lanes through {@code byLane} and nowhere else. A loop written
+     * out by hand over {@code scope.lanes()} is the shape this cleanup removed from five sites, and
+     * nothing else notices one coming back.
+     */
+    @Test
+    void theRetrievalNeverWalksTheScopesLanesByHand() throws java.io.IOException {
+        java.nio.file.Path root = org.jawata.mcp.catalogue.RepoFiles.sourceOf("org.jawata.mcp/src");
+        org.junit.jupiter.api.Assertions.assertNotNull(root,
+            "looked for org.jawata.mcp/src above " + java.nio.file.Path.of("").toAbsolutePath());
+        String source = java.nio.file.Files.readString(
+            root.resolve("org/jawata/mcp/knowledge/ExperienceRetrieval.java"));
+
+        java.util.regex.Matcher byHand = java.util.regex.Pattern
+            .compile("for\\s*\\(\\s*(?:final\\s+)?KnowledgeLane\\s+\\w+\\s*:\\s*[\\w.()]*\\.lanes\\(\\)")
+            .matcher(source);
+        boolean found = byHand.find();
+        assertTrue(!found, () -> "a lane loop written by hand over a scope's lanes: " + byHand.group()
+            + " — walk it with LaneScope#byLane so the scope owns its walk");
+        assertTrue(source.contains(".byLane("),
+            "PROOF OF LIFE: the retrieval does use the scope's walk, or the absence above is vacuous");
+        assertTrue(source.contains(".liveFor("),
+            "the nomination asks the code lane's corpus which rows answer for this workspace");
+    }
+
     @Test
     void theCodeLaneAnswersOnlyForRowsStampedWithTheWorkspace() {
         store.setProvenance("orb-strategy", null);

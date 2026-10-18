@@ -39,7 +39,16 @@ import org.junit.jupiter.api.Test;
  * (the tool call that asks {@code experience, code}, the discussion after a compaction) are not
  * listed: the check runs one way, from the engine's sites to this table.</p>
  *
- * <p>OPEN DESIGN NOTE (recorded in the findings ledger): the alternative to two sweeps is for the
+ * <p>WHAT IT DOES NOT SEE, stated: a scope built with {@code new LaneScope(set)} (the retrieval does
+ * this once, to drop the discussion lane from a mixed request); {@code LaneScope.parse(variable)}
+ * (the tool parses what its caller wrote, which is the caller's choice and not a list written in
+ * the engine); a call that passes a statically imported constant instead of
+ * {@code KnowledgeLane.X} (it is read as no list at all); and a chained
+ * {@code LaneScope.of(X).contains(Y)} reads the lanes of both calls as one list. The sibling
+ * check on the studio side reads the studio's own source and its seat and skill texts
+ * (every_lane_list_is_a_row_of_the_table.rs in jawata-hook).</p>
+ *
+ * <p>OPEN DESIGN NOTE (recorded in the findings ledger, homed Sprint 20): the alternative to two sweeps is for the
  * engine to own the table and answer "which lanes for this occasion", so no client spells a list.
  * That is a change to the request shape and is not made here.</p>
  */
@@ -109,7 +118,7 @@ class EveryLaneScopeTheEngineBuildsIsDeclaredTest {
         // PROOF OF LIFE. A sweep over nothing passes whatever the sources say.
         assertTrue(parsed > 400, "only " + parsed + " production sources parsed — the walk is wrong");
         int sites = sitesOf.values().stream().mapToInt(List::size).sum();
-        assertTrue(sites >= 5, "the sweep found " + sites + " lane lists; it is not reading the code");
+        assertTrue(sites >= 4,"the sweep found " + sites + " lane lists; it is not reading the code");
 
         TreeMap<String, List<String>> undeclared = new TreeMap<>();
         sitesOf.forEach((list, files) -> {

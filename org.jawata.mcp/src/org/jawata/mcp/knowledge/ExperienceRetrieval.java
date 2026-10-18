@@ -1085,6 +1085,76 @@ public final class ExperienceRetrieval {
         return Math.round(v * 1000.0) / 1000.0;
     }
 
+    /**
+     * One lane's ranking for a nomination (ARCH-C22-2): the rows it chose from, best first, the
+     * scores that ordered them, which of them had a meaning score, how many rows of another
+     * workspace its corpus withheld, and whether its meaning scan failed.
+     */
+    private record LaneRanking(List<StoredEntry> rows, Map<String, RelevanceMerge.Score> scores,
+            java.util.Set<String> embeddedIds, int withheld, boolean meaningFailed) {
+    }
+
+    /** Scores, ranks and cuts ONE lane on its own, for the nomination's per-lane walk. */
+    private LaneRanking rankLane(RecallQuery q, String question, KnowledgeLane knowledgeLane) {
+        StoreCorpus.LaneCorpus corpus = StoreCorpus.of(store).lane(knowledgeLane);
+        LexicalIndex.Scores words = lexicalScores(q, knowledgeLane);
+
+        // D13: three cosines against three FIELDS, plus the word lane. The old
+        // ranking here added one cosine to one raw BM25 weight — 0..1 plus an
+        // unbounded number — so the sum was the word score with a rounding error
+        // attached and the meaning half could not move the order at all. That was
+        // invisible while the store held twelve rows and every row was a
+        // candidate; 187 catalogue entries made it the whole answer.
+        Map<EmbeddingService.Lane, Map<String, Double>> lanes = index == null
+            || !index.available() ? Map.of()
+            : index.entryLaneScores(question, List.of(knowledgeLane.wire()));
+        // null means the lane scan FAILED, which is not the same as finding
+        // nothing — and the difference has to reach the CALLER, not just the log.
+        // A word-only ranking reads exactly like a meaning-weighted one; the only
+        // person who could notice is the one holding the answer, and they cannot
+        // see the resident's log.
+        boolean meaningFailed = false;
+        if (lanes == null) {
+            meaningFailed = true;
+            lanes = Map.of();
+        }
+        Map<String, RelevanceMerge.Score> laneScores = RelevanceMerge.scoreAll(
+            lanes.get(EmbeddingService.Lane.SITUATION),
+            lanes.get(EmbeddingService.Lane.SUMMARY),
+            lanes.get(EmbeddingService.Lane.DETAILS),
+            words);
+
+        // D8d — THE CODE LANE IS KEYED BY WORKSPACE. The store is shared by every
+        // workspace on the machine and each row is stamped with the one that wrote it; the
+        // map a session opens with was ranked over the whole lane, so a session on one
+        // product was oriented by a description of another product's packages, on every
+        // prompt. The lane's corpus answers for this workspace; the rows it withheld are
+        // counted, never silently dropped.
+        List<StoredEntry> laneRows = new ArrayList<>(corpus.liveFor(store.provenanceWorkspaceId()));
+        int withheld = corpus.live().size() - laneRows.size();
+        java.util.Set<String> embeddedIds = new java.util.HashSet<>();
+        for (StoredEntry e : laneRows) {
+            if (hasAnyMeaningScore(lanes, e.id())) {
+                embeddedIds.add(e.id());
+            }
+        }
+
+        // RELEVANCE ONLY. Nothing below reads an entry's outcome, its origin, its
+        // age or its size, and RelevanceMerge could not see them if it wanted to —
+        // they are not parameters of it. Nothing filters on score either:
+        // AnalogyPolicy's own javadoc records that no threshold separates nonsense
+        // from an answer on this corpus, so the caller judges and an empty
+        // selection is the honest outcome.
+        laneRows.sort(Comparator
+            .comparingDouble((StoredEntry e) -> {
+                RelevanceMerge.Score s = laneScores.get(e.id());
+                return s == null ? 0.0 : s.total();
+            })
+            .reversed()
+            .thenComparing(StoredEntry::id));
+        return new LaneRanking(laneRows, laneScores, embeddedIds, withheld, meaningFailed);
+    }
+
     private Map<String,Object> nominateFromStore(String question, LaneScope scope, Map<String,Object> out) {
         // The question is carried as the SYMPTOM cue: it is prose describing a
         // situation, which is exactly what that slot means. Reusing the existing
@@ -1103,70 +1173,21 @@ public final class ExperienceRetrieval {
         java.util.Set<String> embeddedIds = new java.util.HashSet<>();
         boolean meaningLanesFailed = false;
         int otherWorkspace = 0;
-        for (KnowledgeLane knowledgeLane : scope.lanes()) {
-            StoreCorpus.LaneCorpus corpus = StoreCorpus.of(store).lane(knowledgeLane);
-            LexicalIndex.Scores words = lexicalScores(q, knowledgeLane);
-
-            // D13: three cosines against three FIELDS, plus the word lane. The old
-            // ranking here added one cosine to one raw BM25 weight — 0..1 plus an
-            // unbounded number — so the sum was the word score with a rounding error
-            // attached and the meaning half could not move the order at all. That was
-            // invisible while the store held twelve rows and every row was a
-            // candidate; 187 catalogue entries made it the whole answer.
-            Map<EmbeddingService.Lane, Map<String, Double>> lanes = index == null
-                || !index.available() ? Map.of()
-                : index.entryLaneScores(question, List.of(knowledgeLane.wire()));
-            // null means the lane scan FAILED, which is not the same as finding
-            // nothing — and the difference has to reach the CALLER, not just the log.
-            // A word-only ranking reads exactly like a meaning-weighted one; the only
-            // person who could notice is the one holding the answer, and they cannot
-            // see the resident's log.
-            if (lanes == null) {
-                meaningLanesFailed = true;
-                lanes = Map.of();
-            }
-            Map<String, RelevanceMerge.Score> laneScores = RelevanceMerge.scoreAll(
-                lanes.get(EmbeddingService.Lane.SITUATION),
-                lanes.get(EmbeddingService.Lane.SUMMARY),
-                lanes.get(EmbeddingService.Lane.DETAILS),
-                words);
-
-            // D8d — THE CODE LANE IS KEYED BY WORKSPACE. The store is shared by every
-            // workspace on the machine and each row is stamped with the one that wrote it; the
-            // map a session opens with was ranked over the whole lane, so a session on one
-            // product was oriented by a description of another product's packages, on every
-            // prompt. The lane's corpus answers for this workspace; the rows it withheld are
-            // counted below, never silently dropped.
-            List<StoredEntry> laneRows = new ArrayList<>();
-            List<StoredEntry> mine = corpus.liveFor(store.provenanceWorkspaceId());
-            otherWorkspace += corpus.live().size() - mine.size();
-            for (StoredEntry e : mine) {
-                laneRows.add(e);
+        for (Map.Entry<KnowledgeLane, LaneRanking> ranked
+                : scope.byLane(lane -> rankLane(q, question, lane)).entrySet()) {
+            LaneRanking lane = ranked.getValue();
+            meaningLanesFailed |= lane.meaningFailed();
+            otherWorkspace += lane.withheld();
+            for (StoredEntry e : lane.rows()) {
                 byId.put(e.id(), e);
-                if (hasAnyMeaningScore(lanes, e.id())) {
-                    embeddedIds.add(e.id());
-                }
             }
-            scores.putAll(laneScores);
+            embeddedIds.addAll(lane.embeddedIds());
+            scores.putAll(lane.scores());
             // What was RANKED, not what the lane holds: another workspace's code rows were
-            // withheld above and are counted in `foreign_workspace_withheld`, so the figure here
-            // is the number of rows this answer actually chose from.
-            scanned.put(knowledgeLane.wire(), laneRows.size());
-
-            // RELEVANCE ONLY. Nothing below reads an entry's outcome, its origin, its
-            // age or its size, and RelevanceMerge could not see them if it wanted to —
-            // they are not parameters of it. Nothing filters on score either:
-            // AnalogyPolicy's own javadoc records that no threshold separates nonsense
-            // from an answer on this corpus, so the caller judges and an empty
-            // selection is the honest outcome.
-            laneRows.sort(Comparator
-                .comparingDouble((StoredEntry e) -> {
-                    RelevanceMerge.Score s = laneScores.get(e.id());
-                    return s == null ? 0.0 : s.total();
-                })
-                .reversed()
-                .thenComparing(StoredEntry::id));
-            rankedByLane.put(knowledgeLane, laneRows);
+            // withheld and are counted in `foreign_workspace_withheld`, so the figure here is
+            // the number of rows this answer actually chose from.
+            scanned.put(ranked.getKey().wire(), lane.rows().size());
+            rankedByLane.put(ranked.getKey(), lane.rows());
         }
         out.put("scanned", scanned);
 
