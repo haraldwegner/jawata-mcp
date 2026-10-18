@@ -1261,8 +1261,10 @@ public final class ExperienceTool implements Tool {
         // The population the sample was drawn from — published ONLY when the read was not
         // capped, because a capped figure sold as a total is the defect this file already
         // refuses for `remaining` and for the coverage ratio.
+        // Counted over the rows that answer for THIS workspace, like the sample drawn from them:
+        // a total that included every workspace's jobs would sit beside a sample that did not.
         if (jobs.size() < DESCRIBING_ROW_CAP) {
-            out.put("acceptedRows", jobs.size());
+            out.put("acceptedRows", (int) jobs.stream().filter(j -> j.answersFor(ownWorkspace)).count());
         }
         return out;
     }
@@ -2771,10 +2773,17 @@ public final class ExperienceTool implements Tool {
      * <p>The store is shared by every workspace on the machine, and a job or an area is a
      * description of one workspace's code. Without the restriction another workspace's job for a
      * same-named member was reported as the job already held and the write gate, which replaces
-     * the row it finds, overwrote the wording another workspace had written. This is a WRITE
-     * path as much as a read, so it takes the strict reading: a row this workspace does not own
-     * is invisible here, never replaced, and this workspace's description is inserted beside it
-     * (see the ruling in ARCH-C22-4, part a, at ExperienceMaintenance).</p>
+     * the row it finds, overwrote the wording another workspace had written. A row this
+     * workspace does not own, by {@code StoredEntry#answersFor}, is invisible here and so is
+     * never replaced, and this workspace's description is inserted beside it.</p>
+     *
+     * <p>Three consequences, stated because they are visible: (1) a row with NO workspace stamp
+     * counts as not owned once the store has an identity, so a legacy unstamped job stays hidden
+     * and the next description is inserted beside it; (2) a store with NO identity sees and
+     * replaces every row, as before, and meets the several-descriptions refusal if another
+     * workspace has inserted beside the first; (3) this is the read rule
+     * ({@code answersFor}); the maintenance sweep's stricter write rule (ARCH-C22-4, part a) is
+     * a different question about anchors, not about descriptions.</p>
      */
     private java.util.Map<String, List<org.jawata.mcp.knowledge.StoredEntry>> anchoredHere(
             String type, org.jawata.mcp.knowledge.ExperienceStore.Anchor anchor,

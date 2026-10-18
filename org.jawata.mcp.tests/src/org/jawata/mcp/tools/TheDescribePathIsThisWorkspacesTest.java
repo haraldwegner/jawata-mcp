@@ -158,6 +158,51 @@ class TheDescribePathIsThisWorkspacesTest {
     }
 
     @Test
+    void theCountOfDescribedJobsIsThisWorkspacesNotTheMachines() {
+        assertTrue(recordJob("com.example.a.One#go", THEIR_JOB).isSuccess(), "fixture job refused");
+        store.setProvenance("orb-strategy", null);
+        assertTrue(recordJob("com.example.b.Two#go", MY_JOB).isSuccess(), "fixture job refused");
+        assertTrue(recordJob("com.example.b.Three#go", MY_JOB + " Again.").isSuccess(),
+            "fixture job refused");
+
+        Object rows = describing().get("acceptedRows");
+
+        assertEquals(2, rows,
+            "the sample is this workspace's, so the population it is drawn from must be too; the"
+                + " store holds three jobs: " + rows);
+    }
+
+    @Test
+    void aForeignRowAndAnOwnRowAtOneAnchorReplacesOnlyTheOwn() {
+        assertTrue(recordJob(MEMBER, THEIR_JOB).isSuccess(), "fixture job refused");
+        store.setProvenance("orb-strategy", null);
+        assertTrue(recordJob(MEMBER, MY_JOB).isSuccess(), "this workspace's first description");
+
+        ToolResponse again = recordJob(MEMBER, MY_JOB + " Revised.");
+        assertTrue(again.isSuccess(), "got " + again.getError());
+
+        Set<String> texts = allJobsFor(MEMBER).stream().map(StoredEntry::summary)
+            .collect(Collectors.toSet());
+        assertEquals(Set.of(THEIR_JOB, MY_JOB + " Revised."), texts,
+            "the own row was replaced, the foreign row untouched, and there are two rows and not"
+                + " three: " + texts);
+    }
+
+    @Test
+    void aLegacyUnstampedJobIsHiddenAndTheNextDescriptionIsInsertedBesideIt() {
+        store.setProvenance(null, null);
+        assertTrue(recordJob(MEMBER, THEIR_JOB).isSuccess(), "fixture job refused");
+        store.setProvenance("orb-strategy", null);
+
+        assertEquals(List.of(MEMBER), jobsFor(MEMBER).get("missing"),
+            "an unstamped row is not shown to a workspace once the store has an identity");
+        assertTrue(recordJob(MEMBER, MY_JOB).isSuccess(), "this workspace's description");
+
+        assertEquals(2, allJobsFor(MEMBER).size(),
+            "stated in anchoredHere's javadoc: the unstamped job stays and the new one stands beside it");
+    }
+
+    @Test
     void aStoreWithNoIdentityStillSeesEverything() {
         assertTrue(recordJob(MEMBER, THEIR_JOB).isSuccess(), "fixture job refused");
         store.setProvenance(null, null);
