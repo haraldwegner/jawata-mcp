@@ -571,7 +571,10 @@ public final class ExperienceTool implements Tool {
         props.put("details", Map.of("type", "string", "description",
             "record: the longer story — including artifacts: paths, flags, ids and code"
             + " references live HERE, not in symptoms."));
-        props.put("operation", Map.of("type", "string", "description", "record: operation this entry relates to."));
+        props.put("operation", Map.of("type", "string", "description",
+            "record: operation this entry relates to. promote_rule: WHO the rule binds — seat:<name>"
+                + " for one seat, an activity label such as release, or all for every seat; required"
+                + " on a proposal (status=candidate)."));
         props.put("scope_kind", Map.of("type", "string",
             "description", "record: symbol|package|operation|symptom|external_system|..."));
         props.put("symptoms", Map.of("type", "array", "items", Map.of("type", "string"),
@@ -596,7 +599,13 @@ public final class ExperienceTool implements Tool {
             "description", "record: who owns the fault."));
         props.put("external_system", Map.of("type", "string",
             "description", "record: the external dependency, when the fault is external."));
-        props.put("status", Map.of("type", "string", "description", "record: default candidate."));
+        props.put("seats", Map.of("type", "string", "description",
+            "review_sweep: the directory holding the seat files. Lists, under rulesNobodyAsks, the"
+                + " accepted rules whose operation label no seat or activity asks for, so a typo in"
+                + " a label is reported rather than silently binding nothing."));
+        props.put("status", Map.of("type", "string", "description",
+            "record: default candidate. promote_rule: candidate (a proposal, injected nowhere until he"
+                + " accepts it with kind=promote) or accepted (the default)."));
         props.put("surface", Map.of("type", "string",
             "description", "recall: which surface is asking — 'seat' when a driven seat"
                 + " run recalls, omitted for an ordinary question. Affects only the"
@@ -2340,10 +2349,39 @@ public final class ExperienceTool implements Tool {
                     + " written, because a rule whose sources cannot be read is one nobody"
                     + " can hold to account.");
         }
+        // D45: a rule says WHO it binds (`operation`: `seat:<name>`, an activity such as `release`,
+        // or `all` for every seat) and WHEN (`situation`), and a PROPOSAL (`status=candidate`) is
+        // written by the rottenmeier seat and goes live only when he accepts it. A rule written
+        // with no status is accepted, as before. A proposal that states no binding or no
+        // situation is refused, because an accepted rule is injected and a binding that was never
+        // stated would bind every seat by accident.
+        String status = text(args, "status");
+        if (status != null && !status.isBlank()
+                && !ExperienceEntry.CANDIDATE.equals(status) && !ExperienceEntry.ACCEPTED.equals(status)) {
+            return ToolResponse.invalidParameter("status",
+                "promote_rule takes status=candidate (a proposal he has yet to accept) or"
+                    + " status=accepted (the default); got '" + status + "'.");
+        }
+        boolean proposal = ExperienceEntry.CANDIDATE.equals(status);
+        String operation = text(args, "operation");
+        if (proposal && (operation == null || operation.isBlank())) {
+            return ToolResponse.invalidParameter("operation",
+                "a proposed rule must state who it binds: operation=seat:<name> for one seat, an"
+                    + " activity label such as release, or operation=all for every seat. An accepted"
+                    + " rule is injected, so a binding left unstated would bind every seat by accident.");
+        }
+        String situation = text(args, "situation");
+        if (proposal && (situation == null || situation.isBlank())) {
+            return ToolResponse.invalidParameter("situation",
+                "a proposed rule must state WHEN it applies, as a condition a typed message can"
+                    + " be matched against.");
+        }
         ExperienceEntry.Builder b = ExperienceEntry.of(
                 SymbolFact.of(KnowledgeLane.RULE_TYPE, summary, Confidence.HIGH).build())
-            .status(ExperienceEntry.ACCEPTED)
-            .situation(text(args, "situation"));
+            .status(proposal ? ExperienceEntry.CANDIDATE : ExperienceEntry.ACCEPTED)
+            .operation(operation == null || operation.isBlank() || "all".equalsIgnoreCase(operation.strip())
+                ? null : operation.strip())
+            .situation(situation);
         for (String source : sources) {
             b.addLink("derived_from", source);
         }
@@ -2351,6 +2389,7 @@ public final class ExperienceTool implements Tool {
         store.setRuleVersion(id, 1);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("id", id);
+        data.put("status", proposal ? ExperienceEntry.CANDIDATE : ExperienceEntry.ACCEPTED);
         data.put("rule_version", 1);
         data.put("derived_from", sources);
         data.put("lane", KnowledgeLane.RULES.wire());
@@ -3842,6 +3881,9 @@ public final class ExperienceTool implements Tool {
         q.put("findingsTotal", quality.findingsTotal());
         q.put("findingsTruncated", quality.findingsTruncated());
         out.put("quality", q);
+        // D45 — RULES THAT BIND NO SEAT. A rule is bound by an exact label, so a typo binds nothing
+        // and leaves nothing behind to notice; this lists the labels no seat file asks for.
+        out.put("rulesNobodyAsks", rulesNobodyAsks(text(args, "seats")));
         out.put("howToRead", "Neither list deletes anything. deletionListByLane: shown at"
             + " least " + minShown + " times and chosen never, GROUPED BY LANE — offer these"
             + " to the user and remove only what they name. Read one lane at a time: dropping"
@@ -3869,6 +3911,38 @@ public final class ExperienceTool implements Tool {
             + " exists and set_form IS the durable fix. findingsTruncated=true means"
             + " the list is capped at " + limit + " while the counts cover everything.");
         return ToolResponse.success(out);
+    }
+
+    /**
+     * Sprint 28g D45 — the accepted rules whose label no seat in {@code seatsDir} asks for.
+     *
+     * <p>Answers "checked: false" with the way to check when no directory is given, and "checked:
+     * false" with the reason when it cannot be read: a rule listed as dead because the seats could
+     * not be looked at would be the false report this exists to prevent.</p>
+     *
+     * @param seatsDir the directory holding the seat files, or null
+     */
+    private Map<String, Object> rulesNobodyAsks(String seatsDir) {
+        Map<String, Object> report = new LinkedHashMap<>();
+        if (seatsDir == null || seatsDir.isBlank()) {
+            report.put("checked", false);
+            report.put("how", "pass seats=<the directory holding the seat files> to list the accepted"
+                + " rules whose operation label no seat or activity asks for");
+            return report;
+        }
+        org.jawata.mcp.execution.SeatLabels.Asked asked;
+        try {
+            asked = org.jawata.mcp.execution.SeatLabels.in(Path.of(seatsDir));
+        } catch (java.io.IOException | java.nio.file.InvalidPathException e) {
+            report.put("checked", false);
+            report.put("why", "the seat directory could not be read: " + e.getMessage());
+            return report;
+        }
+        report.put("checked", true);
+        report.put("seatsRead", asked.seatsRead());
+        report.put("unreadableSeats", asked.unreadable());
+        report.put("unasked", org.jawata.mcp.knowledge.SeatRules.unaskedLabels(store, asked.labels()));
+        return report;
     }
 
     /**

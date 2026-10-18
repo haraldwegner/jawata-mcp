@@ -132,6 +132,21 @@ public enum KnowledgeLane {
     }
 
     /**
+     * Whether a row of this lane in {@code status} may be served at all — the ONE place the rule
+     * is written (Sprint 28g D45).
+     *
+     * <p>THE RULES LANE SERVES ONLY ACCEPTED RULES. A rule is injected into the agent's context and
+     * a hired seat's brief, so a proposal must not be: it becomes live when he accepts it. Every
+     * other lane serves what is live, which the caller has already decided; this adds nothing for
+     * them.</p>
+     *
+     * @param status the row's status
+     */
+    public boolean admits(String status) {
+        return this != RULES || ExperienceEntry.ACCEPTED.equals(status);
+    }
+
+    /**
      * Types whose rows are DOMAIN — corrected when wrong, never superseded by an outcome.
      *
      * <p>The set is the one {@code ExperienceRetrieval} already used to decide what the

@@ -9,9 +9,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
+import org.jawata.mcp.knowledge.SeatRules;
 import org.jawata.mcp.learn.GateOutcome;
 import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.LearnerEvent;
@@ -109,6 +112,9 @@ public final class HiredRun {
      */
     private final SelfEndpoint self;
 
+    /** Nullable: where the accepted rules a hired seat is bound by are read from (D45). */
+    private final Supplier<ExperienceStore> rules;
+
     public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
             LearnerEventStore journal) {
         this(host, artifacts, plans, journal, null);
@@ -116,12 +122,23 @@ public final class HiredRun {
 
     public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
             LearnerEventStore journal, SelfEndpoint self) {
+        this(host, artifacts, plans, journal, self, null);
+    }
+
+    /**
+     * @param rules where the accepted rules live (Sprint 28g D45); nullable, and the supplier may
+     *     itself answer null (a degraded resident has no store). Without it a hire carries the
+     *     seat's stance and the brief only, exactly as before.
+     */
+    public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
+            LearnerEventStore journal, SelfEndpoint self, Supplier<ExperienceStore> rules) {
         this.host = Objects.requireNonNull(host, "a hired run needs a process boundary");
         this.artifacts = Objects.requireNonNull(artifacts, "a proposal with nowhere to land"
             + " is not a proposal");
         this.plans = Objects.requireNonNull(plans, "the gate verdict is the ledger's");
         this.journal = journal;
         this.self = self;
+        this.rules = rules;
     }
 
     /**
@@ -165,7 +182,11 @@ public final class HiredRun {
                 + containment.report() + ". Add accepts_uncontained_writes: true to the seat's"
                 + " frontmatter to say it may run on this brain as it is");
         }
-        return issue(dialect, base, seat.prompt(brief), seat.tools(), seat.ceilings(),
+        // D45: the accepted rules that bind THIS seat, read now, so one recorded after the build is
+        // in this hire's text. A resident with no store, or a store that cannot be read, hires the
+        // seat as before — a rule is guidance, and its absence must not stop a hire.
+        List<String> binding = SeatRules.bindingOn(rules, seat.seat(), seat.activities());
+        return issue(dialect, base, seat.prompt(brief, binding), seat.tools(), seat.ceilings(),
             steps, gates, seat.answerGates());
     }
 

@@ -381,7 +381,7 @@ class SeatHireTest {
     @Test
     @DisplayName("4.4.1: the seat's own rules are asked of the brain ahead of the brief, and its frontmatter is not")
     void theStanceIsPartOfWhatTheBrainIsAsked() {
-        String asked = SeatHire.read(PM).prompt("Decide whether stage 3 is done.");
+        String asked = SeatHire.read(PM).prompt("Decide whether stage 3 is done.", List.of());
 
         assertAll(
             () -> assertTrue(asked.startsWith("You are the PM seat."), asked),
@@ -397,11 +397,11 @@ class SeatHireTest {
     void noStanceMeansTheBriefAlone() {
         assertAll(
             () -> assertEquals("the brief",
-                SeatHire.read("---\nname: s\n---\n").prompt("the brief")),
+                SeatHire.read("---\nname: s\n---\n").prompt("the brief", List.of())),
             // What follows an opening fence that never closes is frontmatter nobody finished, not
             // rules anybody wrote — sending it would hand the brain half a settings block.
             () -> assertEquals("the brief",
-                SeatHire.read("---\nname: s\nmodel: x\n").prompt("the brief")));
+                SeatHire.read("---\nname: s\nmodel: x\n").prompt("the brief", List.of())));
     }
 
     @Test

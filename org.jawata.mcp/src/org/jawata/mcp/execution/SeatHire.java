@@ -71,7 +71,7 @@ import java.util.Optional;
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
                        HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script,
-                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles) {
+                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities) {
 
     /** The brains this product has a dialect for. A seat may name no other. */
     public enum Brain {
@@ -129,6 +129,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         tools = tools == null ? List.of() : List.copyOf(tools);
         stance = stance == null ? "" : stance.strip();
         answerGates = answerGates == null ? List.of() : List.copyOf(answerGates);
+        activities = activities == null ? List.of() : List.copyOf(activities);
         if (ceilings == null) {
             throw new IllegalArgumentException("a hire with no ceilings is an unbounded run, which"
                 + " is the thing this whole path exists to prevent");
@@ -210,7 +211,11 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             // value of yes was silently no. Absent means NO — the default is the refusal.
             Frontmatter.readSwitch("accepts_uncontained_writes", front.get("accepts_uncontained_writes"), false),
             changesCode,
-            readsFiles);
+            readsFiles,
+            // The activity labels this seat carries beyond its own name (D45): a rule anchored to
+            // one of them binds this seat. Declared here, once, so a label is asked for by a file
+            // a person can read rather than by code that has to be searched.
+            Frontmatter.list(front.get("activities")));
     }
 
     /**
@@ -229,19 +234,33 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
     }
 
     /**
-     * What the hired brain is asked: the seat's own rules, then the brief.
+     * What the hired brain is asked, with the accepted rules that bind this seat (Sprint 28g D45):
+     * the seat's own rules, then the standing rules he has accepted for it, then the brief.
      *
-     * <p>Until 4.4.1 a hire sent the brief ALONE. The seat file was read for its frontmatter — brain,
-     * model, tools, ceilings — and its body, the stance that says what the seat is and what it must
-     * refuse, never reached the brain: a hired cataloguer ran as a generic agent holding the PM's
-     * brief. The seat's file IS the hire, so its rules are part of what is asked.</p>
+     * <p>The rules are read by the caller at the moment of the hire ({@link
+     * org.jawata.mcp.knowledge.SeatRules#bindingOn}), so a rule recorded after the build is in the
+     * next hire's text. A seat with no rules is asked exactly what it was before.</p>
+     *
+     * @param brief the instruction
+     * @param rules the accepted rules that bind this seat, as text; none is a valid answer
      */
-    public String prompt(String brief) {
+    public String prompt(String brief, List<String> rules) {
         String asked = brief == null ? "" : brief.strip();
-        if (stance.isEmpty()) {
+        StringBuilder text = new StringBuilder();
+        if (!stance.isEmpty()) {
+            text.append(stance).append("\n\n---\n\n");
+        }
+        if (!rules.isEmpty()) {
+            text.append("## Rules that bind you\n\nHe accepted these; they hold until he retires them.\n\n");
+            for (String rule : rules) {
+                text.append("- ").append(rule.strip()).append('\n');
+            }
+            text.append("\n---\n\n");
+        }
+        if (stance.isEmpty() && rules.isEmpty()) {
             return asked;
         }
-        return stance + "\n\n---\n\n## Your brief\n\n" + asked;
+        return text.append("## Your brief\n\n").append(asked).toString();
     }
 
     /**
@@ -324,5 +343,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode) {
         this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, false);
+    }
+
+    public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles) {
+        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, List.of());
     }
 }

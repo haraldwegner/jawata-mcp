@@ -128,7 +128,8 @@ public final class StoreCorpus {
         for (StoredEntry e : live) {
             // A row whose type no ruling covers is in no lane, so it is in no lane's corpus.
             KnowledgeLane lane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
-            if (lane != null) {
+            // D45: the lane decides which statuses it serves (a proposed rule is in no corpus).
+            if (lane != null && lane.admits(e.status())) {
                 byLane.computeIfAbsent(lane, k -> new ArrayList<>()).add(e);
             }
         }

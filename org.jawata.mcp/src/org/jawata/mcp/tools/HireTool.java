@@ -24,6 +24,7 @@ import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.execution.ToolGateRunner;
 import org.jawata.mcp.execution.WriteContainment;
+import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.LearnerEvent;
@@ -117,6 +118,9 @@ public class HireTool extends AbstractTool {
      */
     private final Supplier<SelfEndpoint> self;
 
+    /** Where the accepted rules that bind a hired seat are read from, per hire (D45). */
+    private final Supplier<ExperienceStore> rules;
+
     /** A hire with no endpoint of its own to hand the brain — the stdio resident's case. */
     public HireTool(Supplier<IJdtService> serviceSupplier, HostProcesses host,
             RuntimeArtifactStore artifacts, PlanLedger plans,
@@ -140,7 +144,20 @@ public class HireTool extends AbstractTool {
             RuntimeArtifactStore artifacts, PlanLedger plans,
             Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> self) {
+        this(serviceSupplier, host, artifacts, plans, journal, registry, self, () -> null);
+    }
+
+    /**
+     * @param rules where the accepted rules a hired seat is bound by are read (Sprint 28g D45): a
+     *     SUPPLIER that may answer null, for the same reason the journal's may — a degraded resident
+     *     has no store, and a hire still goes ahead without its rules.
+     */
+    public HireTool(Supplier<IJdtService> serviceSupplier, HostProcesses host,
+            RuntimeArtifactStore artifacts, PlanLedger plans,
+            Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
+            Supplier<SelfEndpoint> self, Supplier<ExperienceStore> rules) {
         super(serviceSupplier);
+        this.rules = rules == null ? () -> null : rules;
         if (host == null || artifacts == null || plans == null || journal == null
                 || registry == null) {
             throw new IllegalArgumentException("a hire needs a host to spawn on, somewhere to put"
@@ -388,7 +405,7 @@ public class HireTool extends AbstractTool {
             return ToolResponse.invalidParameter("workingDirectory", e.getMessage());
         }
 
-        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint);
+        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules);
         HiredRun.Proposal proposal;
         try {
             proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()),

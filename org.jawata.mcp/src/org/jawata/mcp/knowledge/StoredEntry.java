@@ -112,7 +112,10 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
      */
     public boolean answersFor(String ownWorkspaceId) {
         KnowledgeLane lane = KnowledgeLane.of(type(), facets().provenanceKind());
-        return lane == null || lane.answersFor(ownWorkspaceId, workspaceId());
+        // D45: a lane may refuse a row by its STATUS as well as by its workspace — a proposed rule
+        // is not served — and it is stated here, beside the workspace rule, so no reader pairs a
+        // row with its lane without it.
+        return lane == null || (lane.admits(status()) && lane.answersFor(ownWorkspaceId, workspaceId()));
     }
 
     /** Never null: a legacy row projects {@link Facets#NONE}. */

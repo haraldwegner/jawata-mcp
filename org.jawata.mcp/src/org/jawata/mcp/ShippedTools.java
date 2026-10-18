@@ -202,7 +202,7 @@ public final class ShippedTools {
         tools.add(new HireTool(jdt, HostProcesses.system(),
             new org.jawata.mcp.runtime.RuntimeArtifactStore(),
             new org.jawata.mcp.learn.PlanLedger(),
-            w.learnerEvents(), w.registry(), w.selfEndpoint()));
+            w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore));
 
         tools.add(new RefreshWorkspaceTool(jdt));
         tools.add(new FindDuplicateCodeTool(jdt));

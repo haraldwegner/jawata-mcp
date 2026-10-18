@@ -2103,8 +2103,13 @@ public final class ExperienceRetrieval {
         if (norm.isEmpty()) {
             return false;
         }
+        // D45: a RULE says when it applies in its situation, and a typed message is matched
+        // against that text — the summary says what to do, the situation says when.
+        String situation = KnowledgeLane.RULE_TYPE.equals(e.type()) && e.facets().situation() != null
+            ? " " + H2ExperienceStore.normalize(e.facets().situation())
+            : "";
         String haystack = String.join(" ", e.symptoms()) + " "
-            + H2ExperienceStore.normalize(e.summary() == null ? "" : e.summary());
+            + H2ExperienceStore.normalize(e.summary() == null ? "" : e.summary()) + situation;
         for (String token : norm.split("\\s+")) {
             if (!haystack.contains(token)) {
                 return false;

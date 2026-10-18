@@ -26,8 +26,20 @@ import java.util.Locale;
  */
 public enum Occasion {
 
-    /** A message the user typed: what was learned; small enough to ask every time. */
-    TYPED_MESSAGE("typed_message", KnowledgeLane.EXPERIENCE),
+    /**
+     * A message the user typed: what was learned, and the accepted rules whose situation the
+     * message names (Sprint 28g D45) — small enough to ask every time, and a rule recorded after
+     * the build reaches the next message with no change to a client.
+     */
+    TYPED_MESSAGE("typed_message", KnowledgeLane.EXPERIENCE, KnowledgeLane.RULES),
+
+    /**
+     * An agent asking, in its own words, what was learned about a symbol or a symptom: the lessons
+     * and nothing else. It is its own occasion because a typed message now also asks the rules
+     * (Sprint 28g D45), and a seat that wants the lessons about one member does not want every rule
+     * whose situation its cue happens to share.
+     */
+    LESSON_LOOKUP("lesson_lookup", KnowledgeLane.EXPERIENCE),
 
     /** A tool call naming a {@code Type#member}: the lessons about it, and what it is FOR. */
     TOOL_CALL("tool_call", KnowledgeLane.EXPERIENCE, KnowledgeLane.CODE),

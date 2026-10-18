@@ -32,7 +32,8 @@ import org.junit.jupiter.api.Test;
 class OccasionsTheEngineOwnsTest {
 
     private static final Map<String, List<String>> TABLE = Map.of(
-        "typed_message", List.of("experience"),
+        "typed_message", List.of("experience", "rules"),
+        "lesson_lookup", List.of("experience"),
         "tool_call", List.of("experience", "code"),
         "recall_gate", List.of("experience", "domain"),
         "after_compaction", List.of("transcript"),

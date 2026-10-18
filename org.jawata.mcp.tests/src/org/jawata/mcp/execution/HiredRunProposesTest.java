@@ -583,6 +583,50 @@ class HiredRunProposesTest {
                 "the manifest still carries it — the record does not replace it"));
     }
 
+    /** An accepted rule, anchored to {@code label} (null binds every seat), written straight into the store. */
+    private void acceptedRule(String instruction, String label) {
+        store.put(org.jawata.mcp.knowledge.ExperienceEntry.of(
+                org.jawata.mcp.knowledge.SymbolFact.of(org.jawata.mcp.knowledge.KnowledgeLane.RULE_TYPE,
+                    instruction, org.jawata.mcp.knowledge.Confidence.HIGH).build())
+            .status(org.jawata.mcp.knowledge.ExperienceEntry.ACCEPTED)
+            .operation(label)
+            .situation("when the matter comes up")
+            .build());
+    }
+
+    @Test
+    @DisplayName("D45: the accepted rules that bind a hired seat are in what its brain is asked, one recorded after the build included")
+    void theRulesThatBindASeatAreInWhatItsBrainIsAsked() throws Exception {
+        HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
+        RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
+        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store);
+        SeatHire pm = SeatHire.read("---\nname: pm\nbrain: claude-code\naccepts_uncontained_writes: true\n"
+            + "activities: [release]\nttl_secs: 30\n---\n\nYou are the pm.\n");
+        SeatHire worker = SeatHire.read("---\nname: worker\nbrain: claude-code\naccepts_uncontained_writes: true\n"
+            + "ttl_secs: 30\n---\n\nYou are the worker.\n");
+        acceptedRule("never ask a second time before a release push", "release");
+        acceptedRule("keep every message short", null);
+
+        run.issue(pm, site(standIn), "Judge the stage.", twoSteps(), HiredRunProposesTest::passed, List.of());
+        String pmAsked = String.join(" ", spy.asked());
+        run.issue(worker, site(standIn), "Do the stage.", twoSteps(), HiredRunProposesTest::passed, List.of());
+        String workerAsked = String.join(" ", spy.asked());
+        acceptedRule("answer with the number first", "seat:worker");
+        run.issue(worker, site(standIn), "Do the next stage.", twoSteps(), HiredRunProposesTest::passed, List.of());
+        String workerAskedAgain = String.join(" ", spy.asked());
+
+        assertAll(
+            () -> assertTrue(pmAsked.contains("never ask a second time before a release push"),
+                "the PM carries the release activity, so the release rule is in its text: " + pmAsked),
+            () -> assertTrue(pmAsked.contains("keep every message short"), "and the rule bound to no seat"),
+            () -> assertFalse(workerAsked.contains("release push"),
+                "a worker answers for no release, so the release rule is not in its text: " + workerAsked),
+            () -> assertTrue(workerAsked.contains("keep every message short"), "but it carries the general rule"),
+            () -> assertFalse(workerAsked.contains("answer with the number first"), "the rule not yet written is not there"),
+            () -> assertTrue(workerAskedAgain.contains("answer with the number first"),
+                "a rule recorded AFTER the build is in the next hire, with no code change: " + workerAskedAgain));
+    }
+
     @Test
     @DisplayName("a reaped run's record reports NO cost rather than zero")
     void aReapedRunsRecordDoesNotInventACost() throws Exception {
