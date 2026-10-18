@@ -1231,13 +1231,25 @@ public final class ExperienceRetrieval {
 
         List<Map<String, Object>> candidates = new ArrayList<>();
         for (Map.Entry<KnowledgeLane, List<StoredEntry>> laneRanked : rankedByLane.entrySet()) {
-          int taken = 0;
-          for (StoredEntry e : laneRanked.getValue()) {
-            if (taken >= MAX_CANDIDATES) {
-                break;
-            }
-            taken++;
+          List<StoredEntry> ranked = laneRanked.getValue();
+          List<StoredEntry> shortlist = new ArrayList<>(
+              ranked.subList(0, Math.min(MAX_CANDIDATES, ranked.size())));
+          // REL44-34 — the map owes "the ground before the detail". An area's words share few
+          // with a task, so with the embedder off the ranking left the area to row-id order; the
+          // area of every package the shortlist shows a member of is listed too, which adds no
+          // score bar and no area for a package nothing of which is shown.
+          java.util.Set<String> listed = new java.util.HashSet<>();
+          for (StoredEntry e : shortlist) {
+              listed.add(e.id());
+          }
+          List<StoredEntry> ground = laneRanked.getKey() == KnowledgeLane.CODE
+              ? areasOfShownPackages(shortlist, ranked) : List.of();
+          shortlist.addAll(ground);
+          for (StoredEntry e : shortlist) {
             Map<String, Object> c = new LinkedHashMap<>();
+            if (!listed.contains(e.id())) {
+                c.put("added", "the area of a package whose member is on this list");
+            }
             c.put("id", e.id());
             c.put("lane", laneRanked.getKey().wire());
             // Sprint 28f Stage 8 D1 — WHAT KIND OF ROW THIS IS, so a caller can group the
@@ -1393,6 +1405,52 @@ public final class ExperienceRetrieval {
                 + " the ids you chose. Choosing none is a real answer.")
             + degraded + partial + noSituation);
         return out;
+    }
+
+    /**
+     * REL44-34 — from the lane's ranked rows, the AREA rows of every package that has a member on
+     * the shortlist, minus those the shortlist already carries, in the lane's rank order.
+     *
+     * <p>A member's package is the one the row records, or, when it records none, the one in its
+     * address ({@code com.foo.Bar#m} is in {@code com.foo}). A nested type's address gives a
+     * package that no area is recorded under, which adds nothing — it never adds a wrong area.</p>
+     */
+    private static List<StoredEntry> areasOfShownPackages(List<StoredEntry> shortlist,
+            List<StoredEntry> ranked) {
+        java.util.Set<String> shown = new java.util.HashSet<>();
+        java.util.Set<String> carried = new java.util.HashSet<>();
+        for (StoredEntry e : shortlist) {
+            carried.add(e.id());
+            if (!"area".equalsIgnoreCase(e.type())) {
+                String pkg = packageOfMember(e);
+                if (pkg != null) {
+                    shown.add(pkg);
+                }
+            }
+        }
+        List<StoredEntry> out = new ArrayList<>();
+        for (StoredEntry e : ranked) {
+            if ("area".equalsIgnoreCase(e.type()) && !carried.contains(e.id())
+                    && e.packageName() != null && shown.contains(e.packageName())) {
+                out.add(e);
+            }
+        }
+        return out;
+    }
+
+    /** The package a member row belongs to: what it records, else what its address says. */
+    private static String packageOfMember(StoredEntry e) {
+        if (e.packageName() != null && !e.packageName().isBlank()) {
+            return e.packageName();
+        }
+        String fqn = e.symbolFqn();
+        if (fqn == null || fqn.isBlank()) {
+            return null;
+        }
+        int hash = fqn.indexOf('#');
+        String type = hash >= 0 ? fqn.substring(0, hash) : fqn;
+        int dot = type.lastIndexOf('.');
+        return dot > 0 ? type.substring(0, dot) : null;
     }
 
     /**
