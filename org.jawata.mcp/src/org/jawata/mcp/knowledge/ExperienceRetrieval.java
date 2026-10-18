@@ -270,9 +270,8 @@ public final class ExperienceRetrieval {
         // apart from "looked at nothing": a lessons-only search over a store whose lessons are
         // few says that it searched few, not that the store knows nothing.
         Map<String, Integer> scanned = new LinkedHashMap<>();
-        for (KnowledgeLane knowledgeLane : q.scope().lanes()) {
-            scanned.put(knowledgeLane.wire(), StoreCorpus.of(store).lane(knowledgeLane).live().size());
-        }
+        q.scope().byLane(lane -> StoreCorpus.of(store).lane(lane).live().size())
+            .forEach((lane, held) -> scanned.put(lane.wire(), held));
         out.put("scanned", scanned);
 
         // Sprint 27 D2 — THE KIND SPLIT, as ROUTING rather than as a second
@@ -322,13 +321,10 @@ public final class ExperienceRetrieval {
         // their own, so a lane's nominees are its own nearest and never what is left over once
         // another lane's rows have taken the shortlist. The union only feeds the fit set's
         // tie-break, where a row is compared with rows of its own lane anyway.
-        Map<KnowledgeLane, Map<String, Double>> meaningByLane = new LinkedHashMap<>();
+        Map<KnowledgeLane, Map<String, Double>> meaningByLane =
+            q.scope().byLane(lane -> meaningScores(q, lane));
         Map<String, Double> meaning = new LinkedHashMap<>();
-        for (KnowledgeLane knowledgeLane : q.scope().lanes()) {
-            Map<String, Double> laneMeaning = meaningScores(q, knowledgeLane);
-            meaningByLane.put(knowledgeLane, laneMeaning);
-            meaning.putAll(laneMeaning);
-        }
+        meaningByLane.values().forEach(meaning::putAll);
 
         List<ExperienceAnalogies.Analogy> analogies =
             analogies(q, fitting, turnedAwayExperience, meaning, meaningByLane);
@@ -422,10 +418,8 @@ public final class ExperienceRetrieval {
         // the caller named them. One cap over a mixed fit set let the lane with the most
         // matching rows fill the page and leave another lane's best row on the floor — the same
         // crowding the shortlist used to suffer, one stage later.
-        Map<KnowledgeLane, List<StoredEntry>> fittingByLane = new LinkedHashMap<>();
-        for (KnowledgeLane knowledgeLane : q.scope().lanes()) {
-            fittingByLane.put(knowledgeLane, new ArrayList<>());
-        }
+        Map<KnowledgeLane, List<StoredEntry>> fittingByLane =
+            q.scope().byLane(lane -> new ArrayList<>());
         for (StoredEntry e : fitting) {
             KnowledgeLane rowLane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
             List<StoredEntry> laneRows = rowLane == null ? null : fittingByLane.get(rowLane);
@@ -795,13 +789,12 @@ public final class ExperienceRetrieval {
         // always did; what changed is where it lands. Saying otherwise would
         // assert an invariant three lines above the call site that breaks it.
         Map<String, Double> lexical = new LinkedHashMap<>();
-        List<List<String>> nominatedByLane = new ArrayList<>();
-        for (KnowledgeLane knowledgeLane : q.scope().lanes()) {
-            Map<String, Double> laneLexical = lexicalScores(q, knowledgeLane).byId();
-            lexical.putAll(laneLexical);
-            nominatedByLane.add(AnalogyPolicy.nominate(
-                meaningByLane.getOrDefault(knowledgeLane, Map.of()), laneLexical));
-        }
+        Map<KnowledgeLane, Map<String, Double>> lexicalByLane =
+            q.scope().byLane(lane -> lexicalScores(q, lane).byId());
+        lexicalByLane.values().forEach(lexical::putAll);
+        List<List<String>> nominatedByLane = new ArrayList<>(
+            q.scope().byLane(lane -> AnalogyPolicy.nominate(
+                meaningByLane.getOrDefault(lane, Map.of()), lexicalByLane.get(lane))).values());
         // Interleaved round-robin, so the cap below takes the same number of nominees from
         // each lane before it takes a second from any.
         List<String> nominated = new ArrayList<>();
@@ -1080,27 +1073,6 @@ public final class ExperienceRetrieval {
     }
 
     /**
-     * Whether this entry is a description of ANOTHER workspace's code — D8d.
-     *
-     * <p>The same rule the maintenance sweep already holds for judging anchors
-     * ({@code WorkspaceScopedJudgmentTest}): a store WITH a workspace identity answers only
-     * for rows stamped with it, and a row stamped with none counts as foreign, because
-     * nothing says it belongs here. A store WITHOUT an identity — tests, a standalone
-     * resident — keeps the see-everything behaviour.</p>
-     *
-     * <p>Code lane only. A lesson or a borrowed pattern is knowledge ABOUT work and travels
-     * between workspaces by design; a job or an area describes one workspace's packages and
-     * means nothing in another.</p>
-     */
-    private boolean foreignCode(StoredEntry e) {
-        if (KnowledgeLane.of(e.type(), e.facets().provenanceKind()) != KnowledgeLane.CODE) {
-            return false;
-        }
-        String mine = store.provenanceWorkspaceId();
-        return mine != null && !mine.isBlank() && !mine.equals(e.workspaceId());
-    }
-
-    /**
      * Three decimals for a score that rides into a response.
      *
      * <p>Not precision-shaving: these numbers exist to be READ by an agent
@@ -1159,17 +1131,16 @@ public final class ExperienceRetrieval {
                 lanes.get(EmbeddingService.Lane.DETAILS),
                 words);
 
+            // D8d — THE CODE LANE IS KEYED BY WORKSPACE. The store is shared by every
+            // workspace on the machine and each row is stamped with the one that wrote it; the
+            // map a session opens with was ranked over the whole lane, so a session on one
+            // product was oriented by a description of another product's packages, on every
+            // prompt. The lane's corpus answers for this workspace; the rows it withheld are
+            // counted below, never silently dropped.
             List<StoredEntry> laneRows = new ArrayList<>();
-            for (StoredEntry e : corpus.live()) {
-                // D8d — THE CODE LANE IS KEYED BY WORKSPACE. The store is shared by every
-                // workspace on the machine and each row is stamped with the one that wrote it;
-                // the map a session opens with was ranked over the whole lane, so a session on
-                // one product was oriented by a description of another product's packages, on
-                // every prompt. Counted below, never silently dropped.
-                if (foreignCode(e)) {
-                    otherWorkspace++;
-                    continue;
-                }
+            List<StoredEntry> mine = corpus.liveFor(store.provenanceWorkspaceId());
+            otherWorkspace += corpus.live().size() - mine.size();
+            for (StoredEntry e : mine) {
                 laneRows.add(e);
                 byId.put(e.id(), e);
                 if (hasAnyMeaningScore(lanes, e.id())) {

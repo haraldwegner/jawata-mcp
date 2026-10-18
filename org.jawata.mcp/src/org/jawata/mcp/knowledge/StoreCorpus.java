@@ -45,6 +45,35 @@ public final class StoreCorpus {
      * lessons are weighed against the lessons.</p>
      */
     public record LaneCorpus(KnowledgeLane lane, List<StoredEntry> live, LexicalIndex.Corpus words) {
+
+        /**
+         * The live rows that answer for the workspace {@code workspaceId} — D8d, moved here from the
+         * retrieval so that the lane owns the rule about its own rows.
+         *
+         * <p>THE CODE LANE IS KEYED BY WORKSPACE. The store is shared by every workspace on the
+         * machine and each code row is stamped with the one that wrote it; a store WITH a workspace
+         * identity answers only for rows stamped with it, and a row stamped with none counts as
+         * foreign, because nothing says it belongs here. A store WITHOUT an identity (tests, a
+         * standalone resident) sees everything. Every other lane is knowledge ABOUT work and travels
+         * between workspaces by design, so it is returned whole.</p>
+         *
+         * <p>Only the rows are filtered. The word index in {@link #words()} is still built over the
+         * whole lane, so word rarity is unchanged by this move.</p>
+         *
+         * @param workspaceId the identity of this store's workspace, or null/blank when it has none
+         */
+        public List<StoredEntry> liveFor(String workspaceId) {
+            if (lane != KnowledgeLane.CODE || workspaceId == null || workspaceId.isBlank()) {
+                return live;
+            }
+            List<StoredEntry> mine = new ArrayList<>(live.size());
+            for (StoredEntry e : live) {
+                if (workspaceId.equals(e.workspaceId())) {
+                    mine.add(e);
+                }
+            }
+            return mine;
+        }
     }
 
     /** The entries as of one stamp: all of them, the live ones, and one corpus per lane. */

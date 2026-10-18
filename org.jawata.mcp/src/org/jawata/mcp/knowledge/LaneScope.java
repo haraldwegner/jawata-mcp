@@ -125,6 +125,23 @@ public record LaneScope(Set<KnowledgeLane> lanes) {
         return lanes.contains(lane);
     }
 
+    /**
+     * One value per lane in this scope, in lane order — the per-lane gather the retrieval used to
+     * write out by hand at each site (a count per lane, a score map per lane, an empty bucket per
+     * lane). The scope owns its lanes, so the walk over them is its behaviour and not a loop
+     * repeated in its callers.
+     *
+     * @param valueOf computes the value for one lane
+     * @return the values keyed by lane, in lane order
+     */
+    public <T> java.util.Map<KnowledgeLane, T> byLane(java.util.function.Function<KnowledgeLane, T> valueOf) {
+        java.util.Map<KnowledgeLane, T> out = new java.util.LinkedHashMap<>();
+        for (KnowledgeLane lane : lanes) {
+            out.put(lane, valueOf.apply(lane));
+        }
+        return out;
+    }
+
     /** The wire names of the lanes, in lane order. */
     public List<String> wires() {
         List<String> out = new ArrayList<>();
