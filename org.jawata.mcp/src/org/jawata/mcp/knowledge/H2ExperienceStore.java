@@ -2050,13 +2050,26 @@ public final class H2ExperienceStore implements ExperienceStore {
         return ordered;
     }
 
+    /**
+     * The rows the store holds, COUNTED. REL44-33: a bare {@code COUNT(*)} is answered from H2's
+     * row-count statistic, which a file copied while another connection was inserting leaves one
+     * ahead of the rows ({@code StoreBackupsTest}: 3 of 16 runs before this). Two cheaper forms did
+     * not escape it: a {@code COUNT(*)} with a predicate on the key (2 of 24) and a walk of the ids
+     * alone (1 of 32), which an index can answer without the row. So the rows are walked with a
+     * column no index covers, which is what {@link #all()} reads; it is a diagnostics figure, not a
+     * hot path.
+     */
     @Override
     public long count() {
         return withRead("count entries", c -> {
+            long n = 0L;
             try (Statement s = c.createStatement();
-                    ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM experience_entry")) {
-                return rs.next() ? rs.getLong(1) : 0L;
+                    ResultSet rs = s.executeQuery("SELECT id, summary FROM experience_entry")) {
+                while (rs.next()) {
+                    n++;
+                }
             }
+            return n;
         });
     }
 

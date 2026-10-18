@@ -176,10 +176,11 @@ class StoreBackupsTest {
                 "a consistent copy holds at least what was committed before it started ("
                     + before + ") and at most everything (" + (before + concurrent)
                     + "); it held " + readable);
-            long counted = restored.count();
-            assertTrue(counted >= readable && counted <= readable + 1,
-                "COUNT(*) on a copy taken mid-write may count the one row that was in flight and"
-                    + " never more; counted " + counted + " against " + readable + " readable");
+            // REL44-33: the store's own count() must be the rows it holds, not H2's row-count
+            // statistic, which a copy taken mid-write leaves one ahead (3 of 12 runs, embedder off,
+            // before count() scanned the rows).
+            assertEquals(readable, restored.count(),
+                "count() on a restored copy must equal the rows that read");
         }
     }
 
