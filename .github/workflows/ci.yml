@@ -307,3 +307,22 @@ jobs:
       with:
         name: test-log-embedder-off
         path: embedder-off.log
+
+  # THE FAST HALF OF THE ABORT BUDGET (2026-10-18). build/abort-budget.sh refuses a skip no
+  # committed pattern covers, but it runs after a whole suite: 4.4.9's Windows job found a
+  # misworded skip 55 minutes in. The wording is a string literal in the test source, so this
+  # job reads it in seconds and fails the push at once. It starts with the others and is not a
+  # prerequisite of them, so it costs no wall-clock. It cannot see a skip built at run time, and
+  # it is not a Windows run: a skip that fires only there, in wording some budget accepts, still
+  # passes here. build/skip-wording-gate.py says so in its own header.
+  static-gates:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v5
+
+    - name: Skip wording - every skip is worded so an abort budget accepts it
+      run: python3 build/skip-wording-gate.py
+
+    - name: The gate refuses what it must (its own test)
+      run: bash build/skip-wording-gate-test.sh

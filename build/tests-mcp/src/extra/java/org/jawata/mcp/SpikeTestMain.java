@@ -120,6 +120,17 @@ public final class SpikeTestMain {
                         result.getThrowable().map(Throwable::getMessage).orElse("(no reason given)"));
                     System.out.flush();
                 }
+                // 2026-10-18 — A FAILED TEST IS PRINTED WHEN IT FAILS, not 30 minutes later. Its class
+                // ends successfully as a container, so nothing above or below printed it; the only
+                // trace was the summary's printFailuresTo after the whole suite. A job whose failing
+                // class ran at 3.5 minutes then said nothing for the other 30. The `~~ FAILED`
+                // prefix is deliberate: the abort budget reads `~~ ABORTED`, so a failure is never
+                // counted as a skip.
+                if (!isClass(id) && result.getStatus() == TestExecutionResult.Status.FAILED) {
+                    System.out.println(TestRunLines.failed(id.getUniqueId(),
+                        result.getThrowable().orElse(null)));
+                    System.out.flush();
+                }
                 if (isClass(id)) {
                     done.incrementAndGet();
                     if (result.getStatus() != TestExecutionResult.Status.SUCCESSFUL) {

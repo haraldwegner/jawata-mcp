@@ -477,7 +477,11 @@ echo "SHARDED-SUITE shards=$SHARDS wall=${WALL}s total=$TOT succeeded=$PASS fail
 # ("[mcp#26 ATTRIBUTION] NOT RUN") which had been firing in every local run
 # unremarked. Its reason is now committed in build/expected-aborts.<os>, which is
 # the decision this gate exists to force.
-"$ROOT/build/abort-budget.sh" "$OUT" || exit $?
+# ABORT_BUDGET names the budget(s) the run is judged against, comma-separated, exactly as
+# abort-budget.sh takes them; unset, the budget is this machine's OS. build/release-gate.sh sets it
+# to `linux,embedder-off` for the pass with the embedder switched off, whose expected skips are
+# those, not the OS's alone.
+"$ROOT/build/abort-budget.sh" "$OUT" ${ABORT_BUDGET:+"$ABORT_BUDGET"} || exit $?
 
 # mcp#51 — A FAILED CONTAINER IS A FAILURE, AND IT IS THE ONE THAT BALANCES.
 # An @AfterAll that throws blows up after every test in the class has already run
