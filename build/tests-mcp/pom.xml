@@ -41,6 +41,8 @@
                 <includes>
                     <include>embed-goldens/*.json</include>
                     <include>field/*.txt</include>
+                    <!-- REL44-33: the saved backup copy whose count is one high. -->
+                    <include>backups/*.zip</include>
                 </includes>
             </resource>
         </resources>

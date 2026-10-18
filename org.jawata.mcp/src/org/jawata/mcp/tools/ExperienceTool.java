@@ -625,6 +625,11 @@ public final class ExperienceTool implements Tool {
                 + " lanes (naming both is refused) — the engine answers which lanes that situation"
                 + " asks, so a client spells no lane. "
                 + org.jawata.mcp.knowledge.Occasion.known()));
+        props.put("proceed_without_clean_backup", Map.of("type", "boolean", "description",
+            "wipe, prune, import, delete, restore, wipe_and_import: the copy taken first is checked"
+                + " (its count must equal its rows) and tried 3 times; if it is still not clean the"
+                + " operation is REFUSED and nothing changes. Repeat the request with this set to"
+                + " true to go on anyway; one copy is still taken."));
         props.put("exceptions", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "record: exceptions / caveats."));
         props.put("key", Map.of("type", "string", "description",
@@ -664,6 +669,25 @@ public final class ExperienceTool implements Tool {
 
     @Override
     public ToolResponse execute(JsonNode args) {
+        try {
+            if (bool(args, "proceed_without_clean_backup")) {
+                return backups.withoutCleanCheck(() -> executeKind(args));
+            }
+            return executeKind(args);
+        } catch (org.jawata.mcp.knowledge.StoreBackups.UncleanCopyException e) {
+            return cleanCopyRefusal(e);
+        }
+    }
+
+    /**
+     * REL44-33 — the answer when the safety copy before a destructive operation could not be made
+     * clean in three attempts. The operation has not run; the message says how to go on without one.
+     */
+    static ToolResponse cleanCopyRefusal(org.jawata.mcp.knowledge.StoreBackups.UncleanCopyException e) {
+        return ToolResponse.preconditionNotMet(e.getMessage(), "UNCLEAN_SAFETY_COPY");
+    }
+
+    private ToolResponse executeKind(JsonNode args) {
         String kind = text(args, "kind");
         if (kind == null || kind.isBlank()) {
             return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);

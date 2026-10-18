@@ -80,10 +80,59 @@ public final class StoreBackups {
     /** A scheduled copy is due once the newest one is this old: the requirement is "every day". */
     public static final java.time.Duration INTERVAL = java.time.Duration.ofHours(24);
 
+    /**
+     * REL44-33 — how many times the copy before a destructive operation is taken before the
+     * operation is refused, and how many unclean scheduled copies are tried in one day.
+     */
+    public static final int CLEAN_ATTEMPTS = 3;
+
+    /** How a copy is made. The store's own backup; a test can hand in another to make a bad one. */
+    @FunctionalInterface
+    interface Copier {
+        void copy(H2ExperienceStore store, Path target);
+    }
+
+    /**
+     * A copy that reads but is not clean, still unclean after {@link #CLEAN_ATTEMPTS} attempts. The
+     * operation it was a safety copy for has NOT run. The user decides whether to go on without a
+     * clean copy, by repeating the request with {@code proceed_without_clean_backup=true}.
+     */
+    public static final class UncleanCopyException extends IllegalStateException {
+        private static final long serialVersionUID = 1L;
+
+        public UncleanCopyException(String verb, int attempts, String problem) {
+            super("The safety copy before " + verb + " could not be made clean in " + attempts
+                + " attempts (" + problem + "). Nothing was changed. To go on without a clean"
+                + " copy, repeat the request with proceed_without_clean_backup=true.");
+        }
+    }
+
     private final Supplier<H2ExperienceStore> store;
+    private final Copier copier;
+    private final ThreadLocal<Boolean> goOnWithoutCleanCopy = ThreadLocal.withInitial(() -> false);
+    private java.time.LocalDate uncleanDay;
+    private int uncleanToday;
 
     public StoreBackups(Supplier<H2ExperienceStore> store) {
+        this(store, H2ExperienceStore::backupTo);
+    }
+
+    StoreBackups(Supplier<H2ExperienceStore> store, Copier copier) {
         this.store = store;
+        this.copier = copier;
+    }
+
+    /**
+     * Run {@code action} with the clean-copy check switched off for this thread: the user has been
+     * told the safety copy could not be made clean and has chosen to go on. One copy is still taken.
+     */
+    public <T> T withoutCleanCheck(Supplier<T> action) {
+        goOnWithoutCleanCopy.set(true);
+        try {
+            return action.get();
+        } finally {
+            goOnWithoutCleanCopy.remove();
+        }
     }
 
     /** How many copies are kept right now — published because the verbs report it. */
@@ -130,13 +179,103 @@ public final class StoreBackups {
         }
         Path target = backupDir(h2).resolve(name(verb));
         try {
-            h2.backupTo(target);
+            takeChecked(h2, target, verb);
+        } catch (UncleanCopyException e) {
+            throw e;
         } catch (RuntimeException e) {
             log.warn("Could not take the pre-{} backup at {}: {}", verb, target, e.getMessage());
             return null;
         }
         evict(depth(), false);
         return target;
+    }
+
+    /**
+     * One copy that has been checked (REL44-33): up to {@link #CLEAN_ATTEMPTS} attempts, each
+     * deleted when its count disagrees with its rows, then {@link UncleanCopyException}. A failure to
+     * WRITE a copy still propagates as it always did, so the caller keeps its own rule for that
+     * (a full disk must not lock the user out of the operation that makes room). With the check
+     * switched off by {@link #withoutCleanCheck} the first copy is kept as it comes.
+     */
+    private Path takeChecked(H2ExperienceStore h2, Path target, String verb) {
+        if (goOnWithoutCleanCopy.get()) {
+            copier.copy(h2, target);
+            return target;
+        }
+        String problem = null;
+        for (int attempt = 1; attempt <= CLEAN_ATTEMPTS; attempt++) {
+            copier.copy(h2, target);
+            problem = uncleanReason(target);
+            if (problem == null) {
+                return target;
+            }
+            log.warn("The copy before {} is not clean (attempt {} of {}): {} — deleting it", verb,
+                attempt, CLEAN_ATTEMPTS, problem);
+            deleteQuietly(target);
+        }
+        throw new UncleanCopyException(verb, CLEAN_ATTEMPTS, problem);
+    }
+
+    private static void deleteQuietly(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            log.warn("Could not remove the backup {}: {}", file, e.getMessage());
+        }
+    }
+
+    /**
+     * Why a copy is not clean, or null when it is. The copy is opened on its own in a scratch folder
+     * and its {@code COUNT(*)} is compared with the rows that read. A copy taken while a commit was
+     * in progress used to come back one row high (REL44-33); the rows are all there, but a count that
+     * disagrees with them is what makes a copy suspect. If the check itself cannot run (no scratch
+     * space, say) it answers null and logs: a check that cannot run must not lock the user out of a
+     * copy that exists, and the copy has already been read back end to end where that applies.
+     */
+    static String uncleanReason(Path zip) {
+        Path scratch = null;
+        try {
+            scratch = Files.createTempDirectory("jawata-copy-check");
+            try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip.toFile())) {
+                for (java.util.zip.ZipEntry entry : java.util.Collections.list(zf.entries())) {
+                    if (entry.getName().endsWith(".mv.db")) {
+                        try (java.io.InputStream in = zf.getInputStream(entry)) {
+                            Files.copy(in, scratch.resolve("experience.mv.db"));
+                        }
+                    }
+                }
+            }
+            org.h2.jdbcx.JdbcDataSource ds = new org.h2.jdbcx.JdbcDataSource();
+            ds.setURL("jdbc:h2:file:" + scratch.resolve("experience").toAbsolutePath()
+                + ";IFEXISTS=TRUE");
+            try (java.sql.Connection c = ds.getConnection();
+                    java.sql.Statement s = c.createStatement()) {
+                long counted;
+                try (java.sql.ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM experience_entry")) {
+                    rs.next();
+                    counted = rs.getLong(1);
+                }
+                long rows = 0;
+                try (java.sql.ResultSet rs = s.executeQuery("SELECT id, summary FROM experience_entry")) {
+                    while (rs.next()) {
+                        rows++;
+                    }
+                }
+                return counted == rows ? null
+                    : "COUNT(*) says " + counted + " but " + rows + " rows read";
+            }
+        } catch (IOException | java.sql.SQLException | RuntimeException e) {
+            log.warn("Could not check the copy {}: {} — keeping it as taken", zip, e.getMessage());
+            return null;
+        } finally {
+            if (scratch != null) {
+                try (Stream<Path> walk = Files.walk(scratch)) {
+                    walk.sorted(Comparator.reverseOrder()).forEach(StoreBackups::deleteQuietly);
+                } catch (IOException e) {
+                    log.warn("Could not remove the scratch folder {}: {}", scratch, e.getMessage());
+                }
+            }
+        }
     }
 
     /**
@@ -162,9 +301,15 @@ public final class StoreBackups {
         if (newest != null && java.time.Duration.between(newest, now).compareTo(INTERVAL) < 0) {
             return null;
         }
+        java.time.LocalDate today = now.atZone(java.time.ZoneOffset.UTC).toLocalDate();
+        if (today.equals(uncleanDay) && uncleanToday >= CLEAN_ATTEMPTS) {
+            log.warn("The scheduled backup came out unclean {} times today — not trying again until"
+                + " tomorrow", uncleanToday);
+            return null;
+        }
         Path target = backupDir(h2).resolve(name(SCHEDULED_VERB, now));
         try {
-            h2.backupTo(target);
+            copier.copy(h2, target);
         } catch (RuntimeException e) {
             log.warn("Could not take the scheduled backup at {}: {}", target, e.getMessage());
             return null;
@@ -172,11 +317,22 @@ public final class StoreBackups {
         if (!readsBack(target)) {
             log.warn("The scheduled backup at {} could not be read back — removing it, so it does"
                 + " not stand in the rotation as a copy that is not one", target);
-            try {
-                Files.deleteIfExists(target);
-            } catch (IOException e) {
-                log.warn("Could not remove the unreadable backup {}: {}", target, e.getMessage());
+            deleteQuietly(target);
+            return null;
+        }
+        // REL44-33: a copy that reads but whose count disagrees with its rows is not kept either.
+        // Deleting it leaves no copy for today, so the next hourly check finds one due and tries again.
+        String problem = uncleanReason(target);
+        if (problem != null) {
+            if (!today.equals(uncleanDay)) {
+                uncleanDay = today;
+                uncleanToday = 0;
             }
+            uncleanToday++;
+            log.warn("The scheduled backup at {} is not clean ({}) — removing it; attempt {} of {}"
+                + " today, the next check tries again", target, problem, uncleanToday,
+                CLEAN_ATTEMPTS);
+            deleteQuietly(target);
             return null;
         }
         evict(scheduledDepth(), true);
@@ -394,8 +550,9 @@ public final class StoreBackups {
     private Path safetyCopy(H2ExperienceStore h2) {
         Path target = backupDir(h2).resolve(name("restore"));
         try {
-            h2.backupTo(target);
-            return target;
+            return takeChecked(h2, target, "restore");
+        } catch (UncleanCopyException e) {
+            throw e;
         } catch (RuntimeException e) {
             log.warn("Could not take the pre-restore backup at {}: {}", target, e.getMessage());
             return null;

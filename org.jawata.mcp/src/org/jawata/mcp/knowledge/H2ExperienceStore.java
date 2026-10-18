@@ -528,12 +528,17 @@ public final class H2ExperienceStore implements ExperienceStore {
         throw last;
     }
 
-    /** The two H2 messages a resident restart race produces — gone within seconds. */
+    /**
+     * The three H2 messages that are gone within seconds: the two a resident restart race produces, and
+     * the refusal a new connection gets while another resident pauses the others to take a backup copy
+     * ({@link #backupTo}, which holds that pause for about a second).
+     */
     private static boolean isTransientLock(Exception e) {
         for (Throwable t = e; t != null; t = t.getCause()) {
             String m = t.getMessage();
             if (m != null && (m.contains("Lock file recently modified")
-                    || m.contains("Database may be already in use"))) {
+                    || m.contains("Database may be already in use")
+                    || m.contains("open in exclusive mode"))) {
                 return true;
             }
         }
@@ -2050,26 +2055,13 @@ public final class H2ExperienceStore implements ExperienceStore {
         return ordered;
     }
 
-    /**
-     * The rows the store holds, COUNTED. REL44-33: a bare {@code COUNT(*)} is answered from H2's
-     * row-count statistic, which a file copied while another connection was inserting leaves one
-     * ahead of the rows ({@code StoreBackupsTest}: 3 of 16 runs before this). Two cheaper forms did
-     * not escape it: a {@code COUNT(*)} with a predicate on the key (2 of 24) and a walk of the ids
-     * alone (1 of 32), which an index can answer without the row. So the rows are walked with a
-     * column no index covers, which is what {@link #all()} reads; it is a diagnostics figure, not a
-     * hot path.
-     */
     @Override
     public long count() {
         return withRead("count entries", c -> {
-            long n = 0L;
             try (Statement s = c.createStatement();
-                    ResultSet rs = s.executeQuery("SELECT id, summary FROM experience_entry")) {
-                while (rs.next()) {
-                    n++;
-                }
+                    ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM experience_entry")) {
+                return rs.next() ? rs.getLong(1) : 0L;
             }
-            return n;
         });
     }
 
@@ -2621,12 +2613,19 @@ public final class H2ExperienceStore implements ExperienceStore {
      * writers. A plain file copy of an open MVStore is NOT guaranteed consistent,
      * which is the alternative the architecture rejects.</p>
      *
-     * <p><b>What the copy is, measured rather than assumed.</b> Against the
-     * shipped H2 (2.2.224) with 500 rows committed and a second connection
-     * inserting 200 more, three runs restored 540, 531 and 531 rows. So the copy
-     * OPENS, every row reads, and nothing is corrupt — but it is not a snapshot
-     * of the instant the statement ran, and no caller should assert an exact
-     * count against one. Consistent is the promise; frozen-at-an-instant is not.</p>
+     * <p><b>Writers are paused while the copy is taken (REL44-33).</b> Unpaused, a copy taken while
+     * another connection was committing came back with a row count one higher than its rows in 14 of
+     * 40 copies, and a compact of the copy repaired none of them; with {@code SET EXCLUSIVE 1} around
+     * the copy it was 0 of 40. The pause lets a commit in progress finish and holds the others off:
+     * a write on an existing connection waits, a NEW connection is refused for the moment (the open
+     * retries that, see {@code isTransientLock}), and the pause ends when this method says so or the
+     * connection that set it closes. Measured on a 224 MB store the copy took 1.7 s.</p>
+     *
+     * <p><b>What the copy is.</b> Measured against the shipped H2 (2.2.224) with a second connection
+     * inserting while an UNPAUSED copy was taken: the copy opens and every row reads, but it is not a
+     * snapshot of the instant the statement ran, so with the pause as well no caller should assert an
+     * exact count against a copy of a store others are still writing to a moment later.
+     * {@code StoreBackups} checks each copy it takes.</p>
      *
      * <p>An in-memory store has no file to copy and says so by refusing. That is
      * a real answer rather than a failure: there is nothing that could be
@@ -2645,7 +2644,19 @@ public final class H2ExperienceStore implements ExperienceStore {
                 Files.createDirectories(parent);
             }
             try (Statement s = live().createStatement()) {
-                s.execute("BACKUP TO '" + zip.toAbsolutePath() + "'");
+                s.execute("SET EXCLUSIVE 1");
+                try {
+                    s.execute("BACKUP TO '" + zip.toAbsolutePath() + "'");
+                } finally {
+                    try {
+                        s.execute("SET EXCLUSIVE 0");
+                    } catch (SQLException release) {
+                        // The pause also ends when this connection closes; say so, and let the
+                        // backup's own outcome stand.
+                        log.warn("Could not release the backup pause ({}); it ends when this"
+                            + " connection closes", release.getMessage());
+                    }
+                }
             }
         } catch (SQLException | IOException e) {
             throw new IllegalStateException(
