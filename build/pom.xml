@@ -10,7 +10,7 @@
 
     <groupId>org.jawata</groupId>
     <artifactId>org.jawata.build</artifactId>
-    <version>4.4.8</version>
+    <version>4.4.9</version>
     <packaging>pom</packaging>
 
     <modules>
