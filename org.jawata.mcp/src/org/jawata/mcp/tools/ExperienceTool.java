@@ -1214,6 +1214,8 @@ public final class ExperienceTool implements Tool {
         // package in this list describes it again — so the honest repair is the one three lines
         // down, whose comment states the rule this clause was breaking: a capped figure sold as
         // a total is the defect this file already refuses.
+        // ARCH-C22-7 (open, Sprint 20): this takes the newest rows first and the workspace rule
+        // filters after, so another workspace's rows can crowd this one's out of the window.
         java.util.List<org.jawata.mcp.knowledge.StoredEntry> areaRows =
             store.listEntries("area", null, null, null, DESCRIBING_ROW_CAP);
         java.util.Set<String> described = new java.util.TreeSet<>();
@@ -1231,6 +1233,7 @@ public final class ExperienceTool implements Tool {
                 + " describe(action=next), whose `areas` block is answered per package in scope.");
         }
 
+        // ARCH-C22-7 (open, Sprint 20): same window-before-filter limit as the areas above.
         List<org.jawata.mcp.knowledge.StoredEntry> jobs =
             store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP);
         java.util.Map<String, Integer> takenPerType = new java.util.HashMap<>();

@@ -203,6 +203,22 @@ class TheDescribePathIsThisWorkspacesTest {
     }
 
     @Test
+    void aWriterWithNoIdentityMeetsTheSeveralDescriptionsRefusalAfterTwoWorkspacesDescribedOneMember() {
+        assertTrue(recordJob(MEMBER, THEIR_JOB).isSuccess(), "fixture job refused");
+        store.setProvenance("orb-strategy", null);
+        assertTrue(recordJob(MEMBER, MY_JOB).isSuccess(), "this workspace's description");
+        assertEquals(2, allJobsFor(MEMBER).size(), "PROOF OF LIFE: two workspaces' descriptions stand");
+
+        store.setProvenance(null, null);
+        ToolResponse blind = recordJob(MEMBER, "A third wording from a writer that cannot tell the two apart.");
+
+        assertFalse(blind.isSuccess(),
+            "stated in anchoredHere's javadoc (2): with no identity both rows are visible, so the write"
+                + " is refused as ambiguous rather than overwriting one of them");
+        assertEquals(2, allJobsFor(MEMBER).size(), "and nothing was changed");
+    }
+
+    @Test
     void aStoreWithNoIdentityStillSeesEverything() {
         assertTrue(recordJob(MEMBER, THEIR_JOB).isSuccess(), "fixture job refused");
         store.setProvenance(null, null);
