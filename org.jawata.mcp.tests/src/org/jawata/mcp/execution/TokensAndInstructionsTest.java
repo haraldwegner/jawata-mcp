@@ -125,7 +125,7 @@ class TokensAndInstructionsTest {
     @Test
     @DisplayName("the driver carries a run's tokens and its calls' arguments into the outcome")
     void theOutcomeCarriesTokensAndCalls() throws Exception {
-        assumeTrue(!HostOS.current().isWindows(), "the fixture is a POSIX shell script");
+        assumeTrue(!HostOS.current().isWindows(), "the brain fixture is a POSIX shell script");
         Path dir = Files.createTempDirectory("jawata-tokens-");
         try {
             Path file = dir.resolve("brain.sh");

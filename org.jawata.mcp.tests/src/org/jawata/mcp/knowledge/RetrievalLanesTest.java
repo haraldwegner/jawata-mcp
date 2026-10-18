@@ -83,6 +83,12 @@ class RetrievalLanesTest {
 
     @Test
     void aLessonRankedBehindTheCodeRowsStillArrives() {
+        // The lesson carries half the cue, so the keyword gate never admits it: only the meaning scan
+        // can rank it into the answer. Without the model there is nothing to ask, and a skip says so
+        // where a failure would be the suite blaming the product for the missing model.
+        org.junit.jupiter.api.Assumptions.assumeTrue(EmbeddingService.shared().available(),
+            "no embedder — this lesson shares half the cue's words, so only the meaning scan can"
+                + " rank it, and this did NOT run: " + EmbeddingService.shared().unavailableReason());
         Map<String, Object> answer = recall("symptom", CUE, "experience");
 
         assertTrue(textOf(answer).contains(LESSON_SUMMARY),
