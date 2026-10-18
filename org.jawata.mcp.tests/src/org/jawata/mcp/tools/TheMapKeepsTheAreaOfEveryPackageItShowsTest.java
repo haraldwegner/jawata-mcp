@@ -152,6 +152,46 @@ class TheMapKeepsTheAreaOfEveryPackageItShowsTest {
             "an area the ranking already chose is not listed a second time: " + cs);
     }
 
+    /**
+     * THE BOUND: one area per distinct shown package, so eight shown members in eight packages give
+     * eight added areas and sixteen rows. Ten packages each hold one member and one area, so the two
+     * packages whose member is not on the shortlist must not add theirs, and every area that is
+     * listed belongs to a package a listed member stands in.
+     */
+    @Test
+    void theBoundIsOneAreaPerShownPackageSoAtMostSixteenRows() {
+        String[] texts = {
+            "Marks the breaker as having just seen an error.",
+            "Answers how many units one screen pixel stands for.",
+            "Hands out every message that arrived since the last ask.",
+            "Moves the simulated time forward by a named amount.",
+            "Chooses which handler answers a request from its path.",
+            "Drops the entry that has gone longest without a read.",
+            "Turns a source file into a tree the tool can walk.",
+            "Pushes everything buffered out to disk first.",
+            "Ends a session whose last activity is too old.",
+            "Waits longer before each attempt on a struggling server."};
+        for (int i = 0; i < texts.length; i++) {
+            job("com.pkg" + i + ".Thing#act", texts[i]);
+            area("com.pkg" + i, "What package number " + i + " is for, in its own words.");
+        }
+
+        List<Map<String, Object>> cs = candidates(retrieval.nominate(
+            QUESTION, LaneScope.of(KnowledgeLane.CODE), 15_000L));
+
+        assertEquals(ExperienceRetrieval.MAX_CANDIDATES, countOfType(cs, "job"), "the eight ranked");
+        assertEquals(ExperienceRetrieval.MAX_CANDIDATES, countOfType(cs, "area"),
+            "one area per shown package, eight packages: " + cs);
+        List<String> shownPackages = cs.stream().filter(c -> "job".equals(c.get("type")))
+            .map(c -> String.valueOf(c.get("symbol")).replaceAll("\\.Thing#act$", "")).toList();
+        for (Map<String, Object> area : cs.stream().filter(c -> "area".equals(c.get("type"))).toList()) {
+            String text = String.valueOf(area.get("principle"));
+            String number = text.replaceAll("\\D+", "");
+            assertTrue(shownPackages.contains("com.pkg" + number),
+                "every listed area belongs to a package a listed member stands in: " + text);
+        }
+    }
+
     @Test
     void aPackageWithNoAreaAddsNothingAndFailsNothing() {
         theMembers();

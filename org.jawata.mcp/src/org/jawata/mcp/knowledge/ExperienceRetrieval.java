@@ -1237,7 +1237,12 @@ public final class ExperienceRetrieval {
           // REL44-34 — the map owes "the ground before the detail". An area's words share few
           // with a task, so with the embedder off the ranking left the area to row-id order; the
           // area of every package the shortlist shows a member of is listed too, which adds no
-          // score bar and no area for a package nothing of which is shown.
+          // score bar and no area for a package nothing of which is shown. THE BOUND: at most one
+          // area per distinct shown package, so the code lane answers up to 2 * MAX_CANDIDATES (16)
+          // rows, never more. The nomination has no "asked package" (it carries only a question);
+          // the packages of the members it shows are the nearest reading of the requirement.
+          // The CODE guard is defence in depth: area rows are code-lane rows, so no other lane's
+          // ranked list holds one and the guard cannot be shown to bite from outside.
           java.util.Set<String> listed = new java.util.HashSet<>();
           for (StoredEntry e : shortlist) {
               listed.add(e.id());

@@ -97,6 +97,48 @@ class OccasionsTheEngineOwnsTest {
         }
     }
 
+    /**
+     * THE CONTROL that makes the case above discriminate: a nomination naming neither lanes nor an
+     * occasion is refused, so an `occasion` the engine ignored could not answer the same lanes.
+     */
+    @Test
+    void aCallNamingNeitherLanesNorAnOccasionIsRefused() {
+        assertFalse(tool.execute(nominate()).isSuccess(),
+            "no default scope exists, so the occasion form is the only thing that can have answered");
+    }
+
+    @Test
+    void theOccasionNameIsReadWithoutRegardForCaseOrSpacing() {
+        ObjectNode a = nominate();
+        a.put("occasion", "  Design_Question ");
+
+        assertEquals("experience,patterns", laneOf(tool.execute(a)),
+            "the name is stripped and lower-cased before it is looked up");
+    }
+
+    @Test
+    void aBlankOccasionIsNoOccasionAndTheLaneFormStillAnswers() {
+        ObjectNode a = nominate();
+        a.put("occasion", "   ");
+        a.put("lane", "experience");
+
+        assertEquals("experience", laneOf(tool.execute(a)),
+            "a blank occasion says nothing, so the lane the call named is the one that counts");
+    }
+
+    @Test
+    void recallTakesAnOccasionToo() {
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "recall");
+        a.put("symptom", "a retry that gives up is reported twice");
+        a.put("occasion", "typed_message");
+        ToolResponse byOccasion = tool.execute(a);
+        assertTrue(byOccasion.isSuccess(), "got " + byOccasion.getError());
+
+        a.put("occasion", "on_a_whim");
+        assertFalse(tool.execute(a).isSuccess(), "and an unknown occasion is refused there as well");
+    }
+
     @Test
     void anOccasionBesideALaneListIsRefusedBecauseTheCallSaidTwoThings() {
         ObjectNode both = nominate();
