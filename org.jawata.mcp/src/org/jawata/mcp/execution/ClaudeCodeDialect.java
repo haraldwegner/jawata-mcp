@@ -263,12 +263,12 @@ public final class ClaudeCodeDialect implements BrainDialect {
     @Override
     public WriteContainment writeContainment() {
         if (self != null) {
-            return WriteContainment.mechanism(builtIns.isEmpty()
+            return WriteContainment.mechanism((builtIns.isEmpty()
                 ? "--tools \"\": the CLI's OWN editors (Edit, Write,"
                     + " NotebookEdit) are not offered to the brain, so there is nothing to refuse."
                 : "--tools \"" + String.join(",", builtIns) + "\": the CLI's own tools offered are"
                     + " the read-only ones named, so its OWN editors (Edit, Write, NotebookEdit) and"
-                    + " Bash are not offered and there is nothing to refuse."
+                    + " Bash are not offered and there is nothing to refuse.")
                 + " The resident's own tools stay attached and some of them change code; those are"
                 + " governed by the hirer's tool list and the record's code-change count, not by"
                 + " this bound");

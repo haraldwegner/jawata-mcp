@@ -570,9 +570,15 @@ class SeatHireTest {
             () -> assertTrue(reading.contains("Bash, Edit, Write, Agent are not"), "and what is still absent: " + reading),
             () -> assertTrue(none.contains("--tools \"\""), "the default is unchanged: " + none),
             () -> assertTrue(new ClaudeCodeDialect("claude", 12, null, true, self, List.of(),
-                    ClaudeCodeDialect.READ_ONLY_BUILT_INS).writeContainment().toString().contains("Read,Glob,Grep")
-                    || new ClaudeCodeDialect("claude", 12, null, true, self, List.of(),
-                    ClaudeCodeDialect.READ_ONLY_BUILT_INS).writeContainment().report().contains("Read,Glob,Grep"),
-                "and so is the write containment's account"));
+                    ClaudeCodeDialect.READ_ONLY_BUILT_INS).writeContainment().enforcedBy().contains("Read,Glob,Grep"),
+                "and so is the write containment's account"),
+            // The sentence both accounts share, after the part that differs: it once bound to only
+            // one branch of the choice and the default report lost it.
+            () -> assertTrue(new ClaudeCodeDialect("claude", 12, null, true, self, List.of(),
+                    ClaudeCodeDialect.READ_ONLY_BUILT_INS).writeContainment().enforcedBy()
+                    .contains("resident's own tools stay attached"), "the reading account keeps it"),
+            () -> assertTrue(new ClaudeCodeDialect("claude", 12, null, true, self, List.of())
+                    .writeContainment().enforcedBy().contains("resident's own tools stay attached"),
+                "and so does the default account"));
     }
 }
