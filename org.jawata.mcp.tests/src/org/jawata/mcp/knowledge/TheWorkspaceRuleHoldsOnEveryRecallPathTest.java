@@ -146,6 +146,39 @@ class TheWorkspaceRuleHoldsOnEveryRecallPathTest {
                 + " or an entry: " + answer);
     }
 
+    /**
+     * The hook asks several cues in one call. The count of withheld rows must be every cue's, not
+     * the first one's: here the own symbol is asked FIRST and withholds nothing, the foreign one
+     * second.
+     */
+    @Test
+    void severalCuesReportEveryCuesWithheldRows() {
+        ObjectNode cue = json.createObjectNode();
+        cue.putArray("symbols").add(MINE).add(THEIRS);
+        Map<String, Object> answer = recall(cue, "code");
+        assertTrue(answer.toString().contains(MY_TEXT), "PROOF OF LIFE: the own cue answered: " + answer);
+        assertFalse(answer.toString().contains(THEIR_TEXT), "the foreign row stays out: " + answer);
+        assertEquals(1, answer.get("foreign_workspace_withheld"),
+            "the second cue held a row back and the merged answer must say so: " + answer);
+    }
+
+    @Test
+    void theForeignAreaIsReachableWhenTheStoreHasNoIdentity() {
+        String theirArea = "The tool surface where every registry call is checked and published.";
+        store.setProvenance("jawata", null);
+        area("org.jawata.mcp.tools", theirArea);
+        store.setProvenance("orb-strategy", null);
+        area("pipeline", "Where a strategy's slots are claimed, worked and released.");
+
+        store.setProvenance(null, null);
+        ObjectNode cue = json.createObjectNode();
+        cue.put("package", "pipeline");
+        cue.put("symptom", "registry call checked published tool surface");
+        assertTrue(recall(cue, "code").toString().contains(theirArea),
+            "CONTROL for the analogy case: with the rule off the same cue DOES reach the foreign"
+                + " area, so its absence under an identity is the rule's doing and not the cue's");
+    }
+
     @Test
     void knowledgeAboutWorkStillTravelsBetweenWorkspaces() {
         store.setProvenance("jawata", null);

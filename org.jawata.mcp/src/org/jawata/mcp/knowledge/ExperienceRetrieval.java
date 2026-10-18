@@ -941,6 +941,7 @@ public final class ExperienceRetrieval {
         // leave another lane's best row out.
         Map<String, Integer> perLane = new LinkedHashMap<>();
         int asked = 0;
+        int withheldAcrossCues = 0;
         for (RecallQuery q : cues == null ? List.<RecallQuery>of() : cues) {
             if (q == null || q.isEmpty()) {
                 continue;
@@ -952,6 +953,9 @@ public final class ExperienceRetrieval {
             }
             if (merged == null) {
                 merged = new LinkedHashMap<>(one);
+            }
+            if (one.get("foreign_workspace_withheld") instanceof Integer held) {
+                withheldAcrossCues += held;
             }
             if (one.get("entries") instanceof List<?> list) {
                 for (Object o : list) {
@@ -986,6 +990,10 @@ public final class ExperienceRetrieval {
         merged.put("entries", entries);
         merged.put("count", entries.size());
         merged.put("cues_asked", asked);
+        if (withheldAcrossCues > 0) {
+            // Every cue's count, not the first one's: a later cue may be the one that held rows back.
+            merged.put("foreign_workspace_withheld", withheldAcrossCues);
+        }
         if (before != entries.size()) {
             // Said out loud: an entry withheld because this session already saw it is
             // NOT an entry the store lacks, and a silent drop reads as the second one.
