@@ -1120,8 +1120,7 @@ public final class ExperienceRetrieval {
      * (KnowledgeLane#answersFor), and a row that is in no lane is not keyed by workspace.
      */
     private boolean answersHere(StoredEntry e) {
-        KnowledgeLane lane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
-        return lane == null || lane.answersFor(store.provenanceWorkspaceId(), e.workspaceId());
+        return e.answersFor(store.provenanceWorkspaceId());
     }
 
     /**

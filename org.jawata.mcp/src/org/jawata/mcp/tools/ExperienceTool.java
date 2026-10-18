@@ -1217,8 +1217,9 @@ public final class ExperienceTool implements Tool {
         java.util.List<org.jawata.mcp.knowledge.StoredEntry> areaRows =
             store.listEntries("area", null, null, null, DESCRIBING_ROW_CAP);
         java.util.Set<String> described = new java.util.TreeSet<>();
+        String ownWorkspace = store.provenanceWorkspaceId();
         for (org.jawata.mcp.knowledge.StoredEntry e : areaRows) {
-            if (e.packageName() != null && !e.packageName().isBlank()) {
+            if (e.answersFor(ownWorkspace) && e.packageName() != null && !e.packageName().isBlank()) {
                 described.add(e.packageName());
             }
         }
@@ -1237,6 +1238,9 @@ public final class ExperienceTool implements Tool {
         for (org.jawata.mcp.knowledge.StoredEntry e : jobs) {
             if (sample.size() >= SAMPLE_TOTAL) {
                 break;
+            }
+            if (!e.answersFor(ownWorkspace)) {
+                continue;
             }
             String symbol = e.symbolFqn() == null ? "" : e.symbolFqn();
             int hash = symbol.indexOf('#');
@@ -2756,9 +2760,36 @@ public final class ExperienceTool implements Tool {
      * question was answered by filtering a capped, time-ordered list.</p>
      */
     private List<org.jawata.mcp.knowledge.StoredEntry> jobRowsAnchoredAt(String symbol) {
-        return store.anchoredAt("job", org.jawata.mcp.knowledge.ExperienceStore.Anchor.SYMBOL,
+        return anchoredHere("job", org.jawata.mcp.knowledge.ExperienceStore.Anchor.SYMBOL,
                 List.of(symbol))
             .getOrDefault(symbol, List.of());
+    }
+
+    /**
+     * The keyed read, restricted to rows THIS workspace may act on (ARCH-C22-6).
+     *
+     * <p>The store is shared by every workspace on the machine, and a job or an area is a
+     * description of one workspace's code. Without the restriction another workspace's job for a
+     * same-named member was reported as the job already held and the write gate, which replaces
+     * the row it finds, overwrote the wording another workspace had written. This is a WRITE
+     * path as much as a read, so it takes the strict reading: a row this workspace does not own
+     * is invisible here, never replaced, and this workspace's description is inserted beside it
+     * (see the ruling in ARCH-C22-4, part a, at ExperienceMaintenance).</p>
+     */
+    private java.util.Map<String, List<org.jawata.mcp.knowledge.StoredEntry>> anchoredHere(
+            String type, org.jawata.mcp.knowledge.ExperienceStore.Anchor anchor,
+            java.util.Collection<String> keys) {
+        String own = store.provenanceWorkspaceId();
+        java.util.Map<String, List<org.jawata.mcp.knowledge.StoredEntry>> mine =
+            new java.util.LinkedHashMap<>();
+        store.anchoredAt(type, anchor, keys).forEach((key, rows) -> {
+            List<org.jawata.mcp.knowledge.StoredEntry> ownRows =
+                rows.stream().filter(r -> r.answersFor(own)).toList();
+            if (!ownRows.isEmpty()) {
+                mine.put(key, ownRows);
+            }
+        });
+        return mine;
     }
 
     /**
@@ -2799,7 +2830,7 @@ public final class ExperienceTool implements Tool {
     private JobsHeld jobsByMember(java.util.Collection<String> members) {
         java.util.Map<String, String> byMember = new java.util.LinkedHashMap<>();
         java.util.Map<String, List<org.jawata.mcp.knowledge.StoredEntry>> rows =
-            store.anchoredAt("job", org.jawata.mcp.knowledge.ExperienceStore.Anchor.SYMBOL,
+            anchoredHere("job", org.jawata.mcp.knowledge.ExperienceStore.Anchor.SYMBOL,
                 members);
         for (String member : members) {
             if (member == null || member.isBlank()) {
@@ -3211,7 +3242,7 @@ public final class ExperienceTool implements Tool {
                 inScope.add(String.valueOf(pkg));
             }
         }
-        java.util.Set<String> describedAreas = store.anchoredAt("area",
+        java.util.Set<String> describedAreas = anchoredHere("area",
             org.jawata.mcp.knowledge.ExperienceStore.Anchor.PACKAGE, inScope).keySet();
         List<Map<String, Object>> areas = new java.util.ArrayList<>();
         for (String pkg : inScope) {

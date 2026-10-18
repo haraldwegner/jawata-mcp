@@ -102,6 +102,19 @@ public record StoredEntry(String id, String type, String symbolFqn, String packa
             && !facets().isRetired();
     }
 
+    /**
+     * Whether this row may be shown, or acted on, by a store whose own workspace identity is
+     * {@code ownWorkspaceId} (ARCH-C22-4 and -6): the row's lane decides
+     * ({@link KnowledgeLane#answersFor}), and a row that is in no lane is not keyed by workspace.
+     *
+     * <p>The ONE pairing of a row with its lane and the rule, so a retrieval path and a describe
+     * path cannot each re-derive which lane a row is in.</p>
+     */
+    public boolean answersFor(String ownWorkspaceId) {
+        KnowledgeLane lane = KnowledgeLane.of(type(), facets().provenanceKind());
+        return lane == null || lane.answersFor(ownWorkspaceId, workspaceId());
+    }
+
     /** Never null: a legacy row projects {@link Facets#NONE}. */
     public Facets facets() {
         return facets == null ? Facets.NONE : facets;
