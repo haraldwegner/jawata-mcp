@@ -1214,14 +1214,15 @@ public final class ExperienceTool implements Tool {
         // package in this list describes it again — so the honest repair is the one three lines
         // down, whose comment states the rule this clause was breaking: a capped figure sold as
         // a total is the defect this file already refuses.
-        // ARCH-C22-7 (open, Sprint 20): this takes the newest rows first and the workspace rule
-        // filters after, so another workspace's rows can crowd this one's out of the window.
+        // THIS WORKSPACE'S rows, with the workspace rule applied in the query BEFORE the window
+        // (ARCH-C22-7): filtering after the newest N were taken let another workspace's newer rows
+        // fill the window and push this one's out, so the window and the truncation notice below
+        // are about the rows that count here.
         java.util.List<org.jawata.mcp.knowledge.StoredEntry> areaRows =
-            store.listEntries("area", null, null, null, DESCRIBING_ROW_CAP);
+            store.listEntriesHere("area", DESCRIBING_ROW_CAP);
         java.util.Set<String> described = new java.util.TreeSet<>();
-        String ownWorkspace = store.provenanceWorkspaceId();
         for (org.jawata.mcp.knowledge.StoredEntry e : areaRows) {
-            if (e.answersFor(ownWorkspace) && e.packageName() != null && !e.packageName().isBlank()) {
+            if (e.packageName() != null && !e.packageName().isBlank()) {
                 described.add(e.packageName());
             }
         }
@@ -1233,17 +1234,13 @@ public final class ExperienceTool implements Tool {
                 + " describe(action=next), whose `areas` block is answered per package in scope.");
         }
 
-        // ARCH-C22-7 (open, Sprint 20): same window-before-filter limit as the areas above.
         List<org.jawata.mcp.knowledge.StoredEntry> jobs =
-            store.listEntries("job", null, null, null, DESCRIBING_ROW_CAP);
+            store.listEntriesHere("job", DESCRIBING_ROW_CAP);
         java.util.Map<String, Integer> takenPerType = new java.util.HashMap<>();
         List<Map<String, Object>> sample = new java.util.ArrayList<>();
         for (org.jawata.mcp.knowledge.StoredEntry e : jobs) {
             if (sample.size() >= SAMPLE_TOTAL) {
                 break;
-            }
-            if (!e.answersFor(ownWorkspace)) {
-                continue;
             }
             String symbol = e.symbolFqn() == null ? "" : e.symbolFqn();
             int hash = symbol.indexOf('#');
@@ -1264,10 +1261,10 @@ public final class ExperienceTool implements Tool {
         // The population the sample was drawn from — published ONLY when the read was not
         // capped, because a capped figure sold as a total is the defect this file already
         // refuses for `remaining` and for the coverage ratio.
-        // Counted over the rows that answer for THIS workspace, like the sample drawn from them:
-        // a total that included every workspace's jobs would sit beside a sample that did not.
+        // Over this workspace's rows, like the sample drawn from them, so the window is full only
+        // when THIS workspace's rows fill it.
         if (jobs.size() < DESCRIBING_ROW_CAP) {
-            out.put("acceptedRows", (int) jobs.stream().filter(j -> j.answersFor(ownWorkspace)).count());
+            out.put("acceptedRows", jobs.size());
         }
         return out;
     }

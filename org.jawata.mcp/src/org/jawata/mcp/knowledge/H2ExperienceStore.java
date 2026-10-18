@@ -2389,11 +2389,36 @@ public final class H2ExperienceStore implements ExperienceStore {
     @Override
     public List<StoredEntry> listEntries(String type, String status, String scope,
             String language, int limit) {
+        return listEntries(type, status, scope, language, null, limit);
+    }
+
+    /**
+     * ARCH-C22-7 — the workspace rule in the query, before the limit.
+     *
+     * <p>Whether the type's lane tells rows apart by workspace is {@link KnowledgeLane#filtersFor}'s
+     * answer, not this method's. When it does, the match is the SQL form of
+     * {@link KnowledgeLane#answersFor}: a row answers when its stamp EQUALS this store's identity,
+     * so an unstamped row (NULL) never matches. A test compares this with the in-memory rule row
+     * by row, so the two cannot drift apart unseen.</p>
+     */
+    @Override
+    public List<StoredEntry> listEntriesHere(String type, int limit) {
+        KnowledgeLane lane = KnowledgeLane.of(type, null);
+        String own = (lane != null && lane.filtersFor(workspaceId)) ? workspaceId : null;
+        return listEntries(type, null, null, null, own, limit);
+    }
+
+    private List<StoredEntry> listEntries(String type, String status, String scope,
+            String language, String stampedWith, int limit) {
         List<String> clauses = new ArrayList<>();
         List<Object> params = new ArrayList<>();
         if (type != null && !type.isBlank()) {
             clauses.add("type = ?");
             params.add(type);
+        }
+        if (stampedWith != null) {
+            clauses.add("workspace_id = ?");
+            params.add(stampedWith);
         }
         if (status != null && !status.isBlank()) {
             clauses.add("status = ?");

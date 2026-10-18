@@ -403,6 +403,23 @@ public interface ExperienceStore extends AutoCloseable {
      */
     List<StoredEntry> listEntries(String type, String status, String scope, String language, int limit);
 
+    /**
+     * ARCH-C22-7 — the newest {@code limit} rows of {@code type} that ANSWER FOR THIS STORE'S
+     * WORKSPACE ({@link StoredEntry#answersFor}), with the workspace rule applied BEFORE the limit.
+     *
+     * <p>{@link #listEntries} cuts the newest N and a caller filters afterwards, so on a store
+     * shared by many workspaces another workspace's newer rows fill the window and this
+     * workspace's older rows never arrive. A listing for one workspace's view must use this.</p>
+     *
+     * <p>This default filters a page and so still has the window limit; a store that can put the
+     * rule in its query overrides it ({@code H2ExperienceStore} does).</p>
+     */
+    default List<StoredEntry> listEntriesHere(String type, int limit) {
+        String own = provenanceWorkspaceId();
+        return listEntries(type, null, null, null, limit).stream()
+            .filter(e -> e.answersFor(own)).toList();
+    }
+
     /** Which column an anchor is matched against by {@link #anchoredAt} — EXACTLY, never by prefix. */
     enum Anchor {
         /** {@code symbol_fqn} — a member or a type. */

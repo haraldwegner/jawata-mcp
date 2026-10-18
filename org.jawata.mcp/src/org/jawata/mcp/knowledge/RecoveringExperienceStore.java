@@ -436,6 +436,11 @@ public final class RecoveringExperienceStore implements ExperienceStore {
     }
 
     @Override
+    public List<StoredEntry> listEntriesHere(String type, int limit) {
+        return delegate.listEntriesHere(type, limit);
+    }
+
+    @Override
     public Map<String, List<StoredEntry>> anchoredAt(String type, Anchor anchor,
             java.util.Collection<String> anchors) {
         return delegate.anchoredAt(type, anchor, anchors);
