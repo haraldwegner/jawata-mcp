@@ -68,10 +68,15 @@ import java.util.Optional;
  *     {@link HiredRun#issue(SeatHire, HireSite, String, java.util.List,
  *     HiredRun.GateRunner, java.util.List)} enforces it, whichever caller — the hire tool, a
  *     scheduler — reaches it with a seat.
+ * @param writesStore the seat's own word, {@code writes_store: true}, that its job is to read and
+ *     write the knowledge store through its tool. It is hired outside plan mode, which refuses the
+ *     {@code experience} tool wholesale, and keeps every code-changing tool hidden and every
+ *     built-in tool of the CLI unoffered. Not the same as {@code changes_code}, and not combinable
+ *     with it.
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
                        HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script,
-                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities) {
+                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore) {
 
     /** The brains this product has a dialect for. A seat may name no other. */
     public enum Brain {
@@ -192,6 +197,23 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
                 + " CLI's own file tools as well would open the editors the hire keeps closed");
         }
 
+        // A seat whose whole job is to read and write the knowledge store through its own tool. Plan
+        // mode refuses every `experience` call, reads included (measured 2026-10-19: a real rottenmeier
+        // hire could read none of his turns and wrote no rule), and it bounds nothing else — the
+        // bound on the CLI's own file tools is that none are offered. So this seat is hired outside
+        // plan mode, with every code-changing tool still hidden and no built-in tool offered.
+        boolean writesStore = Frontmatter.readSwitch("writes_store", front.get("writes_store"), false);
+        if (writesStore && brain != Brain.CLAUDE_CODE && brain != Brain.CURSOR) {
+            throw new IllegalArgumentException("seat declares writes_store: true on brain '"
+                + brain.spellings.get(0) + "', whose dialect has no mode outside plan mode to select, so"
+                + " the declaration would be IGNORED. Only claude-code and cursor carry it");
+        }
+        if (writesStore && changesCode) {
+            throw new IllegalArgumentException("seat declares both writes_store and changes_code: a seat"
+                + " that changes code through the engine already writes the store, so the second"
+                + " declaration says nothing and hides which of the two the seat means");
+        }
+
         return new SeatHire(
             front.getOrDefault("name", ""),
             brain,
@@ -215,7 +237,8 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             // The activity labels this seat carries beyond its own name (D45): a rule anchored to
             // one of them binds this seat. Declared here, once, so a label is asked for by a file
             // a person can read rather than by code that has to be searched.
-            Frontmatter.list(front.get("activities")));
+            Frontmatter.list(front.get("activities")),
+            writesStore);
     }
 
     /**
@@ -273,9 +296,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
      */
     public BrainDialect dialect(SelfEndpoint self, List<String> hiddenTools) {
         return switch (brain) {
-            case CLAUDE_CODE -> new ClaudeCodeDialect("claude", maxTurns(), model, !changesCode, self,
+            case CLAUDE_CODE -> new ClaudeCodeDialect("claude", maxTurns(), model, !(changesCode || writesStore), self,
                 hiddenTools, readsFiles ? ClaudeCodeDialect.READ_ONLY_BUILT_INS : List.of());
-            case CURSOR -> new CursorDialect("cursor-agent", !changesCode, model);
+            case CURSOR -> new CursorDialect("cursor-agent", !(changesCode || writesStore), model);
             // Neither of these takes a model from this product: copilot ROUTES its own (its
             // auto_mode_resolved event reports which it chose and why), and codex's is set in its
             // config, out of band. Passing one would be a flag invented rather than measured.
@@ -347,5 +370,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles) {
         this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, List.of());
+    }
+
+    public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities) {
+        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, activities, false);
     }
 }

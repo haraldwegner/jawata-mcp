@@ -480,6 +480,33 @@ class SeatHireTest {
                 "a switch that grants writes is read strictly, not guessed"));
     }
 
+    @Test
+    @DisplayName("S24 R4: a seat that writes only the store is hired outside plan mode, which blocks the experience tool wholesale, and keeps no code-changing tool and no built-in one")
+    void aSeatThatWritesOnlyTheStoreIsNotHiredInPlanModeAndStillChangesNoCode() {
+        String governess = "---\nname: rottenmeier\nwrites_store: true\ntools: [experience, rename_symbol]\n---\n";
+        List<String> engineChanges = List.of("rename_symbol", "extract");
+        assertAll(
+            () -> assertEquals("manual", permissionModeOf(governess),
+                "measured 2026-10-19: in plan mode every experience call was refused, reads included, "
+                    + "so the seat could read none of his turns and write no rule"),
+            () -> assertTrue(SeatHire.read(governess).writesStore()),
+            () -> assertFalse(SeatHire.read(governess).changesCode(),
+                "writing the store is not changing code, and the seat's code-change score stays zero"),
+            () -> assertEquals(List.of("extract", "rename_symbol"), SeatHire.read(governess).toolsToHide(engineChanges),
+                "every code-changing tool is still taken away, the one the seat names included"),
+            () -> assertEquals("", builtInsOf(governess), "and no built-in tool of the CLI's own is offered"),
+            () -> assertEquals("plan", permissionModeOf("---\nname: pm\nwrites_store: false\n---\n"),
+                "THE CONTROL: without the switch the seat is still hired in plan mode"),
+            () -> assertThrows(IllegalArgumentException.class,
+                () -> SeatHire.read("---\nname: s\nwrites_store: yes\n---\n"), "read strictly, not guessed"),
+            () -> assertThrows(IllegalArgumentException.class,
+                () -> SeatHire.read("---\nname: s\nbrain: copilot\nwrites_store: true\n---\n"),
+                "a brain whose dialect has no such mode would ignore it"),
+            () -> assertThrows(IllegalArgumentException.class,
+                () -> SeatHire.read("---\nname: s\nchanges_code: true\nwrites_store: true\n---\n"),
+                "a seat that changes code through the engine already writes the store; declaring both says nothing"));
+    }
+
     /** The value after {@code --tools} in the argv a claude seat's hire starts with, given an endpoint. */
     private static String builtInsOf(String seatMarkdown) {
         List<String> argv = SeatHire.read(seatMarkdown)
