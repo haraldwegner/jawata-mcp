@@ -2403,6 +2403,7 @@ public final class H2ExperienceStore implements ExperienceStore {
      */
     @Override
     public List<StoredEntry> listEntriesHere(String type, int limit) {
+        ExperienceStore.requireType(type);
         KnowledgeLane lane = KnowledgeLane.of(type, null);
         String own = (lane != null && lane.filtersFor(workspaceId)) ? workspaceId : null;
         return listEntries(type, null, null, null, own, limit);

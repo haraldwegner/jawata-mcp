@@ -411,13 +411,29 @@ public interface ExperienceStore extends AutoCloseable {
      * shared by many workspaces another workspace's newer rows fill the window and this
      * workspace's older rows never arrive. A listing for one workspace's view must use this.</p>
      *
-     * <p>This default filters a page and so still has the window limit; a store that can put the
-     * rule in its query overrides it ({@code H2ExperienceStore} does).</p>
+     * <p>This default filters a page and so STILL HAS THE WINDOW LIMIT: another workspace's newer
+     * rows can fill the page, and a caller that infers "the window was full" from the size of what
+     * it gets back (the described-areas truncation notice, the job count) infers it wrongly, because
+     * the filter has already shortened the list. A store that can put the rule in its query MUST
+     * override it ({@code H2ExperienceStore} does); the default is the correct-but-capped fallback
+     * for a double or a store with no workspace column.</p>
+     *
+     * @param type the row type, exactly as stored; a null or blank type is refused, because with no
+     *     type there is no lane and so no rule to apply
      */
     default List<StoredEntry> listEntriesHere(String type, int limit) {
+        requireType(type);
         String own = provenanceWorkspaceId();
         return listEntries(type, null, null, null, limit).stream()
             .filter(e -> e.answersFor(own)).toList();
+    }
+
+    /** The one refusal of a typeless workspace listing, shared by every implementation. */
+    static void requireType(String type) {
+        if (type == null || type.isBlank()) {
+            throw new IllegalArgumentException(
+                "a workspace listing needs a row type: with no type there is no lane to ask the rule of");
+        }
     }
 
     /** Which column an anchor is matched against by {@link #anchoredAt} — EXACTLY, never by prefix. */

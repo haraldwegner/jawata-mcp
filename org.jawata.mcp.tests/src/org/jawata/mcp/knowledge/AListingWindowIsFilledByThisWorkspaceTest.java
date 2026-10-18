@@ -88,6 +88,17 @@ class AListingWindowIsFilledByThisWorkspaceTest {
     }
 
     @Test
+    void aBlankIdentityIsNoIdentityAndListsEveryRow() throws InterruptedException {
+        store.setProvenance("jawata", null);
+        job("org.jawata.A#one", "A foreign job.");
+        store.setProvenance("  ", null);
+        job("pipeline.B#two", "A job written under a blank identity.");
+
+        assertEquals(2, store.listEntriesHere("job", 10).size(),
+            "a blank identity is no identity, as KnowledgeLane#filtersFor says");
+    }
+
+    @Test
     void anUnstampedRowIsLeftOutOnceThereIsAnIdentity() throws InterruptedException {
         store.setProvenance(null, null);
         job("legacy.Unknown#thing", "Written before rows were stamped.");
