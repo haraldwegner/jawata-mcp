@@ -63,12 +63,12 @@ public final class StoreCorpus {
          * @param workspaceId the identity of this store's workspace, or null/blank when it has none
          */
         public List<StoredEntry> liveFor(String workspaceId) {
-            if (lane != KnowledgeLane.CODE || workspaceId == null || workspaceId.isBlank()) {
+            if (!lane.filtersFor(workspaceId)) {
                 return live;
             }
             List<StoredEntry> mine = new ArrayList<>(live.size());
             for (StoredEntry e : live) {
-                if (workspaceId.equals(e.workspaceId())) {
+                if (lane.answersFor(workspaceId, e.workspaceId())) {
                     mine.add(e);
                 }
             }

@@ -104,6 +104,34 @@ public enum KnowledgeLane {
     }
 
     /**
+     * Whether this lane's rows are told apart by workspace for a store whose own identity is
+     * {@code ownWorkspaceId} — the ONE place the workspace rule is written (D8d, ARCH-C22-4).
+     *
+     * <p>THE CODE LANE IS KEYED BY WORKSPACE. The store is shared by every workspace on the machine
+     * and each code row is stamped with the one that wrote it, so a store WITH an identity answers
+     * only with rows stamped with it. A store WITHOUT an identity (null or blank: tests, a
+     * standalone resident) sees everything. Every other lane is knowledge ABOUT work and travels
+     * between workspaces by design.</p>
+     *
+     * <p>This is the question "does this row answer here?". It is not the question the maintenance
+     * sweep asks, "may this resident judge this row's anchor?", which stays stricter on purpose
+     * (every lane, and a blank identity judges nothing) because that one writes and this one
+     * reads; see ExperienceMaintenance.</p>
+     */
+    public boolean filtersFor(String ownWorkspaceId) {
+        return this == CODE && ownWorkspaceId != null && !ownWorkspaceId.isBlank();
+    }
+
+    /**
+     * Whether a row of this lane, stamped with {@code rowWorkspaceId}, answers for the workspace
+     * {@code ownWorkspaceId}. A row stamped with none counts as foreign once the lane filters,
+     * because nothing says it belongs here.
+     */
+    public boolean answersFor(String ownWorkspaceId, String rowWorkspaceId) {
+        return !filtersFor(ownWorkspaceId) || ownWorkspaceId.equals(rowWorkspaceId);
+    }
+
+    /**
      * Types whose rows are DOMAIN — corrected when wrong, never superseded by an outcome.
      *
      * <p>The set is the one {@code ExperienceRetrieval} already used to decide what the

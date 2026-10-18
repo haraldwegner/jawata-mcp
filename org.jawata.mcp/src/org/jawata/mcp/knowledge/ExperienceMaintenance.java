@@ -820,6 +820,12 @@ public final class ExperienceMaintenance {
             // entries (2026-07-08). Unstamped entries count as foreign too when the
             // store has an identity; a store WITHOUT identity (tests, standalone)
             // keeps the judge-everything semantics.
+            //
+            // RULED (ARCH-C22-4): this is NOT KnowledgeLane#answersFor and must not be merged
+            // with it. That rule asks "does this row answer here?" — a read, code lane only, a
+            // blank identity sees everything. This one asks "may this resident judge this row's
+            // anchor?" — a WRITE (it supersedes rows), so it covers every lane and a blank
+            // identity judges nothing: both differences err toward not mutating.
             if (ownWorkspace != null && !ownWorkspace.equals(e.workspaceId())) {
                 foreign++;
                 continue;
@@ -972,7 +978,8 @@ public final class ExperienceMaintenance {
                 }
                 // v2.5.1: backfill is workspace-scoped like refresh — anchoring a
                 // foreign workspace's entry against THIS workspace's types could
-                // mis-anchor on common simple names; absence beats a wrong pointer.
+                // mis-anchor on common simple names; absence beats a wrong pointer. A write, so
+                // stricter than KnowledgeLane#answersFor on purpose (see the refresh sweep above).
                 if (ownWorkspace != null && !ownWorkspace.equals(e.workspaceId())) {
                     continue;
                 }

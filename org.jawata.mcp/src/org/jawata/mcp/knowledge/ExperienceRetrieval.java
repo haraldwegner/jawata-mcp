@@ -264,14 +264,25 @@ public final class ExperienceRetrieval {
     /** The store-backed half of {@link #recall(RecallQuery, String)} — everything that can fail. */
     private Map<String, Object> recallFromStore(RecallQuery q, String surface,
             Map<String, Object> out, int cap) {
-        List<StoredEntry> candidates = store.query(q);
+        // ARCH-C22-4 — THE WORKSPACE RULE HOLDS ON THIS PATH TOO. The keyword query asks the store
+        // directly, so a symbol or package cue naming another product's class used to return that
+        // product's code row; the lane decides which rows answer here, as it does for a nomination.
+        String ownWorkspace = store.provenanceWorkspaceId();
+        List<StoredEntry> candidates = new ArrayList<>();
+        for (StoredEntry e : store.query(q)) {
+            KnowledgeLane rowLane = KnowledgeLane.of(e.type(), e.facets().provenanceKind());
+            if (rowLane == null || rowLane.answersFor(ownWorkspace, e.workspaceId())) {
+                candidates.add(e);
+            }
+        }
 
-        // Sprint 28g S22 — HOW MANY ROWS EACH SEARCHED LANE HELD, so "found nothing" is told
+        // Sprint 28g S22 — HOW MANY ROWS EACH SEARCHED LANE CHOSE FROM, so "found nothing" is told
         // apart from "looked at nothing": a lessons-only search over a store whose lessons are
-        // few says that it searched few, not that the store knows nothing.
+        // few says that it searched few, not that the store knows nothing. The figure means the
+        // same here as in a nomination: the rows that answer for this workspace, not the rows held.
         Map<String, Integer> scanned = new LinkedHashMap<>();
-        q.scope().byLane(lane -> StoreCorpus.of(store).lane(lane).live().size())
-            .forEach((lane, held) -> scanned.put(lane.wire(), held));
+        q.scope().byLane(lane -> StoreCorpus.of(store).lane(lane).liveFor(ownWorkspace).size())
+            .forEach((lane, chosenFrom) -> scanned.put(lane.wire(), chosenFrom));
         out.put("scanned", scanned);
 
         // Sprint 27 D2 — THE KIND SPLIT, as ROUTING rather than as a second
