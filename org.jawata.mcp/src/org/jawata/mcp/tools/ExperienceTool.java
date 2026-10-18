@@ -616,6 +616,15 @@ public final class ExperienceTool implements Tool {
         props.put("lanes", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "recall/nominate: several lanes at once, by the same names as"
                 + " lane. Each is searched and ranked on its own."));
+        java.util.List<String> occasionNames = new java.util.ArrayList<>();
+        for (org.jawata.mcp.knowledge.Occasion o : org.jawata.mcp.knowledge.Occasion.values()) {
+            occasionNames.add(o.wire());
+        }
+        props.put("occasion", Map.of("type", "string", "enum", occasionNames,
+            "description", "recall/nominate: the situation this call is made in, INSTEAD of lane /"
+                + " lanes (naming both is refused) — the engine answers which lanes that situation"
+                + " asks, so a client spells no lane. "
+                + org.jawata.mcp.knowledge.Occasion.known()));
         props.put("exceptions", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "record: exceptions / caveats."));
         props.put("key", Map.of("type", "string", "description",
@@ -3436,10 +3445,26 @@ public final class ExperienceTool implements Tool {
      * separated by commas). Neither given is REFUSED (Sprint 28g S22): the lane is chosen by the
      * caller before the search, and a call that does not choose has not said what it is asking.
      *
-     * @throws org.jawata.mcp.knowledge.LaneScope.Refused when no lane is named, or a name is not a lane
+     * <p>Or an {@code occasion} (ARCH-C22-5): the engine answers which lanes that situation asks,
+     * so a client that sends the occasion spells no lane. It excludes {@code lane}/{@code lanes}:
+     * a call that names both has said two things, and the engine will not pick one.</p>
+     *
+     * @throws org.jawata.mcp.knowledge.LaneScope.Refused when no lane is named, a name is not a
+     *     lane, an occasion is unknown, or an occasion is named beside lanes
      */
     private org.jawata.mcp.knowledge.LaneScope scopeOf(JsonNode args) {
         try {
+            String occasion = text(args, "occasion");
+            if (occasion != null && !occasion.isBlank()) {
+                String lane = text(args, "lane");
+                if (!strings(args, "lanes").isEmpty() || (lane != null && !lane.isBlank())) {
+                    throw new org.jawata.mcp.knowledge.LaneScope.Refused(
+                        "Name the occasion or the lanes, not both: an occasion IS a list of lanes,"
+                            + " and a call that gives both has said two things. "
+                            + org.jawata.mcp.knowledge.Occasion.known());
+                }
+                return org.jawata.mcp.knowledge.Occasion.named(occasion).scope();
+            }
             List<String> many = strings(args, "lanes");
             if (!many.isEmpty()) {
                 return org.jawata.mcp.knowledge.LaneScope.parse(many);

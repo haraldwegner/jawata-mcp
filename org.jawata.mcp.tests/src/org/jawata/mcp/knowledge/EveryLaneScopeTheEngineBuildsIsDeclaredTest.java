@@ -110,6 +110,9 @@ class EveryLaneScopeTheEngineBuildsIsDeclaredTest {
                 if (rel.endsWith("knowledge/LaneScope.java")) {
                     continue; // the type itself builds scopes from a caller's words, not a list of its own
                 }
+                if (rel.endsWith("knowledge/Occasion.java")) {
+                    continue; // ARCH-C22-5: the engine's own occasion table; OccasionsTheEngineOwnsTest holds its rows
+                }
                 for (Set<KnowledgeLane> list : listsIn(Files.readString(file))) {
                     sitesOf.computeIfAbsent(list, k -> new ArrayList<>()).add(rel);
                 }
