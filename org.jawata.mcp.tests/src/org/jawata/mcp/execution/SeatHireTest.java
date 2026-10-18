@@ -581,4 +581,26 @@ class SeatHireTest {
                     .writeContainment().enforcedBy().contains("resident's own tools stay attached"),
                 "and so does the default account"));
     }
+
+    @Test
+    @DisplayName("S10-13: every on/off switch in a seat file is read by the one strict reader, so a misspelling is refused for each by name")
+    void everySwitchIsReadStrictlyByTheSameReader() {
+        for (String key : List.of("enabled", "changes_code", "reads_files", "accepts_uncontained_writes")) {
+            String seat = "---\nname: x\nbrain: claude-code\n" + key + ": yes\n---\nbody";
+            IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> SeatHire.read(seat), key + ": yes is not read as either answer");
+            assertTrue(refused.getMessage().contains(key) && refused.getMessage().contains("expected true or false"),
+                "the refusal names the key: " + refused.getMessage());
+        }
+        // The defaults differ and are each stated: a seat is on unless it says off, and holds no
+        // other grant unless it says so.
+        SeatHire bare = SeatHire.read("---\nname: x\nbrain: claude-code\n---\nbody");
+        assertAll(
+            () -> assertTrue(bare.enabled(), "absent enabled reads as on"),
+            () -> assertFalse(bare.changesCode(), "absent changes_code reads as no"),
+            () -> assertFalse(bare.readsFiles(), "absent reads_files reads as no"),
+            () -> assertFalse(bare.acceptsUncontainedWrites(), "absent accepts_uncontained_writes reads as no"),
+            () -> assertTrue(SeatHire.read("---\nname: x\nbrain: claude-code\naccepts_uncontained_writes: true\n---\nb")
+                .acceptsUncontainedWrites(), "and true is true"));
+    }
 }

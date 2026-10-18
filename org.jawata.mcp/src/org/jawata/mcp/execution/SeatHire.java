@@ -1,10 +1,7 @@
 package org.jawata.mcp.execution;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -139,17 +136,6 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
     }
 
     /**
-     * Whether the seat's file says {@code accepts_uncontained_writes: true} — its own word that it
-     * may be hired on a brain whose writes are held only by an instruction to the model, or by
-     * nothing (the architect's F1). Absent means NO: the default is the refusal, and a seat that
-     * wants the other answer has to say so in the file a human reads.
-     */
-    public static boolean acceptsUncontainedWrites(String markdown) {
-        String value = frontmatter(markdown).get("accepts_uncontained_writes");
-        return value != null && "true".equalsIgnoreCase(value.trim());
-    }
-
-    /**
      * Read a seat definition's frontmatter.
      *
      * @param markdown the seat file's whole text
@@ -157,7 +143,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
      *     declares no name
      */
     public static SeatHire read(String markdown) {
-        Map<String, String> front = frontmatter(markdown);
+        Map<String, String> front = Frontmatter.frontmatter(markdown);
 
         String declared = front.get("brain");
         Brain brain = declared == null || declared.isBlank()
@@ -172,7 +158,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         // may be named (S16-12 removed the hire tool's). Both mismatches are refused: a script
         // brain with nothing to run cannot start, and a script line on another brain would be
         // IGNORED — the inert-input shape that ran the real claude when a stand-in was meant.
-        String script = emptyToNull(front.get("script"));
+        String script = Frontmatter.emptyToNull(front.get("script"));
         if (brain == Brain.SCRIPT && script == null) {
             throw new IllegalArgumentException("seat declares brain 'script' and no 'script:' line"
                 + " naming the executable to run, so there is nothing to start");
@@ -185,7 +171,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
 
         // A switch a dialect cannot carry is refused, as a script line on another brain is: the seat
         // would be told its job is to change code and meet a brain that never heard of it.
-        boolean changesCode = readSwitch("changes_code", front.get("changes_code"));
+        boolean changesCode = Frontmatter.readSwitch("changes_code", front.get("changes_code"), false);
         if (changesCode && brain != Brain.CLAUDE_CODE && brain != Brain.CURSOR) {
             throw new IllegalArgumentException("seat declares changes_code: true on brain '"
                 + brain.spellings.get(0) + "', whose dialect has no write-capable mode to select, so the"
@@ -193,7 +179,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         }
         // The same refusal for the same reason: the read-only built-ins are a claude start-up
         // choice, and a seat on another brain would be told it can read and never be offered it.
-        boolean readsFiles = readSwitch("reads_files", front.get("reads_files"));
+        boolean readsFiles = Frontmatter.readSwitch("reads_files", front.get("reads_files"), false);
         if (readsFiles && brain != Brain.CLAUDE_CODE) {
             throw new IllegalArgumentException("seat declares reads_files: true on brain '"
                 + brain.spellings.get(0) + "', whose dialect has no built-in file reader to offer, so"
@@ -208,19 +194,21 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         return new SeatHire(
             front.getOrDefault("name", ""),
             brain,
-            emptyToNull(front.get("model")),
-            list(front.get("tools")),
+            Frontmatter.emptyToNull(front.get("model")),
+            Frontmatter.list(front.get("tools")),
             new HiredBrain.Ceilings(
-                seconds(front.get("ttl_secs")).orElse(DEFAULT_WALL_CLOCK),
-                integer(front.get("max_tool_steps")).orElse(0),
+                Frontmatter.seconds(front.get("ttl_secs")).orElse(DEFAULT_WALL_CLOCK),
+                Frontmatter.integer(front.get("max_tool_steps")).orElse(0),
                 // null, not 0.0 — an undeclared budget is NO ceiling, and zero would be a ceiling
                 // of nothing that fired on the first reported cent.
-                decimal(front.get("cost_budget_usd")).orElse(null)),
-            body(markdown),
-            list(front.get("answer_gates")),
-            enabled(front.get("enabled")),
+                Frontmatter.decimal(front.get("cost_budget_usd")).orElse(null)),
+            Frontmatter.body(markdown),
+            Frontmatter.list(front.get("answer_gates")),
+            Frontmatter.readSwitch("enabled", front.get("enabled"), true),
             script,
-            acceptsUncontainedWrites(markdown),
+            // The same strict reader as every other switch: this one used to read loosely, so a
+            // value of yes was silently no. Absent means NO — the default is the refusal.
+            Frontmatter.readSwitch("accepts_uncontained_writes", front.get("accepts_uncontained_writes"), false),
             changesCode,
             readsFiles);
     }
@@ -238,51 +226,6 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             .filter(name -> !changesCode || !tools.contains(name))
             .sorted()
             .toList();
-    }
-
-    /**
-     * A seat's capability switch: {@code changes_code: true} says its job is to change code through
-     * the engine's tools; {@code reads_files: true} says it must read the project's files and is
-     * offered the read-only built-ins. Absent means no for both, and the hire gets the narrower
-     * run, because an unattended run proposes. Read STRICTLY, as {@link #enabled} is: a switch that
-     * widens what a brain holds is not guessed from a misspelling.
-     *
-     * @param key the frontmatter key, named in the refusal
-     * @param value the text after the colon, or null when the seat does not say
-     */
-    private static boolean readSwitch(String key, String value) {
-        if (value == null || value.isBlank()) {
-            return false;
-        }
-        return switch (value.strip()) {
-            case "true" -> true;
-            case "false" -> false;
-            default -> throw new IllegalArgumentException("seat declares " + key + " '" + value.strip()
-                + "': expected true or false. NOT read as either — a misspelled grant is refused"
-                + " rather than guessed");
-        };
-    }
-
-    /**
-     * The seat's on/off switch, read STRICTLY — C11-6.
-     *
-     * <p>studio writes {@code enabled: false} into a seat's file when the user switches the seat
-     * off, because the file is the one thing every reader opens; the settings sidecar was read by
-     * the deploy alone, so a switched-off seat could still be hired. Absent means on. Anything but
-     * {@code true} or {@code false} is refused, the same as studio's own parser refuses it: a
-     * switch read as on because it was misspelled would hire the seat the user turned off.</p>
-     */
-    private static boolean enabled(String value) {
-        if (value == null || value.isBlank()) {
-            return true;
-        }
-        return switch (value.strip()) {
-            case "true" -> true;
-            case "false" -> false;
-            default -> throw new IllegalArgumentException("seat declares enabled '" + value.strip()
-                + "': expected true or false. NOT read as on — a misspelled switch would hire a seat"
-                + " its owner turned off");
-        };
     }
 
     /**
@@ -361,147 +304,6 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
                 + " $0.25 ceiling was stopped correctly and still cost $2.26"
             : "cost budget $" + budget + " CANNOT FIRE on " + brain + ", which publishes no dollar"
                 + " cost — the run is still bounded by its wall clock and step ceiling");
-    }
-
-    /**
-     * The frontmatter's scalar fields.
-     *
-     * <p><b>A deliberate second implementation, and the reason is that the shared part is smaller
-     * than it looks.</b> {@code ExperienceMaintenance} also reads markdown frontmatter, and the
-     * architect seat's standing rule refuses a second implementation of a job the system already
-     * does. What those two readers share is finding the fences and splitting on the first colon —
-     * six lines. What they do NOT share is the value shapes: that one needs a YAML BLOCK list for
-     * its cues, this one needs an inline bracket list for its tools, and a common helper handing
-     * each a {@code Map<String,String>} would leave both re-parsing their own values anyway while
-     * adding a type neither owns. Extracting it would also mean editing a shipped reader in the
-     * knowledge package to serve a new feature in the execution package, for a six-line saving.</p>
-     *
-     * <p>Recorded as a declared duplicate rather than taken silently: if a THIRD reader ever wants
-     * frontmatter, that is the moment the shared type pays for itself, and this paragraph is the
-     * evidence for it.</p>
-     */
-    private static Map<String, String> frontmatter(String markdown) {
-        Map<String, String> fields = new LinkedHashMap<>();
-        if (markdown == null) {
-            return fields;
-        }
-        String[] lines = markdown.split("\n", -1);
-        if (lines.length == 0 || !lines[0].strip().equals("---")) {
-            // No frontmatter at all. An empty map rather than a throw: the CALLER decides which
-            // absent field is fatal, and only the brain and the name are.
-            return fields;
-        }
-        for (int i = 1; i < lines.length; i++) {
-            String line = lines[i].strip();
-            if (line.equals("---")) {
-                break;
-            }
-            // A seat's frontmatter carries COMMENTS — every shipped seat has a multi-line tier
-            // justification in one, and three of those lines contain a colon. Skipped so they do
-            // not become junk keys like "# /main's, and wrong here costs a whole stage rather than
-            // one finding. No schedule".
-            //
-            // WHAT THIS SKIP DOES NOT BUY, stated because the first version of this comment
-            // claimed it did: a comment CANNOT shadow a real field. `# model: x` splits at its own
-            // colon into the key "# model", which is not "model" — so without this skip the junk
-            // key is stored and the real field still wins. A mutation deleting the skip left every
-            // test green, which is how the false claim was found. The skip is kept because junk
-            // keys in a map a caller may iterate are worth not having, not because anything
-            // downstream would otherwise break.
-            if (line.startsWith("#") || line.isEmpty()) {
-                continue;
-            }
-            int colon = line.indexOf(':');
-            if (colon <= 0) {
-                continue;
-            }
-            fields.put(line.substring(0, colon).strip(), unquote(line.substring(colon + 1).strip()));
-        }
-        return fields;
-    }
-
-    /**
-     * Everything below the frontmatter's closing fence — the seat's stance. A file with no
-     * frontmatter is ALL stance; a file whose fence never closes has none, because what follows the
-     * opening fence is then frontmatter that was never finished, not rules anybody wrote.
-     */
-    private static String body(String markdown) {
-        if (markdown == null) {
-            return "";
-        }
-        String[] lines = markdown.split("\n", -1);
-        if (lines.length == 0 || !lines[0].strip().equals("---")) {
-            return markdown;
-        }
-        for (int i = 1; i < lines.length; i++) {
-            if (lines[i].strip().equals("---")) {
-                return String.join("\n", Arrays.copyOfRange(lines, i + 1, lines.length));
-            }
-        }
-        return "";
-    }
-
-    /** An inline {@code [a, b, c]} list, which is how every shipped seat writes its tools. */
-    private static List<String> list(String value) {
-        if (value == null || value.isBlank()) {
-            return List.of();
-        }
-        String inner = value.strip();
-        if (inner.startsWith("[") && inner.endsWith("]")) {
-            inner = inner.substring(1, inner.length() - 1);
-        }
-        List<String> items = new ArrayList<>();
-        for (String part : inner.split(",")) {
-            String item = unquote(part.strip());
-            if (!item.isEmpty()) {
-                items.add(item);
-            }
-        }
-        return List.copyOf(items);
-    }
-
-    private static String unquote(String value) {
-        if (value.length() >= 2
-            && ((value.startsWith("\"") && value.endsWith("\""))
-                || (value.startsWith("'") && value.endsWith("'")))) {
-            return value.substring(1, value.length() - 1);
-        }
-        return value;
-    }
-
-    private static String emptyToNull(String value) {
-        return value == null || value.isBlank() ? null : value;
-    }
-
-    /**
-     * A declared number, or ABSENT — never a substituted default.
-     *
-     * <p>A seat that writes {@code max_tool_steps: banana} has declared NO ceiling, and reading it
-     * as zero or as some default would silently bound a run by a number nobody wrote. The same
-     * reasoning the script dialect gives for a malformed cost line.</p>
-     */
-    private static Optional<Integer> integer(String value) {
-        try {
-            return value == null || value.isBlank()
-                ? Optional.empty()
-                : Optional.of(Integer.valueOf(value.strip()));
-        } catch (NumberFormatException e) {
-            return Optional.empty();
-        }
-    }
-
-    private static Optional<Double> decimal(String value) {
-        try {
-            return value == null || value.isBlank()
-                ? Optional.empty()
-                : Optional.of(Double.valueOf(value.strip()));
-        } catch (NumberFormatException e) {
-            return Optional.empty();
-        }
-    }
-
-    private static Optional<Duration> seconds(String value) {
-        return integer(value).filter(s -> s > 0).map(Duration::ofSeconds);
     }
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance) {
