@@ -184,8 +184,7 @@ public final class ExperienceTool implements Tool {
      * reason: the delegate can be replaced after a recovery and a held reference
      * would go on copying a store nobody writes to.</p>
      */
-    private final org.jawata.mcp.knowledge.StoreBackups backups =
-        new org.jawata.mcp.knowledge.StoreBackups(this::currentH2Store);
+    private final org.jawata.mcp.knowledge.StoreBackups backups;
 
     /**
      * The concrete H2 store behind whatever wrapper is installed, or null when
@@ -258,8 +257,23 @@ public final class ExperienceTool implements Tool {
     ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
             Supplier<List<java.nio.file.Path>> defaultRoots,
             ExperienceMaintenance.PointerResolver resolverOverride) {
+        this(serviceSupplier, store, defaultRoots, resolverOverride, null);
+    }
+
+    /**
+     * REL44-33: the same, with the backup policy handed in. Every production constructor reaches
+     * this one with {@code null} and gets the policy over the store's own backup; a test passes one
+     * whose copies are known to be bad, so the refusal and the override are driven through the real
+     * tool path and not only through the policy.
+     */
+    public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
+            Supplier<List<java.nio.file.Path>> defaultRoots,
+            ExperienceMaintenance.PointerResolver resolverOverride,
+            org.jawata.mcp.knowledge.StoreBackups backupsOverride) {
         this.serviceSupplier = serviceSupplier;
         this.store = store;
+        this.backups = backupsOverride != null ? backupsOverride
+            : new org.jawata.mcp.knowledge.StoreBackups(this::currentH2Store);
         this.retrieval = new ExperienceRetrieval(store, serviceSupplier);
         // Sprint 28g S14 D32 — THE SWEEP NOW ASKS WHAT THE WRITE GATE ASKS, and that is the
         // whole deliverable. It used to run on `resolvesViaJdt`, a SECOND resolver that split

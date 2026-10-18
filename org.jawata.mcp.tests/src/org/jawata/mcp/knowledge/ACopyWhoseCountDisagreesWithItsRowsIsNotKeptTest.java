@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  * with the writers paused, measured once and recorded in the plan). So these cases do not race: they
  * use ONE SAVED BAD COPY from that race, {@code test-resources/backups/count-one-high.zip} (COUNT(*)
  * says 51, 50 rows read), handed to the policy through the seam where a copy is made. That makes the
- * check, the three attempts, the deletion, the daily cap and the explicit override the same every
+ * check, the three attempts, the deletion, the hourly retry and the explicit override the same every
  * time. The pause itself rests on the measurement, not on a case here.</p>
  */
 class ACopyWhoseCountDisagreesWithItsRowsIsNotKeptTest {
@@ -31,7 +31,7 @@ class ACopyWhoseCountDisagreesWithItsRowsIsNotKeptTest {
     private static final String BAD = "/test-resources/backups/count-one-high.zip";
 
     /** The saved bad copy, written to {@code target} as if the store had just made it. */
-    private static void copyTheBadOne(Path target) {
+    static void copyTheBadOne(Path target) {
         try (InputStream in = ACopyWhoseCountDisagreesWithItsRowsIsNotKeptTest.class
                 .getResourceAsStream(BAD)) {
             assertNotNull(in, "PROOF OF LIFE: the saved bad copy is on the classpath: " + BAD);
@@ -129,7 +129,7 @@ class ACopyWhoseCountDisagreesWithItsRowsIsNotKeptTest {
     }
 
     @Test
-    void anUncleanDailyCopyIsRemovedTriedAgainAndGivenUpForTheDay(@TempDir Path dir) {
+    void anUncleanDailyCopyIsRemovedAndEveryHourlyCheckTriesAgain(@TempDir Path dir) {
         AtomicInteger copies = new AtomicInteger();
         try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
             put(store, "something worth keeping");
@@ -139,18 +139,57 @@ class ACopyWhoseCountDisagreesWithItsRowsIsNotKeptTest {
             });
             Instant start = Instant.parse("2026-10-18T06:00:00Z");
 
-            for (int hour = 0; hour < 3; hour++) {
+            for (int hour = 0; hour < 5; hour++) {
                 assertNull(backups.takeIfDue(start.plusSeconds(3600L * hour)),
                     "an unclean daily copy is not kept");
                 assertTrue(backups.list().isEmpty(), "and none stands in the rotation");
             }
-            assertEquals(3, copies.get(), "the hourly check tried again each time");
+            assertEquals(5, copies.get(),
+                "the hourly check tried again each time, with no count that stops it");
+        }
+    }
 
-            assertNull(backups.takeIfDue(start.plusSeconds(3600L * 3)));
-            assertEquals(3, copies.get(), "the fourth try the same day is not made");
+    /**
+     * A copy that is not a readable zip, or that H2 cannot open or read, is damaged, which is exactly
+     * what the check is for. Only a failure on the CHECK's side (here: the copy file is not there to
+     * be read) is unverified and keeps the copy.
+     */
+    @Test
+    void aCopyThatCannotBeOpenedIsUncleanAndAMissingFileIsUnverified(@TempDir Path dir)
+            throws Exception {
+        Path garbage = dir.resolve("garbage.zip");
+        try (java.util.zip.ZipOutputStream out = new java.util.zip.ZipOutputStream(
+                Files.newOutputStream(garbage))) {
+            out.putNextEntry(new java.util.zip.ZipEntry("experience.mv.db"));
+            out.write(new byte[8192]);
+            out.closeEntry();
+        }
+        String problem = StoreBackups.uncleanReason(garbage);
+        assertNotNull(problem, "a database file H2 cannot open is not a clean copy");
+        assertTrue(problem.contains("cannot be opened or read"), problem);
 
-            assertNull(backups.takeIfDue(start.plusSeconds(3600L * 25)));
-            assertEquals(4, copies.get(), "the next day it tries again");
+        Path notAZip = dir.resolve("not-a-zip.zip");
+        Files.writeString(notAZip, "this is not a zip file");
+        String notZip = StoreBackups.uncleanReason(notAZip);
+        assertNotNull(notZip, "a file that is not a zip is a damaged copy, not an unverified one");
+        assertTrue(notZip.contains("not a readable zip"), notZip);
+
+        assertNull(StoreBackups.uncleanReason(dir.resolve("never-written.zip")),
+            "CONTROL: a copy the check cannot even find is the check's failure, unverified and kept");
+    }
+
+    @Test
+    void theChoiceToGoOnEndsWhenTheCallEndsEvenIfTheCallThrows(@TempDir Path dir) {
+        try (H2ExperienceStore store = H2ExperienceStore.openAt(dir)) {
+            put(store, "something worth keeping");
+            StoreBackups backups = new StoreBackups(() -> store, (h2, target) -> copyTheBadOne(target));
+
+            assertThrows(IllegalArgumentException.class, () -> backups.withoutCleanCheck(() -> {
+                throw new IllegalArgumentException("the operation failed after the copy");
+            }));
+
+            assertThrows(StoreBackups.UncleanCopyException.class, () -> backups.before("wipe"),
+                "the next call on this thread is checked again");
         }
     }
 }

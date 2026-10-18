@@ -82,7 +82,8 @@ public final class StoreBackups {
 
     /**
      * REL44-33 — how many times the copy before a destructive operation is taken before the
-     * operation is refused, and how many unclean scheduled copies are tried in one day.
+     * operation is refused. The daily copy has no such count: an unclean one is deleted and the next
+     * hourly check tries again, as long as it takes.
      */
     public static final int CLEAN_ATTEMPTS = 3;
 
@@ -110,8 +111,6 @@ public final class StoreBackups {
     private final Supplier<H2ExperienceStore> store;
     private final Copier copier;
     private final ThreadLocal<Boolean> goOnWithoutCleanCopy = ThreadLocal.withInitial(() -> false);
-    private java.time.LocalDate uncleanDay;
-    private int uncleanToday;
 
     public StoreBackups(Supplier<H2ExperienceStore> store) {
         this(store, H2ExperienceStore::backupTo);
@@ -228,23 +227,37 @@ public final class StoreBackups {
      * Why a copy is not clean, or null when it is. The copy is opened on its own in a scratch folder
      * and its {@code COUNT(*)} is compared with the rows that read. A copy taken while a commit was
      * in progress used to come back one row high (REL44-33); the rows are all there, but a count that
-     * disagrees with them is what makes a copy suspect. If the check itself cannot run (no scratch
-     * space, say) it answers null and logs: a check that cannot run must not lock the user out of a
-     * copy that exists, and the copy has already been read back end to end where that applies.
+     * disagrees with them is what makes a copy suspect, and so is a copy that is not a readable zip
+     * or that H2 cannot open or read. If the check fails on ITS side (no scratch space, the copy file
+     * missing) it answers null and logs the copy as UNVERIFIED: that is the check's own failure, and
+     * it must not lock the user out of a copy that exists.
      */
     static String uncleanReason(Path zip) {
         Path scratch = null;
         try {
-            scratch = Files.createTempDirectory("jawata-copy-check");
-            try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip.toFile())) {
-                for (java.util.zip.ZipEntry entry : java.util.Collections.list(zf.entries())) {
-                    if (entry.getName().endsWith(".mv.db")) {
-                        try (java.io.InputStream in = zf.getInputStream(entry)) {
-                            Files.copy(in, scratch.resolve("experience.mv.db"));
+            // Getting the copy into a scratch folder is the CHECK's own business: if that fails the
+            // copy is unverified, not damaged, and it is kept (see above).
+            try {
+                scratch = Files.createTempDirectory("jawata-copy-check");
+                try (java.util.zip.ZipFile zf = new java.util.zip.ZipFile(zip.toFile())) {
+                    for (java.util.zip.ZipEntry entry : java.util.Collections.list(zf.entries())) {
+                        if (entry.getName().endsWith(".mv.db")) {
+                            try (java.io.InputStream in = zf.getInputStream(entry)) {
+                                Files.copy(in, scratch.resolve("experience.mv.db"));
+                            }
                         }
                     }
                 }
+            } catch (java.util.zip.ZipException | java.io.EOFException e) {
+                // The zip itself is malformed or cut short: that is the copy's fault, not the check's.
+                return "the copy is not a readable zip: " + e.getMessage();
+            } catch (IOException | RuntimeException e) {
+                log.warn("UNVERIFIED: could not unpack the copy {} to check it: {} — keeping it as"
+                    + " taken", zip, e.getMessage());
+                return null;
             }
+            // From here on a failure IS about the copy: H2 cannot open it or cannot read its rows.
+            // That is exactly a damaged copy, so it is not kept.
             org.h2.jdbcx.JdbcDataSource ds = new org.h2.jdbcx.JdbcDataSource();
             ds.setURL("jdbc:h2:file:" + scratch.resolve("experience").toAbsolutePath()
                 + ";IFEXISTS=TRUE");
@@ -263,10 +276,9 @@ public final class StoreBackups {
                 }
                 return counted == rows ? null
                     : "COUNT(*) says " + counted + " but " + rows + " rows read";
+            } catch (java.sql.SQLException e) {
+                return "the copy cannot be opened or read: " + e.getMessage().split("\n")[0];
             }
-        } catch (IOException | java.sql.SQLException | RuntimeException e) {
-            log.warn("Could not check the copy {}: {} — keeping it as taken", zip, e.getMessage());
-            return null;
         } finally {
             if (scratch != null) {
                 try (Stream<Path> walk = Files.walk(scratch)) {
@@ -301,12 +313,6 @@ public final class StoreBackups {
         if (newest != null && java.time.Duration.between(newest, now).compareTo(INTERVAL) < 0) {
             return null;
         }
-        java.time.LocalDate today = now.atZone(java.time.ZoneOffset.UTC).toLocalDate();
-        if (today.equals(uncleanDay) && uncleanToday >= CLEAN_ATTEMPTS) {
-            log.warn("The scheduled backup came out unclean {} times today — not trying again until"
-                + " tomorrow", uncleanToday);
-            return null;
-        }
         Path target = backupDir(h2).resolve(name(SCHEDULED_VERB, now));
         try {
             copier.copy(h2, target);
@@ -324,14 +330,8 @@ public final class StoreBackups {
         // Deleting it leaves no copy for today, so the next hourly check finds one due and tries again.
         String problem = uncleanReason(target);
         if (problem != null) {
-            if (!today.equals(uncleanDay)) {
-                uncleanDay = today;
-                uncleanToday = 0;
-            }
-            uncleanToday++;
-            log.warn("The scheduled backup at {} is not clean ({}) — removing it; attempt {} of {}"
-                + " today, the next check tries again", target, problem, uncleanToday,
-                CLEAN_ATTEMPTS);
+            log.warn("The scheduled backup at {} is not clean ({}) — removing it; the next hourly"
+                + " check tries again", target, problem);
             deleteQuietly(target);
             return null;
         }
