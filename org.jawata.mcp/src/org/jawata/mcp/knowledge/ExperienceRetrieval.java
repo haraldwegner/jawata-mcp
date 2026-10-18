@@ -573,8 +573,12 @@ public final class ExperienceRetrieval {
             // own and its late answer is discarded.
             task.cancel(false);
             log.warn("retrieval exceeded its {}ms budget — reporting UNAVAILABLE", budgetMillis);
+            // REL44-42: said as what was OBSERVED. A deadline cannot tell a stuck store from a slow
+            // one, and about 35 consecutive writes in an hour were called "unreachable or wedged"
+            // while the same store answered the other calls of that hour.
             return unavailable(out, "the store did not answer within " + budgetMillis
-                + "ms; it is unreachable or wedged");
+                + "ms; whether it is slow, busy or stuck is not known from here — this is not a"
+                + " verdict that it is down");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return unavailable(out, "interrupted while waiting for the store");

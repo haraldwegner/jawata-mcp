@@ -190,6 +190,30 @@ class KnowledgeUnavailableTest {
     }
 
     /**
+     * REL44-42. A read that merely ANSWERS LATE is not a store that is unreachable, and the
+     * deadline cannot tell the two apart: about 35 consecutive writes in one hour were told "the
+     * store did not answer within 200ms; it is unreachable or wedged" while the same store answered
+     * the other calls of that hour. The reason states what was OBSERVED — no answer inside the
+     * budget — and says the cause is not known, so a slow answer is not read as an outage.
+     */
+    @Test
+    void a_late_answer_is_not_reported_as_an_unreachable_store() {
+        ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(
+            new UnreadableStore(800, true), () -> null);
+
+        Map<String, Object> result = retrieval.recall(
+            new RecallQuery("com.example.Anything", null, null, null, null, LaneScope.everyLane()),
+            org.jawata.mcp.knowledge.QualityLedger.SURFACE_QUESTION_HOOK, 200);
+
+        String reason = String.valueOf(result.get("reason"));
+        assertEquals(ExperienceRetrieval.RESULT_UNAVAILABLE, result.get("result"));
+        assertFalse(reason.contains("unreachable"),
+            "no answer inside a budget is not proof the store cannot be reached: " + reason);
+        assertTrue(reason.contains("not known"),
+            "and the reason says the cause is not known: " + reason);
+    }
+
+    /**
      * THE DEADLINE IS A VALUE, NOT STATE — the structural fix, pinned.
      *
      * <p>Two earlier shapes of this test were false greens. The first asserted the

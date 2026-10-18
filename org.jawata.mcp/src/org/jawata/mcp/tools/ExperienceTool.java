@@ -1817,9 +1817,34 @@ public final class ExperienceTool implements Tool {
     private ToolResponse list(JsonNode args) {
         boolean limitWasGiven = args != null && args.has("limit") && args.get("limit").isInt();
         int limit = limitWasGiven ? args.get("limit").asInt() : 50;
-        List<org.jawata.mcp.knowledge.StoredEntry> rows = store.listEntries(
-            text(args, "type"), text(args, "status"), text(args, "scope"),
-            text(args, "language"), limit);
+        // REL44-41: a lane NAMED is a lane HONOURED. The door used to accept `lane` and read it
+        // nowhere, so a browse with lane=rules returned job rows and read as "the rules lane holds
+        // jobs". The lane of a row is derived from its type, which the store cannot filter on, so
+        // the filter runs here — over the whole listing, then the limit, so a named lane is not
+        // answered with a page already cut to rows of other lanes.
+        boolean laneNamed = !strings(args, "lanes").isEmpty() || text(args, "lane") != null
+            || text(args, "occasion") != null;
+        List<org.jawata.mcp.knowledge.StoredEntry> rows;
+        if (laneNamed) {
+            org.jawata.mcp.knowledge.LaneScope scope = scopeOf(args);
+            rows = new ArrayList<>();
+            for (org.jawata.mcp.knowledge.StoredEntry e : store.listEntries(
+                    text(args, "type"), text(args, "status"), text(args, "scope"),
+                    text(args, "language"), Integer.MAX_VALUE)) {
+                org.jawata.mcp.knowledge.KnowledgeLane own =
+                    KnowledgeLane.of(e.type(), e.facets().provenanceKind());
+                if (own != null && scope.contains(own)) {
+                    rows.add(e);
+                    if (rows.size() >= limit) {
+                        break;
+                    }
+                }
+            }
+        } else {
+            rows = store.listEntries(
+                text(args, "type"), text(args, "status"), text(args, "scope"),
+                text(args, "language"), limit);
+        }
         // A FULL PAGE IS A FLOOR. Said on both render paths, because the text form is what a
         // reading agent sees and a disclosure only the JSON form carries is no disclosure.
         String truncated = rows.size() < limit ? null

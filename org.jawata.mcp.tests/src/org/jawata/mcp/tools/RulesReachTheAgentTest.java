@@ -156,6 +156,24 @@ class RulesReachTheAgentTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void aBrowseThatNamesALaneListsOnlyThatLane() {
+        idOf(rule("keep messages short", "when reporting", "accepted", "all"));
+
+        List<Map<String, Object>> rules = (List<Map<String, Object>>) ((Map<String, Object>)
+            exec("list", a -> a.put("lane", "rules")).getData()).get("entries");
+        List<Map<String, Object>> experience = (List<Map<String, Object>>) ((Map<String, Object>)
+            exec("list", a -> a.put("lane", "experience")).getData()).get("entries");
+
+        assertFalse(rules.isEmpty(), "the rule is in the rules lane");
+        assertTrue(rules.stream().allMatch(e -> "rules".equals(e.get("lane"))),
+            "a browse naming the rules lane lists nothing from another lane: " + rules);
+        assertTrue(experience.stream().noneMatch(e -> "rules".equals(e.get("lane"))),
+            "and the experience lane holds no rule: " + experience);
+        assertFalse(experience.isEmpty(), "THE CONTROL: the lesson the rule came from is an experience row");
+    }
+
+    @Test
     void withNoLimitSetEveryBindingRuleIsInjectedAndAsetLimitCapsThem() {
         for (int i = 0; i < 5; i++) {
             idOf(rule("general rule number " + i, "when reporting " + i, "accepted", "all"));

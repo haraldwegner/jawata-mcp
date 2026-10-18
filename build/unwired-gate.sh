@@ -73,25 +73,7 @@ call() {   # call <tool> <json-args>
 # away. A gate that discards the one answer explaining its own failure makes
 # every future failure a fresh investigation.
 call load_project "{\"projectPath\":\"$ROOT\"}" > "$WORK/load.json"
-python3 - "$WORK/load.json" <<'PY'
-import json, sys
-try:
-    raw = json.load(open(sys.argv[1]))
-    payload = json.loads(raw["result"]["content"][0]["text"])
-except Exception as e:                      # a malformed reply is a failed load too
-    print("gate: RESULT=load-unreadable — could not parse the load_project reply:", e)
-    print("gate: raw:", open(sys.argv[1]).read()[:800])
-    sys.exit(2)
-if not payload.get("success"):
-    err = payload.get("error", {})
-    print("gate: RESULT=load-failed — load_project refused, so nothing below could")
-    print("gate: have swept anything. This is the CAUSE; 'no project loaded' is its symptom.")
-    print("gate:   code:    %s" % err.get("code"))
-    print("gate:   message: %s" % err.get("message"))
-    if err.get("hint"):
-        print("gate:   hint:    %s" % err.get("hint"))
-    sys.exit(2)
-PY
+python3 "$ROOT/build/unwired-gate-load-check.py" "$WORK/load.json"
 rc=$?
 [ $rc -ne 0 ] && exit $rc
 # family="quality", NOT kind="called_only_by_tests". Naming the kind would keep
