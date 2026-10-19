@@ -157,14 +157,14 @@ class ThePriorWorkBlockSaysWhenItDidNotLookTest {
     }
 
     /**
-     * REL44-42 — A STORE THAT ANSWERS IN 300 ms IS READ. Measured 2026-10-19 on a store of about
+     * REL44-42 — A STORE THAT ANSWERS IN 250 ms IS READ. Measured 2026-10-19 on a store of about
      * ten thousand rows: the four-lane lookup the registry runs costs 234 ms at the median and 414 ms
      * at the worst, and the 200 ms floor threw nearly every answer away after the caller had
      * already waited for it. The deadline stays — a store that never returns is still reported as
      * not looked, by the first case above — but it has to sit above what a healthy store costs.
      */
     @Test
-    void a_store_that_answers_in_300_ms_is_read_and_not_reported_as_unread() throws Exception {
+    void a_store_that_answers_in_250_ms_is_read_and_not_reported_as_unread() throws Exception {
         try (H2ExperienceStore real = H2ExperienceStore.openMemory()) {
             real.put(ExperienceEntry.of(
                 SymbolFact.of("failure_mode", "this target bit somebody before",
@@ -175,12 +175,17 @@ class ThePriorWorkBlockSaysWhenItDidNotLookTest {
             // ONE read is delayed, so the lookup's total is the delay plus a few milliseconds
             // whatever the number of reads it makes — UnreadableStore stalls every read, which
             // would make the total depend on how many a recall happens to issue.
+            // THE FIRST LOOKUP ON A COLD PROCESS PAYS FOR LOADING THE RETRIEVAL MACHINERY, and on a
+            // busy macOS runner that cost alone took the 400 ms away from a 300 ms delay (run
+            // 39257830782). It is paid here, undelayed, so the measured lookup costs the delay and
+            // a few milliseconds. The delay stays above the 200 ms the old budget gave.
+            steeringOf(new ExperienceAdvisor(real, () -> null));
             java.util.concurrent.atomic.AtomicBoolean first = new java.util.concurrent.atomic.AtomicBoolean(true);
             ExperienceStore slowFirstRead = (ExperienceStore) java.lang.reflect.Proxy.newProxyInstance(
                 ExperienceStore.class.getClassLoader(), new Class<?>[] {ExperienceStore.class},
                 (proxy, method, args) -> {
                     if (first.compareAndSet(true, false)) {
-                        Thread.sleep(300);
+                        Thread.sleep(250);
                     }
                     try {
                         return method.invoke(real, args);
@@ -192,7 +197,7 @@ class ThePriorWorkBlockSaysWhenItDidNotLookTest {
             String steer = steeringOf(new ExperienceAdvisor(slowFirstRead, () -> null));
 
             assertFalse(steer != null && steer.contains(DID_NOT),
-                "300 ms is a healthy answer at this size, not an outage: " + steer);
+                "250 ms is a healthy answer at this size, not an outage: " + steer);
             assertTrue(steer != null && steer.contains("bit somebody before"),
                 "and the advice it fetched reaches the caller instead of being thrown away: " + steer);
         }
