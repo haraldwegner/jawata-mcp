@@ -224,8 +224,9 @@ public final class ExperienceRetrieval {
         // reads the map AFTER this returns — then emits a successful absence during an
         // outage. That is the exact lie this whole change exists to remove, reintroduced
         // by the mechanism removing it.
+        Map<String, Object> answer;
         try {
-            return within(() -> recallFromStore(q, surface, new LinkedHashMap<>(out), cap),
+            answer = within(() -> recallFromStore(q, surface, new LinkedHashMap<>(out), cap),
                 out, budget);
         } catch (RuntimeException e) {
             // #37: the store was reached and could not answer. Everything below this
@@ -233,10 +234,18 @@ public final class ExperienceRetrieval {
             // unavailable — NOT an absence, and not a caller error. It is reported as
             // what it is, with the cause named, rather than as "nothing known".
             log.warn("recall failed for cue {} — reporting UNAVAILABLE, not absence", cueMap(q), e);
-            return unavailable(out,
+            answer = unavailable(out,
                 "the store failed while answering: " + e.getClass().getSimpleName()
                     + (e.getMessage() == null ? "" : ": " + e.getMessage()));
         }
+        // REL44-49: every way a recall ends unanswered — the deadline, a failure, a degraded
+        // store — arrives here as the same word, so this is the one place it is counted, and it is
+        // counted beside `silent` rather than as it: a store that was never read said nothing about
+        // what it holds.
+        if (RESULT_UNAVAILABLE.equals(answer.get("result"))) {
+            count(() -> quality.notConsulted(surface));
+        }
+        return answer;
     }
 
     /**

@@ -129,6 +129,19 @@ public final class QualityLedger {
     }
 
     /**
+     * A recall through {@code surface} got NO ANSWER from the store: the deadline passed, or the store
+     * failed while answering. REL44-49.
+     *
+     * <p>Not {@link #silent}: silent is a surface that read the store and found nothing to say, and
+     * counting an unanswered lookup there would read as "the store knew nothing", which nobody
+     * established. The rate of this one is what tells a rare stall from a steady failure, and it can
+     * only be read over days, so it is counted where it happens.</p>
+     */
+    public void notConsulted(String surface) {
+        bump("not_consulted." + safe(surface));
+    }
+
+    /**
      * A negative precedent was SURFACED for a (tool, target) — the steer was
      * shown and the justification-cost is now owed if it is used anyway.
      *
@@ -208,6 +221,7 @@ public final class QualityLedger {
         Map<String, Long> all = counters();
         Map<String, Object> block = new LinkedHashMap<>();
         Map<String, Object> fired = new LinkedHashMap<>();
+        Map<String, Object> notConsulted = new LinkedHashMap<>();
         Map<String, Object> gate = new LinkedHashMap<>();
         Map<String, Object> outcome = new LinkedHashMap<>();
         Map<String, Object> steer = new LinkedHashMap<>();
@@ -215,6 +229,8 @@ public final class QualityLedger {
             String k = e.getKey();
             if (k.startsWith("fired.")) {
                 fired.put(k.substring("fired.".length()), e.getValue());
+            } else if (k.startsWith("not_consulted.")) {
+                notConsulted.put(k.substring("not_consulted.".length()), e.getValue());
             } else if (k.startsWith("gate.")) {
                 gate.put(k.substring("gate.".length()), e.getValue());
             } else if (k.startsWith("outcome_after.")) {
@@ -237,6 +253,7 @@ public final class QualityLedger {
                 + " here until it is paid for.");
         }
         block.put("recalls_fired", fired);
+        block.put("recalls_not_consulted", notConsulted);
         block.put("steering", steer);
         block.put("outcome_after", outcome);
         block.put("fit_gate", gate);
