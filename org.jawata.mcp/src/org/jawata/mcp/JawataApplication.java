@@ -284,6 +284,10 @@ public class JawataApplication implements IApplication {
             // next start takes the next, so a large store converges over a few
             // restarts while staying keyword-reachable throughout.
             startEmbeddingBackfill(h2);
+            // REL44-8 (cold start): the first recall after a restart built the corpus, read the
+            // vectors and loaded the embedder while the hook waited — ~710 ms on a 10,189-row
+            // store, against a 200 ms budget. Build them here, off the serving path.
+            startRecallWarmUp();
             // Sprint 28g S13-9: the daily copy. Harald, 2026-10-14: "it should make backups
             // every day" — on that day the newest copy was a month old, because copies were
             // only ever taken before a destructive verb.
@@ -500,6 +504,20 @@ public class JawataApplication implements IApplication {
         t.setDaemon(true);
         t.setPriority(Thread.MIN_PRIORITY);
         scheduledBackupThread = t;
+        t.start();
+    }
+
+    /**
+     * Warms recall on a daemon thread. It keys on the SAME store object recall is handed
+     * ({@code experienceStore}, the recovering wrapper in production): the corpus snapshot is held
+     * per store instance, so warming the concrete store behind it would warm a cache nobody asks.
+     */
+    private void startRecallWarmUp() {
+        final org.jawata.mcp.knowledge.ExperienceStore warmed = experienceStore;
+        Thread t = new Thread(() -> org.jawata.mcp.knowledge.RecallWarmUp.run(warmed),
+            "jawata-recall-warmup");
+        t.setDaemon(true);
+        t.setPriority(Thread.MIN_PRIORITY);
         t.start();
     }
 
