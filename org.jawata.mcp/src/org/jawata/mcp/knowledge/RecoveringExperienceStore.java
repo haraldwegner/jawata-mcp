@@ -328,6 +328,12 @@ public final class RecoveringExperienceStore implements ExperienceStore {
         return inner == null ? null : System.identityHashCode(current) + "#" + inner;
     }
 
+    /** The delegate's marks; the stamp above is qualified by delegate, so a swap never mixes the two. */
+    @Override
+    public java.util.LinkedHashMap<String, String> rowMarks() {
+        return delegate.rowMarks();
+    }
+
     @Override
     public Optional<Map<String, Object>> get(String id) {
         return delegate.get(id);

@@ -78,11 +78,15 @@ public final class StoreCorpus {
 
     /** The entries as of one stamp: all of them, the live ones, and one corpus per lane. */
     public record Snapshot(String stamp, List<StoredEntry> all, List<StoredEntry> live,
-            Map<KnowledgeLane, LaneCorpus> lanes) {
+            Map<KnowledgeLane, LaneCorpus> lanes, Map<String, String> marks) {
 
         /** The corpus of one lane; an empty one when the lane holds nothing. */
         public LaneCorpus lane(KnowledgeLane lane) {
             return lanes.get(lane);
+        }
+
+        public Snapshot(String stamp, List<StoredEntry> all, List<StoredEntry> live, Map<KnowledgeLane,LaneCorpus> lanes) {
+            this(stamp, all, live, lanes, null);
         }
     }
 
@@ -98,7 +102,7 @@ public final class StoreCorpus {
     public static Snapshot of(ExperienceStore store) {
         String stamp = store.changeStamp();
         if (stamp == null) {
-            return build(store, null);
+            return build(store, null, null);
         }
         Snapshot current = SNAPSHOTS.get(store);
         if (current != null && stamp.equals(current.stamp())) {
@@ -110,14 +114,99 @@ public final class StoreCorpus {
             if (current != null && stamp.equals(current.stamp())) {
                 return current;
             }
-            Snapshot built = build(store, stamp);
+            Snapshot built = build(store, stamp, current);
             SNAPSHOTS.put(store, built);
             return built;
         }
     }
 
-    private static Snapshot build(ExperienceStore store, String stamp) {
-        List<StoredEntry> all = Collections.unmodifiableList(new ArrayList<>(store.all()));
+    /** The setting behind {@link #maxIncremental()}; unset means 200. */
+    static final String MAX_INCREMENTAL_PROPERTY = "jawata.corpus.max.incremental";
+
+    /**
+     * Above this many changed rows a refresh reads the whole store instead: one read of everything is
+     * cheaper than that many lookups, and a bulk load is exactly when the saving stops mattering.
+     * A setting, read each time, so a test can exercise the bulk case without writing 200 rows.
+     */
+    static int maxIncremental() {
+        return Integer.getInteger(MAX_INCREMENTAL_PROPERTY, 200);
+    }
+
+    /** Rows asked of the store in one lookup. */
+    private static final int FETCH_BATCH = 400;
+
+    /**
+     * The snapshot's rows, assembled from {@code previous} plus only the rows whose mark changed, or
+     * {@code null} when that cannot be done with certainty — the caller then reads every row.
+     *
+     * <p>REL44-49. The rows come out in the order the store lists them ({@code marks} is in that
+     * order), unchanged rows are the objects the previous snapshot held, and changed rows are fetched
+     * fresh, so the result is what a full read would give. Any doubt answers null: no previous
+     * marks, more than {@link #maxIncremental()} changed rows, a lookup that returned fewer rows than
+     * were asked for (the store's lookup swallows its own failure and answers an empty list, which
+     * here would silently drop rows), or a mark with no row behind it.</p>
+     */
+    private static List<StoredEntry> refreshed(ExperienceStore store, Map<String, String> marks,
+            Snapshot previous) {
+        if (previous == null || previous.marks() == null) {
+            return null;
+        }
+        List<String> changed = new ArrayList<>();
+        for (Map.Entry<String, String> mark : marks.entrySet()) {
+            if (!mark.getValue().equals(previous.marks().get(mark.getKey()))) {
+                changed.add(mark.getKey());
+                if (changed.size() > maxIncremental()) {
+                    return null;
+                }
+            }
+        }
+        Map<String, StoredEntry> fresh = new java.util.HashMap<>();
+        for (int from = 0; from < changed.size(); from += FETCH_BATCH) {
+            List<String> batch = new ArrayList<>(
+                changed.subList(from, Math.min(changed.size(), from + FETCH_BATCH)));
+            List<StoredEntry> fetched = store.byIds(batch);
+            if (fetched.size() != batch.size()) {
+                return null;
+            }
+            for (StoredEntry e : fetched) {
+                fresh.put(e.id(), e);
+            }
+        }
+        Map<String, StoredEntry> held = new java.util.HashMap<>();
+        for (StoredEntry e : previous.all()) {
+            held.put(e.id(), e);
+        }
+        List<StoredEntry> rows = new ArrayList<>(marks.size());
+        for (String id : marks.keySet()) {
+            StoredEntry row = fresh.containsKey(id) ? fresh.get(id) : held.get(id);
+            if (row == null) {
+                return null;
+            }
+            rows.add(row);
+        }
+        return rows;
+    }
+
+    /**
+     * Read every row and assemble a snapshot, reusing the word index of any lane whose rows did not
+     * change since {@code previous}.
+     *
+     * <p>REL44-49. Every write moves the stamp, so every write used to cost a full rebuild, and
+     * sampled over 10,189 rows the word indexes were a quarter of a write's own steering lookup. The
+     * rows are still all read — freshness is exactly what it was — but an index is a function of its
+     * lane's rows alone ({@link LexicalIndex#sameWords}), so only the lane that was written is
+     * indexed again.</p>
+     *
+     * @param previous the snapshot being replaced, or null when there is none
+     */
+    private static Snapshot build(ExperienceStore store, String stamp, Snapshot previous) {
+        // The marks are read AFTER the stamp the caller holds, and before any row, for the reason the
+        // stamp is: a write landing in between leaves this snapshot labelled with older marks, and the
+        // next call refreshes the rows that moved again.
+        Map<String, String> marks = store.rowMarks();
+        List<StoredEntry> read = marks == null ? null : refreshed(store, marks, previous);
+        List<StoredEntry> all = Collections.unmodifiableList(
+            read != null ? read : new ArrayList<>(store.all()));
         List<StoredEntry> live = new ArrayList<>(all.size());
         for (StoredEntry e : all) {
             if (e.isLive()) {
@@ -137,9 +226,13 @@ public final class StoreCorpus {
         for (KnowledgeLane lane : KnowledgeLane.values()) {
             List<StoredEntry> rows = Collections.unmodifiableList(
                 byLane.getOrDefault(lane, List.of()));
-            lanes.put(lane, new LaneCorpus(lane, rows, LexicalIndex.index(rows)));
+            LaneCorpus kept = previous == null ? null : previous.lane(lane);
+            LexicalIndex.Corpus words = kept != null && LexicalIndex.sameWords(kept.live(), rows)
+                ? kept.words()
+                : LexicalIndex.index(rows);
+            lanes.put(lane, new LaneCorpus(lane, rows, words));
         }
         return new Snapshot(stamp, all, Collections.unmodifiableList(live),
-            Collections.unmodifiableMap(lanes));
+            Collections.unmodifiableMap(lanes), marks);
     }
 }

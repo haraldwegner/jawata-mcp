@@ -95,6 +95,66 @@ class StoreCorpusTest {
                 + " find it by its words");
     }
 
+    /** Record one domain fact carrying {@code word} — a row of a different lane than a lesson. */
+    private String recordFact(String word) {
+        String summary = "a fact that mentions " + word + " so the domain lane has a row ["
+            + UUID.randomUUID() + "]";
+        ObjectNode a = mapper.createObjectNode();
+        a.put("kind", "record");
+        a.put("type", "domain_fact");
+        a.put("summary", summary);
+        assertTrue(tool.execute(a).isSuccess());
+        return store.all().stream().filter(e -> summary.equals(e.summary()))
+            .findFirst().orElseThrow().id();
+    }
+
+    /**
+     * REL44-49 — A WRITE TO ONE LANE DOES NOT RE-INDEX THE OTHERS.
+     *
+     * <p>Every write moves the change stamp, so the next lookup rebuilt the whole snapshot, the word
+     * index of every lane included; sampled on a store of 10,189 rows that rebuild was 43% of a
+     * write's own steering lookup, and the lookup is what misses its 400 ms budget under load. A
+     * lane's index is a pure function of that lane's rows, so a lane whose rows did not change keeps
+     * the index it had, and only the lane that was written is indexed again.</p>
+     */
+    @Test
+    void aWriteToOneLaneKeepsTheWordIndexOfTheOthers() {
+        recordFact("tungsten");
+        record("zirconium");
+        StoreCorpus.Snapshot before = StoreCorpus.of(store);
+
+        String added = record("molybdenum");
+        StoreCorpus.Snapshot after = StoreCorpus.of(store);
+
+        assertNotSame(before.lane(KnowledgeLane.EXPERIENCE).words(),
+            after.lane(KnowledgeLane.EXPERIENCE).words(),
+            "the lane that was written must be indexed again, or its new row cannot be found");
+        assertTrue(holds(after.lane(KnowledgeLane.EXPERIENCE).live(), added));
+        assertSame(before.lane(KnowledgeLane.DOMAIN).words(),
+            after.lane(KnowledgeLane.DOMAIN).words(),
+            "a lane nothing was written to keeps its word index instead of building it again");
+    }
+
+    /** A kept index must answer exactly as a freshly built one would — reuse may never change a score. */
+    @Test
+    void aKeptWordIndexScoresExactlyAsAFreshOneWould() {
+        recordFact("tungsten");
+        recordFact("tantalum");
+        StoreCorpus.of(store);
+        record("molybdenum");
+        StoreCorpus.Snapshot after = StoreCorpus.of(store);
+
+        StoreCorpus.LaneCorpus domain = after.lane(KnowledgeLane.DOMAIN);
+        LexicalIndex.Corpus fresh = LexicalIndex.index(domain.live());
+        for (String word : List.of("tungsten", "tantalum", "mentions")) {
+            LexicalIndex.Scores kept = LexicalIndex.scoredIn(word, domain.words());
+            LexicalIndex.Scores rebuilt = LexicalIndex.scoredIn(word, fresh);
+            org.junit.jupiter.api.Assertions.assertEquals(rebuilt.byId(), kept.byId(),
+                "the kept index scored '" + word + "' differently from a fresh one");
+            org.junit.jupiter.api.Assertions.assertEquals(rebuilt.ceiling(), kept.ceiling());
+        }
+    }
+
     @Test
     void aRejectedRowLeavesTheLiveCorpus() {
         record("zirconium");

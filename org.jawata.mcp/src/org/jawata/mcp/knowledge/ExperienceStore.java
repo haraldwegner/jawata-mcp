@@ -253,6 +253,19 @@ public interface ExperienceStore extends AutoCloseable {
     }
 
     /**
+     * For every entry, in the order {@link #all()} lists them, a short value that changes whenever
+     * that entry, or the symptoms it carries, change — or {@code null} when this store cannot say.
+     *
+     * <p>{@link #changeStamp()} says THAT something changed; this says WHICH rows, so the corpus can
+     * fetch just those instead of every row after each write (REL44-49: that full read was the
+     * largest part of a write's own steering lookup over 10,189 rows). {@code null} is the safe
+     * answer, and a caller that gets it reads everything.</p>
+     */
+    default java.util.LinkedHashMap<String, String> rowMarks() {
+        return null;
+    }
+
+    /**
      * Record that entry {@code id} now has a file behind it: {@code sourceRef} is the
      * {@code memory:} reference the loader would give that file and {@code sourceHash} the
      * loader's key for its content.

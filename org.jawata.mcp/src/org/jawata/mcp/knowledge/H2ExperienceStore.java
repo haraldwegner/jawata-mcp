@@ -1582,6 +1582,46 @@ public final class H2ExperienceStore implements ExperienceStore {
     }
 
     /**
+     * One mark per entry, in the order {@link #all()} reads them: the time it was last written, who
+     * it came from, and how many symptoms it carries. Every write path stamps {@code updated_at},
+     * and the other two cover the two changes that do not, so a row whose mark is unchanged is a row
+     * whose copy in memory is still current. {@code null} when the read fails.
+     *
+     * <p>Two plain statements, laid out as {@link #all()} lays out its own (rows, then symptoms
+     * counted apart), so the rows come back in the same order and the corpus assembled from these
+     * marks lists them exactly as a full read would.</p>
+     */
+    @Override
+    public java.util.LinkedHashMap<String, String> rowMarks() {
+        try {
+            return withRead("read the row marks", c -> {
+                java.util.Map<String, Long> symptoms = new java.util.HashMap<>();
+                try (Statement s = c.createStatement();
+                        ResultSet rs = s.executeQuery(
+                            "SELECT entry_id, COUNT(*) FROM experience_symptom GROUP BY entry_id")) {
+                    while (rs.next()) {
+                        symptoms.put(rs.getString(1), rs.getLong(2));
+                    }
+                }
+                java.util.LinkedHashMap<String, String> marks = new java.util.LinkedHashMap<>();
+                try (Statement s = c.createStatement();
+                        ResultSet rs = s.executeQuery(
+                            "SELECT id, updated_at, origin_client FROM experience_entry")) {
+                    while (rs.next()) {
+                        String id = rs.getString(1);
+                        marks.put(id, rs.getString(2) + "|" + rs.getString(3) + "|"
+                            + symptoms.getOrDefault(id, 0L));
+                    }
+                }
+                return marks;
+            });
+        } catch (RuntimeException e) {
+            log.warn("could not read the row marks; the corpus reads every row this time", e);
+            return null;
+        }
+    }
+
+    /**
      * Set the status — and where that status is {@code accepted}, STAMP THE REVIEW.
      *
      * <p>Sprint 28f Stage 6. The acceptance IS the review event in this product: the

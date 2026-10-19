@@ -201,6 +201,31 @@ public final class LexicalIndex {
         }
     }
 
+    /**
+     * Whether an index built over {@code before} would be identical to one built over {@code after}.
+     *
+     * <p>An index is a function of each row's id and of {@link #textOf} for it, in order, and of
+     * nothing else, so two row lists that agree on those give the same index and one can stand in
+     * for the other. A row's status, confidence or source may differ without changing a word of it;
+     * this compares only what the index reads, so a lane whose rows were merely re-read from the
+     * store keeps the index it had (REL44-49).</p>
+     */
+    public static boolean sameWords(List<StoredEntry> before, List<StoredEntry> after) {
+        if (before == after) {
+            return true;
+        }
+        if (before == null || after == null || before.size() != after.size()) {
+            return false;
+        }
+        for (int i = 0; i < before.size(); i++) {
+            if (!before.get(i).id().equals(after.get(i).id())
+                    || !textOf(before.get(i)).equals(textOf(after.get(i)))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     /** Build the {@link Corpus} for these rows; the statistics are over exactly this set. */
     public static Corpus index(List<StoredEntry> corpus) {
         int n = corpus == null ? 0 : corpus.size();
