@@ -871,12 +871,12 @@ public class ToolRegistry {
      * the connection and not a mechanism — which is why D-SIX permits it where a fifth
      * prior-work check would have been refused.</p>
      *
-     * <p><b>The budget is the floor, deliberately.</b> {@code MIN_RETRIEVAL_BUDGET_MILLIS} is the
-     * fastest answer the store allows — its clamp exists so <i>"a caller may buy a FASTER
-     * answer, never a longer wait"</i> — and a block nobody asked for must buy the fastest. The
-     * default fifteen seconds is right for a verb an agent chose to call and would be a hostage
-     * here: the vouched fact behind this clause is store reads walking past a four-second
-     * watchdog until the mandatory line was never emitted at all.</p>
+     * <p><b>The budget is short, deliberately, and it is {@link #STEERING_BUDGET_MILLIS}.</b> A
+     * block nobody asked for must not hold the caller: the default fifteen seconds is right for a
+     * verb an agent chose to call and would be a hostage here — the vouched fact behind this
+     * clause is store reads walking past a four-second watchdog until the mandatory line was
+     * never emitted at all. It was the store's FLOOR (200 ms) until REL44-42, which measured that
+     * a healthy store of ten thousand rows needs more than that; see the constant.</p>
      *
      * <p><b>It does not touch the quality ledger, unlike the two lanes below it.</b>
      * {@code adviseBefore} already counts itself to the pre-advice surface through its own
@@ -886,6 +886,22 @@ public class ToolRegistry {
      * <p>Never fails the call: the tool's own answer is the thing the caller asked for, and an
      * advisory that could not be computed must not take it down.</p>
      */
+    /**
+     * What the prior-work lookup on every response may take (REL44-42, 2026-10-19). It WAS the
+     * store's floor, 200 ms, and a measurement on a store of about ten thousand rows showed that
+     * the four-lane lookup costs 234 ms at the median and 414 ms at the worst, so the floor threw
+     * nearly every answer away after the caller had waited the full 200 ms for it. 400 ms covers
+     * the 90th percentile (276 ms) and costs a caller about 30 ms on average, since the 200 ms
+     * was being spent anyway; against a store that never returns it costs 200 ms more than
+     * before, which is the price of the answer arriving at all.
+     *
+     * <p>It is NOT the shared floor {@code MIN_RETRIEVAL_BUDGET_MILLIS}, which stays what it was:
+     * that constant is also the clamp behind "a caller may buy a faster answer, never a longer
+     * wait", and the 15-second default the incident behind this clause was about is nowhere near
+     * 400 ms.</p>
+     */
+    static final long STEERING_BUDGET_MILLIS = 400;
+
     private void priorWork(String name, JsonNode arguments, ToolResponse response) {
         if (advisor == null) {
             return;
@@ -905,7 +921,7 @@ public class ToolRegistry {
             // not FQN-shaped (a `filePath` call, which `target` reduces to a basename) yields an
             // EMPTY query and no block at all, which is the right answer rather than a broad one.
             org.jawata.mcp.knowledge.ExperienceAdvisor.PriorWork asked = advisor.priorWork(null,
-                target, org.jawata.mcp.knowledge.ExperienceRetrieval.MIN_RETRIEVAL_BUDGET_MILLIS,
+                target, STEERING_BUDGET_MILLIS,
                 org.jawata.mcp.knowledge.QualityLedger.SURFACE_CHOKE_PRIOR_WORK);
             // PAST THE DEADLINE THE RESPONSE SAYS SO. Silence here would be read as "the store
             // knows nothing about this", which is a claim nobody made — and the one thing the

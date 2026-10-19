@@ -157,6 +157,48 @@ class ThePriorWorkBlockSaysWhenItDidNotLookTest {
     }
 
     /**
+     * REL44-42 — A STORE THAT ANSWERS IN 300 ms IS READ. Measured 2026-10-19 on a store of about
+     * ten thousand rows: the four-lane lookup the registry runs costs 234 ms at the median and 414 ms
+     * at the worst, and the 200 ms floor threw nearly every answer away after the caller had
+     * already waited for it. The deadline stays — a store that never returns is still reported as
+     * not looked, by the first case above — but it has to sit above what a healthy store costs.
+     */
+    @Test
+    void a_store_that_answers_in_300_ms_is_read_and_not_reported_as_unread() throws Exception {
+        try (H2ExperienceStore real = H2ExperienceStore.openMemory()) {
+            real.put(ExperienceEntry.of(
+                SymbolFact.of("failure_mode", "this target bit somebody before",
+                    Confidence.HIGH).symbol(TARGET).build())
+                .situation("when touching this target")
+                .verdict("failed_avoid")
+                .build());
+            // ONE read is delayed, so the lookup's total is the delay plus a few milliseconds
+            // whatever the number of reads it makes — UnreadableStore stalls every read, which
+            // would make the total depend on how many a recall happens to issue.
+            java.util.concurrent.atomic.AtomicBoolean first = new java.util.concurrent.atomic.AtomicBoolean(true);
+            ExperienceStore slowFirstRead = (ExperienceStore) java.lang.reflect.Proxy.newProxyInstance(
+                ExperienceStore.class.getClassLoader(), new Class<?>[] {ExperienceStore.class},
+                (proxy, method, args) -> {
+                    if (first.compareAndSet(true, false)) {
+                        Thread.sleep(300);
+                    }
+                    try {
+                        return method.invoke(real, args);
+                    } catch (java.lang.reflect.InvocationTargetException e) {
+                        throw e.getCause();
+                    }
+                });
+
+            String steer = steeringOf(new ExperienceAdvisor(slowFirstRead, () -> null));
+
+            assertFalse(steer != null && steer.contains(DID_NOT),
+                "300 ms is a healthy answer at this size, not an outage: " + steer);
+            assertTrue(steer != null && steer.contains("bit somebody before"),
+                "and the advice it fetched reaches the caller instead of being thrown away: " + steer);
+        }
+    }
+
+    /**
      * B3 — THE BLOCK RIDES A REFUSAL, and before the C14a audit it did not.
      *
      * <p>`appendSteering` opens with `if (!success ...) return;` — correctly, because steering
