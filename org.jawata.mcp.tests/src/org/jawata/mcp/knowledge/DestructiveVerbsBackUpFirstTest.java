@@ -8,15 +8,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.ExperienceTool;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.tools.ExperienceTool;
 
 /**
  * Sprint 28f D2 — the copy is taken BY THE VERB, and this is the test that can
@@ -42,6 +44,28 @@ import org.jawata.mcp.tools.ExperienceTool;
 class DestructiveVerbsBackUpFirstTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    private Executor realWorker;
+
+    /**
+     * Runs the after-write embedding pass on the calling thread.
+     *
+     * <p>An import or a rebuild asks for the rows it wrote to be embedded in the background.
+     * On the real worker that pass outlives the verb, so it can still be writing into the
+     * {@code @TempDir} when JUnit deletes it; on Windows an open file cannot be deleted and
+     * the case failed with "Failed to delete temp directory" in about one run in several. The
+     * property these cases hold is that a copy is taken and named, not when embedding
+     * finishes, so the pass is run to completion inside the verb and no thread is left.</p>
+     */
+    @BeforeEach
+    void embedInline() {
+        realWorker = BackgroundEmbedding.useForTests(Runnable::run);
+    }
+
+    @AfterEach
+    void restoreWorker() {
+        BackgroundEmbedding.useForTests(realWorker);
+    }
 
     private static ObjectNode args(String kind) {
         ObjectNode n = JSON.createObjectNode();
