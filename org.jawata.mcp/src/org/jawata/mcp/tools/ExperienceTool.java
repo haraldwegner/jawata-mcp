@@ -474,6 +474,14 @@ public final class ExperienceTool implements Tool {
                 + " a loaded project — which members a file declares is JDT's answer, and"
                 + " a caller parsing the file itself would be guessing. Without a project"
                 + " this REFUSES rather than answering that nothing is missing."));
+        props.put("changedLines", Map.of("type", "object",
+            "description", "describe action=jobs_for, with filePaths: the lines the caller WROTE, as"
+                + " an object from a file path (spelled as in filePaths) to a list of [first, last]"
+                + " line pairs, 1-based and inclusive. Only the methods those lines fall in — their"
+                + " Javadoc included — are asked about. A file with no entry, or an empty list, is"
+                + " asked about whole, which is the default: silence is never read as 'nothing was"
+                + " written'. Lines that fall in no method ask about nothing, and the call is refused"
+                + " rather than answered with an empty list."));
         props.put("filePath", Map.of("type", "string",
             "description", "describe action=area: the source file whose package you want"
                 + " described. The package is derived through JDT rather than from the"
@@ -2762,7 +2770,7 @@ public final class ExperienceTool implements Tool {
                         unreadable.add(path + " (not in a loaded project)");
                         continue;
                     }
-                    collectMembersInto(symbols, cu);
+                    collectMembersInto(symbols, cu, changedLinesFor(args, path));
                 } catch (Exception e) {
                     // NAMED, never dropped: a file we could not read is not a file with
                     // nothing in it, and a shorter list that reads as complete is how a
@@ -2829,10 +2837,59 @@ public final class ExperienceTool implements Tool {
         return respond(args, out);
     }
 
-    private void collectMembersInto(List<String> symbols, org.eclipse.jdt.core.ICompilationUnit cu)
-            throws JavaModelException {
+    /**
+     * REL44-43 — the lines the caller wrote in one file, from {@code changedLines}: an object that
+     * maps a file path (spelled as in {@code filePaths}) to a list of {@code [first, last]} line
+     * pairs, 1-based and inclusive. Null means the caller named none for this file, and the whole
+     * file is asked about, as it always was. An EMPTY list is also null: a caller that sent a key
+     * with no ranges has not said "nothing was written", and silence must not be the failure
+     * direction of a gate.
+     */
+    private static List<int[]> changedLinesFor(JsonNode args, String path) {
+        JsonNode all = args == null ? null : args.get("changedLines");
+        JsonNode mine = all == null || !all.isObject() ? null : all.get(path);
+        if (mine == null || !mine.isArray() || mine.isEmpty()) {
+            return null;
+        }
+        List<int[]> ranges = new java.util.ArrayList<>();
+        for (JsonNode pair : mine) {
+            if (pair.isArray() && pair.size() == 2 && pair.get(0).canConvertToInt()
+                    && pair.get(1).canConvertToInt()) {
+                ranges.add(new int[] {pair.get(0).asInt(), pair.get(1).asInt()});
+            }
+        }
+        return ranges.isEmpty() ? null : ranges;
+    }
+
+    /** The 1-based line a character offset falls on. */
+    private static int lineAt(String source, int offset) {
+        int line = 1;
+        for (int i = 0; i < offset && i < source.length(); i++) {
+            if (source.charAt(i) == '\n') {
+                line++;
+            }
+        }
+        return line;
+    }
+
+    /**
+     * The methods of {@code cu} as {@code Type#method}, every one when {@code ranges} is null and
+     * otherwise only those whose source — their Javadoc included — overlaps a written line.
+     */
+    private void collectMembersInto(List<String> symbols, org.eclipse.jdt.core.ICompilationUnit cu,
+            List<int[]> ranges) throws JavaModelException {
+        String source = ranges == null ? null : cu.getSource();
         for (org.eclipse.jdt.core.IType type : cu.getAllTypes()) {
             for (org.eclipse.jdt.core.IMethod m : type.getMethods()) {
+                if (source != null) {
+                    org.eclipse.jdt.core.ISourceRange where = m.getSourceRange();
+                    int first = lineAt(source, where.getOffset());
+                    int last = lineAt(source, where.getOffset() + Math.max(0, where.getLength() - 1));
+                    boolean written = ranges.stream().anyMatch(r -> r[0] <= last && r[1] >= first);
+                    if (!written) {
+                        continue;
+                    }
+                }
                 symbols.add(type.getFullyQualifiedName('.') + "#" + m.getElementName());
             }
         }
@@ -3474,7 +3531,7 @@ public final class ExperienceTool implements Tool {
                     + " so its members could not be derived. A failure to look, not an absence.");
                 return;
             }
-            collectMembersInto(members, cu);
+            collectMembersInto(members, cu, null);
         } catch (Exception e) {
             out.put("closingOver", "not counted — " + unit + " could not be read ("
                 + e.getMessage() + "). A failure to look, not an absence.");
