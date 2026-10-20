@@ -1903,6 +1903,16 @@ public final class ExperienceTool implements Tool {
                 m.put("symbol", e.symbolFqn());
             }
             m.put("summary", e.summary());
+            // S24-3 — WHEN a row applies and, for a rule, WHO it binds. This is the screen he
+            // accepts rules on; it showed the sentence and hid both, so he judged seven rules
+            // without seeing the condition of any. A rule bound to every seat is stored as no
+            // operation, and is shown as "all" so that an absence cannot read as "binds nobody".
+            if (e.facets().situation() != null && !e.facets().situation().isBlank()) {
+                m.put("situation", e.facets().situation());
+            }
+            if (KnowledgeLane.RULE_TYPE.equals(e.type())) {
+                m.put("operation", e.operation() == null || e.operation().isBlank() ? "all" : e.operation());
+            }
             if (e.createdAt() != null) {
                 m.put("created_at", e.createdAt().toString());
             }
