@@ -1,0 +1,42 @@
+{
+  "_contract": "The same judging rule as accept-sets.json (Harald's GATE-2 decision, option A): a calibration cue PASSES when BOTH hold: (1) the winning entry is in that cue's accept_set, and (2) the designated entry is inside the nomination window (top-K, K=12). Since Sprint 28g S22 each cue is asked in the lane its answers live in, as the hooks ask, and that is the number that is asserted.",
+  "_why_this_file_exists": "2026-10-20. accept-sets.json names ids from the August 2026 store; none of its 21 right answers is among the 342 accepted rows of the store today (the store was rebuilt around lanes and engineering knowledge, and the project-state notes that answered half of the cues are no longer kept). This file keeps the original cue TEXTS that still have an answer in the current store and points them at the current rows. Cues 01, 07, 09, 10 have no current answer; 02 and 08 have only a plausible one and, by the old file's own rule (doubt resolves to exclusion), are left out; 11 and 12 are symbol cues that need described code rows of a project this store does not describe.",
+  "_approved": "Harald, 2026-10-20: 'Do' (answering: approve the reduced question set, change it, or keep the old 12). Recorded in findings-28g.tsv, row AUD-C22-9.",
+  "_corpus": "The knowledge lanes (experience, domain, patterns, rules; rejected and superseded rows left out) of the live store as exported on 2026-10-20: 500 rows, sha256 f0e05cfdc16ae5bb1678a3df52a523fbccea2b810f57f60ad0914aca362ddb20, kept out of the repository because it is personal knowledge. Point the test at it with -Djawata.embed.corpus and -Djawata.embed.corpus.sample=100000.",
+  "cues": [
+    {
+      "id": "cue-03",
+      "class": "domain-prose",
+      "cue": "a lost websocket acknowledgement leaves an order that can never be called off",
+      "designated": "6e887b10",
+      "accept_set": ["6e887b10", "5439814d"],
+      "note": "6e887b10 is the lesson whose situation is exactly a missing cancel acknowledgement; 5439814d states when a cancel counts as done.",
+      "keyword_cue_field": "symptom"
+    },
+    {
+      "id": "cue-04",
+      "class": "21c-carried",
+      "cue": "never cancel before broker confirms",
+      "designated": "5439814d",
+      "accept_set": ["5439814d"],
+      "note": "Of the seven entries the old file accepted, one is still in the store.",
+      "keyword_cue_field": "symptom"
+    },
+    {
+      "id": "cue-05",
+      "class": "domain-prose",
+      "cue": "browser window comes up empty",
+      "designated": "dba6bc90",
+      "accept_set": ["dba6bc90"],
+      "keyword_cue_field": "symptom"
+    },
+    {
+      "id": "cue-06",
+      "class": "domain-prose",
+      "cue": "the app starts but nothing paints inside the frame",
+      "designated": "dba6bc90",
+      "accept_set": ["dba6bc90"],
+      "keyword_cue_field": "symptom"
+    }
+  ]
+}
