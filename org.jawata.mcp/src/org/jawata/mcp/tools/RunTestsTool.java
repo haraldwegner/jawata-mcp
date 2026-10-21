@@ -49,6 +49,9 @@ public class RunTestsTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(RunTestsTool.class);
 
+    /** The reason a run is refused when the project it would test does not compile. */
+    static final String PROJECT_DOES_NOT_COMPILE = "PROJECT_DOES_NOT_COMPILE";
+
     /**
      * Every action {@link #executeWithService} accepts, in one place.
      *
@@ -479,7 +482,9 @@ public class RunTestsTool extends AbstractTool {
             // compile errors instead of running tests against stale bytes.
             String buildProblem = RunnerClasspath.buildAndCheck(javaProject, new NullProgressMonitor());
             if (buildProblem != null) {
-                return ToolResponse.invalidParameter("project", buildProblem);
+                // Every argument was valid; the project's own state declined (S19 dogfood: it was
+                // INVALID_PARAMETER, whose hint sends a caller to re-read the input schema).
+                return ToolResponse.preconditionNotMet(buildProblem, PROJECT_DOES_NOT_COMPILE);
             }
 
             boolean testng = "testng".equalsIgnoreCase(frameworkRaw);
@@ -1819,7 +1824,7 @@ public class RunTestsTool extends AbstractTool {
             String buildProblem = RunnerClasspath.buildAndCheck(
                 project.javaProject(), new NullProgressMonitor());
             if (buildProblem != null) {
-                return ToolResponse.invalidParameter("project", buildProblem);
+                return ToolResponse.preconditionNotMet(buildProblem, PROJECT_DOES_NOT_COMPILE);
             }
             java.util.List<String> sourceRoots = new ArrayList<>();
             org.eclipse.core.resources.IWorkspaceRoot wsRoot =
