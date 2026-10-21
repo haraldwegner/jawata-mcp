@@ -6,14 +6,15 @@
 # (studio src-tauri/src/lombok.rs), and it looks for that jar next to jawata.jar. The Tycho product
 # shipped one; the Maven-built distribution of Sprint 22d does not, and the studio then degrades to
 # "no agent" without a word. Found by the S19 dogfood, 2026-10-21: the java-design-patterns workspace
-# compiled with 3,445 errors, every one a Lombok-generated member (LOGGER from @Slf4j, getters,
-# constructors), while health_check called all 194 projects healthy. A private resident on the same
-# project: 12 errors without the agent, 0 with it.
+# compiled with 3,445 errors, and every one of those read named a Lombok-generated member (LOGGER from
+# @Slf4j, getters, constructors), while health_check called all 194 projects healthy. A private
+# resident on one of its projects: 12 errors without the agent, 0 with it.
 #
 # What it checks, through the front door (tools/call over HTTP), against a fixture it writes itself:
 #   1. dist/lombok.jar exists.
-#   2. CONTROL: a resident WITHOUT the agent reports compile errors on the fixture's Lombok members.
-#      (If it reports none, the fixture proves nothing, and the gate says so rather than passing.)
+#   2. CONTROL: a resident WITHOUT the agent reports compile errors, and they name the generated
+#      getter. (If it reports none, or errors about something else, the fixture proves nothing, and
+#      the gate says so rather than passing.)
 #   3. VARIABLE: the same resident WITH -javaagent:dist/lombok.jar reports zero.
 #
 # Usage: build/lombok-agent-probe.sh [dist-dir]
@@ -41,7 +42,7 @@ if [ ! -f "$LOMBOK" ]; then
     exit 1
 fi
 
-# The fixture: one Maven project whose only content is a @Getter and an @Slf4j use.
+# The fixture: one Maven project whose only content is a @Getter and a call to the getter it generates.
 P="$WS/project"
 mkdir -p "$P/src/main/java/com/probe"
 cat > "$P/pom.xml" <<POM
@@ -119,6 +120,8 @@ if c is None or a is None:
     print(f"COULD NOT RUN: a resident never reported its project loaded (logs in {os.environ['WS_DIR']})"); sys.exit(2)
 if c == 0:
     print("COULD NOT RUN: the control saw no error, so this fixture cannot show what the agent adds."); sys.exit(2)
+if not any("getSize()" in (m or "") for m in cm):
+    print("COULD NOT RUN: the control's errors are not about the Lombok getter, so the fixture is broken."); sys.exit(2)
 if a != 0:
     print("FAILED: with the agent the engine still does not see Lombok's members."); sys.exit(1)
 print("lombok gate: the distribution ships lombok.jar, and as an agent it makes Lombok's members visible.")
