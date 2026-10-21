@@ -87,6 +87,13 @@
                                      from the system bundle so the bundles' Import-Package still resolves. -->
                                 <artifactItem><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>${v.slf4j}</version></artifactItem>
                                 <artifactItem><groupId>org.slf4j</groupId><artifactId>slf4j-simple</artifactId><version>${v.slf4j}</version></artifactItem>
+                                <!-- 4.4.13 (S19 dogfood): the Lombok agent, at the dist ROOT where
+                                     jawata-studio looks for it (src-tauri/src/lombok.rs). The Tycho
+                                     product shipped it; this Maven dist lost it in Sprint 22d, and the
+                                     studio then started every Lombok workspace without the agent, so
+                                     every generated member read as a compile error. 1.18.36 is the
+                                     version proven against this engine. build/lombok-agent-probe.sh. -->
+                                <artifactItem><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><version>1.18.36</version><destFileName>lombok.jar</destFileName></artifactItem>
                             </artifactItems>
                         </configuration>
                     </execution>

@@ -167,6 +167,9 @@ jobs:
         set -e
         TAG=${{ github.ref_name }}
         OUT="$GITHUB_WORKSPACE/build/dist/target"
+        # S19 dogfood: the studio starts Lombok workspaces with this jar as an agent; a dist
+        # without it silently breaks every Lombok project (build/lombok-agent-probe.sh).
+        test -f "$OUT/dist/lombok.jar" || { echo "dist has no lombok.jar"; exit 1; }
         cd "$OUT" && cp -r dist "jawata-$TAG"
         tar -czf "jawata-$TAG-linux-x64.tar.gz"   "jawata-$TAG"
         cp jawata-$TAG-linux-x64.tar.gz "jawata-$TAG-linux-arm64.tar.gz"

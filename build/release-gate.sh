@@ -45,6 +45,7 @@ step() {
 step "skip wording" python3 build/skip-wording-gate.py
 step "skip wording, its own test" bash build/skip-wording-gate-test.sh
 step "clean install of this version" mvn -B -q -f build/pom.xml clean install -DskipTests
+step "the distribution ships the Lombok agent, and it works" build/lombok-agent-probe.sh
 step "whole suite, embedder ON (with the hollow-wiring and end-to-end gates)" build/run-suite.sh 4 --full
 
 # The same suite with the embedder switched off, as the CI job runs it. The end-to-end gate ran
