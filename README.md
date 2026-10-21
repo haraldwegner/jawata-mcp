@@ -438,5 +438,6 @@ JAWATA began as a fork of the MIT-licensed
 **[javalens-mcp](https://github.com/pzalutski-pixel/javalens-mcp)** by Peter Zalutski. That MIT base
 is retained and credited in [`NOTICE`](NOTICE). JAWATA is distributed under the
 **[GNU AGPL-3.0](LICENSE)** — running a JAWATA server over a network makes it covered work, so network
-users are entitled to its source. Contributions are accepted under the
+users are entitled to its source. An additional permission in [`NOTICE`](NOTICE) allows conveying
+JAWATA combined with Eclipse Public License components (Equinox, JDT, JaCoCo). Contributions are accepted under the
 [Contributor License Agreement](CLA.md); see [`CONTRIBUTING.md`](CONTRIBUTING.md).

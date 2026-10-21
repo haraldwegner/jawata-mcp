@@ -42,3 +42,23 @@ Eclipse Public License 2.0, https://www.eclipse.org/legal/epl-2.0/):
 org.eclipse.jdt.internal.compiler.problem.ProblemReporter — one null-guard added for
 https://github.com/eclipse-jdt/eclipse.jdt.core/issues/5188; shipped as an OSGi patch
 fragment and removed when the upstream fix ships. The combined work remains AGPL-3.0 as stated above; this fragment additionally carries its EPL-2.0 notices.
+
+================================================================================
+Additional permission under GNU AGPL version 3 section 7 (added 2026-10-21)
+================================================================================
+
+If you modify this Program, or any covered work, by linking or combining it
+with components licensed under the Eclipse Public License (version 1.0 or 2.0)
+or the Eclipse Distribution License -- including the Eclipse Platform, Equinox,
+the Eclipse Java Development Tools (JDT), JaCoCo and the OSGi framework
+implementations they ship -- or with modified versions of those components,
+the licensor of this Program, Harald Wegner, grants you additional permission
+to convey the resulting work. Corresponding Source for a non-source form of
+such a combination shall include the source code for the parts of those
+components used as well as that of the covered work.
+
+This permission supplements the AGPL-3.0 under its section 7 and may be
+removed from a modified version as that section allows. It does not alter the
+licence of the Eclipse components themselves, which remain under their own
+terms, and it grants nothing beyond conveying the combination: every other
+condition of the AGPL-3.0 continues to apply to the Program.
