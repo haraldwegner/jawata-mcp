@@ -117,7 +117,10 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
     public Path getFixturePath(String projectName) {
         Path original = originalFixturePath(projectName);
         if (tempDirectory == null) {
-            return original;   // outside a test's lifecycle there is no copy to point at
+            // Outside a test's lifecycle there is no copy to point at, and answering the original
+            // would let the caller write into the repository: refuse rather than fall back.
+            throw new IllegalStateException("getFixturePath(\"" + projectName + "\") outside a test:"
+                + " the helper has no temporary directory yet, so it has no copy to give.");
         }
         Path copy = tempDirectory.resolve(projectName);
         if (!Files.exists(copy)) {

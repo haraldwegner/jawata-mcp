@@ -1407,6 +1407,7 @@ public class ProjectImporter {
             java.nio.file.Path projectPath) {
         String cpFileName = "jawata-classpath-" + ProcessHandle.current().pid() + "-"
             + Long.toHexString(System.nanoTime()) + ".txt";
+        boolean consumed = false;   // the read below deletes what it reads; finally covers the rest
         try {
             // The SPAWN crosses the boundary; the bounded-tail draining stays
             // here, because this site keeps only the last 15 lines so a failure
@@ -1465,6 +1466,7 @@ public class ProjectImporter {
                     filesFound++;
                 }
             }
+            consumed = true;
             if (filesFound == 0) {
                 // Even a dependency-less module writes its (empty) file — zero FILES from
                 // an exit-0 run is an anomaly (historically: a sibling process stole the
@@ -1486,10 +1488,10 @@ public class ProjectImporter {
                     + e.getClass().getSimpleName()
                     + (e.getMessage() != null ? ": " + e.getMessage() : ""), e);
         } finally {
-            // On every path, not only after the read: a timeout or a failed exit throws before the
+            // On every path the read did not reach: a timeout or a failed exit throws before the
             // read deletes the file, and it was left in the project's target/ for good — in the
             // test samples since September, and in a user's own project the same way (2026-10-22).
-            try (Stream<java.nio.file.Path> walk = Files.walk(projectPath, 8)) {
+            if (!consumed) try (Stream<java.nio.file.Path> walk = Files.walk(projectPath, 8)) {
                 walk.filter(pth -> cpFileName.equals(pth.getFileName().toString()))
                     .forEach(pth -> {
                         try {

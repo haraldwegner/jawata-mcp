@@ -18,12 +18,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT" || exit 2
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "COULD NOT RUN: $ROOT is not a git checkout"; exit 2; }
 
+# EVERY status line counts: untracked (??) and ignored (!!) leftovers, and also a committed sample
+# file a test modified or deleted ( M,  D, …), which leaving only ??/!! made invisible.
 LEFT="$(git status --porcelain --ignored --untracked-files=all -- \
-        org.jawata.core.tests/test-resources org.jawata.mcp.tests/test-resources \
-        | grep -E '^(\?\?|!!) ' | cut -c4-)"
+        org.jawata.core.tests/test-resources org.jawata.mcp.tests/test-resources)"
 if [ -n "$LEFT" ]; then
-    echo "FAILED: the test resources hold $(printf '%s\n' "$LEFT" | wc -l) path(s) git does not track —"
-    echo "a test wrote into a sample instead of into a copy of it:"
+    echo "FAILED: the test resources differ from what git has in $(printf '%s\n' "$LEFT" | wc -l) path(s) —"
+    echo "a test wrote into (or changed) a sample instead of a copy of it:"
     printf '%s\n' "$LEFT" | head -40 | sed 's/^/  /'
     exit 1
 fi

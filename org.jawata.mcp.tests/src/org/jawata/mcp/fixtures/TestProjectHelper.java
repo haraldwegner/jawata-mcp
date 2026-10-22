@@ -108,17 +108,24 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
     public Path getFixturePath(String projectName) {
         Path original = originalFixturePath(projectName);
         if (tempDirectory == null) {
-            return original;   // outside a test's lifecycle there is no copy to point at
+            // Outside a test's lifecycle there is no copy to point at, and answering the original
+            // would let the caller write into the repository: refuse rather than fall back.
+            throw new IllegalStateException("getFixturePath(\"" + projectName + "\") outside a test:"
+                + " the helper has no temporary directory yet, so it has no copy to give.");
+        }
+        if (!Files.isDirectory(original)) {
+            throw new IllegalStateException("No such test fixture: " + original + ". If it exists in"
+                + " your working tree, check that it is TRACKED (git ls-files).");
         }
         Path copy = tempDirectory.resolve(projectName);
-        if (!Files.exists(copy) && Files.isDirectory(original)) {
+        if (!Files.exists(copy)) {
             try {
                 copyDirectory(original, copy);
             } catch (IOException e) {
                 throw new java.io.UncheckedIOException("could not copy fixture " + projectName, e);
             }
         }
-        return Files.exists(copy) ? copy : original;
+        return copy;
     }
 
     /** Where the sample itself lives in {@code test-resources}; read only to make copies. */
