@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A JAR project whose <modules> appears only inside a profile. Maven compiles its own sources in
+     the default build, so they must stay mounted: an aggregator test that matched "<modules>" as
+     text dropped them (S19-R3 audit). -->
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.acme</groupId>
+    <artifactId>prof-root</artifactId>
+    <version>1.0.0</version>
+    <profiles>
+        <profile>
+            <id>with-extra</id>
+            <modules>
+                <module>extra</module>
+            </modules>
+        </profile>
+    </profiles>
+</project>

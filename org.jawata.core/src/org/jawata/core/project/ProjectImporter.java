@@ -812,8 +812,17 @@ public class ProjectImporter {
         if (depth > 10 || !visited.add(dir.toAbsolutePath().normalize())) {
             return;
         }
+        // Maven compiles none of a pom-packaging project's OWN sources, only its modules'. Mounting
+        // a stray src/ beside them declared every shared class twice ("already defined") in
+        // java-design-patterns/page-object (S19 live check, 2026-10-22). The skip follows the
+        // PARSED packaging, not isMultiModuleProject's text test: a jar project whose <modules>
+        // sit only in a profile compiles its own sources (S19-R3 audit). With nothing mounted at
+        // all, getAllSourcePaths' last-resort discovery still runs.
+        boolean pomPackaged = readPomPackaging(dir.resolve("pom.xml")).map("pom"::equals).orElse(false);
         List<java.nio.file.Path> found = new ArrayList<>();
-        addSourcePathsFromDirectory(dir, found);
+        if (!pomPackaged) {
+            addSourcePathsFromDirectory(dir, found);
+        }
         for (java.nio.file.Path src : found) {
             if (!sourcePaths.contains(src)) {
                 sourcePaths.add(src);

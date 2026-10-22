@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A pom-packaging folder with NO modules but with sources. Its own roots are skipped as an
+     aggregator's, so its code reaches the project only through the last-resort discovery by
+     package declaration; the test pins that it still does (S19-R3 audit). -->
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.acme</groupId>
+    <artifactId>lone-root</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+</project>

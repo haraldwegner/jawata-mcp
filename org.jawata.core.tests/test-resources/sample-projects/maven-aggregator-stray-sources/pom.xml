@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A pom-packaging aggregator that ALSO holds a src/ tree, as java-design-patterns/page-object
+     does. Maven compiles none of an aggregator's own sources, so only the module's root counts;
+     mounting both declares com.acme.agg.Greeter twice ("The type Greeter is already defined"). -->
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.acme</groupId>
+    <artifactId>agg-root</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+    <modules>
+        <module>app</module>
+    </modules>
+</project>

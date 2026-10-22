@@ -216,6 +216,10 @@ public final class H2ExperienceStore implements ExperienceStore {
     //   count/listEntries/
     //   exportEntries/stats
     //   EmbeddingIndex        READ    the shared `conn`     this instance's monitor
+    //     (S19-12: the background drain's statements take it, so close() cannot shut the
+    //     connection under one. The recall scans — entryLaneScores, vectorsOf,
+    //     unembeddedAmong — do NOT: holding the monitor through a full vector scan would
+    //     stall every writer. A recall racing close() can still fail; accepted residual.)
     //
     // What replaces "one monitor ⇒ writers never interleave": nothing, because
     // nothing needed replacing. Every WRITER still takes this instance's

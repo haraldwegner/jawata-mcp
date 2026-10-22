@@ -381,38 +381,40 @@ public final class EmbeddingIndex {
             + " FROM " + table
             + " WHERE embedding IS NULL OR embedder_identity IS NULL"
             + " OR embedder_identity <> ? LIMIT " + max;
-        try (PreparedStatement ps = store.sharedConnection().prepareStatement(select)) {
-            ps.setString(1, identity);
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    String details = detailsColumn == null
-                        ? null : detailsOf(rs.getString(3));
-                    String symptoms = withSymptoms
-                        ? rs.getString(detailsColumn == null ? 3 : 4) : null;
-                    // BY NAME, deliberately. The reads above are positional and
-                    // already carry a two-branch index calculation; appending a
-                    // fifth column to that arithmetic is how the wrong column gets
-                    // embedded, silently, with every test still green.
-                    String situation = withSituation ? rs.getString("situation") : null;
-                    String summary = rs.getString(2);
-                    pending.add(new Pending(rs.getString(1),
-                        symptoms == null || symptoms.isBlank()
-                            ? EmbeddingService.documentOf(situation, summary, details)
-                            : EmbeddingService.documentWithSymptoms(situation, summary,
-                                details, List.of(symptoms)),
-                        // The lanes are experience_entry's alone: tool_experience has
-                        // no summary/details of its own — its single text column IS
-                        // its situation — so giving it lanes would mean embedding one
-                        // field three times and calling the result three signals.
-                        withSituation ? situation : null,
-                        withSituation ? summary : null,
-                        withSituation ? details : null));
+        synchronized (store) {                 // see embeddedCount: the drain's close race
+            try (PreparedStatement ps = store.sharedConnection().prepareStatement(select)) {
+                ps.setString(1, identity);
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String details = detailsColumn == null
+                            ? null : detailsOf(rs.getString(3));
+                        String symptoms = withSymptoms
+                            ? rs.getString(detailsColumn == null ? 3 : 4) : null;
+                        // BY NAME, deliberately. The reads above are positional and
+                        // already carry a two-branch index calculation; appending a
+                        // fifth column to that arithmetic is how the wrong column gets
+                        // embedded, silently, with every test still green.
+                        String situation = withSituation ? rs.getString("situation") : null;
+                        String summary = rs.getString(2);
+                        pending.add(new Pending(rs.getString(1),
+                            symptoms == null || symptoms.isBlank()
+                                ? EmbeddingService.documentOf(situation, summary, details)
+                                : EmbeddingService.documentWithSymptoms(situation, summary,
+                                    details, List.of(symptoms)),
+                            // The lanes are experience_entry's alone: tool_experience has
+                            // no summary/details of its own — its single text column IS
+                            // its situation — so giving it lanes would mean embedding one
+                            // field three times and calling the result three signals.
+                            withSituation ? situation : null,
+                            withSituation ? summary : null,
+                            withSituation ? details : null));
+                    }
                 }
+            } catch (SQLException e) {
+                log.error("embedding backfill could not READ {} - rows stay keyword-reachable"
+                    + " and will be retried", table, e);
+                return 0;
             }
-        } catch (SQLException e) {
-            log.error("embedding backfill could not READ {} - rows stay keyword-reachable"
-                + " and will be retried", table, e);
-            return 0;
         }
 
         int done = 0;
@@ -436,26 +438,35 @@ public final class EmbeddingIndex {
             if (v == null) {
                 continue;                      // blank text or a failure already logged
             }
-            try (PreparedStatement ps = store.sharedConnection().prepareStatement(update)) {
-                ps.setBytes(1, EmbeddingService.toBytes(v));
-                ps.setString(2, identity);
-                int at = 3;
-                if (withSituation) {
-                    for (EmbeddingService.Lane lane : EmbeddingService.Lane.values()) {
-                        // A lane whose field is absent gets a NULL vector, not a
-                        // zero one: RelevanceMerge reads "no vector" as "this row
-                        // declares nothing here" and scores it zero, while a
-                        // zero-filled vector would be a real point in the space
-                        // that some questions land near by accident.
-                        ps.setBytes(at++, EmbeddingService.toBytes(embeddings.embed(
-                            lane.documentFor(p.situation(), p.summary(), p.details()))));
-                    }
+            // Every vector is computed BEFORE the store monitor is taken (S19-12): embedding a
+            // row costs up to a second per lane, and holding the monitor through it would stall
+            // every writer for as long.
+            List<byte[]> laneVectors = new ArrayList<>();
+            if (withSituation) {
+                for (EmbeddingService.Lane lane : EmbeddingService.Lane.values()) {
+                    // A lane whose field is absent gets a NULL vector, not a
+                    // zero one: RelevanceMerge reads "no vector" as "this row
+                    // declares nothing here" and scores it zero, while a
+                    // zero-filled vector would be a real point in the space
+                    // that some questions land near by accident.
+                    laneVectors.add(EmbeddingService.toBytes(embeddings.embed(
+                        lane.documentFor(p.situation(), p.summary(), p.details()))));
                 }
-                ps.setString(at, p.id());
-                ps.executeUpdate();
-                done++;
-            } catch (SQLException e) {
-                log.error("embedding backfill could not WRITE {} row {}", table, p.id(), e);
+            }
+            synchronized (store) {
+                try (PreparedStatement ps = store.sharedConnection().prepareStatement(update)) {
+                    ps.setBytes(1, EmbeddingService.toBytes(v));
+                    ps.setString(2, identity);
+                    int at = 3;
+                    for (byte[] laneVector : laneVectors) {
+                        ps.setBytes(at++, laneVector);
+                    }
+                    ps.setString(at, p.id());
+                    ps.executeUpdate();
+                    done++;
+                } catch (SQLException e) {
+                    log.error("embedding backfill could not WRITE {} row {}", table, p.id(), e);
+                }
             }
         }
         return done;
@@ -695,15 +706,20 @@ public final class EmbeddingIndex {
 
     /** How many rows carry a vector of the current identity — the honest coverage number. */
     public long embeddedCount(String table) {
-        try (PreparedStatement ps = store.sharedConnection().prepareStatement(
-                "SELECT COUNT(*) FROM " + table + " WHERE embedder_identity = ?")) {
-            ps.setString(1, currentIdentity(table));
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? rs.getLong(1) : 0L;
+        // Under the store monitor, as close() is: the background drain calls this, and a close
+        // between taking the connection and preparing the statement shut the session under it
+        // (S19-12; H2 then wrote experience.trace.db into the store's folder).
+        synchronized (store) {
+            try (PreparedStatement ps = store.sharedConnection().prepareStatement(
+                    "SELECT COUNT(*) FROM " + table + " WHERE embedder_identity = ?")) {
+                ps.setString(1, currentIdentity(table));
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next() ? rs.getLong(1) : 0L;
+                }
+            } catch (SQLException e) {
+                log.error("could not count embedded rows in {}", table, e);
+                return -1L;                        // -1 is "could not look", never 0
             }
-        } catch (SQLException e) {
-            log.error("could not count embedded rows in {}", table, e);
-            return -1L;                        // -1 is "could not look", never 0
         }
     }
 
@@ -736,12 +752,14 @@ public final class EmbeddingIndex {
         // NOTE: the connection is SHARED and must never be closed here - it is
         // owned by the store and closing it would break every other caller.
         // Only the Statement/ResultSet are ours to release.
-        try (Statement s = store.sharedConnection().createStatement();
-                ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM " + table)) {
-            return rs.next() ? rs.getLong(1) : 0L;
-        } catch (SQLException e) {
-            log.error("could not count rows in {}", table, e);
-            return -1L;
+        synchronized (store) {                 // see embeddedCount: the drain's close race
+            try (Statement s = store.sharedConnection().createStatement();
+                    ResultSet rs = s.executeQuery("SELECT COUNT(*) FROM " + table)) {
+                return rs.next() ? rs.getLong(1) : 0L;
+            } catch (SQLException e) {
+                log.error("could not count rows in {}", table, e);
+                return -1L;
+            }
         }
     }
 }

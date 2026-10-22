@@ -666,6 +666,36 @@ class BuildSystemLoadTest {
     }
 
     @Test
+    @DisplayName("a pom-packaging aggregator mounts its modules' roots, never its own src tree")
+    void aPomAggregatorsOwnSourcesAreNotMounted() throws Exception {
+        // java-design-patterns/page-object (S19 live check, 2026-10-22): a pom-packaging parent
+        // that also holds a src/ tree. Maven compiles none of an aggregator's own sources, but the
+        // importer mounted them beside the modules' roots, so every class present in both was
+        // "already defined" and run_tests refused a project Maven builds cleanly.
+        assertRootsAre(load("maven-aggregator-stray-sources"), "app-src-main-java");
+    }
+
+    @Test
+    @DisplayName("a jar project whose <modules> sit only in a profile keeps its own sources")
+    void aJarProjectWithProfileModulesKeepsItsOwnSources() throws Exception {
+        // The S19-R3 audit: the skip above must follow the PACKAGING. Keyed on "the pom mentions
+        // <modules>", a jar project with a profile-only module lost its own sources, which Maven
+        // compiles in the default build.
+        assertNotNull(load("maven-profile-modules").findType("com.acme.prof.Prof"),
+            "the root project's own class did not resolve: its sources were dropped as an"
+                + " aggregator's, though its packaging is jar");
+    }
+
+    @Test
+    @DisplayName("a pom-packaging folder with no modules still loads its sources")
+    void aPomFolderWithoutModulesStillLoadsItsSources() throws Exception {
+        // Its own roots are skipped like any aggregator's, so its code arrives only through the
+        // last-resort discovery by package declaration. Pinned so that path cannot quietly go.
+        assertNotNull(load("maven-pom-no-modules").findType("com.acme.lone.Lone"),
+            "a pom folder with sources and no modules loaded none of them");
+    }
+
+    @Test
     @DisplayName("a legacy-encoded byte in a pom does not erase the declared level")
     void aLegacyEncodedPomStillDeclaresItsLevel() throws Exception {
         // The sprint's headline defect, in the place it was NOT fixed for two
