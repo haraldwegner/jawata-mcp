@@ -41,7 +41,9 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
 
     @Override
     public void beforeEach(ExtensionContext context) throws Exception {
-        tempDirectory = Files.createTempDirectory("jawata-test-");
+        // Resolved once, as in the core helper: a Windows short name (RUNNER~1) or the macOS
+        // /var -> /private/var link otherwise reaches every test (CI on 15b20b7).
+        tempDirectory = Files.createTempDirectory("jawata-test-").toRealPath();
     }
 
     /**

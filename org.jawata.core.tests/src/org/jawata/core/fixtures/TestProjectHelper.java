@@ -50,7 +50,10 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
 
     @Override
     public void beforeEach(ExtensionContext context) throws Exception {
-        tempDirectory = Files.createTempDirectory("jawata-test-");
+        // Resolved once: on Windows the temp folder carries a short name (RUNNER~1) that Eclipse
+        // and git report in its long form, and on macOS /var is a link to /private/var. Tests ran
+        // on plain repository paths until 4.4.14 and must keep doing so (CI on 15b20b7).
+        tempDirectory = Files.createTempDirectory("jawata-test-").toRealPath();
     }
 
     /**

@@ -12,6 +12,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
@@ -839,6 +840,20 @@ class BuildSystemLoadTest {
         });
         assertNotNull(found[0], "PROOF OF LIFE: builtAfter must be declared in the fixture");
         return found[0].resolveBinding();
+    }
+
+    @Test
+    @DisplayName("gradle loaded through a linked path mounts each source set once")
+    void gradleThroughALinkedPathMountsEachSourceSetOnce() throws Exception {
+        // CI on 15b20b7: on macOS the temp folder is /var -> /private/var, on Windows its path
+        // carries the short name RUNNER~1. Gradle reports source sets by their RESOLVED path, the
+        // importer kept the project's own spelling, so each set was mounted twice (4 roots).
+        Path real = helper.copyFixture("simple-gradle");
+        Path link = real.resolveSibling(real.getFileName() + "-link");
+        Files.createSymbolicLink(link, real);
+        IProject project = workspaceManager.createLinkedProject("load-gradle-link", link);
+        assertRootsAre(importer.configureJavaProject(project, link, workspaceManager).javaProject(),
+            "src-main-java", "src-test-java");
     }
 
     // ================= helpers =================

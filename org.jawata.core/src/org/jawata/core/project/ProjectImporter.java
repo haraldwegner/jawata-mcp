@@ -795,15 +795,34 @@ public class ProjectImporter {
         // heuristic when Gradle isn't reachable.
         if (detectBuildSystem(projectPath) == BuildSystem.GRADLE) {
             readGradleProjectModel(projectPath).ifPresent(model -> {
+                // Gradle reports source sets by their RESOLVED path. A project reached through a
+                // link (macOS /var -> /private/var, a Windows short name such as RUNNER~1) then saw
+                // each set twice: once in its own spelling from the heuristic, once resolved
+                // (CI on 15b20b7). A set inside the project is put back in the project's spelling
+                // before the duplicate check.
+                java.nio.file.Path realProject = resolvedOrSelf(projectPath);
                 for (java.nio.file.Path declared : model.srcPaths()) {
-                    if (!sourcePaths.contains(declared)) {
-                        sourcePaths.add(declared);
+                    java.nio.file.Path realDeclared = resolvedOrSelf(declared);
+                    java.nio.file.Path ours = realDeclared.startsWith(realProject)
+                        ? projectPath.resolve(realProject.relativize(realDeclared))
+                        : declared;
+                    if (!sourcePaths.contains(ours)) {
+                        sourcePaths.add(ours);
                     }
                 }
             });
         }
 
         return sourcePaths;
+    }
+
+    /** The path with every link and short name resolved, or the path itself when it cannot be. */
+    private static java.nio.file.Path resolvedOrSelf(java.nio.file.Path path) {
+        try {
+            return path.toRealPath();
+        } catch (IOException e) {
+            return path.toAbsolutePath().normalize();
+        }
     }
 
     /** Depth-first module traversal (cycle-safe via visited set, depth-capped). */
