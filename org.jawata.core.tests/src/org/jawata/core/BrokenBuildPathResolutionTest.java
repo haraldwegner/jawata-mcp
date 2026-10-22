@@ -47,7 +47,7 @@ class BrokenBuildPathResolutionTest {
     @DisplayName("a test/ file resolves even when the project's build path is incomplete")
     void resolvesTestFolderFileOnProjectWithIncompleteBuildPath() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-broken-buildpath");
-        Path projectRoot = helper.getFixturePath("pde-broken-buildpath");
+        Path projectRoot = service.getProjectRoot();   // the copy loadProject loaded
         Path testFile = projectRoot.resolve("test/com/example/bb/ThingTest.java");
 
         ICompilationUnit cu = service.getCompilationUnit(testFile);
@@ -67,7 +67,7 @@ class BrokenBuildPathResolutionTest {
     @DisplayName("a src/ file still resolves on the same incomplete-build-path project")
     void resolvesSrcFolderFileOnProjectWithIncompleteBuildPath() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-broken-buildpath");
-        Path projectRoot = helper.getFixturePath("pde-broken-buildpath");
+        Path projectRoot = service.getProjectRoot();   // the copy loadProject loaded
         Path mainFile = projectRoot.resolve("src/com/example/bb/Thing.java");
 
         ICompilationUnit cu = service.getCompilationUnit(mainFile);

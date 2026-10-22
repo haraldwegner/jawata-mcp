@@ -39,7 +39,7 @@ class ProjectImporterTest {
         importer = new ProjectImporter();
         workspaceManager = new WorkspaceManager();
         workspaceManager.initialize();
-        mavenFixturePath = helper.getFixturePath("simple-maven");
+        mavenFixturePath = helper.copyFixture("simple-maven");   // a copy: importing writes beside it
     }
 
     // ========== Build System Detection Tests ==========

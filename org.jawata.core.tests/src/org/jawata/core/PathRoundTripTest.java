@@ -64,7 +64,7 @@ class PathRoundTripTest {
     @DisplayName("a reported path resolves back — source folder named 'test'")
     void reportedPathResolvesBackForANonStandardSourceRoot() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path root = helper.getFixturePath("pde-nonstandard-layout");
+        Path root = service.getProjectRoot();   // the copy loadProject loaded
         assertRoundTrips(service, root.resolve("test/com/example/ns/GreeterTest.java"));
     }
 
@@ -79,7 +79,7 @@ class PathRoundTripTest {
     @DisplayName("a reported path resolves back — src/ layout (worked before; must not regress)")
     void reportedPathResolvesBackForAMavenSourceRoot() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path root = helper.getFixturePath("pde-nonstandard-layout");
+        Path root = service.getProjectRoot();   // the copy loadProject loaded
         assertRoundTrips(service, root.resolve("src/com/example/ns/Greeter.java"));
     }
 
@@ -91,7 +91,7 @@ class PathRoundTripTest {
     @DisplayName("a reported path resolves back through the scoped view")
     void reportedPathResolvesBackThroughTheScopedView() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path root = helper.getFixturePath("pde-nonstandard-layout");
+        Path root = service.getProjectRoot();   // the copy loadProject loaded
         Optional<LoadedProject> project = service.getProject(service.defaultProjectKey().orElseThrow());
         assertTrue(project.isPresent(), "fixture project must be loaded");
         assertRoundTrips(new ScopedJdtService(service, project.get()),

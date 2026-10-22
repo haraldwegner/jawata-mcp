@@ -1485,6 +1485,23 @@ public class ProjectImporter {
                 "Maven dependency resolution failed for " + projectPath + ": "
                     + e.getClass().getSimpleName()
                     + (e.getMessage() != null ? ": " + e.getMessage() : ""), e);
+        } finally {
+            // On every path, not only after the read: a timeout or a failed exit throws before the
+            // read deletes the file, and it was left in the project's target/ for good — in the
+            // test samples since September, and in a user's own project the same way (2026-10-22).
+            try (Stream<java.nio.file.Path> walk = Files.walk(projectPath, 8)) {
+                walk.filter(pth -> cpFileName.equals(pth.getFileName().toString()))
+                    .forEach(pth -> {
+                        try {
+                            Files.deleteIfExists(pth);
+                        } catch (IOException e) {
+                            // a file we cannot delete must not mask the real outcome, but it is said
+                            log.warn("could not delete Maven classpath output {}: {}", pth, e.getMessage());
+                        }
+                    });
+            } catch (IOException | java.io.UncheckedIOException e) {
+                log.warn("could not look for Maven classpath output under {}: {}", projectPath, e.getMessage());
+            }
         }
     }
 

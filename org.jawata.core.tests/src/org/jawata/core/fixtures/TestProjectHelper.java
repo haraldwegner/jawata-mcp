@@ -102,13 +102,36 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
     }
 
     /**
-     * Get the path to a test fixture project.
+     * Get the path to a test fixture project: inside a test, THIS TEST'S OWN COPY of it.
+     *
+     * <p>The copy is made once per test and is the same directory {@link #loadProject} and
+     * {@link #copyFixture} use, so every path a test holds points at the project it loaded. The
+     * sample in {@code test-resources} itself is read only to make that copy: importing or
+     * building it in place let Gradle, the compiler and Maven write into the repository, which
+     * {@code build/test-resources-clean-gate.sh} refuses (2026-10-22).</p>
      *
      * @param projectName Name of the fixture project (e.g., "simple-maven")
-     * @return Path to the fixture
+     * @return Path to this test's copy of the fixture (the original outside a test)
      * @throws IllegalStateException if fixtures directory is not configured
      */
     public Path getFixturePath(String projectName) {
+        Path original = originalFixturePath(projectName);
+        if (tempDirectory == null) {
+            return original;   // outside a test's lifecycle there is no copy to point at
+        }
+        Path copy = tempDirectory.resolve(projectName);
+        if (!Files.exists(copy)) {
+            try {
+                copyDirectory(original, copy);
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException("could not copy fixture " + projectName, e);
+            }
+        }
+        return copy;
+    }
+
+    /** Where the sample itself lives in {@code test-resources}; read only to make copies. */
+    private Path originalFixturePath(String projectName) {
         String fixturesDir = System.getProperty(FIXTURES_PROPERTY);
         if (fixturesDir == null) {
             // Fallback: try to find relative to current directory
@@ -144,7 +167,14 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
      * @throws CoreException if project loading fails
      */
     public JdtServiceImpl loadProject(String fixtureName) throws CoreException {
-        Path projectPath = getFixturePath(fixtureName);
+        // A COPY: loading the fixture in place let Gradle, the compiler and Maven write into the
+        // repository, which build/test-resources-clean-gate.sh now refuses (2026-10-22).
+        Path projectPath;
+        try {
+            projectPath = copyFixture(fixtureName);
+        } catch (IOException e) {
+            throw new java.io.UncheckedIOException("could not copy fixture " + fixtureName, e);
+        }
         loadedService = replacingPrevious();
         loadedService.loadProject(projectPath);
         return loadedService;
@@ -186,7 +216,7 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
      * @throws IOException if copy fails
      */
     public Path copyFixture(String fixtureName) throws IOException {
-        Path source = getFixturePath(fixtureName);
+        Path source = originalFixturePath(fixtureName);
         Path dest = tempDirectory.resolve(fixtureName);
         copyDirectory(source, dest);
         return dest;
@@ -198,7 +228,7 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
      * mcp-side helper alongside loadWorkspaceCopy).
      */
     public Path copyFixtureAs(String fixtureName, String destName) throws IOException {
-        Path source = getFixturePath(fixtureName);
+        Path source = originalFixturePath(fixtureName);
         Path dest = tempDirectory.resolve(destName);
         copyDirectory(source, dest);
         return dest;

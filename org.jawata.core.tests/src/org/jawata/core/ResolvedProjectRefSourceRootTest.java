@@ -45,8 +45,8 @@ class ResolvedProjectRefSourceRootTest {
         // loads first, so this loads the REFERENCING project first: the order
         // that used to leave the reference dangling.
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path pluginRoot = helper.getFixturePath("pde-nonstandard-layout");
-        service.addProject(helper.getFixturePath("pde-sibling"));
+        Path pluginRoot = service.getProjectRoot();   // the copy loadProject loaded
+        service.addProject(helper.copyFixture("pde-sibling"));
 
         ICompilationUnit cu = service.getCompilationUnit(
             pluginRoot.resolve("test/com/example/ns/GreeterTest.java"));
@@ -67,7 +67,7 @@ class ResolvedProjectRefSourceRootTest {
     @DisplayName("control: the same test/ file resolves when the reference is unsatisfied")
     void resolvesTestFileWhenProjectReferenceIsUnsatisfied() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path pluginRoot = helper.getFixturePath("pde-nonstandard-layout");
+        Path pluginRoot = service.getProjectRoot();   // the copy loadProject loaded
 
         ICompilationUnit cu = service.getCompilationUnit(
             pluginRoot.resolve("test/com/example/ns/GreeterTest.java"));

@@ -160,7 +160,7 @@ class BuildSystemLoadTest {
     @Test
     @DisplayName("gradle P2: jars from the Gradle model reach the classpath (skips without a Gradle distribution)")
     void gradleResolvesModelJars() throws Exception {
-        Path fixture = helper.getFixturePath("simple-gradle");
+        Path fixture = helper.copyFixture("simple-gradle");   // Gradle writes .gradle/ beside it
         Optional<ProjectImporter.GradleProjectModel> model =
             ProjectImporter.readGradleProjectModel(fixture);
         // The message names the RIGHT cause now (C1, audit round 6). It used to
@@ -814,7 +814,8 @@ class BuildSystemLoadTest {
     // ================= helpers =================
 
     private IJavaProject load(String fixture) throws Exception {
-        Path path = helper.getFixturePath(fixture);
+        // A copy: importing the fixture in place let Gradle and the compiler write into it.
+        Path path = helper.copyFixture(fixture);
         IProject project = workspaceManager.createLinkedProject("load-" + fixture, path);
         return importer.configureJavaProject(project, path, workspaceManager).javaProject();
     }

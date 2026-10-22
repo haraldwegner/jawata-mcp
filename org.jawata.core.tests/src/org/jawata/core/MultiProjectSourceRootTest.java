@@ -36,7 +36,7 @@ class MultiProjectSourceRootTest {
         // simple-maven becomes the default project...
         JdtServiceImpl service = helper.loadProject("simple-maven");
         // ...and the plug-in-shaped project is a SECONDARY one, as in the field.
-        Path pluginRoot = helper.getFixturePath("pde-nonstandard-layout");
+        Path pluginRoot = helper.copyFixture("pde-nonstandard-layout");
         service.addProject(pluginRoot);
 
         ICompilationUnit cu = service.getCompilationUnit(
@@ -57,7 +57,7 @@ class MultiProjectSourceRootTest {
     @DisplayName("control: the same test/ file resolves when its project IS the default")
     void resolvesTestFolderFileInDefaultProject() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path pluginRoot = helper.getFixturePath("pde-nonstandard-layout");
+        Path pluginRoot = service.getProjectRoot();   // the copy loadProject loaded
 
         ICompilationUnit cu = service.getCompilationUnit(
             pluginRoot.resolve("test/com/example/ns/GreeterTest.java"));

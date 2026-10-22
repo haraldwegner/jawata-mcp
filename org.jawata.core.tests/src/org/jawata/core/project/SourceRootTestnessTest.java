@@ -185,7 +185,8 @@ class SourceRootTestnessTest {
     // ============ helpers ============
 
     private IJavaProject load(String fixture) throws Exception {
-        Path path = helper.getFixturePath(fixture);
+        // A copy: importing the fixture in place let Gradle and the compiler write into it.
+        Path path = helper.copyFixture(fixture);
         IProject project = workspaceManager.createLinkedProject("tag-" + fixture, path);
         return importer.configureJavaProject(project, path, workspaceManager).javaProject();
     }

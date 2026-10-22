@@ -563,6 +563,11 @@ else
     fi
 fi
 
+# 2026-10-22 — AND THE RUN LEFT THE SAMPLES AS GIT HAS THEM. Tests that imported a sample in place
+# let Gradle, the compiler and Maven write into the repository for months, git-ignored and so
+# reported by nothing. The helpers now import copies; this is what keeps it that way.
+"$ROOT/build/test-resources-clean-gate.sh" || exit $?
+
 # mcp#44 — SWEEP THIS RUN'S OWN /tmp DEBRIS. Measured 2026-09-08: 8886 jawata-* directories,
 # 51 GB, still accumulating; the issue measured 120 GB over four days. On a distro where
 # /tmp is a tmpfs this is RAM, and the suite starts failing with no-space errors that read

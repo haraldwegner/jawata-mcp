@@ -56,7 +56,7 @@ class ScopedServiceSourceRootTest {
     @DisplayName("scoped view resolves a file in a source folder named 'test'")
     void scopedViewResolvesNonConventionalSourceFolder() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path root = helper.getFixturePath("pde-nonstandard-layout");
+        Path root = service.getProjectRoot();   // the copy loadProject loaded
         ScopedJdtService view = scoped(service, service.defaultProjectKey().orElseThrow());
 
         ICompilationUnit cu = view.getCompilationUnit(
@@ -77,7 +77,7 @@ class ScopedServiceSourceRootTest {
     @DisplayName("scoped and unscoped views resolve the same files")
     void scopedAndUnscopedAgree() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path root = helper.getFixturePath("pde-nonstandard-layout");
+        Path root = service.getProjectRoot();   // the copy loadProject loaded
         ScopedJdtService view = scoped(service, service.defaultProjectKey().orElseThrow());
 
         for (String relative : List.of(

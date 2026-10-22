@@ -44,7 +44,7 @@ class SourceRootResolutionTest {
     @DisplayName("a file in a source folder named 'test' resolves to its compilation unit")
     void resolvesFileInNonConventionalSourceFolder() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path projectRoot = helper.getFixturePath("pde-nonstandard-layout");
+        Path projectRoot = service.getProjectRoot();   // the copy loadProject loaded
         Path testFile = projectRoot.resolve("test/com/example/ns/GreeterTest.java");
 
         ICompilationUnit cu = service.getCompilationUnit(testFile);
@@ -66,7 +66,7 @@ class SourceRootResolutionTest {
     @DisplayName("a file in a conventional 'src' folder still resolves")
     void stillResolvesFileInConventionalSourceFolder() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path projectRoot = helper.getFixturePath("pde-nonstandard-layout");
+        Path projectRoot = service.getProjectRoot();   // the copy loadProject loaded
         Path mainFile = projectRoot.resolve("src/com/example/ns/Greeter.java");
 
         ICompilationUnit cu = service.getCompilationUnit(mainFile);
@@ -84,7 +84,7 @@ class SourceRootResolutionTest {
     @DisplayName("both source folders of one project resolve together")
     void resolvesBothSourceFoldersOfTheSameProject() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path projectRoot = helper.getFixturePath("pde-nonstandard-layout");
+        Path projectRoot = service.getProjectRoot();   // the copy loadProject loaded
 
         ICompilationUnit main = service.getCompilationUnit(
             projectRoot.resolve("src/com/example/ns/Greeter.java"));
@@ -105,7 +105,7 @@ class SourceRootResolutionTest {
     @DisplayName("a path outside every source folder still resolves to nothing")
     void unknownPathStillResolvesToNull() throws Exception {
         JdtServiceImpl service = helper.loadProject("pde-nonstandard-layout");
-        Path projectRoot = helper.getFixturePath("pde-nonstandard-layout");
+        Path projectRoot = service.getProjectRoot();   // the copy loadProject loaded
 
         ICompilationUnit cu = service.getCompilationUnit(
             projectRoot.resolve("META-INF/NotJava.java"));
