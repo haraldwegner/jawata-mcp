@@ -75,7 +75,7 @@ class SourceEntryExclusionTest {
     @Test
     @DisplayName("P0-c: the project compiles with zero duplicate-type errors (real builder)")
     void compile_hasNoDuplicateTypeError() {
-        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service);
+        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
         ToolResponse r = compile.execute(mapper.createObjectNode());
         assertTrue(r.isSuccess(), "compile must succeed; got: " + r.getError());
         Map<String, Object> d = data(r);

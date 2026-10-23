@@ -1,19 +1,5 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.eclipse.core.resources.IMarker;
-import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IResource;
-import org.eclipse.core.resources.IncrementalProjectBuilder;
-import org.eclipse.core.runtime.IPath;
-import org.eclipse.core.runtime.NullProgressMonitor;
-import org.jawata.core.IJdtService;
-import org.jawata.core.LoadedProject;
-import org.jawata.mcp.models.ResponseMeta;
-import org.jawata.mcp.models.ToolResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -22,6 +8,23 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+
+import org.eclipse.core.resources.IMarker;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.jawata.core.IJdtService;
+import org.jawata.core.LoadedProject;
+import org.jawata.mcp.models.ResponseMeta;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.host.BuildKind;
+import org.jawata.spi.host.BuildScope;
+import org.jawata.spi.host.Reconciler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Sprint 12 (v1.6.0) — {@code compile_workspace}: trigger an incremental
@@ -43,8 +46,12 @@ public class CompileWorkspaceTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(CompileWorkspaceTool.class);
 
-    public CompileWorkspaceTool(Supplier<IJdtService> serviceSupplier) {
+    /** The host's reconciler, which refreshes and builds; read at call time (28k E6). */
+    private final Supplier<Reconciler> reconciler;
+
+    public CompileWorkspaceTool(Supplier<IJdtService> serviceSupplier, Supplier<Reconciler> reconciler) {
         super(serviceSupplier);
+        this.reconciler = reconciler;
     }
 
     @Override
@@ -239,14 +246,10 @@ public class CompileWorkspaceTool extends AbstractTool {
                     // constructor shape changes (or any other signature edit
                     // that the incremental builder would skip recompiling
                     // consumers for).
-                    project.refreshLocal(IResource.DEPTH_INFINITE,
-                        new NullProgressMonitor());
-                    if (cleanFirst) {
-                        project.build(IncrementalProjectBuilder.CLEAN_BUILD,
-                            new NullProgressMonitor());
-                    }
-                    project.build(IncrementalProjectBuilder.FULL_BUILD,
-                        new NullProgressMonitor());
+                    // Sprint 28k (E6): the host refreshes and builds — headless as described above,
+                    // Eclipse through its own build.
+                    reconciler.get().rebuild(BuildScope.of(project.getName()),
+                        cleanFirst ? BuildKind.CLEAN_FULL : BuildKind.FULL, new NullProgressMonitor());
                 } catch (Exception e) {
                     log.warn("Build failed on project '{}': {}", loaded.projectKey(), e.getMessage(), e);
                     // Continue collecting markers — partial results are still useful.

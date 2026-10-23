@@ -14,10 +14,13 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.spi.host.BuildKind;
+import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.SyncReport;
 
@@ -39,6 +42,30 @@ import org.jawata.spi.host.SyncReport;
  * crash policy is itself under test).
  */
 public class StrictDiskSync implements Reconciler {
+
+    /**
+     * Sprint 28k (E6): the headless host's rebuild — each named project refreshed from disk, then built (a clean build
+     * first for {@link BuildKind#CLEAN_FULL}). The loaded projects' own handles are used, so a linked source folder is
+     * refreshed as the project mounts it.
+     */
+    @Override
+    public void rebuild(BuildScope scope, BuildKind kind, IProgressMonitor monitor) throws CoreException {
+        IJdtService s = service.get();
+        if (s == null) {
+            return;
+        }
+        for (LoadedProject loaded : s.allProjects()) {
+            IProject project = loaded.javaProject().getProject();
+            if (!scope.projects().contains(project.getName())) {
+                continue;
+            }
+            project.refreshLocal(IResource.DEPTH_INFINITE, monitor);
+            if (kind == BuildKind.CLEAN_FULL) {
+                project.build(IncrementalProjectBuilder.CLEAN_BUILD, monitor);
+            }
+            project.build(IncrementalProjectBuilder.FULL_BUILD, monitor);
+        }
+    }
 
     /** Cap on paths carried in a report — a mass refresh is not a watchable delta. */
     public static final int MAX_REPORTED_PATHS = 50;

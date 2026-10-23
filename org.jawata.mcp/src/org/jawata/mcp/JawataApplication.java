@@ -1111,8 +1111,9 @@ public class JawataApplication implements IApplication {
     private void registerTools() {
         // Sprint 21d: strict disk sync — every tool call reconciles external edits
         // before executing; the unchanged-tree fast path is the only skip.
+        org.jawata.core.workspace.StrictDiskSync reconciler = new org.jawata.core.workspace.StrictDiskSync(() -> jdtService);
         toolRegistry.setReconciler(
-            new org.jawata.core.workspace.StrictDiskSync(() -> jdtService));
+            reconciler);
 
         // Sprint 21e (item A): tool-initiated project mutations refresh + backfill the
         // store's symbol anchors too (the startup auto-load path calls this directly).
@@ -1143,7 +1144,7 @@ public class JawataApplication implements IApplication {
             () -> learnerEvents,
             () -> toolRegistry,
             this::selfEndpoint,
-            this::defaultMemoryRoots));
+            this::defaultMemoryRoots, () -> reconciler));
 
         // Kept for what reads them later: the watch engine's detector binding, the quality ledger's
         // reach to the pre-advice surface (wired in start()), and the automatic refresh after a

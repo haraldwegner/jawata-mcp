@@ -1,6 +1,7 @@
 package org.jawata.spi.host;
 
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IProgressMonitor;
 
 /**
  * Sprint 28k (contract step E4): what the engine asks of its host about files changed on disk. The headless host's
@@ -13,4 +14,10 @@ public interface Reconciler {
      * tool call computes anything, so every answer reflects the current tree.
      */
     SyncReport syncBeforeCall() throws CoreException;
+
+    /**
+     * Refresh the scope's projects from disk and build them the way {@code kind} says, so their problem markers describe the
+     * files as they are now. A host that builds on its own (Eclipse) still answers only once that build has run.
+     */
+    void rebuild(BuildScope scope, BuildKind kind, IProgressMonitor monitor) throws CoreException;
 }

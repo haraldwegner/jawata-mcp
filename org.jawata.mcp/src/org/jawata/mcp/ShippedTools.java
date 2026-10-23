@@ -113,7 +113,7 @@ public final class ShippedTools {
             Supplier<LearnerEventStore> learnerEvents,
             Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> selfEndpoint,
-            Supplier<List<Path>> defaultMemoryRoots) {
+            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler) {
     }
 
     /**
@@ -181,7 +181,7 @@ public final class ShippedTools {
         tools.add(quality);
         tools.add(new FindStringLiteralsTool(jdt));
 
-        tools.add(new CompileWorkspaceTool(jdt));
+        tools.add(new CompileWorkspaceTool(jdt, w.reconciler()));
         RunTestsTool runTests = new RunTestsTool(jdt);
         tools.add(runTests);
         // The impacted-test selection on the read-only door too: a hired Claude is refused run_tests
@@ -204,7 +204,7 @@ public final class ShippedTools {
             new org.jawata.mcp.learn.PlanLedger(),
             w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore));
 
-        tools.add(new RefreshWorkspaceTool(jdt));
+        tools.add(new RefreshWorkspaceTool(jdt, w.reconciler()));
         tools.add(new FindDuplicateCodeTool(jdt));
         tools.add(new FindModernizationTool(jdt));
         tools.add(new ApplyNullAnnotationsTool(jdt, w.changeCache()));

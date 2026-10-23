@@ -69,7 +69,7 @@ class CompileWorkspaceToolTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("compile-clean");
-        tool = new CompileWorkspaceTool(() -> service);
+        tool = new CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
         objectMapper = new ObjectMapper();
     }
 

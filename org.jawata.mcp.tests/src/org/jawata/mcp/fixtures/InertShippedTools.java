@@ -44,7 +44,7 @@ public final class InertShippedTools {
             () -> null,
             () -> registry,
             () -> null,
-            List::of);
+            List::of, () -> null);
     }
 
     /** Every tool the product ships, unregistered. */

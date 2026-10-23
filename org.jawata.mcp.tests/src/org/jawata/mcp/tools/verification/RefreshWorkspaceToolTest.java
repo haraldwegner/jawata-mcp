@@ -46,7 +46,7 @@ class RefreshWorkspaceToolTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("simple-maven");
-        tool = new RefreshWorkspaceTool(() -> service);
+        tool = new RefreshWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
         objectMapper = new ObjectMapper();
     }
 

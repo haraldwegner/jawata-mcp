@@ -111,7 +111,7 @@ class AMovedBodyThatStillNeedsItsOldOwnerTest {
         assertTrue(port.contains("return id() + \":\" + reason + \":\" + pipeline.budget;"),
             () -> "and the body reads it through that parameter:\n" + port);
 
-        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service);
+        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
         ToolResponse cr = compile.execute(mapper.createObjectNode());
         @SuppressWarnings("unchecked")
         Map<String, Object> cdata = (Map<String, Object>) cr.getData();

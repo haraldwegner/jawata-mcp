@@ -1,10 +1,16 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
-import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.IClasspathEntry;
@@ -15,16 +21,13 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.host.BuildKind;
+import org.jawata.spi.host.BuildScope;
+import org.jawata.spi.host.Reconciler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Sprint 14 Phase B.1 (v1.8.0) — {@code refresh_workspace}: consolidated
@@ -59,8 +62,12 @@ public class RefreshWorkspaceTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(RefreshWorkspaceTool.class);
 
-    public RefreshWorkspaceTool(Supplier<IJdtService> serviceSupplier) {
+    /** The host's reconciler, which refreshes and builds; read at call time (28k E6). */
+    private final Supplier<Reconciler> reconciler;
+
+    public RefreshWorkspaceTool(Supplier<IJdtService> serviceSupplier, Supplier<Reconciler> reconciler) {
         super(serviceSupplier);
+        this.reconciler = reconciler;
     }
 
     @Override
@@ -165,11 +172,7 @@ public class RefreshWorkspaceTool extends AbstractTool {
                 classFilesInvalidated += projectFileCount;
 
                 try {
-                    project.refreshLocal(IResource.DEPTH_INFINITE,
-                        new NullProgressMonitor());
-                    project.build(IncrementalProjectBuilder.CLEAN_BUILD,
-                        new NullProgressMonitor());
-                    project.build(IncrementalProjectBuilder.FULL_BUILD,
+                    reconciler.get().rebuild(BuildScope.of(project.getName()), BuildKind.CLEAN_FULL,
                         new NullProgressMonitor());
                 } catch (Exception e) {
                     log.warn("Refresh + rebuild failed on project '{}': {}",

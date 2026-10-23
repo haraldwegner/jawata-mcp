@@ -75,7 +75,7 @@ class ChangeVisibilityTest {
     }
 
     private int compileErrors() {
-        ToolResponse cr = new CompileWorkspaceTool(() -> service).execute(mapper.createObjectNode());
+        ToolResponse cr = new CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service)).execute(mapper.createObjectNode());
         assertTrue(cr.isSuccess(), "compile failed: " + cr.getError());
         @SuppressWarnings("unchecked")
         Map<String, Object> d = (Map<String, Object>) cr.getData();
