@@ -52,7 +52,7 @@ class GetDiagnosticsMarkersTest {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
         ToolRegistry registry = new ToolRegistry();
         registry.register(new GetDiagnosticsTool(() -> service));
-        registry.setDiskSync(new StrictDiskSync(() -> service));
+        registry.setReconciler(new StrictDiskSync(() -> service));
 
         // Prime the guard (first call reconciles the new root once).
         assertTrue(registry.callTool("get_diagnostics", mapper.createObjectNode()).isSuccess());
@@ -92,7 +92,7 @@ class GetDiagnosticsMarkersTest {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
         ToolRegistry registry = new ToolRegistry();
         registry.register(new GetDiagnosticsTool(() -> service));
-        registry.setDiskSync(new StrictDiskSync(() -> service));
+        registry.setReconciler(new StrictDiskSync(() -> service));
 
         ObjectNode args = mapper.createObjectNode();
         args.put("severity", "error");

@@ -1111,7 +1111,7 @@ public class JawataApplication implements IApplication {
     private void registerTools() {
         // Sprint 21d: strict disk sync — every tool call reconciles external edits
         // before executing; the unchanged-tree fast path is the only skip.
-        toolRegistry.setDiskSync(
+        toolRegistry.setReconciler(
             new org.jawata.core.workspace.StrictDiskSync(() -> jdtService));
 
         // Sprint 21e (item A): tool-initiated project mutations refresh + backfill the

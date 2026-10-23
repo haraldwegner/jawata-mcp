@@ -49,7 +49,7 @@ class StrictDiskSyncDispatchTest {
         registry.register(new GetDiagnosticsTool(() -> service));
         registry.register(
             new RenameSymbolTool(() -> service, new RefactoringChangeCache(), () -> null));
-        registry.setDiskSync(new StrictDiskSync(() -> service));
+        registry.setReconciler(new StrictDiskSync(() -> service));
     }
 
     private Path projectRoot() {
@@ -187,7 +187,7 @@ class StrictDiskSyncDispatchTest {
     @DisplayName("guard crash: the tool call proceeds (WARN-and-proceed, never a switch)")
     void guard_crash_warns_and_the_tool_call_proceeds() throws Exception {
         wire(helper.loadProjectCopy("simple-maven"));
-        registry.setDiskSync(new StrictDiskSync(() -> service) {
+        registry.setReconciler(new StrictDiskSync(() -> service) {
             @Override
             public synchronized SyncReport syncBeforeCall() {
                 throw new IllegalStateException("deliberate guard crash");

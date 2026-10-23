@@ -59,7 +59,7 @@ class StrictDiskSyncStoreTest {
         try {
             ToolRegistry registry = new ToolRegistry();
             registry.register(new ExperienceTool(() -> service, store));
-            registry.setDiskSync(new StrictDiskSync(() -> service));
+            registry.setReconciler(new StrictDiskSync(() -> service));
 
             // Prime the guard: the first call reconciles the new root once.
             ObjectNode stats = mapper.createObjectNode();

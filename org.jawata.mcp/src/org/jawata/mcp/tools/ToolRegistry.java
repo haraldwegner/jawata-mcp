@@ -65,11 +65,11 @@ public class ToolRegistry {
     private final Map<String, Tool> tools = new LinkedHashMap<>();
 
     /** Sprint 21d: the strict-disk-sync guard, run once per call before any tool executes. */
-    private Reconciler diskSync;
+    private Reconciler reconciler;
 
-    /** Install the per-call disk-sync guard (Sprint 21d). Null = no guard (tests). */
-    public void setDiskSync(Reconciler diskSync) {
-        this.diskSync = diskSync;
+    /** Install the host's reconciler, run once per call before any tool executes (Sprint 21d; 28k E5). Null = none (tests). */
+    public void setReconciler(Reconciler reconciler) {
+        this.reconciler = reconciler;
     }
 
     /**
@@ -649,9 +649,9 @@ public class ToolRegistry {
         // CURRENT tree. Failure = WARN and proceed (availability over freshness on a
         // guard crash ONLY — never a switch; correctness is not configurable).
         java.util.List<String> syncDelta = java.util.List.of();
-        if (diskSync != null) {
+        if (reconciler != null) {
             try {
-                SyncReport sync = diskSync.syncBeforeCall();
+                SyncReport sync = reconciler.syncBeforeCall();
                 syncDelta = sync.refreshedPaths();
                 if (sync.reconciled()) {
                     log.info("Strict disk sync before {}: {} new project(s), {} file(s) reconciled,"

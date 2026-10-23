@@ -229,7 +229,7 @@ class FieldsProjectionTest {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
         ToolRegistry registry = new ToolRegistry();
         registry.register(new GetDiagnosticsTool(() -> service));
-        registry.setDiskSync(new StrictDiskSync(() -> service));
+        registry.setReconciler(new StrictDiskSync(() -> service));
 
         // Prime the guard, write a broken file externally, let the builder see it
         // (the GetDiagnosticsMarkersTest recipe — real markers, no synthetic rows).
