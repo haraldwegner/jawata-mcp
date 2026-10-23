@@ -89,7 +89,7 @@ class PlanRefactoringTool extends AbstractTool {
 
     /** Runs one recipe step's primitive against the current workspace. */
     @FunctionalInterface
-    private interface StepInvoker {
+    interface StepInvoker {
         ToolResponse invoke(IJdtService service, JsonNode args);
     }
 
@@ -101,8 +101,13 @@ class PlanRefactoringTool extends AbstractTool {
         this.advisor = advisor;
         this.extractTool = new ExtractTool(serviceSupplier, changeCache);
         this.patternTool = new RefactorToPatternTool(serviceSupplier, changeCache);
-        this.stepTools.put("extract", extractTool::executeWithService);
-        this.stepTools.put("refactor_to_pattern", patternTool::executeWithService);
+        registerStepTool("extract", extractTool::executeWithService);
+        registerStepTool("refactor_to_pattern", patternTool::executeWithService);
+    }
+
+    /** Makes {@code invoker} the primitive that runs every plan step named {@code tool}, replacing one already there. */
+    final void registerStepTool(String tool, StepInvoker invoker) {
+        stepTools.put(tool, invoker);
     }
 
     @Override
@@ -334,9 +339,22 @@ class PlanRefactoringTool extends AbstractTool {
             .build());
     }
 
+    /**
+     * Runs one step's primitive. A primitive that THROWS (a program error, not a refusal) is a failed step like any other: the
+     * caller rolls the plan back on it. Before this, nothing caught it and the steps already applied stayed applied (28k ledger
+     * C2-18).
+     */
     private ToolResponse invokeStep(IJdtService service, PlanStep step) {
         StepInvoker invoker = stepTools.get(step.tool());
-        return invoker == null ? null : invoker.invoke(service, step.args());
+        if (invoker == null) {
+            return null;
+        }
+        try {
+            return invoker.invoke(service, step.args());
+        } catch (RuntimeException thrown) {
+            log.warn("apply_plan: step tool '{}' threw {}", step.tool(), thrown.toString(), thrown);
+            return ToolResponse.internalError(thrown);
+        }
     }
 
     private void rollback(List<Change> undoStack, IJdtService service) {

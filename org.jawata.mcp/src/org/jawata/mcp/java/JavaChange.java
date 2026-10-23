@@ -13,10 +13,9 @@ import org.jawata.spi.lang.ProviderContext;
  * the provider's own.
  *
  * <p>DECLARED UNTIL E18 (ledger 28k-C2-3): the host half — the reconciler and the writes — is built here, not asked of a host: the
- * reconciler is a {@link StrictDiskSync} over the same model (its rebuild refreshes and full-builds each named project, which is
- * exactly what the plan's parity check did itself before E7), the writes are {@link WorkspaceWrites#DIRECT}. Behaviour is
- * unchanged; it costs one production edge from {@code org.jawata.mcp} to {@code org.jawata.core.workspace} (rule R4) that E18's
- * {@code EngineHost} removes.</p>
+ * reconciler is a {@link StrictDiskSync} over the same model (its rebuild refreshes each named project from disk and builds it the
+ * way the caller asks, incrementally or in full), the writes are {@link WorkspaceWrites#DIRECT}. It costs one production edge
+ * from {@code org.jawata.mcp} to {@code org.jawata.core.workspace} (rule R4) that E18's {@code EngineHost} removes.</p>
  */
 public final class JavaChange {
 

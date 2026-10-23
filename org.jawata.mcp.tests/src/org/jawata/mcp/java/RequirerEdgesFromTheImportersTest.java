@@ -1,6 +1,7 @@
 package org.jawata.mcp.java;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -50,9 +51,13 @@ class RequirerEdgesFromTheImportersTest {
     void pdeImportPackageIsAnEdge() throws Exception {
         Path importer = helper.copyFixture("pde-bundle-a");
         Path exporter = helper.copyFixture("pde-bundle-b");
+        // The fixture's own manifest REQUIRES the sibling bundle; rewrite it to import the package instead, so the only link between
+        // the two is the Import-Package header (a test that left the Require-Bundle in would pass on that link alone).
         Path manifest = importer.resolve("META-INF/MANIFEST.MF");
-        Files.writeString(manifest, Files.readString(manifest).replaceFirst("(?m)^(Bundle-SymbolicName:.*)$",
-            "$1\nImport-Package: com.example.b"));
+        Files.writeString(manifest, "Manifest-Version: 1.0\nBundle-ManifestVersion: 2\nBundle-Name: PDE Bundle A\n"
+            + "Bundle-SymbolicName: org.jawata.fixture.a;singleton:=true\nBundle-Version: 1.0.0.qualifier\n"
+            + "Bundle-RequiredExecutionEnvironment: JavaSE-17\nImport-Package: com.example.b\n");
+        assertFalse(Files.readString(manifest).contains("Require-Bundle"), "the importer names the sibling by package only");
         JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(importer);
         service.addProject(exporter);

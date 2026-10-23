@@ -9,9 +9,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
+import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.change.ChangeContext;
@@ -94,12 +97,7 @@ class JavaBuildVerdictRebuildAfterTest {
     @Test
     @DisplayName("a project that takes a sibling's compiler output as a class folder is rebuilt when the sibling changes")
     void aClassFolderInsideTheChangedProjectIsARequirement() throws Exception {
-        List<IClasspathEntry> classpath = new ArrayList<>();
-        for (IClasspathEntry entry : requirerProject.getRawClasspath()) {
-            if (entry.getEntryKind() != IClasspathEntry.CPE_PROJECT) {
-                classpath.add(entry);
-            }
-        }
+        List<IClasspathEntry> classpath = withoutProjectEntries();
         classpath.add(JavaCore.newLibraryEntry(new org.eclipse.core.runtime.Path(firstRoot.resolve("target/classes").toString()), null, null));
         requirerProject.setRawClasspath(classpath.toArray(new IClasspathEntry[0]), null);
 
@@ -107,6 +105,33 @@ class JavaBuildVerdictRebuildAfterTest {
 
         assertEquals(List.of(first, second), rebuild.scope().projects(), "a class folder inside the changed project is its output, the requirer's input");
         assertEquals(BuildKind.INCREMENTAL, rebuild.kind());
+    }
+
+    @Test
+    @DisplayName("a source folder linked into two loaded projects belongs to both, so a change in it rebuilds both")
+    void aFolderLinkedIntoTwoProjectsBelongsToBoth() throws Exception {
+        requirerProject.setRawClasspath(withoutProjectEntries().toArray(new IClasspathEntry[0]), null);   // only the link joins them now
+        Path shared = Files.createTempDirectory(helper.getTempDirectory(), "shared");
+        Path changed = Files.writeString(shared.resolve("Shared.java"), "package shared;\npublic class Shared {\n}\n");
+        for (String name : List.of(first, second)) {
+            ResourcesPlugin.getWorkspace().getRoot().getProject(name).getFolder("shared").createLink(shared.toUri(), IResource.NONE, null);
+        }
+
+        BuildVerdict.Rebuild rebuild = verdict.rebuildAfter(List.of(changed.toString()));
+
+        assertEquals(List.of(first, second).stream().sorted().toList(), rebuild.scope().projects().stream().sorted().toList(),
+            "a file that two projects hold is changed in both");
+        assertEquals(BuildKind.INCREMENTAL, rebuild.kind());
+    }
+
+    private List<IClasspathEntry> withoutProjectEntries() throws JavaModelException {
+        List<IClasspathEntry> classpath = new ArrayList<>();
+        for (IClasspathEntry entry : requirerProject.getRawClasspath()) {
+            if (entry.getEntryKind() != IClasspathEntry.CPE_PROJECT) {
+                classpath.add(entry);
+            }
+        }
+        return classpath;
     }
 
     @Test
@@ -125,6 +150,19 @@ class JavaBuildVerdictRebuildAfterTest {
 
         assertEquals(List.of(second), rebuild.scope().projects(), "the build file of the requiring project reaches that project only");
         assertEquals(BuildKind.FULL, rebuild.kind());
+    }
+
+    @Test
+    @DisplayName("every build-configuration file the product names forces a full build of its project, and an ordinary file does not")
+    void everyBuildConfigurationFileForcesAFullBuild() {
+        for (String name : List.of("pom.xml", ".classpath", ".project", "MANIFEST.MF", "build.properties", "build.gradle",
+                "build.gradle.kts", "settings.gradle", "settings.gradle.kts")) {
+            BuildVerdict.Rebuild rebuild = verdict.rebuildAfter(List.of(secondRoot.resolve(name).toString()));
+
+            assertEquals(BuildKind.FULL, rebuild.kind(), name + " moves the classpath or the settings");
+            assertEquals(List.of(second), rebuild.scope().projects(), name);
+        }
+        assertEquals(BuildKind.INCREMENTAL, verdict.rebuildAfter(List.of(secondRoot.resolve("notes.txt").toString())).kind());
     }
 
     @Test

@@ -17,8 +17,8 @@ import org.slf4j.LoggerFactory;
  * Sprint 18 — the compile half of the orchestration parity gate: build the projects
  * a step touched (28k E7c: and those that require them) and report whether they are error-clean. The multi-step loop
  * (Stage 5) runs this <b>after every step</b>; a non-clean result rolls the step
- * (and the plan) back. Deliberately lean and self-contained (it asks the host to
- * refresh and full-build, then the language for the errors the build left, rather
+ * (and the plan) back. Deliberately lean and self-contained (it asks the language what to build, the host to
+ * refresh and build it, then the language for the errors the build left, rather
  * than depending on the tools layer — refactoring must not depend on tools). Test
  * execution is a separate, opt-in gate the loop layers on top; this is the fast
  * structural backstop that catches a step that fails to compile.
