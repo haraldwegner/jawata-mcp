@@ -3,8 +3,10 @@
      C++ later) implement for the engine. org.jawata.spi.host: what the engine asks of its host; org.jawata.spi.lang: what it asks
      of a language.
 
-     IT DECLARES NO DEPENDENCIES, AND THAT IS THE DELIVERABLE (rule R10), as org.jawata.catalogue's does: a reference to jawata or to
-     JDT from here would not compile, and the checked-in MANIFEST has no Import-Package, so OSGi would refuse one at resolve time too.
+     ITS ONE DEPENDENCY IS THE ECLIPSE RUNTIME PACKAGE, AND THAT IS THE DELIVERABLE (rule R10: nothing of jawata, no JDT): the contract's
+     ports carry org.eclipse.core.runtime types (IProgressMonitor, CoreException), from org.eclipse.equinox.common here and imported
+     as the package in the MANIFEST, as org.jawata.core imports it. A reference to jawata or to JDT from here would not compile, and
+     the MANIFEST imports nothing else, so OSGi would refuse one at resolve time too.
      It has no resources; a resource added later gets a root of its own (org.jawata.spi/resources), never the source root. -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -17,6 +19,10 @@
     </parent>
 
     <artifactId>org.jawata.spi</artifactId>
+
+    <dependencies>
+        <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.equinox.common</artifactId><version>${v.equinox.common}</version></dependency>
+    </dependencies>
 
     <build>
         <sourceDirectory>${project.basedir}/../../org.jawata.spi/src</sourceDirectory>

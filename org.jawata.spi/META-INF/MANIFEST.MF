@@ -6,5 +6,6 @@ Bundle-Version: 4.4.15
 Bundle-Vendor: JAWATA
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
+Import-Package: org.eclipse.core.runtime
 Export-Package: org.jawata.spi.host;version="1.0.0",
  org.jawata.spi.lang;version="1.0.0"

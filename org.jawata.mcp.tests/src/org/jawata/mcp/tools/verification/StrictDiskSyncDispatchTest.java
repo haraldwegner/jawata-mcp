@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.workspace.StrictDiskSync;
+import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.SyncReport;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
@@ -153,7 +154,7 @@ class StrictDiskSyncDispatchTest {
     @DisplayName("unchanged tree: the second sync does zero work (the only legitimate skip)")
     void unchanged_tree_second_sync_does_zero_work() throws Exception {
         wire(helper.loadProjectCopy("simple-maven"));
-        StrictDiskSync sync = new StrictDiskSync(() -> service);
+        Reconciler sync = new StrictDiskSync(() -> service);
 
         SyncReport first = sync.syncBeforeCall();
         assertEquals(1, first.newProjects(), "first pass reconciles the new root once");
@@ -168,7 +169,7 @@ class StrictDiskSyncDispatchTest {
     @DisplayName("two-project workspace: edits in BOTH projects are reconciled by one pass")
     void two_project_workspace_edits_in_both_are_reconciled() throws Exception {
         wire(helper.loadWorkspaceCopy("pde-bundle-a", "pde-bundle-b"));
-        StrictDiskSync sync = new StrictDiskSync(() -> service);
+        Reconciler sync = new StrictDiskSync(() -> service);
         assertEquals(2, sync.syncBeforeCall().newProjects(), "both roots primed");
 
         int i = 0;

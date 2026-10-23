@@ -1,7 +1,8 @@
 package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.workspace.StrictDiskSync;
+
+import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.SyncReport;
 import org.jawata.mcp.ResidentDegradation;
 import org.jawata.mcp.models.ToolResponse;
@@ -64,10 +65,10 @@ public class ToolRegistry {
     private final Map<String, Tool> tools = new LinkedHashMap<>();
 
     /** Sprint 21d: the strict-disk-sync guard, run once per call before any tool executes. */
-    private StrictDiskSync diskSync;
+    private Reconciler diskSync;
 
     /** Install the per-call disk-sync guard (Sprint 21d). Null = no guard (tests). */
-    public void setDiskSync(StrictDiskSync diskSync) {
+    public void setDiskSync(Reconciler diskSync) {
         this.diskSync = diskSync;
     }
 

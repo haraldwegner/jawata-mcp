@@ -18,6 +18,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.SyncReport;
 
 /**
@@ -37,7 +38,7 @@ import org.jawata.spi.host.SyncReport;
  * <p>Non-final so tests can inject failure (the dispatch layer's WARN-and-proceed
  * crash policy is itself under test).
  */
-public class StrictDiskSync {
+public class StrictDiskSync implements Reconciler {
 
     /** Cap on paths carried in a report — a mass refresh is not a watchable delta. */
     public static final int MAX_REPORTED_PATHS = 50;
