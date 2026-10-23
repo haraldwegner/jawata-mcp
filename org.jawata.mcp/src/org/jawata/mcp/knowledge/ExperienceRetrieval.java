@@ -8,11 +8,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IMember;
-import org.eclipse.jdt.core.ISourceRange;
 import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.java.JavaSymbolAnchors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -2409,14 +2408,14 @@ public final class ExperienceRetrieval {
                     p.put("stale", true);
                     p.put("note", "the type is here and '" + member + "' is not — "
                         + "the anchored member is gone");
-                    locate(service, type, type, p);
+                    JavaSymbolAnchors.locate(service, type, type, p);
                     return p;
                 }
                 p.put("member", member);
                 target = found;
             }
             p.put("resolved", true);
-            locate(service, type, target, p);
+            JavaSymbolAnchors.locate(service, type, target, p);
         } catch (Exception ex) {
             p.put("resolved", false);
             p.put("note", "resolution error: " + ex.getMessage());
@@ -2505,31 +2504,6 @@ public final class ExperienceRetrieval {
         return Boolean.TRUE.equals(pointer.get("resolved"))
             ? AnchorAnswer.RESOLVES
             : AnchorAnswer.UNKNOWN;
-    }
-
-    /**
-     * Put {@code file} and the 1-based {@code line} of {@code member} into {@code p}.
-     *
-     * <p>A location is an AID and never the claim, so an unreadable source range leaves the
-     * pointer without a line rather than failing a resolution that has already succeeded —
-     * the resolution answered whether the code is there, which is a question the range
-     * cannot re-open. The name range rather than the source range, because a reader sent to
-     * a method wants the signature and not the first line of its javadoc.</p>
-     */
-    private static void locate(IJdtService service, IType type, IMember member,
-            Map<String, Object> p) {
-        try {
-            if (type.getResource() != null && type.getResource().getLocation() != null) {
-                p.put("file", type.getResource().getLocation().toOSString());
-            }
-            ICompilationUnit cu = type.getCompilationUnit();
-            ISourceRange name = member.getNameRange();
-            if (cu != null && name != null && name.getOffset() >= 0) {
-                p.put("line", service.getLineNumber(cu, name.getOffset()) + 1);
-            }
-        } catch (Exception ignored) {
-            // see the javadoc: no line is a smaller answer, never a wrong one.
-        }
     }
 
     private static Map<String, Object> cueMap(RecallQuery q) {

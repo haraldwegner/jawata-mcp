@@ -21,6 +21,11 @@
 #      build, so P1 stays green if only one of them works (a do-nothing reconciler turns it red; the
 #      rebuild route alone is CompileWorkspaceToolTest's job, C1 audit finding 6).
 #
+#   P2 (Stage 2, the change context): on the same sample, rename_symbol over MCP renames a method everywhere it is used and
+#      reports applied; the compile check runs (compile_workspace answers 0 errors on the renamed source); refactoring
+#      undo restores the files byte for byte. This is the change lifecycle through ChangeContext, front door to built dist: the
+#      rename is applied by GatedApply (verdict, paths, writes), and the undo goes through ChangeEngine under the same context.
+#
 # Usage:  build/28k-e2e.sh [--capture] [dist-dir]
 #         --capture writes the goldens (build/28k-golden-ready.txt, build/28k-golden-tools.json)
 #         from the given dist; only Stage 0 uses it.
@@ -189,6 +194,29 @@ else:
     else:
         ok("P1 compile_workspace: 0, then %d error(s) in Clean.java after an edit on disk, then 0 after restoring it"
            % during[0])
+
+# --- P2: a rename through the change lifecycle applies, compiles, and undoes byte-identically (Stage 2) -------------------
+if loaded.get("success"):
+    before_bytes = open(source, "rb").read()
+    renamed = call("rename_symbol", {"symbol": "com.example.Clean#greet", "newName": "welcome"})
+    data = renamed.get("data") or {}
+    after_rename = open(source, "rb").read()
+    compiled = (call("compile_workspace", {}).get("data") or {}).get("errorCount")
+    if not renamed.get("success") or data.get("applied") is not True:
+        bad("P2 rename_symbol was not applied: %s" % (renamed.get("error") or data))
+    elif b"welcome(" not in after_rename or b"greet(" in after_rename:
+        bad("P2 the rename did not reach Clean.java")
+    elif compiled != 0:
+        bad("P2 compile_workspace after the rename answers %s errors" % compiled)
+    else:
+        undone = call("refactoring", {"action": "undo", "undoChangeId": data.get("undoChangeId")})
+        restored = open(source, "rb").read()
+        if not undone.get("success"):
+            bad("P2 refactoring undo failed: %s" % undone.get("error"))
+        elif restored != before_bytes:
+            bad("P2 refactoring undo did not restore Clean.java byte for byte")
+        else:
+            ok("P2 rename_symbol applied (greet -> welcome), compile_workspace 0 errors, refactoring undo restored Clean.java byte for byte")
 
 print("\n28k-E2E passed=%d failed=%d" % (passed, failed))
 raise SystemExit(1 if failed else 0)

@@ -29,18 +29,18 @@ import org.jawata.core.IJdtService;
  * spans a run (an entry corpus repeats the same tokens) but must not outlive project
  * loads/removals.</p>
  */
-final class SymbolAnchorResolver {
+public final class SymbolAnchorResolver {
 
     private final Supplier<IJdtService> service;
     /** token → resolved unique source type; containsKey with null value = memoized miss. */
     private final Map<String, IType> memo = new HashMap<>();
 
-    SymbolAnchorResolver(Supplier<IJdtService> service) {
+    public SymbolAnchorResolver(Supplier<IJdtService> service) {
         this.service = service;
     }
 
     /** Resolve {@code text} to its one grounded anchor ("pkg.Type" or "pkg.Type#member"), or empty. */
-    Optional<String> resolve(String text) {
+    public Optional<String> resolve(String text) {
         List<AnchorCandidates.Candidate> candidates = AnchorCandidates.extract(text);
         if (candidates.isEmpty()) {
             return Optional.empty();
@@ -187,7 +187,7 @@ final class SymbolAnchorResolver {
      * that shape; it is stated because the caller turns this answer into a refusal that names
      * the member.</p>
      */
-    static IMember memberOnOrThrow(IType type, String member) throws JavaModelException {
+    public static IMember memberOnOrThrow(IType type, String member) throws JavaModelException {
         IField f = type.getField(member);
         if (f.exists()) {
             return f;
