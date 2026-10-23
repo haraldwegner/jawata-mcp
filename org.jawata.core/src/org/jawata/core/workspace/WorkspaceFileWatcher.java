@@ -341,6 +341,11 @@ public class WorkspaceFileWatcher implements AutoCloseable {
     }
 
     private void reconcileFromDisk() {
+        // The modification time this pass answers for is the one BEFORE the file is read. Loading projects takes
+        // seconds; a write that lands meanwhile must still differ from what is recorded, so the next poll reconciles it.
+        // Recording the time after the load took that write as already seen — harmless while a watch service queues an
+        // event for it, a lost change when there is none (28k C2).
+        long seenBeforeReading = readCurrentMtime();
         try {
             List<Path> newPaths = readWorkspacePaths();
             applyDiff(newPaths);
@@ -348,10 +353,9 @@ public class WorkspaceFileWatcher implements AutoCloseable {
             log.warn("Failed to apply workspace.json change at {}: {}",
                 workspaceJson, e.getMessage(), e);
         } finally {
-            // Always record the latest mtime so the fallback poll's next
-            // tick doesn't double-fire reconcile against the file we just
-            // read.
-            recordCurrentMtime();
+            // Always record, even after a failure, so the fallback poll's next tick does not re-fire a reconcile
+            // against the file this pass already read.
+            lastSeenMtimeMillis = seenBeforeReading;
         }
     }
 

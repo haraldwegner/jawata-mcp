@@ -219,6 +219,83 @@ class WorkspaceFileWatcherTest {
             "the file's appearance should be seen by polling; loaded: " + service.projectKeys());
     }
 
+    @Test
+    @DisplayName("28k C2: with no watch service, a write that lands while a reconcile is loading projects is not marked as already seen")
+    void writeDuringAReconcileIsFollowedByPolling() throws Exception {
+        Path first = helper.getFixturePath("simple-maven");
+        Path second = helper.getFixturePath("simple-maven-b");
+        Path third = helper.getFixturePath("compile-clean");
+        SlowAdd slow = new SlowAdd();
+        JdtServiceImpl slowService = helper.disposeAfter(slow);
+        writeWorkspaceJson(first);
+
+        watcher = new WorkspaceFileWatcher(dataDir, slowService, 1, WorkspaceFileWatcherTest::refuse);
+        watcher.start();
+        assertEquals(1, slowService.allProjects().size());
+
+        writeWorkspaceJson(first, second);
+        assertTrue(slow.inside.await(30, java.util.concurrent.TimeUnit.SECONDS),
+            "the poll should have started a reconcile that is now loading the second project");
+        // The reconcile is held inside its project load: rewrite the file now, with a modification time that cannot be
+        // mistaken for the one the reconcile started from.
+        writeWorkspaceJson(first, second, third);
+        Files.setLastModifiedTime(workspaceJson, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 60_000));
+        slow.release.countDown();
+
+        assertTrue(waitUntil(Duration.ofSeconds(60), () -> slowService.allProjects().size() == 3),
+            "the write made during the reconcile must be picked up by the next poll; loaded: " + slowService.projectKeys());
+    }
+
+    @Test
+    @DisplayName("28k C2: with no watch service, a write that lands while the initial load is running is not marked as already seen")
+    void writeDuringTheInitialLoadIsFollowedByPolling() throws Exception {
+        Path first = helper.getFixturePath("simple-maven");
+        Path second = helper.getFixturePath("simple-maven-b");
+        Path third = helper.getFixturePath("compile-clean");
+        SlowAdd slow = new SlowAdd();
+        JdtServiceImpl slowService = helper.disposeAfter(slow);
+        writeWorkspaceJson(first, second);
+
+        watcher = new WorkspaceFileWatcher(dataDir, slowService, 1, WorkspaceFileWatcherTest::refuse);
+        java.util.concurrent.atomic.AtomicReference<Throwable> startFailure = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread starter = new Thread(() -> {
+            try {
+                watcher.start();
+            } catch (Throwable t) {
+                startFailure.set(t);
+            }
+        }, "initial-load");
+        starter.start();
+        assertTrue(slow.inside.await(30, java.util.concurrent.TimeUnit.SECONDS),
+            "the initial load should be loading the second project");
+
+        writeWorkspaceJson(first, second, third);
+        Files.setLastModifiedTime(workspaceJson, java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis() + 60_000));
+        slow.release.countDown();
+        starter.join(60_000);
+        assertNull(startFailure.get(), "start() must not fail");
+
+        assertTrue(waitUntil(Duration.ofSeconds(60), () -> slowService.allProjects().size() == 3),
+            "the write made during the initial load must be picked up by the poll; loaded: " + slowService.projectKeys());
+    }
+
+    /** A service whose project add holds still until the test lets it go, so the test can rewrite workspace.json meanwhile. */
+    private static final class SlowAdd extends JdtServiceImpl {
+        final java.util.concurrent.CountDownLatch inside = new java.util.concurrent.CountDownLatch(1);
+        final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+
+        @Override
+        public org.jawata.core.LoadedProject addProject(Path path) throws org.eclipse.core.runtime.CoreException {
+            inside.countDown();
+            try {
+                release.await(60, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return super.addProject(path);
+        }
+    }
+
     /** What the operating system answers when the user's inotify instances are all taken. */
     private static java.nio.file.WatchService refuse() throws java.io.IOException {
         throw new java.io.IOException("User limit of inotify instances reached or too many open files");
