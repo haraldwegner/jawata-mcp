@@ -16,6 +16,7 @@
     <modules>
         <!-- First: it depends on nothing, and mcp depends on it. -->
         <module>catalogue</module>
+        <module>spi</module>
         <module>core</module>
         <module>mcp</module>
         <module>boot</module>

@@ -16,6 +16,7 @@
     <artifactId>org.jawata.core</artifactId>
 
     <dependencies>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.spi</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.eclipse.jdt</groupId><artifactId>org.eclipse.jdt.core</artifactId><version>${v.jdt.core}</version></dependency>
         <dependency><groupId>org.eclipse.jdt</groupId><artifactId>org.eclipse.jdt.launching</artifactId><version>${v.jdt.launching}</version></dependency>
         <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.core.resources</artifactId><version>${v.core.resources}</version></dependency>

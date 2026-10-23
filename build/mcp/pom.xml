@@ -17,6 +17,7 @@
     <dependencies>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.catalogue</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.spi</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.equinox.app</artifactId><version>${v.equinox.app}</version></dependency>
         <dependency><groupId>org.eclipse.jdt</groupId><artifactId>org.eclipse.jdt.core.manipulation</artifactId><version>${v.jdt.manipulation}</version></dependency>
         <!-- Sprint 23: jdt.junit.core + debug.core deps dropped with the JDT-LTK

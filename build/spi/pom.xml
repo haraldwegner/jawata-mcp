@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28k (contract step E2): org.jawata.spi — the interfaces a host (headless, Eclipse) and a language provider (Java now,
+     C++ later) implement for the engine. org.jawata.spi.host: what the engine asks of its host; org.jawata.spi.lang: what it asks
+     of a language.
+
+     IT DECLARES NO DEPENDENCIES, AND THAT IS THE DELIVERABLE (rule R10), as org.jawata.catalogue's does: a reference to jawata or to
+     JDT from here would not compile, and the checked-in MANIFEST has no Import-Package, so OSGi would refuse one at resolve time too.
+     It has no resources; a resource added later gets a root of its own (org.jawata.spi/resources), never the source root. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.jawata</groupId>
+        <artifactId>org.jawata.build</artifactId>
+        <version>4.4.15</version>
+    </parent>
+
+    <artifactId>org.jawata.spi</artifactId>
+
+    <build>
+        <sourceDirectory>${project.basedir}/../../org.jawata.spi/src</sourceDirectory>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestFile>${project.basedir}/../../org.jawata.spi/META-INF/MANIFEST.MF</manifestFile>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
