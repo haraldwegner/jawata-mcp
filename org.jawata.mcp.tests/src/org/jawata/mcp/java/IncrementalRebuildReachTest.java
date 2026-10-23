@@ -1,4 +1,4 @@
-package org.jawata.mcp.refactoring;
+package org.jawata.mcp.java;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -13,7 +13,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.change.ChangeContext;
 import org.jawata.mcp.fixtures.TestProjectHelper;
-import org.jawata.mcp.java.JavaChange;
+import org.jawata.mcp.refactoring.ParityGate;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.lang.Diagnostic;
@@ -94,6 +94,38 @@ class IncrementalRebuildReachTest {
         ParityGate.Result result = ParityGate.compile(context, List.of(added.toString()));
 
         assertFalse(result.clean(), "the gate must fail on the added file's error: " + result.errors());
+    }
+
+    @Test
+    @DisplayName("an incremental rebuild leaves the class files of untouched sources alone, which is what makes it incremental")
+    void anIncrementalRebuildLeavesUntouchedClassFilesAlone() throws Exception {
+        assertEquals(List.of(), rebuild(BuildKind.FULL), "precondition: a clean baseline");
+        List<Path> compiled = classFiles();
+        assertFalse(compiled.isEmpty(), "precondition: the baseline build wrote class files under " + service.getProjectRoot());
+        Path untouched = compiled.get(0);
+        java.nio.file.attribute.FileTime longAgo = java.nio.file.attribute.FileTime.fromMillis(1_000_000_000_000L);
+        Files.setLastModifiedTime(untouched, longAgo);
+        Files.writeString(sources.resolve("Added.java"), "package com.example;\npublic class Added {\n    int fine() { return 1; }\n}\n");
+
+        assertEquals(List.of(), rebuild(BuildKind.INCREMENTAL), "the added source compiles");
+
+        assertTrue(classFiles().stream().anyMatch(f -> f.getFileName().toString().equals("Added.class")),
+            "the incremental build compiled the added source");
+        assertEquals(longAgo, Files.getLastModifiedTime(untouched),
+            "an incremental build must not rewrite the class file of a source it did not recompile: " + untouched);
+    }
+
+    /** Every compiled class in the project's compiler output folder. */
+    private List<Path> classFiles() throws Exception {
+        org.eclipse.jdt.core.IJavaProject project = service.allProjects().iterator().next().javaProject();
+        Path output = org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot()
+            .getFolder(project.getOutputLocation()).getLocation().toFile().toPath();
+        if (!Files.isDirectory(output)) {
+            return List.of();
+        }
+        try (java.util.stream.Stream<Path> walk = Files.walk(output)) {
+            return walk.filter(f -> f.getFileName().toString().endsWith(".class")).sorted().toList();
+        }
     }
 
     /** Rebuild the one project the way {@code kind} says and answer the errors the language reads afterwards. */

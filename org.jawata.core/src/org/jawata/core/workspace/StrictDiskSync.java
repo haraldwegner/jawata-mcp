@@ -19,6 +19,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.core.project.ProjectImporter;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.host.Reconciler;
@@ -80,29 +81,6 @@ public class StrictDiskSync implements Reconciler {
 
     /** Cap on paths carried in a report — a mass refresh is not a watchable delta. */
     public static final int MAX_REPORTED_PATHS = 50;
-
-    /**
-     * Sprint 22a P2-d — the build kind is decided per sync pass, not a constant.
-     * {@code INCREMENTAL_BUILD} by default (fast — the common method-body edit); a
-     * clean {@code FULL_BUILD} only when incremental is unsafe or unreliable:
-     * <ul>
-     *   <li>a {@code .java} file was added or deleted — the type universe changed,
-     *       and the incremental builder lags fresh additions in this headless
-     *       runtime (the Sprint 21d finding: an added file produced no markers);</li>
-     *   <li>a build-config file ({@code pom.xml}/{@code .classpath}/{@code MANIFEST.MF}/…)
-     *       changed — the classpath moved, so incremental state is suspect;</li>
-     *   <li>the project's previous build was RED — recover from a possibly
-     *       inconsistent incremental delta state (the "if something breaks, clean
-     *       compile" rule).</li>
-     * </ul>
-     * A modify-only, green pass takes the fast incremental path. (The remaining
-     * refinement — escalating a modify whose DECLARATION surface changed, to catch
-     * signature edits that silently stale consumers, {@code bugs.md #8} — needs a
-     * per-file declaration-hash cache and is a deliberate follow-up, kept out of this
-     * correctness hot path until it can be done + tested carefully.)
-     */
-    private static final java.util.List<String> CONFIG_FILES = java.util.List.of(
-        "pom.xml", ".classpath", ".project", "MANIFEST.MF", "build.gradle", "build.gradle.kts");
 
     /** Project names whose last build produced error markers (→ next build is FULL). */
     private final Set<String> lastRedProjects = new java.util.HashSet<>();
@@ -178,13 +156,13 @@ public class StrictDiskSync implements Reconciler {
         if (!scan.added().isEmpty() || !scan.deleted().isEmpty()) {
             Set<LoadedProject> structureChanged = new LinkedHashSet<>();
             for (Path p : scan.added()) {
-                LoadedProject lp = owner(byRoot, p);
+                LoadedProject lp = LoadedProject.owning(byRoot.values(), p);
                 if (lp != null) {
                     structureChanged.add(lp);
                 }
             }
             for (Path p : scan.deleted()) {
-                LoadedProject lp = owner(byRoot, p);
+                LoadedProject lp = LoadedProject.owning(byRoot.values(), p);
                 if (lp != null) {
                     structureChanged.add(lp);
                 }
@@ -212,7 +190,7 @@ public class StrictDiskSync implements Reconciler {
     /** Changed or deleted: refresh exactly the file handle (deletion drops it from the model). */
     private static int refreshExisting(Map<Path, LoadedProject> byRoot, Path file,
             Set<IProject> toBuild, NullProgressMonitor monitor) throws CoreException {
-        LoadedProject lp = owner(byRoot, file);
+        LoadedProject lp = LoadedProject.owning(byRoot.values(), file);
         if (lp == null) {
             return 0;
         }
@@ -230,7 +208,7 @@ public class StrictDiskSync implements Reconciler {
      *  nearest ancestor container that EXISTS in the model (subtree-bounded). */
     private static int refreshAdded(Map<Path, LoadedProject> byRoot, Path file,
             Set<IProject> toBuild, NullProgressMonitor monitor) throws CoreException {
-        LoadedProject lp = owner(byRoot, file);
+        LoadedProject lp = LoadedProject.owning(byRoot.values(), file);
         if (lp == null) {
             return 0;
         }
@@ -248,18 +226,6 @@ public class StrictDiskSync implements Reconciler {
         return 1;
     }
 
-    private static LoadedProject owner(Map<Path, LoadedProject> byRoot, Path file) {
-        LoadedProject best = null;
-        int bestLen = -1;
-        for (Map.Entry<Path, LoadedProject> e : byRoot.entrySet()) {
-            if (file.startsWith(e.getKey()) && e.getKey().getNameCount() > bestLen) {
-                best = e.getValue();
-                bestLen = e.getKey().getNameCount();
-            }
-        }
-        return best;
-    }
-
     private static IFile fileHandle(IProject prj, Path abs) {
         // Resolve by LOCATION through the workspace root — jawata projects mount their
         // source dirs as LINKED folders (the project lives in the -data area, the
@@ -275,14 +241,33 @@ public class StrictDiskSync implements Reconciler {
         return mapped.length > 0 ? mapped[0] : null;
     }
 
-    /** Sprint 22a P2-d: FULL only when incremental is unsafe/unreliable (see field javadoc). */
+    /**
+     * Sprint 22a P2-d — the build kind is decided per sync pass, not a constant.
+     * {@code INCREMENTAL_BUILD} by default (fast — the common method-body edit); a
+     * clean {@code FULL_BUILD} only when incremental is unsafe or unreliable:
+     * <ul>
+     *   <li>a {@code .java} file was added or deleted — the type universe changed,
+     *       and the incremental builder lags fresh additions in this headless
+     *       runtime (the Sprint 21d finding: an added file produced no markers);</li>
+     *   <li>a build-config file ({@link ProjectImporter#BUILD_CONFIGURATION_FILES})
+     *       changed — the classpath moved, so incremental state is suspect;</li>
+     *   <li>the project's previous build was RED — recover from a possibly
+     *       inconsistent incremental delta state (the "if something breaks, clean
+     *       compile" rule).</li>
+     * </ul>
+     * A modify-only, green pass takes the fast incremental path. (The remaining
+     * refinement — escalating a modify whose DECLARATION surface changed, to catch
+     * signature edits that silently stale consumers, {@code bugs.md #8} — needs a
+     * per-file declaration-hash cache and is a deliberate follow-up, kept out of this
+     * correctness hot path until it can be done + tested carefully.)
+     */
     private boolean decideFullBuild(DiskSyncGuard.ScanResult scan, Set<IProject> toBuild) {
         if (!scan.added().isEmpty() || !scan.deleted().isEmpty()) {
             return true;   // type universe changed; incremental lags fresh additions
         }
         for (Path p : scan.changed()) {
             Path name = p.getFileName();
-            if (name != null && CONFIG_FILES.contains(name.toString())) {
+            if (name != null && ProjectImporter.BUILD_CONFIGURATION_FILES.contains(name.toString())) {
                 return true;   // classpath / build config changed
             }
         }

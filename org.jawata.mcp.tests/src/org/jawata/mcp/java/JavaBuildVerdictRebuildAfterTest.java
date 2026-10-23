@@ -36,6 +36,7 @@ class JavaBuildVerdictRebuildAfterTest {
     TestProjectHelper helper = new TestProjectHelper();
 
     private ChangeContext context;
+    private IJavaProject requirerProject;
     private BuildVerdict verdict;
     private String first;
     private String second;
@@ -53,10 +54,10 @@ class JavaBuildVerdictRebuildAfterTest {
         firstRoot = a.projectRoot().toAbsolutePath().normalize();
         secondRoot = b.projectRoot().toAbsolutePath().normalize();
         // The second project requires the first: a change to the first can break files in the second.
-        IJavaProject requirer = b.javaProject();
-        List<IClasspathEntry> classpath = new ArrayList<>(List.of(requirer.getRawClasspath()));
+        requirerProject = b.javaProject();
+        List<IClasspathEntry> classpath = new ArrayList<>(List.of(requirerProject.getRawClasspath()));
         classpath.add(JavaCore.newProjectEntry(a.javaProject().getPath()));
-        requirer.setRawClasspath(classpath.toArray(new IClasspathEntry[0]), null);
+        requirerProject.setRawClasspath(classpath.toArray(new IClasspathEntry[0]), null);
         context = JavaChange.contextFor(service);
         verdict = context.verdict();
     }
@@ -87,6 +88,24 @@ class JavaBuildVerdictRebuildAfterTest {
         BuildVerdict.Rebuild rebuild = verdict.rebuildAfter(List.of(firstRoot.resolve("src/main/java/com/example/Anything.java").toString()));
 
         assertEquals(List.of(first, second), rebuild.scope().projects());
+        assertEquals(BuildKind.INCREMENTAL, rebuild.kind());
+    }
+
+    @Test
+    @DisplayName("a project that takes a sibling's compiler output as a class folder is rebuilt when the sibling changes")
+    void aClassFolderInsideTheChangedProjectIsARequirement() throws Exception {
+        List<IClasspathEntry> classpath = new ArrayList<>();
+        for (IClasspathEntry entry : requirerProject.getRawClasspath()) {
+            if (entry.getEntryKind() != IClasspathEntry.CPE_PROJECT) {
+                classpath.add(entry);
+            }
+        }
+        classpath.add(JavaCore.newLibraryEntry(new org.eclipse.core.runtime.Path(firstRoot.resolve("target/classes").toString()), null, null));
+        requirerProject.setRawClasspath(classpath.toArray(new IClasspathEntry[0]), null);
+
+        BuildVerdict.Rebuild rebuild = verdict.rebuildAfter(List.of(firstRoot.resolve("src/main/java/com/example/Anything.java").toString()));
+
+        assertEquals(List.of(first, second), rebuild.scope().projects(), "a class folder inside the changed project is its output, the requirer's input");
         assertEquals(BuildKind.INCREMENTAL, rebuild.kind());
     }
 

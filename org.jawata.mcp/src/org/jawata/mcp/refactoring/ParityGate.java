@@ -14,8 +14,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Sprint 18 — the compile half of the orchestration parity gate: build every
- * loaded project and report whether it is error-clean. The multi-step loop
+ * Sprint 18 — the compile half of the orchestration parity gate: build the projects
+ * a step touched (28k E7c: and those that require them) and report whether they are error-clean. The multi-step loop
  * (Stage 5) runs this <b>after every step</b>; a non-clean result rolls the step
  * (and the plan) back. Deliberately lean and self-contained (it asks the host to
  * refresh and full-build, then the language for the errors the build left, rather

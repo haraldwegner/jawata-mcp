@@ -59,6 +59,23 @@ public record LoadedProject(
         unresolved = unresolved == null ? List.of() : List.copyOf(unresolved);
     }
 
+    /**
+     * The one answer to "which loaded project holds this file": the project whose root contains it, the deepest root when roots
+     * nest (a module inside an aggregator), or null when none does. The per-call sync and the build planning both ask it.
+     */
+    public static LoadedProject owning(java.util.Collection<LoadedProject> projects, Path file) {
+        LoadedProject best = null;
+        int bestLength = -1;
+        for (LoadedProject candidate : projects) {
+            Path root = candidate.projectRoot().toAbsolutePath().normalize();
+            if (file.startsWith(root) && root.getNameCount() > bestLength) {
+                best = candidate;
+                bestLength = root.getNameCount();
+            }
+        }
+        return best;
+    }
+
     public int classpathEntryCount() {
         try {
             return javaProject != null ? javaProject.getRawClasspath().length : 0;

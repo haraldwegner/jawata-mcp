@@ -15,6 +15,7 @@ import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.ICompilationUnit;
@@ -25,6 +26,7 @@ import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.core.project.ProjectImporter;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.lang.BuildVerdict;
@@ -173,12 +175,12 @@ public final class JavaBuildVerdict implements BuildVerdict {
         Set<String> affected = new LinkedHashSet<>();
         boolean configuration = false;
         for (String file : changedFiles) {
-            String owner = file == null ? null : ownerOf(file);
-            if (owner == null) {
+            List<String> owners = file == null ? List.of() : ownersOf(file);
+            if (owners.isEmpty()) {
                 return new Rebuild(owned(), BuildKind.FULL);
             }
-            affected.add(owner);
-            configuration |= BUILD_CONFIGURATION.contains(Path.of(file).getFileName().toString());
+            affected.addAll(owners);
+            configuration |= ProjectImporter.BUILD_CONFIGURATION_FILES.contains(Path.of(file).getFileName().toString());
         }
         if (affected.isEmpty()) {
             return new Rebuild(owned(), BuildKind.FULL);
@@ -196,37 +198,39 @@ public final class JavaBuildVerdict implements BuildVerdict {
         return new Rebuild(new BuildScope(new ArrayList<>(affected)), configuration ? BuildKind.FULL : BuildKind.INCREMENTAL);
     }
 
-    /** Files whose change moves a project's classpath or settings, so what the compiler remembers can no longer be trusted. */
-    private static final Set<String> BUILD_CONFIGURATION = Set.of(
-        "pom.xml", ".classpath", ".project", "MANIFEST.MF", "build.properties", "build.gradle", "build.gradle.kts",
-        "settings.gradle", "settings.gradle.kts");
-
-    /** The loaded project that owns this file (a linked source folder counts as its project's), or null when none does. */
-    private String ownerOf(String filePath) {
+    /**
+     * Every loaded project this file belongs to (a linked source folder counts as its project's, and one folder can be linked
+     * into several), or none when no loaded project holds it.
+     */
+    private List<String> ownersOf(String filePath) {
         Path file = resolve(filePath);
-        IFile[] mapped = ResourcesPlugin.getWorkspace().getRoot().findFilesForLocationURI(file.toUri());
-        for (IFile candidate : mapped) {
+        Set<String> owners = new LinkedHashSet<>();
+        for (IFile candidate : ResourcesPlugin.getWorkspace().getRoot().findFilesForLocationURI(file.toUri())) {
             if (projectNamed(candidate.getProject().getName()) != null) {
-                return candidate.getProject().getName();
+                owners.add(candidate.getProject().getName());
             }
         }
-        String best = null;
-        int bestLength = -1;
-        for (LoadedProject loaded : service.allProjects()) {
-            Path root = loaded.projectRoot().toAbsolutePath().normalize();
-            if (file.startsWith(root) && root.getNameCount() > bestLength) {
-                best = loaded.javaProject().getProject().getName();
-                bestLength = root.getNameCount();
+        if (owners.isEmpty()) {
+            LoadedProject holder = LoadedProject.owning(service.allProjects(), file);
+            if (holder != null) {
+                owners.add(holder.javaProject().getProject().getName());
             }
         }
-        return best;
+        return new ArrayList<>(owners);
     }
 
-    /** Whether the project's resolved classpath names one of these projects; a classpath that cannot be read counts as yes. */
-    private static boolean requiresAnyOf(LoadedProject loaded, Set<String> names) {
+    /**
+     * Whether the project takes in one of these projects: by a project entry on its resolved classpath, or by a jar or class
+     * folder that lies inside one of them (another project's compiler output is this project's input). A classpath that cannot
+     * be read counts as yes.
+     */
+    private boolean requiresAnyOf(LoadedProject loaded, Set<String> names) {
         try {
             for (IClasspathEntry entry : loaded.javaProject().getResolvedClasspath(true)) {
                 if (entry.getEntryKind() == IClasspathEntry.CPE_PROJECT && names.contains(entry.getPath().segment(0))) {
+                    return true;
+                }
+                if (entry.getEntryKind() == IClasspathEntry.CPE_LIBRARY && insideAnyOf(entry.getPath(), names)) {
                     return true;
                 }
             }
@@ -234,6 +238,21 @@ public final class JavaBuildVerdict implements BuildVerdict {
         } catch (JavaModelException unreadable) {
             return true;
         }
+    }
+
+    /** Whether a library entry lies inside one of these projects, named in the workspace or as a path on disk. */
+    private boolean insideAnyOf(IPath library, Set<String> names) {
+        if (library.segmentCount() > 0 && names.contains(library.segment(0))) {
+            return true;
+        }
+        Path onDisk = Path.of(library.toOSString()).toAbsolutePath().normalize();
+        for (LoadedProject loaded : service.allProjects()) {
+            if (names.contains(loaded.javaProject().getProject().getName())
+                    && onDisk.startsWith(loaded.projectRoot().toAbsolutePath().normalize())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
