@@ -42,7 +42,7 @@ class ParityGateTest {
     @Test
     @DisplayName("a clean project passes the gate")
     void cleanProject_passes() {
-        ParityGate.Result result = ParityGate.compile(org.jawata.mcp.java.JavaChange.contextFor(service));
+        ParityGate.Result result = ParityGate.compile(org.jawata.mcp.java.JavaChange.contextFor(service), java.util.List.of());
         assertTrue(result.clean(), () -> "expected clean, errors: " + result.errors());
         assertEquals(0, result.errorCount());
     }
@@ -50,7 +50,7 @@ class ParityGateTest {
     @Test
     @DisplayName("a real compile error fails the gate")
     void errorMarker_failsGate() throws Exception {
-        assertTrue(ParityGate.compile(org.jawata.mcp.java.JavaChange.contextFor(service)).clean(), "precondition: clean baseline");
+        assertTrue(ParityGate.compile(org.jawata.mcp.java.JavaChange.contextFor(service), java.util.List.of()).clean(), "precondition: clean baseline");
 
         // Post Sprint 22a P0-a the JavaBuilder fires in the Tycho-test runtime and WIPES
         // synthetic IMarker.PROBLEM markers off the CUs it compiles — so drop a genuinely
@@ -60,7 +60,7 @@ class ParityGateTest {
         Files.writeString(broken,
             "package com.example;\npublic class Broken {\n    int oops() { return ; }\n}\n");
 
-        ParityGate.Result result = ParityGate.compile(org.jawata.mcp.java.JavaChange.contextFor(service));
+        ParityGate.Result result = ParityGate.compile(org.jawata.mcp.java.JavaChange.contextFor(service), java.util.List.of());
         assertFalse(result.clean(), "the real compile error must fail the gate: " + result.errors());
         assertTrue(result.errorCount() >= 1, "at least one error expected");
     }

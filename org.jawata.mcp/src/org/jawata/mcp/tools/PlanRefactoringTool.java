@@ -258,12 +258,14 @@ class PlanRefactoringTool extends AbstractTool {
                 changeCache.take(undoId, RefactoringChangeCache.Kind.UNDO)
                     .ifPresent(e -> undoStack.add(e.change()));
             }
+            List<String> stepFiles = new ArrayList<>();
             if (d.get("filesModified") instanceof List<?> list) {
-                list.forEach(x -> modifiedFiles.add(String.valueOf(x)));
+                list.forEach(x -> stepFiles.add(String.valueOf(x)));
+                modifiedFiles.addAll(stepFiles);
             }
 
-            // Parity gate: compile must stay clean.
-            ParityGate.Result gate = ParityGate.compile(org.jawata.mcp.java.JavaChange.contextFor(service));
+            // Parity gate: compile must stay clean — over what this step touched, not over everything loaded.
+            ParityGate.Result gate = ParityGate.compile(org.jawata.mcp.java.JavaChange.contextFor(service), stepFiles);
             if (!gate.clean()) {
                 rollback(undoStack, service);
                 return rolledBack(plan, i,

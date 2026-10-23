@@ -5,5 +5,7 @@ public enum BuildKind {
     /** A full build. */
     FULL,
     /** A clean build, then a full one: the compiler's incremental state is discarded first. */
-    CLEAN_FULL
+    CLEAN_FULL,
+    /** An incremental build: the compiler recompiles what the changes since the last build reach, and no more. */
+    INCREMENTAL
 }

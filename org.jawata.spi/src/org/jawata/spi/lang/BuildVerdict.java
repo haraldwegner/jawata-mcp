@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 
 /**
@@ -33,10 +34,23 @@ public interface BuildVerdict {
     BuildScope owned();
 
     /**
+     * What to rebuild so that the errors a change caused can be read: the projects the change reaches and how far to build them
+     * (Sprint 28k E7c, his word: "only compile what is touched"). A language that does not say answers the default — every
+     * project it owns, in full — which is the safe, slow answer.
+     */
+    default Rebuild rebuildAfter(List<String> changedFiles) {
+        return new Rebuild(owned(), BuildKind.FULL);
+    }
+
+    /**
      * The error-severity problems the last build left in these projects, in scope order. A project that cannot be read is answered
      * as a {@link Diagnostic} naming it, never skipped.
      */
     List<Diagnostic> errors(BuildScope scope, IProgressMonitor monitor);
+
+    /** The projects to rebuild after a change and the kind of build that reaches what the change can break. */
+    record Rebuild(BuildScope scope, BuildKind kind) {
+    }
 
     /** One problem in a file; {@code syntax} when the language reads it as a syntax error (the lifecycle undoes those always). */
     record SourceProblem(String message, boolean syntax) {

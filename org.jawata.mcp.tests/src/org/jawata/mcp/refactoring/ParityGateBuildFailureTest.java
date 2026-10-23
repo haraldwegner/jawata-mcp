@@ -36,7 +36,7 @@ class ParityGateBuildFailureTest {
     void runtimeFailureOfTheBuildFailsTheGate() {
         ParityGate.Result result = ParityGate.compile(contextBuilding(() -> {
             throw new IllegalStateException("the build blew up");
-        }));
+        }), java.util.List.of());
 
         assertFalse(result.clean(), "a build that threw is not a clean project");
         assertEquals(1, result.errorCount());
@@ -49,7 +49,7 @@ class ParityGateBuildFailureTest {
     void coreFailureOfTheBuildFailsTheGate() {
         ParityGate.Result result = ParityGate.compile(contextBuilding(() -> {
             throw new CoreException(Status.error("the workspace refused"));
-        }));
+        }), java.util.List.of());
 
         assertFalse(result.clean());
         String text = result.errors().get(0).message();
@@ -59,7 +59,7 @@ class ParityGateBuildFailureTest {
     @Test
     @DisplayName("a project that built and has no errors is clean")
     void aBuiltProjectWithoutErrorsIsClean() {
-        ParityGate.Result result = ParityGate.compile(contextBuilding(() -> Set.of(PROJECT)));
+        ParityGate.Result result = ParityGate.compile(contextBuilding(() -> Set.of(PROJECT)), java.util.List.of());
 
         assertTrue(result.clean(), () -> "built and error-free: " + result.errors());
     }

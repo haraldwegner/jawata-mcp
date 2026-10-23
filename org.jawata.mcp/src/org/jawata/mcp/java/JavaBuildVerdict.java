@@ -10,17 +10,22 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.compiler.IProblem;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.lang.BuildVerdict;
 import org.jawata.spi.lang.Diagnostic;
@@ -153,6 +158,82 @@ public final class JavaBuildVerdict implements BuildVerdict {
             names.add(loaded.javaProject().getProject().getName());
         }
         return new BuildScope(names);
+    }
+
+    /**
+     * "Only compile what is touched" (Sprint 28k E7c, his word), the Java way: the projects that own the changed files plus
+     * every project that requires one of them, transitively — the compiler then decides, file by file, what an interface
+     * change reaches — built incrementally. Measured (IncrementalRebuildReachTest) that an incremental build still reports an
+     * added file, a modified file and the user of a deleted class, so adding and deleting no longer force a full build. A
+     * change to a build-configuration file moves the classpath, so it is built in full; and when there is nothing to go by
+     * (no files, a file no loaded project owns) the answer is every project, in full.
+     */
+    @Override
+    public Rebuild rebuildAfter(List<String> changedFiles) {
+        Set<String> affected = new LinkedHashSet<>();
+        boolean configuration = false;
+        for (String file : changedFiles) {
+            String owner = file == null ? null : ownerOf(file);
+            if (owner == null) {
+                return new Rebuild(owned(), BuildKind.FULL);
+            }
+            affected.add(owner);
+            configuration |= BUILD_CONFIGURATION.contains(Path.of(file).getFileName().toString());
+        }
+        if (affected.isEmpty()) {
+            return new Rebuild(owned(), BuildKind.FULL);
+        }
+        for (boolean grew = true; grew; ) {
+            grew = false;
+            for (LoadedProject loaded : service.allProjects()) {
+                String name = loaded.javaProject().getProject().getName();
+                if (!affected.contains(name) && requiresAnyOf(loaded, affected)) {
+                    affected.add(name);
+                    grew = true;
+                }
+            }
+        }
+        return new Rebuild(new BuildScope(new ArrayList<>(affected)), configuration ? BuildKind.FULL : BuildKind.INCREMENTAL);
+    }
+
+    /** Files whose change moves a project's classpath or settings, so what the compiler remembers can no longer be trusted. */
+    private static final Set<String> BUILD_CONFIGURATION = Set.of(
+        "pom.xml", ".classpath", ".project", "MANIFEST.MF", "build.properties", "build.gradle", "build.gradle.kts",
+        "settings.gradle", "settings.gradle.kts");
+
+    /** The loaded project that owns this file (a linked source folder counts as its project's), or null when none does. */
+    private String ownerOf(String filePath) {
+        Path file = resolve(filePath);
+        IFile[] mapped = ResourcesPlugin.getWorkspace().getRoot().findFilesForLocationURI(file.toUri());
+        for (IFile candidate : mapped) {
+            if (projectNamed(candidate.getProject().getName()) != null) {
+                return candidate.getProject().getName();
+            }
+        }
+        String best = null;
+        int bestLength = -1;
+        for (LoadedProject loaded : service.allProjects()) {
+            Path root = loaded.projectRoot().toAbsolutePath().normalize();
+            if (file.startsWith(root) && root.getNameCount() > bestLength) {
+                best = loaded.javaProject().getProject().getName();
+                bestLength = root.getNameCount();
+            }
+        }
+        return best;
+    }
+
+    /** Whether the project's resolved classpath names one of these projects; a classpath that cannot be read counts as yes. */
+    private static boolean requiresAnyOf(LoadedProject loaded, Set<String> names) {
+        try {
+            for (IClasspathEntry entry : loaded.javaProject().getResolvedClasspath(true)) {
+                if (entry.getEntryKind() == IClasspathEntry.CPE_PROJECT && names.contains(entry.getPath().segment(0))) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (JavaModelException unreadable) {
+            return true;
+        }
     }
 
     @Override

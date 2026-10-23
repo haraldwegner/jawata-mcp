@@ -7,8 +7,8 @@ import java.util.Set;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.jawata.mcp.change.ChangeContext;
-import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
+import org.jawata.spi.lang.BuildVerdict;
 import org.jawata.spi.lang.Diagnostic;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,18 +39,23 @@ public final class ParityGate {
     private ParityGate() {}
 
     /**
-     * Refresh + full-build every project the language owns and collect its error-severity
-     * problems. {@code clean} is true iff none remain.
+     * Rebuild the projects the language says the changed files reach, the way it says, and collect their error-severity
+     * problems. {@code clean} is true iff none remain. Only what is touched is built (Sprint 28k E7c, his word): the language
+     * answers, from the files a step changed, the projects that own them and the ones that require those, built
+     * incrementally; with no files to go by it answers every project it owns, in full.
+     *
+     * @param changedFiles the files the step just changed, as the language names them; empty builds everything in full
      */
-    public static Result compile(ChangeContext context) {
+    public static Result compile(ChangeContext context, List<String> changedFiles) {
         List<Diagnostic> errors = new ArrayList<>();
         NullProgressMonitor monitor = new NullProgressMonitor();
-        for (String name : context.verdict().owned().projects()) {
+        BuildVerdict.Rebuild rebuild = context.verdict().rebuildAfter(changedFiles);
+        for (String name : rebuild.scope().projects()) {
             BuildScope project = BuildScope.of(name);
             String cause = "not built (the host's log names the cause)";
             Set<String> built;
             try {
-                built = context.reconciler().rebuild(project, BuildKind.FULL, monitor);
+                built = context.reconciler().rebuild(project, rebuild.kind(), monitor);
             } catch (CoreException | RuntimeException e) {
                 // Any failure of a build is a failed gate: the plan loop rolls the plan back on it. An unchecked one
                 // escaping here would leave earlier steps applied and unrolled (28k C2, auditor finding A).

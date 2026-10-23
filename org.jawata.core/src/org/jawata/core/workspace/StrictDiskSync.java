@@ -67,7 +67,8 @@ public class StrictDiskSync implements Reconciler {
                 if (kind == BuildKind.CLEAN_FULL) {
                     project.build(IncrementalProjectBuilder.CLEAN_BUILD, monitor);
                 }
-                project.build(IncrementalProjectBuilder.FULL_BUILD, monitor);
+                project.build(kind == BuildKind.INCREMENTAL
+                    ? IncrementalProjectBuilder.INCREMENTAL_BUILD : IncrementalProjectBuilder.FULL_BUILD, monitor);
                 built.add(project.getName());
             } catch (CoreException e) {
                 java.util.logging.Logger.getLogger(StrictDiskSync.class.getName())
