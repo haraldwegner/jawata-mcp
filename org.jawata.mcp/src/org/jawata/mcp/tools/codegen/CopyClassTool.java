@@ -198,9 +198,9 @@ public class CopyClassTool extends AbstractTool
             String summary = "copy class " + type.getElementName() + " -> " + newName + " (same package)";
 
             boolean autoApply = getBooleanParam(arguments, "auto_apply", true);
-            String diff = ChangeEngine.previewDiff(change, service);
+            String diff = ChangeEngine.previewDiff(change, org.jawata.mcp.java.JavaChange.contextFor(service));
             if (!autoApply) {
-                List<String> files = ChangeEngine.affectedFilePaths(change, service);
+                List<String> files = ChangeEngine.affectedFilePaths(change, org.jawata.mcp.java.JavaChange.contextFor(service));
                 String changeId = changeCache.put(
                     RefactoringChangeCache.Kind.STAGED, change, summary, diff, files);
                 Map<String, Object> data = new LinkedHashMap<>();
@@ -221,7 +221,7 @@ public class CopyClassTool extends AbstractTool
                     .build());
             }
 
-            ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, service);
+            ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, org.jawata.mcp.java.JavaChange.contextFor(service));
             if (outcome.validationError() != null) {
                 return ToolResponse.error("REFACTORING_FAILED",
                     "copy_class failed: " + outcome.validationError(),

@@ -79,7 +79,7 @@ class ApplyUndoInspectToolsTest {
         TextFileChange change = new TextFileChange("insert marker", file);
         change.setEdit(new InsertEdit(0, MARKER));
 
-        String diff = ChangeEngine.previewDiff(change, service);
+        String diff = ChangeEngine.previewDiff(change, org.jawata.mcp.java.JavaChange.contextFor(service));
         return cache.put(RefactoringChangeCache.Kind.STAGED, change,
             "insert test marker", diff, List.of(targetPath.toString()));
     }

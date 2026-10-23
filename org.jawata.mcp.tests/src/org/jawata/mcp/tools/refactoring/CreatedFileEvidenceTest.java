@@ -79,8 +79,7 @@ class CreatedFileEvidenceTest {
 
         // before = the map as it stood BEFORE the change: this file is absent from it, which
         // is exactly how the gate recognises a file the change created.
-        String evidence = CompileVerify.createdFileContext(service, Map.of(),
-            List.of(created.toString()));
+        String evidence = CompileVerify.createdFileContext(new org.jawata.mcp.java.JavaBuildVerdict(service), Map.of(), List.of(created.toString()));
 
         assertTrue(evidence.contains("GateEvidenceCarQueries.java"),
             "the refusal must name the file it created: " + evidence);
@@ -107,8 +106,7 @@ class CreatedFileEvidenceTest {
         // it fired for every touched file, the first test would pass while the distinction
         // the gate rests on had been lost.
         Map<String, Set<String>> before = Map.of(existing.toString(), Set.of());
-        String evidence = CompileVerify.createdFileContext(service, before,
-            List.of(existing.toString()));
+        String evidence = CompileVerify.createdFileContext(new org.jawata.mcp.java.JavaBuildVerdict(service), before, List.of(existing.toString()));
 
         assertTrue(evidence.isEmpty(),
             "a modified file is verified in full and needs no such note; reporting it would "
@@ -123,8 +121,7 @@ class CreatedFileEvidenceTest {
         // empty note here would leave a reader unable to tell "no package" from "not read".
         Path created = write("GateEvidenceNoPackage", "class GateEvidenceNoPackage { }\n");
 
-        String evidence = CompileVerify.createdFileContext(service, Map.of(),
-            List.of(created.toString()));
+        String evidence = CompileVerify.createdFileContext(new org.jawata.mcp.java.JavaBuildVerdict(service), Map.of(), List.of(created.toString()));
 
         assertTrue(evidence.contains("GateEvidenceNoPackage.java"), evidence);
         assertTrue(evidence.contains("no package or import declarations"),

@@ -223,7 +223,7 @@ public class IntroduceParameterObjectTool extends AbstractApplyingRefactoringToo
         extras.put("method", method.getElementName());
         extras.put("parametersGrouped", parameterCount);
         extras.put("topLevel", getBooleanParam(arguments, "topLevel", true));
-        extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, service).size());
+        extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, org.jawata.mcp.java.JavaChange.contextFor(service)).size());
         if (checked.hasWarnings()) {
             extras.put("warnings", checked.messages());
         }

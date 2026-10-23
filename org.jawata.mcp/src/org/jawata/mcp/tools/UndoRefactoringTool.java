@@ -77,7 +77,7 @@ public class UndoRefactoringTool extends AbstractTool {
                     + "already been used, or the id belongs to a staged change.");
         }
 
-        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(entry.get().change(), service);
+        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(entry.get().change(), org.jawata.mcp.java.JavaChange.contextFor(service));
         if (outcome.validationError() != null) {
             return ToolResponse.error(
                 "REFACTORING_FAILED",

@@ -84,8 +84,7 @@ public class ApplyRefactoringTool extends AbstractTool {
         // ones it mattered most for: they wrap them in PreparedRefactoring, which answers
         // OK to both LTK condition checks on purpose.
         org.jawata.mcp.refactoring.GatedApply.Result gated =
-            org.jawata.mcp.refactoring.GatedApply.perform(entry.get().change(), service,
-                org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
+            org.jawata.mcp.refactoring.GatedApply.perform(entry.get().change(), org.jawata.mcp.java.JavaChange.contextFor(service), org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
         ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(

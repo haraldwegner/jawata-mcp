@@ -261,7 +261,7 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
         extras.put("oldName", oldName);
         extras.put("newName", newName);
         extras.put("symbolKind", symbolKind);
-        extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, service).size());
+        extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, org.jawata.mcp.java.JavaChange.contextFor(service)).size());
         extras.put("totalEdits", countTextEdits(change));
         if (checked.hasWarnings()) {
             extras.put("warnings", checked.messages());

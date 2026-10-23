@@ -218,7 +218,7 @@ public class ParameterizeFunctionTool extends AbstractApplyingRefactoringTool
         extras.put("method", method.getElementName());
         extras.put("literal", literal);
         extras.put("parameterName", configured.name());
-        extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, service).size());
+        extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, org.jawata.mcp.java.JavaChange.contextFor(service)).size());
         if (checked.hasWarnings()) {
             extras.put("warnings", checked.messages());
         }

@@ -198,14 +198,14 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
 
         Change change = preparation.change;
         String summary = preparation.summary;
-        String diff = ChangeEngine.previewDiff(change, service);
+        String diff = ChangeEngine.previewDiff(change, org.jawata.mcp.java.JavaChange.contextFor(service));
         // D7f: the RESPONSE is capped and summarised; `diff` stays whole for the cache, so
         // a staged change is still served in full by `refactoring action=inspect`.
         org.jawata.mcp.refactoring.DiffView view = org.jawata.mcp.refactoring.DiffView.of(
             diff, org.jawata.mcp.refactoring.DiffView.fullRequested(arguments));
 
         if (!autoApply) {
-            List<String> files = ChangeEngine.affectedFilePaths(change, service);
+            List<String> files = ChangeEngine.affectedFilePaths(change, org.jawata.mcp.java.JavaChange.contextFor(service));
             String changeId = changeCache.put(
                 RefactoringChangeCache.Kind.STAGED, change, summary, diff, files);
             Map<String, Object> data = new LinkedHashMap<>();
@@ -235,10 +235,7 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
         // which base its author extended — and Stage 6 put six multi-file operations on
         // the other one. See GatedApply.
         org.jawata.mcp.refactoring.GatedApply.Result gated =
-            org.jawata.mcp.refactoring.GatedApply.perform(change, service,
-                compileGateMode() == GateMode.REPORT
-                    ? org.jawata.mcp.refactoring.GatedApply.Mode.REPORT
-                    : org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
+            org.jawata.mcp.refactoring.GatedApply.perform(change, org.jawata.mcp.java.JavaChange.contextFor(service), compileGateMode() == GateMode.REPORT ? org.jawata.mcp.refactoring.GatedApply.Mode.REPORT : org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
         ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(

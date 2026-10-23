@@ -263,7 +263,7 @@ class PlanRefactoringTool extends AbstractTool {
             }
 
             // Parity gate: compile must stay clean.
-            ParityGate.Result gate = ParityGate.compile(service);
+            ParityGate.Result gate = ParityGate.compile(org.jawata.mcp.java.JavaChange.contextFor(service));
             if (!gate.clean()) {
                 rollback(undoStack, service);
                 return rolledBack(plan, i,
@@ -340,7 +340,7 @@ class PlanRefactoringTool extends AbstractTool {
     private void rollback(List<Change> undoStack, IJdtService service) {
         for (int i = undoStack.size() - 1; i >= 0; i--) {
             try {
-                ChangeEngine.perform(undoStack.get(i), service);
+                ChangeEngine.perform(undoStack.get(i), org.jawata.mcp.java.JavaChange.contextFor(service));
             } catch (RuntimeException e) {
                 log.warn("apply_plan rollback step failed: {}", e.getMessage());
             }
@@ -439,7 +439,7 @@ class PlanRefactoringTool extends AbstractTool {
                 "The undo handle for plan '" + planId + "' has expired or was already consumed.",
                 "Re-run the plan if you need to change it.");
         }
-        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(undo.get(), service);
+        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(undo.get(), org.jawata.mcp.java.JavaChange.contextFor(service));
         if (outcome.validationError() != null) {
             return ToolResponse.error("UNDO_FAILED",
                 "undo_plan failed: " + outcome.validationError(),

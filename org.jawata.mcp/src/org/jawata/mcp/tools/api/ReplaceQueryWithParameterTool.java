@@ -261,7 +261,7 @@ public class ReplaceQueryWithParameterTool extends AbstractApplyingRefactoringTo
         extras.put("method", method.getElementName());
         extras.put("queryCall", queryCall);
         extras.put("parameterName", configured.name());
-        extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, service).size());
+        extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, org.jawata.mcp.java.JavaChange.contextFor(service)).size());
         if (checked.hasWarnings()) {
             extras.put("warnings", checked.messages());
         }

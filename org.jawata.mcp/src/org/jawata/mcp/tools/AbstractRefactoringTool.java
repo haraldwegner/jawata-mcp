@@ -301,7 +301,7 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
                                           String operationLabel, JsonNode arguments) {
         change.initializeValidationData(new NullProgressMonitor());
 
-        String diff = ChangeEngine.previewDiff(change, service);
+        String diff = ChangeEngine.previewDiff(change, org.jawata.mcp.java.JavaChange.contextFor(service));
         String summary = operationLabel + ": " + change.getName();
         // D7f: the RESPONSE is capped and summarised; `diff` stays whole for the cache, so
         // a staged change is still served in full by `refactoring action=inspect`.
@@ -310,7 +310,7 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
 
         boolean autoApply = getBooleanParam(arguments, "auto_apply", true);
         if (!autoApply) {
-            List<String> files = ChangeEngine.affectedFilePaths(change, service);
+            List<String> files = ChangeEngine.affectedFilePaths(change, org.jawata.mcp.java.JavaChange.contextFor(service));
             String changeId = changeCache.put(
                 RefactoringChangeCache.Kind.STAGED, change, summary, diff, files);
             Map<String, Object> data = new LinkedHashMap<>();
@@ -339,8 +339,7 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
         // hangs off the APPLY STEP rather than off whichever base an author happened to
         // extend.
         org.jawata.mcp.refactoring.GatedApply.Result gated =
-            org.jawata.mcp.refactoring.GatedApply.perform(change, service,
-                org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
+            org.jawata.mcp.refactoring.GatedApply.perform(change, org.jawata.mcp.java.JavaChange.contextFor(service), org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
         ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(

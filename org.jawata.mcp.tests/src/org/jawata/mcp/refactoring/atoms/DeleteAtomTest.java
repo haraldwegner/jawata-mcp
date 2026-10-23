@@ -67,7 +67,7 @@ class DeleteAtomTest {
             DeleteAtom.delete(elements, "test delete", new JdtRefactoringEngine());
         assertFalse(checked.isRefused(),
             "the engine must accept this deletion; it said: " + checked.messages());
-        ChangeEngine.perform(checked.change(), service);
+        ChangeEngine.perform(checked.change(), org.jawata.mcp.java.JavaChange.contextFor(service));
         return Files.readString(target, StandardCharsets.UTF_8);
     }
 

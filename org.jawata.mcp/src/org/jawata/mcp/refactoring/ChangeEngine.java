@@ -1,5 +1,11 @@
 package org.jawata.mcp.refactoring;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceChangeEvent;
@@ -8,23 +14,16 @@ import org.eclipse.core.resources.IResourceDelta;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.CompositeChange;
-import org.eclipse.ltk.core.refactoring.PerformChangeOperation;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.eclipse.ltk.core.refactoring.TextChange;
 import org.eclipse.ltk.core.refactoring.TextFileChange;
 import org.eclipse.text.edits.MultiTextEdit;
-import org.jawata.core.IJdtService;
+import org.jawata.spi.host.WorkspaceWrites;
+import org.jawata.spi.lang.ChangePaths;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * Sprint 14b — the shared perform/preview engine behind the refactoring
@@ -58,14 +57,13 @@ public final class ChangeEngine {
      * (file moves, renames) contribute no diff text — they still surface in
      * the modified-file list after apply.
      */
-    public static String previewDiff(Change change, IJdtService service) {
+    public static String previewDiff(Change change, org.jawata.mcp.change.ChangeContext context) {
         List<DiffRenderer.FileDiff> diffs = new ArrayList<>();
-        collectTextDiffs(change, service, diffs);
+        collectTextDiffs(change, context.paths(), diffs);
         return DiffRenderer.unifiedDiff(diffs);
     }
 
-    private static void collectTextDiffs(Change change, IJdtService service,
-                                         List<DiffRenderer.FileDiff> sink) {
+    private static void collectTextDiffs(Change change, org.jawata.spi.lang.ChangePaths paths, List<DiffRenderer.FileDiff> sink) {
         if (change == null) {
             return;
         }
@@ -74,14 +72,14 @@ public final class ChangeEngine {
                 String oldContent = textChange.getCurrentContent(new NullProgressMonitor());
                 String newContent = textChange.getPreviewContent(new NullProgressMonitor());
                 sink.add(new DiffRenderer.FileDiff(
-                    diffPathOf(textChange, service), oldContent, newContent));
+                    diffPathOf(textChange, paths), oldContent, newContent));
             } catch (CoreException e) {
                 log.debug("Preview failed for '{}': {}", change.getName(), e.getMessage());
             }
         }
         if (change instanceof CompositeChange composite) {
             for (Change child : composite.getChildren()) {
-                collectTextDiffs(child, service, sink);
+                collectTextDiffs(child, paths, sink);
             }
         }
     }
@@ -117,27 +115,27 @@ public final class ChangeEngine {
     }
 
     /** Files a change will touch, derived from the change tree (pre-apply). */
-    public static List<String> affectedFilePaths(Change change, IJdtService service) {
-        Set<String> paths = new LinkedHashSet<>();
-        collectAffectedPaths(change, service, paths);
-        return new ArrayList<>(paths);
+    public static List<String> affectedFilePaths(Change change, org.jawata.mcp.change.ChangeContext context) {
+        Set<String> affected = new LinkedHashSet<>();
+        collectAffectedPaths(change, context.paths(), affected);
+        return new ArrayList<>(affected);
     }
 
-    private static void collectAffectedPaths(Change change, IJdtService service, Set<String> sink) {
+    private static void collectAffectedPaths(Change change, org.jawata.spi.lang.ChangePaths paths, Set<String> sink) {
         if (change == null) {
             return;
         }
         Object modified = change.getModifiedElement();
         if (change instanceof TextFileChange tfc) {
-            sink.add(formatPath(tfc.getFile(), service));
+            sink.add(formatPath(tfc.getFile(), paths));
         } else if (modified instanceof IFile file) {
-            sink.add(formatPath(file, service));
-        } else if (modified instanceof ICompilationUnit cu && cu.getResource() instanceof IFile file) {
-            sink.add(formatPath(file, service));
+            sink.add(formatPath(file, paths));
+        } else {
+            paths.fileOf(modified).ifPresent(file -> sink.add(formatPath(file, paths)));
         }
         if (change instanceof CompositeChange composite) {
             for (Change child : composite.getChildren()) {
-                collectAffectedPaths(child, service, sink);
+                collectAffectedPaths(child, paths, sink);
             }
         }
     }
@@ -149,7 +147,8 @@ public final class ChangeEngine {
      * LTK changes (ProcessorChange) expose no children, so walking the tree
      * after perform misses their effects.</p>
      */
-    public static ApplyOutcome perform(Change change, IJdtService service) {
+    public static ApplyOutcome perform(Change change, org.jawata.mcp.change.ChangeContext context) {
+        ChangePaths paths = context.paths();
         try {
             change.initializeValidationData(new NullProgressMonitor());
 
@@ -163,7 +162,7 @@ public final class ChangeEngine {
                     delta.accept(d -> {
                         IResource resource = d.getResource();
                         if (resource instanceof IFile file) {
-                            modifiedFilePaths.add(formatPath(file, service));
+                            modifiedFilePaths.add(formatPath(file, paths));
                         }
                         return true;
                     });
@@ -174,14 +173,14 @@ public final class ChangeEngine {
 
             ResourcesPlugin.getWorkspace().addResourceChangeListener(
                 listener, IResourceChangeEvent.POST_CHANGE);
-            PerformChangeOperation operation = new PerformChangeOperation(change);
+            WorkspaceWrites.Applied applied;
             try {
-                operation.run(new NullProgressMonitor());
+                applied = context.writes().perform(change, new NullProgressMonitor());
             } finally {
                 ResourcesPlugin.getWorkspace().removeResourceChangeListener(listener);
             }
 
-            RefactoringStatus validation = operation.getValidationStatus();
+            RefactoringStatus validation = applied.validation();
             if (validation != null && (validation.hasFatalError() || validation.hasError())) {
                 return new ApplyOutcome(null, List.of(),
                     validation.getMessageMatchingSeverity(validation.getSeverity()));
@@ -199,10 +198,10 @@ public final class ChangeEngine {
             // The change we just performed knows perfectly well which files it targets. Ask
             // it. The listener is kept, but only to ADD anything the tree does not name
             // (generated files, moves) — never as the sole source of truth.
-            Set<String> modified = new LinkedHashSet<>(filesTargetedBy(change, service));
+            Set<String> modified = new LinkedHashSet<>(filesTargetedBy(change, paths));
             modified.addAll(modifiedFilePaths);
 
-            Change undoChange = operation.getUndoChange();
+            Change undoChange = applied.undo();
             return new ApplyOutcome(undoChange, new ArrayList<>(modified), null);
         } catch (CoreException e) {
             log.warn("Change.perform failed for '{}': {}", change.getName(), e.getMessage(), e);
@@ -217,24 +216,24 @@ public final class ChangeEngine {
      * a refactoring should report as "what I modified": the thing it did, not the thing it
      * overheard.</p>
      */
-    private static Set<String> filesTargetedBy(Change change, IJdtService service) {
-        Set<String> paths = new LinkedHashSet<>();
-        collectTargets(change, service, paths);
-        return paths;
+    private static Set<String> filesTargetedBy(Change change, org.jawata.spi.lang.ChangePaths paths) {
+        Set<String> targets = new LinkedHashSet<>();
+        collectTargets(change, paths, targets);
+        return targets;
     }
 
-    private static void collectTargets(Change change, IJdtService service, Set<String> into) {
+    private static void collectTargets(Change change, org.jawata.spi.lang.ChangePaths paths, Set<String> into) {
         if (change == null) {
             return;
         }
         if (change instanceof CompositeChange composite) {
             for (Change child : composite.getChildren()) {
-                collectTargets(child, service, into);
+                collectTargets(child, paths, into);
             }
             return;
         }
         if (change instanceof TextChange textChange) {
-            String path = diffPathOf(textChange, service);
+            String path = diffPathOf(textChange, paths);
             if (path != null) {
                 into.add(path);
             }
@@ -243,34 +242,26 @@ public final class ChangeEngine {
         // A non-text change (a file move, a rename, a delete) still names what it acts on.
         Object modified = change.getModifiedElement();
         if (modified instanceof IFile file) {
-            into.add(formatPath(file, service));
-        } else if (modified instanceof ICompilationUnit cu
-                && cu.getResource() instanceof IFile file) {
-            into.add(formatPath(file, service));
+            into.add(formatPath(file, paths));
+        } else {
+            paths.fileOf(modified).ifPresent(file -> into.add(formatPath(file, paths)));
         }
     }
 
-    private static String diffPathOf(TextChange textChange, IJdtService service) {
+    private static String diffPathOf(TextChange textChange, ChangePaths paths) {
         if (textChange instanceof TextFileChange tfc) {
-            return formatPath(tfc.getFile(), service);
+            return formatPath(tfc.getFile(), paths);
         }
         Object modified = textChange.getModifiedElement();
         if (modified instanceof IFile file) {
-            return formatPath(file, service);
+            return formatPath(file, paths);
         }
-        if (modified instanceof ICompilationUnit cu && cu.getResource() instanceof IFile file) {
-            return formatPath(file, service);
-        }
-        return textChange.getName();
+        return paths.fileOf(modified).map(file -> formatPath(file, paths)).orElse(textChange.getName());
     }
 
-    private static String formatPath(IFile file, IJdtService service) {
+    private static String formatPath(IFile file, org.jawata.spi.lang.ChangePaths paths) {
         try {
-            java.nio.file.Path absolute = file.getLocation().toFile().toPath();
-            if (service != null) {
-                return service.getPathUtils().formatPath(absolute);
-            }
-            return absolute.toString();
+            return paths.display(file.getLocation().toFile().toPath());
         } catch (RuntimeException e) {
             return file.getName();
         }

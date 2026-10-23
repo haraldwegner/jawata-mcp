@@ -419,7 +419,7 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
         extras.put("oldParameterCount", oldParamCount);
         extras.put("newParameterCount", newParamCount);
         extras.put("totalEdits", leafEditCount(change));
-        extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, service).size());
+        extras.put("filesAffected", ChangeEngine.affectedFilePaths(change, org.jawata.mcp.java.JavaChange.contextFor(service)).size());
         if (visibility != null) {
             extras.put("visibility", visibility);
             List<SearchMatch> references = service.getSearchService().findReferences(

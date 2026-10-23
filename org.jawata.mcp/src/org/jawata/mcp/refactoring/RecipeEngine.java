@@ -1,5 +1,12 @@
 package org.jawata.mcp.refactoring;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.JavaCore;
@@ -9,13 +16,6 @@ import org.eclipse.ltk.core.refactoring.TextFileChange;
 import org.jawata.core.IJdtService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.Set;
-import java.util.Map;
-import java.util.LinkedHashMap;
-import java.util.List;
 
 /**
  * Sprint 19 (Kerievsky) — runs a <b>dependent</b> refactoring recipe: a sequence
@@ -85,6 +85,7 @@ public final class RecipeEngine {
         // state as of before THIS recipe reached it, which is what "introduced" has to mean.
         Map<String, Set<String>> errorsBefore = new LinkedHashMap<>();
         Map<String, String> textBefore = new LinkedHashMap<>();
+        org.jawata.mcp.change.ChangeContext context = org.jawata.mcp.java.JavaChange.contextFor(service);
         for (int i = 0; i < steps.size(); i++) {
             Change change;
             try {
@@ -128,14 +129,14 @@ public final class RecipeEngine {
             // composite it hands back is an UNDO, and the state after the last step was
             // verified by nothing. What verifies it now is the block after this loop, and
             // that block exists because of this sentence rather than in spite of it.
-            for (String affected : ChangeEngine.affectedFilePaths(change, service)) {
+            for (String affected : ChangeEngine.affectedFilePaths(change, context)) {
                 errorsBefore.computeIfAbsent(affected, path ->
-                    CompileVerify.errorMessagesByFile(service, List.of(path))
+                    CompileVerify.errorMessagesByFile(context.verdict(), List.of(path))
                         .getOrDefault(path, Set.of()));
                 textBefore.computeIfAbsent(affected, path -> readOrNull(path, service));
             }
             GatedApply.Result gated =
-                GatedApply.perform(change, service, GatedApply.Mode.REPORT);
+                GatedApply.perform(change, context, GatedApply.Mode.REPORT);
             ChangeEngine.ApplyOutcome outcome = gated.outcome();
             if (outcome.validationError() != null) {
                 rollback(undos, service);
@@ -169,9 +170,9 @@ public final class RecipeEngine {
         // the only one a caller ever sees. Settle first, for the same reason GatedApply does:
         // a model that has not caught up with the disk reports errors the recipe did not cause.
         List<String> modifiedPaths = new ArrayList<>(modified);
-        CompileVerify.settle(service, modifiedPaths);
+        context.verdict().settle(modifiedPaths);
         List<String> introduced = CompileVerify.introducedErrors(errorsBefore,
-            CompileVerify.errorMessagesByFile(service, modifiedPaths));
+            CompileVerify.errorMessagesByFile(context.verdict(), modifiedPaths));
 
         // And the diff, which the response simply did not carry. Rendered from the text as it
         // was at first touch, so it shows the WHOLE composite rather than the last step.
@@ -249,7 +250,7 @@ public final class RecipeEngine {
     private static void rollback(List<Change> undos, IJdtService service) {
         for (int i = undos.size() - 1; i >= 0; i--) {
             try {
-                ChangeEngine.perform(undos.get(i), service);
+                ChangeEngine.perform(undos.get(i), org.jawata.mcp.java.JavaChange.contextFor(service));
             } catch (RuntimeException e) {
                 log.warn("Recipe rollback step failed: {}", e.getMessage());
             }

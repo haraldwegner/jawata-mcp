@@ -1,11 +1,10 @@
 package org.jawata.mcp.refactoring;
 
-import org.eclipse.ltk.core.refactoring.Change;
-import org.jawata.core.IJdtService;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import org.eclipse.ltk.core.refactoring.Change;
 
 /**
  * THE ONE WAY TO APPLY A CHANGE, gate included.
@@ -87,11 +86,11 @@ public final class GatedApply {
      * <p>Errors present BEFORE do not count against the change — only what it INTRODUCED —
      * because a refactoring is not responsible for a workspace it did not break.</p>
      */
-    public static Result perform(Change change, IJdtService service, Mode mode) {
+    public static Result perform(Change change, org.jawata.mcp.change.ChangeContext context, Mode mode) {
         Map<String, Set<String>> before = CompileVerify.errorMessagesByFile(
-            service, ChangeEngine.affectedFilePaths(change, service));
+            context.verdict(), ChangeEngine.affectedFilePaths(change, context));
 
-        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, service);
+        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, context);
         if (outcome.validationError() != null) {
             return new Result(outcome, List.of(), outcome.validationError(), true);
         }
@@ -101,9 +100,9 @@ public final class GatedApply {
         // window resolves the new type to nothing. The gate then reports an error the change
         // did not cause and undoes correct work. Reading errors before this is reading them
         // from a model that has not caught up with the disk.
-        CompileVerify.settle(service, outcome.modifiedFilePaths());
+        context.verdict().settle(outcome.modifiedFilePaths());
         List<String> introduced = CompileVerify.introducedErrors(before,
-            CompileVerify.errorMessagesByFile(service, outcome.modifiedFilePaths()));
+            CompileVerify.errorMessagesByFile(context.verdict(), outcome.modifiedFilePaths()));
         boolean anySyntax = introduced.stream()
             .anyMatch(m -> m.contains(CompileVerify.SYNTAX_PREFIX));
         if (introduced.isEmpty() || (mode == Mode.REPORT && !anySyntax)) {
@@ -114,12 +113,12 @@ public final class GatedApply {
         // and when the introduced error is "refers to the missing type X" about a type the
         // change just created, what the reader needs is the created file's own package and
         // imports. Gathering it after the undo would be gathering it from nothing.
-        String created = CompileVerify.createdFileContext(service, before,
+        String created = CompileVerify.createdFileContext(context.verdict(), before,
             outcome.modifiedFilePaths());
 
         boolean undone = false;
         if (outcome.undoChange() != null) {
-            undone = ChangeEngine.perform(outcome.undoChange(), service)
+            undone = ChangeEngine.perform(outcome.undoChange(), context)
                 .validationError() == null;
         }
         return new Result(outcome, introduced,
