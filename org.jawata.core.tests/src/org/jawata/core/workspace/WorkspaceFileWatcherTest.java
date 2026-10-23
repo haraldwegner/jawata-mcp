@@ -190,6 +190,40 @@ class WorkspaceFileWatcherTest {
             service.projectKeys());
     }
 
+    @Test
+    @DisplayName("28k C2: a refused watch service does not fail start() — the initial load stands and a later change is followed by polling")
+    void refusedWatchServiceStillFollowsTheFile() throws Exception {
+        Path simpleMaven = helper.getFixturePath("simple-maven");
+        writeWorkspaceJson(simpleMaven);
+
+        watcher = new WorkspaceFileWatcher(dataDir, service, 1, WorkspaceFileWatcherTest::refuse);
+        assertDoesNotThrow(watcher::start, "the operating system refusing a watch service must not fail the load");
+        assertEquals(1, service.allProjects().size(), "the initial load happened");
+
+        writeWorkspaceJson(simpleMaven, helper.getFixturePath("simple-maven-b"));
+
+        assertTrue(waitUntil(Duration.ofSeconds(10), () -> service.allProjects().size() == 2),
+            "polling alone should reconcile the change; loaded: " + service.projectKeys());
+    }
+
+    @Test
+    @DisplayName("28k C2: a workspace.json that appears after a refused watch service is picked up by polling")
+    void fileCreatedLaterIsFollowedByPolling() throws Exception {
+        watcher = new WorkspaceFileWatcher(dataDir, service, 1, WorkspaceFileWatcherTest::refuse);
+        assertDoesNotThrow(watcher::start);
+        assertEquals(0, service.allProjects().size());
+
+        writeWorkspaceJson(helper.getFixturePath("simple-maven"));
+
+        assertTrue(waitUntil(Duration.ofSeconds(10), () -> service.allProjects().size() == 1),
+            "the file's appearance should be seen by polling; loaded: " + service.projectKeys());
+    }
+
+    /** What the operating system answers when the user's inotify instances are all taken. */
+    private static java.nio.file.WatchService refuse() throws java.io.IOException {
+        throw new java.io.IOException("User limit of inotify instances reached or too many open files");
+    }
+
     /**
      * Atomically write a workspace.json with the given project paths.
      * Uses a temp-and-rename pattern matching what the manager will do, so

@@ -51,9 +51,11 @@ public final class ParityGate {
             Set<String> built;
             try {
                 built = context.reconciler().rebuild(project, BuildKind.FULL, monitor);
-            } catch (CoreException e) {
+            } catch (CoreException | RuntimeException e) {
+                // Any failure of a build is a failed gate: the plan loop rolls the plan back on it. An unchecked one
+                // escaping here would leave earlier steps applied and unrolled (28k C2, auditor finding A).
                 built = Set.of();
-                cause = e.getMessage();
+                cause = e.getMessage() != null ? e.getMessage() : e.toString();
             }
             if (!built.contains(name)) {
                 log.warn("ParityGate build failed on '{}': {}", name, cause);

@@ -92,6 +92,7 @@ public class WorkspaceFileWatcher implements AutoCloseable {
     private final JdtServiceImpl service;
     private final ObjectMapper mapper = new ObjectMapper();
     private final long fallbackPollSeconds;
+    private final WatchServiceOpener opener;
 
     private volatile WatchService watchService;
     private volatile Thread watcherThread;
@@ -115,6 +116,14 @@ public class WorkspaceFileWatcher implements AutoCloseable {
      * to verify the mtime safety-net path within bounded wait time.
      */
     WorkspaceFileWatcher(Path jdtDataDir, JdtServiceImpl service, long fallbackPollSeconds) {
+        this(jdtDataDir, service, fallbackPollSeconds, FileSystems.getDefault()::newWatchService);
+    }
+
+    /**
+     * Test seam: how the watch service is opened, so a test can make the operating system refuse one the way it does when
+     * the user's inotify instances are used up.
+     */
+    WorkspaceFileWatcher(Path jdtDataDir, JdtServiceImpl service, long fallbackPollSeconds, WatchServiceOpener opener) {
         if (jdtDataDir == null) {
             throw new IllegalArgumentException("jdtDataDir must not be null");
         }
@@ -128,6 +137,13 @@ public class WorkspaceFileWatcher implements AutoCloseable {
         this.workspaceJson = this.watchDir.resolve(WORKSPACE_FILE_NAME);
         this.service = service;
         this.fallbackPollSeconds = fallbackPollSeconds;
+        this.opener = opener;
+    }
+
+    /** How a watch service is opened (a seam: the default asks the file system). */
+    @FunctionalInterface
+    interface WatchServiceOpener {
+        WatchService open() throws IOException;
     }
 
     /** Path to the {@code workspace.json} file this watcher tracks. */
@@ -150,6 +166,12 @@ public class WorkspaceFileWatcher implements AutoCloseable {
             Files.createDirectories(watchDir);
         }
 
+        // The modification time the poll compares against is taken HERE, before the initial load reads the file, and not
+        // when the watcher thread starts: a change written between start() returning and the thread's first look would
+        // otherwise be taken as already seen, and a watcher with no watch service (nothing but the poll) would never
+        // reconcile it.
+        recordCurrentMtime();
+
         // Initial load (best-effort). Missing file = empty workspace.
         if (Files.isRegularFile(workspaceJson)) {
             try {
@@ -166,17 +188,49 @@ public class WorkspaceFileWatcher implements AutoCloseable {
 
         // Register watch on the parent dir (WatchService can't watch a single
         // file directly — only directories — so we filter events by name).
-        watchService = FileSystems.getDefault().newWatchService();
-        watchDir.register(
-            watchService,
-            StandardWatchEventKinds.ENTRY_CREATE,
-            StandardWatchEventKinds.ENTRY_MODIFY
-        );
+        watchService = openWatchService();
 
         running = true;
         watcherThread = new Thread(this::runWatchLoop, "jawata-workspace-watcher");
         watcherThread.setDaemon(true);
         watcherThread.start();
+    }
+
+    /**
+     * Open the watch service and register the directory, or answer null when the operating system refuses — a user whose
+     * inotify instances are all taken (a desktop full of editors reaches 128) gets no service. The initial load has
+     * already happened, and the mtime poll that guards against missed events is enough to follow {@code workspace.json}
+     * on its own, so the watcher runs on it alone, slower by at most one poll interval, instead of failing the workspace
+     * load it has already completed.
+     */
+    private WatchService openWatchService() {
+        WatchService opened = null;
+        try {
+            opened = opener.open();
+            watchDir.register(
+                opened,
+                StandardWatchEventKinds.ENTRY_CREATE,
+                StandardWatchEventKinds.ENTRY_MODIFY
+            );
+            return opened;
+        } catch (IOException e) {
+            log.warn("No watch service for {} ({}); following workspace.json by polling its modification time every {} s",
+                watchDir, e.getMessage(), fallbackPollSeconds);
+            if (opened != null) {
+                try {
+                    opened.close();
+                } catch (IOException closeFailed) {
+                    log.debug("Error closing unregistered watch service: {}", closeFailed.getMessage());
+                }
+            }
+            return null;
+        }
+    }
+
+    /** Without a watch service the loop has no event to wait on: wait one poll interval, answer no key. */
+    private WatchKey idleUntilNextPoll() throws InterruptedException {
+        TimeUnit.SECONDS.sleep(fallbackPollSeconds);
+        return null;
     }
 
     @Override
@@ -198,7 +252,6 @@ public class WorkspaceFileWatcher implements AutoCloseable {
 
     private void runWatchLoop() {
         log.debug("Watch loop started for {}", workspaceJson);
-        recordCurrentMtime();
         try {
             while (running) {
                 try {
@@ -207,7 +260,10 @@ public class WorkspaceFileWatcher implements AutoCloseable {
                     // events fire. The wakeup runs an mtime-based fallback
                     // reconcile — the production safety net for any silent
                     // WatchService event-miss.
-                    WatchKey key = watchService.poll(fallbackPollSeconds, TimeUnit.SECONDS);
+                    WatchService events = watchService;
+                    WatchKey key = events != null
+                        ? events.poll(fallbackPollSeconds, TimeUnit.SECONDS)
+                        : idleUntilNextPoll();
                     if (key == null) {
                         // Timed out without events — fallback mtime check.
                         runMtimeFallbackIfChanged();
