@@ -16,8 +16,10 @@
 #   P1 (Stage 1, the reconciler port): a copy of the compile-clean sample project is loaded over MCP;
 #      compile_workspace answers 0 errors; a type error is written into its source file ON DISK, outside
 #      the engine, and compile_workspace reports it in that file; the file is restored and
-#      compile_workspace answers 0 again. compile_workspace refreshes and builds through the host's
-#      Reconciler since E6, so this is the reconciler path, front door to built dist.
+#      compile_workspace answers 0 again. This proves the RECONCILER PATH as a whole, front door to
+#      built dist: the per-call syncBeforeCall and compile_workspace's rebuild (E6) both refresh and
+#      build, so P1 stays green if only one of them works (a do-nothing reconciler turns it red; the
+#      rebuild route alone is CompileWorkspaceToolTest's job, C1 audit finding 6).
 #
 # Usage:  build/28k-e2e.sh [--capture] [dist-dir]
 #         --capture writes the goldens (build/28k-golden-ready.txt, build/28k-golden-tools.json)
