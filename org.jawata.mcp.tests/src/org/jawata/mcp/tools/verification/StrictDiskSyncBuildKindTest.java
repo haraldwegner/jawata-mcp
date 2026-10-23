@@ -5,6 +5,7 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.workspace.StrictDiskSync;
+import org.jawata.spi.host.SyncReport;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -51,7 +52,7 @@ class StrictDiskSyncBuildKindTest {
         String src = Files.readString(clean);
         Files.writeString(clean, src.replace("return \"Hello, \" + name;", "return \"Hello, \" + name"));
 
-        StrictDiskSync.SyncReport r = sync.syncBeforeCall();
+        SyncReport r = sync.syncBeforeCall();
         assertFalse(r.fullBuild(), "a modify-only, green pass takes the incremental fast path");
         assertTrue(hasError(service),
             "the incremental build must still surface the modified file's syntax error");
@@ -69,7 +70,7 @@ class StrictDiskSyncBuildKindTest {
         Path added = root.resolve("src/main/java/com/example/Added22a.java");
         Files.writeString(added, "package com.example;\npublic class Added22a {\n    int v() { return 1; }\n}\n");
 
-        StrictDiskSync.SyncReport r = sync.syncBeforeCall();
+        SyncReport r = sync.syncBeforeCall();
         assertTrue(r.fullBuild(), "adding a .java (type universe changed) escalates to FULL");
     }
 }

@@ -1,17 +1,5 @@
 package org.jawata.core.workspace;
 
-import org.eclipse.core.resources.IContainer;
-import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IResource;
-import org.eclipse.core.resources.IncrementalProjectBuilder;
-import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.IPath;
-import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.jdt.core.IPackageFragmentRoot;
-import org.jawata.core.IJdtService;
-import org.jawata.core.LoadedProject;
-
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -19,6 +7,18 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
+
+import org.eclipse.core.resources.IContainer;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IncrementalProjectBuilder;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.jdt.core.IPackageFragmentRoot;
+import org.jawata.core.IJdtService;
+import org.jawata.core.LoadedProject;
+import org.jawata.spi.host.SyncReport;
 
 /**
  * Sprint 21d (item B) — strict disk sync: run ONCE per tool call at the dispatch seam,
@@ -38,24 +38,6 @@ import java.util.function.Supplier;
  * crash policy is itself under test).
  */
 public class StrictDiskSync {
-
-    /** Per-call outcome, for the dispatch log + the workspace-scope benchmark.
-     * Sprint 26: {@code refreshedPaths} carries WHICH source files changed
-     * (bounded to {@link #MAX_REPORTED_PATHS}) — the watch engine's delta. */
-    public record SyncReport(boolean skipped, int newProjects, int refreshedFiles,
-                             int builtProjects, long scanNanos, long totalNanos,
-                             boolean fullBuild, java.util.List<String> refreshedPaths) {
-        public SyncReport(boolean skipped, int newProjects, int refreshedFiles,
-                          int builtProjects, long scanNanos, long totalNanos,
-                          boolean fullBuild) {
-            this(skipped, newProjects, refreshedFiles, builtProjects, scanNanos,
-                totalNanos, fullBuild, java.util.List.of());
-        }
-
-        public boolean reconciled() {
-            return newProjects > 0 || refreshedFiles > 0;
-        }
-    }
 
     /** Cap on paths carried in a report — a mass refresh is not a watchable delta. */
     public static final int MAX_REPORTED_PATHS = 50;

@@ -2,6 +2,7 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.workspace.StrictDiskSync;
+import org.jawata.spi.host.SyncReport;
 import org.jawata.mcp.ResidentDegradation;
 import org.jawata.mcp.models.ToolResponse;
 import org.slf4j.Logger;
@@ -649,7 +650,7 @@ public class ToolRegistry {
         java.util.List<String> syncDelta = java.util.List.of();
         if (diskSync != null) {
             try {
-                StrictDiskSync.SyncReport sync = diskSync.syncBeforeCall();
+                SyncReport sync = diskSync.syncBeforeCall();
                 syncDelta = sync.refreshedPaths();
                 if (sync.reconciled()) {
                     log.info("Strict disk sync before {}: {} new project(s), {} file(s) reconciled,"

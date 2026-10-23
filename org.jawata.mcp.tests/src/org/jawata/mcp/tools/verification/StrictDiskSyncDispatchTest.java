@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.workspace.StrictDiskSync;
+import org.jawata.spi.host.SyncReport;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
@@ -154,10 +155,10 @@ class StrictDiskSyncDispatchTest {
         wire(helper.loadProjectCopy("simple-maven"));
         StrictDiskSync sync = new StrictDiskSync(() -> service);
 
-        StrictDiskSync.SyncReport first = sync.syncBeforeCall();
+        SyncReport first = sync.syncBeforeCall();
         assertEquals(1, first.newProjects(), "first pass reconciles the new root once");
 
-        StrictDiskSync.SyncReport second = sync.syncBeforeCall();
+        SyncReport second = sync.syncBeforeCall();
         assertFalse(second.reconciled(), "no edit -> no work");
         assertEquals(0, second.refreshedFiles());
         assertEquals(0, second.builtProjects());
@@ -176,7 +177,7 @@ class StrictDiskSyncDispatchTest {
             Files.createDirectories(f.getParent());
             Files.writeString(f, "package jawatadisksync;\npublic class Extra" + (i - 1) + " {\n}\n");
         }
-        StrictDiskSync.SyncReport report = sync.syncBeforeCall();
+        SyncReport report = sync.syncBeforeCall();
         assertEquals(2, report.refreshedFiles(), "one added file per project reconciled");
         assertEquals(2, report.builtProjects());
     }
