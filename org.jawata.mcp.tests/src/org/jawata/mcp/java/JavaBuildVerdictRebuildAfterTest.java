@@ -1,7 +1,10 @@
 package org.jawata.mcp.java;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,7 +14,9 @@ import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.LoadedProject;
+import org.jawata.mcp.change.ChangeContext;
 import org.jawata.mcp.fixtures.TestProjectHelper;
+import org.jawata.mcp.refactoring.ParityGate;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.lang.BuildVerdict;
@@ -30,6 +35,7 @@ class JavaBuildVerdictRebuildAfterTest {
     @RegisterExtension
     TestProjectHelper helper = new TestProjectHelper();
 
+    private ChangeContext context;
     private BuildVerdict verdict;
     private String first;
     private String second;
@@ -51,7 +57,28 @@ class JavaBuildVerdictRebuildAfterTest {
         List<IClasspathEntry> classpath = new ArrayList<>(List.of(requirer.getRawClasspath()));
         classpath.add(JavaCore.newProjectEntry(a.javaProject().getPath()));
         requirer.setRawClasspath(classpath.toArray(new IClasspathEntry[0]), null);
-        verdict = JavaChange.contextFor(service).verdict();
+        context = JavaChange.contextFor(service);
+        verdict = context.verdict();
+    }
+
+    @Test
+    @DisplayName("an interface change in the first project is caught in the requiring project's own file by the plan gate")
+    void anInterfaceChangeBreaksTheRequirersFileAndTheGateSeesIt() throws Exception {
+        Path helperFile = firstRoot.resolve("src/main/java/com/example/Helper.java");
+        Files.createDirectories(helperFile.getParent());
+        Files.writeString(helperFile, "package com.example;\npublic class Helper {\n    public static int one() { return 1; }\n}\n");
+        Path userFile = secondRoot.resolve("src/main/java/com/example/User.java");
+        Files.createDirectories(userFile.getParent());
+        Files.writeString(userFile, "package com.example;\npublic class User {\n    int x = Helper.one();\n}\n");
+        ParityGate.Result before = ParityGate.compile(context, List.of());
+        assertTrue(before.clean(), "precondition: both projects build clean in full: " + before.errors());
+
+        Files.writeString(helperFile, "package com.example;\npublic class Helper {\n}\n");
+        ParityGate.Result result = ParityGate.compile(context, List.of(helperFile.toString()));
+
+        assertFalse(result.clean(), "removing a public method must break its user: " + result.errors());
+        assertTrue(result.errors().stream().anyMatch(d -> d.filePath() != null && d.filePath().endsWith("User.java")),
+            "the error is in the requiring project's file: " + result.errors());
     }
 
     @Test
