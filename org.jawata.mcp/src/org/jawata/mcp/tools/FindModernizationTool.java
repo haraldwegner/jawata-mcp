@@ -1,9 +1,14 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+
 import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.dom.AST;
-import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.AnonymousClassDeclaration;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
@@ -17,21 +22,14 @@ import org.eclipse.jdt.core.dom.SwitchStatement;
 import org.eclipse.jdt.core.dom.Type;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.tools.lombok.LombokDetector;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.lombok.LombokDetector;
 import org.jawata.mcp.tools.shared.SourceScan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Sprint 15 — modernization sweeps. Find-only (read-only) detector that scans
@@ -49,7 +47,8 @@ public class FindModernizationTool extends AbstractTool {
 
     private static final Logger log = LoggerFactory.getLogger(FindModernizationTool.class);
 
-    static final Set<String> KINDS = Set.of(
+    // a List, not Set.of: the published enum keeps this order on every start (Set.of iterates in a per-process order; 28k C0)
+    static final List<String> KINDS = List.of(
         "anon_to_lambda", "switch_to_pattern", "loop_to_stream",   // batch 1 (B3)
         "optional", "class_to_record", "sealed",                   // batch 2 (B4)
         "lombok_to_record", "delombok");                           // Lombok removal (B5b)

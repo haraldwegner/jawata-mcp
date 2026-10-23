@@ -1,10 +1,15 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMember;
 import org.eclipse.jdt.core.IMethod;
@@ -16,8 +21,8 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.FieldDeclaration;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
 import org.eclipse.jdt.core.dom.MarkerAnnotation;
-import org.eclipse.jdt.core.dom.Name;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
+import org.eclipse.jdt.core.dom.Name;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
@@ -34,13 +39,7 @@ import org.jawata.mcp.tools.nullness.NullnessStyle;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Sprint 15b — source-mutating null-safety tool (apply/undo contract via
@@ -59,7 +58,8 @@ public class ApplyNullAnnotationsTool extends AbstractApplyingRefactoringTool {
 
     private static final Logger log = LoggerFactory.getLogger(ApplyNullAnnotationsTool.class);
 
-    static final Set<String> KINDS = Set.of("add", "migrate");
+    // Lists, not Set.of: the published enums keep this order on every start (Set.of iterates in a per-process order; 28k C0)
+    static final List<String> KINDS = List.of("add", "migrate");
 
     public ApplyNullAnnotationsTool(Supplier<IJdtService> serviceSupplier,
                                     RefactoringChangeCache changeCache) {
@@ -106,7 +106,7 @@ public class ApplyNullAnnotationsTool extends AbstractApplyingRefactoringTool {
             "description", "Which mutation to apply. See the tool description."));
         properties.put("symbol", Map.of("type", "string",
             "description", "FQN target: \"com.foo.Bar#method\" or \"com.foo.Bar#field\"."));
-        properties.put("nullness", Map.of("type", "string", "enum", Set.of("nullable", "nonnull"),
+        properties.put("nullness", Map.of("type", "string", "enum", List.of("nullable", "nonnull"),
             "description", "Which annotation to add."));
         properties.put("parameter", Map.of("type", "string",
             "description", "Optional. For a method target, annotate this parameter instead of the return."));

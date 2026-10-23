@@ -1,0 +1,7 @@
+# Sprint 28k Stage 0 goldens of what a headless client observes at boot, captured 2026-10-23 from the
+# dist built at jawata-mcp 7711f931. Stage 5 (E13-E17) compares against these.
+READY (token given with -token):   READY url=http://127.0.0.1:<port> token=provided
+READY (token given with -token-file): READY url=http://127.0.0.1:<port> token-file=<path>
+token file: written at the path named by -token-file, mode 600 (rw-------), the token plus a line separator
+port taken: exit code 13 (measured on the dist; source JawataApplication:1164), stderr "FATAL: cannot bind port <port> — Address already in use (is another resident already listening on it?)"
+listener deaf: exit code 70, read from source (HttpTransport:287, System.exit(70)); no test asserts the code today (HttpTransportNoticesItsOwnDeafnessTest asserts deafness is declared) - E16 adds one before moving the exit
