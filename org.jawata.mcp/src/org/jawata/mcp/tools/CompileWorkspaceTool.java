@@ -224,37 +224,50 @@ public class CompileWorkspaceTool extends AbstractTool {
             int errorCount = 0;
             int warningCount = 0;
             List<Map<String, Object>> diagnostics = new ArrayList<>();
-            int compiled = 0;
+            // Sprint 28k (E6, C1 architect F1): ONE rebuild over the selected projects; only what the host's
+            // reconciler answers as built is counted, and every other selected project is named below.
+            List<String> names = projects.stream().map(p -> p.javaProject().getProject().getName()).toList();
+            Set<String> built;
+            try {
+                built = reconciler.get().rebuild(new BuildScope(names),
+                    cleanFirst ? BuildKind.CLEAN_FULL : BuildKind.FULL, new NullProgressMonitor());
+            } catch (Exception e) {
+                log.warn("Build failed: {}", e.getMessage(), e);
+                built = Set.of();
+            }
+            int compiled = built.size();
+            List<Map<String, Object>> notBuilt = new ArrayList<>();
 
             for (LoadedProject loaded : projects) {
                 IProject project = loaded.javaProject().getProject();
-                try {
-                    // Pick up any filesystem changes the agent / user made
-                    // since the project was loaded — without this, an
-                    // incremental build won't see new or edited source files
-                    // (Eclipse-linked folders need an explicit refreshLocal
-                    // to repopulate the resource tree). We use FULL_BUILD
-                    // because INCREMENTAL_BUILD's delta tracking lags fresh
-                    // refreshLocal additions in Tycho-test-style headless
-                    // Equinox runtimes — and a full build over a workspace
-                    // already loaded into memory is fast enough that the
-                    // simpler / more reliable mode wins.
-                    //
-                    // Sprint 14 (bugs.md #8): when clean=true, CLEAN_BUILD
-                    // precedes FULL_BUILD so JDT discards its incremental
-                    // compile cache. Required when a record's canonical
-                    // constructor shape changes (or any other signature edit
-                    // that the incremental builder would skip recompiling
-                    // consumers for).
-                    // Sprint 28k (E6): the host refreshes and builds — headless as described above,
-                    // Eclipse through its own build.
-                    reconciler.get().rebuild(BuildScope.of(project.getName()),
-                        cleanFirst ? BuildKind.CLEAN_FULL : BuildKind.FULL, new NullProgressMonitor());
-                } catch (Exception e) {
-                    log.warn("Build failed on project '{}': {}", loaded.projectKey(), e.getMessage(), e);
-                    // Continue collecting markers — partial results are still useful.
+                if (!built.contains(project.getName())) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("project", loaded.projectKey());
+                    row.put("problem", "the host's reconciler did not build it (its build failed, or the host does not hold it)");
+                    row.put("remedy", "read the server log for the build failure, then refresh_workspace");
+                    notBuilt.add(row);
                 }
-                compiled++;
+                // Pick up any filesystem changes the agent / user made
+                // since the project was loaded — without this, an
+                // incremental build won't see new or edited source files
+                // (Eclipse-linked folders need an explicit refreshLocal
+                // to repopulate the resource tree). We use FULL_BUILD
+                // because INCREMENTAL_BUILD's delta tracking lags fresh
+                // refreshLocal additions in Tycho-test-style headless
+                // Equinox runtimes — and a full build over a workspace
+                // already loaded into memory is fast enough that the
+                // simpler / more reliable mode wins.
+                //
+                // Sprint 14 (bugs.md #8): when clean=true, CLEAN_BUILD
+                // precedes FULL_BUILD so JDT discards its incremental
+                // compile cache. Required when a record's canonical
+                // constructor shape changes (or any other signature edit
+                // that the incremental builder would skip recompiling
+                // consumers for).
+                // Sprint 28k (E6): the host refreshed and built above — headless as described here,
+                // Eclipse through its own build.
+                //
+                // Continue collecting markers whatever was built — partial results are still useful.
 
                 IMarker[] problems = project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
                 for (IMarker marker : problems) {
@@ -295,16 +308,17 @@ public class CompileWorkspaceTool extends AbstractTool {
             // clean" and never "could not compile".
             List<org.jawata.mcp.tools.shared.WorkspaceHealth.Problem> unbuildable =
                 org.jawata.mcp.tools.shared.WorkspaceHealth.diagnose(service);
-            if (!unbuildable.isEmpty()) {
+            if (!unbuildable.isEmpty() || !notBuilt.isEmpty()) {
                 List<Map<String, Object>> rows = new ArrayList<>();
                 for (var p : unbuildable) {
                     rows.add(p.describe());
                 }
+                rows.addAll(notBuilt);
                 data.put("couldNotCompile", rows);
                 data.put("couldNotCompileWarning", "The project(s) above CANNOT be"
                     + " built — their compile results here are vacuous, not clean."
                     + " Fix each per its remedy, then refresh_workspace.");
-                errorCount += unbuildable.size();
+                errorCount += unbuildable.size() + notBuilt.size();
             }
             data.put("errorCount", errorCount);
             data.put("warningCount", warningCount);

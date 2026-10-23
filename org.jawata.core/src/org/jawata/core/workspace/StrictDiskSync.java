@@ -46,25 +46,35 @@ public class StrictDiskSync implements Reconciler {
     /**
      * Sprint 28k (E6): the headless host's rebuild — each named project refreshed from disk, then built (a clean build
      * first for {@link BuildKind#CLEAN_FULL}). The loaded projects' own handles are used, so a linked source folder is
-     * refreshed as the project mounts it.
+     * refreshed as the project mounts it. A failing project does not stop the others; it is logged and left out of the
+     * answer, as is a name this service does not hold (C1, architect F1). Synchronized with {@link #syncBeforeCall()}, so a
+     * rebuild and a per-call sync never overlap a refresh and a build.
      */
     @Override
-    public void rebuild(BuildScope scope, BuildKind kind, IProgressMonitor monitor) throws CoreException {
+    public synchronized Set<String> rebuild(BuildScope scope, BuildKind kind, IProgressMonitor monitor) {
+        Set<String> built = new LinkedHashSet<>();
         IJdtService s = service.get();
         if (s == null) {
-            return;
+            return built;
         }
         for (LoadedProject loaded : s.allProjects()) {
             IProject project = loaded.javaProject().getProject();
             if (!scope.projects().contains(project.getName())) {
                 continue;
             }
-            project.refreshLocal(IResource.DEPTH_INFINITE, monitor);
-            if (kind == BuildKind.CLEAN_FULL) {
-                project.build(IncrementalProjectBuilder.CLEAN_BUILD, monitor);
+            try {
+                project.refreshLocal(IResource.DEPTH_INFINITE, monitor);
+                if (kind == BuildKind.CLEAN_FULL) {
+                    project.build(IncrementalProjectBuilder.CLEAN_BUILD, monitor);
+                }
+                project.build(IncrementalProjectBuilder.FULL_BUILD, monitor);
+                built.add(project.getName());
+            } catch (CoreException e) {
+                java.util.logging.Logger.getLogger(StrictDiskSync.class.getName())
+                    .warning("rebuild failed on project '" + project.getName() + "': " + e.getMessage());
             }
-            project.build(IncrementalProjectBuilder.FULL_BUILD, monitor);
         }
+        return built;
     }
 
     /** Cap on paths carried in a report — a mass refresh is not a watchable delta. */

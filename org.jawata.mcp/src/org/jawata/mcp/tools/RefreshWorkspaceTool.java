@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Supplier;
 
 import org.eclipse.core.resources.IMarker;
@@ -157,6 +158,17 @@ public class RefreshWorkspaceTool extends AbstractTool {
             int classFilesInvalidated = 0;
             List<Map<String, Object>> diagnostics = new ArrayList<>();
             List<String> refreshedProjects = new ArrayList<>();
+            // Sprint 28k (E6, C1 architect F1): ONE rebuild over the selected projects; a project the host's
+            // reconciler did not answer as built is named in notRebuilt and counted as an error.
+            List<String> names = projects.stream().map(p -> p.javaProject().getProject().getName()).toList();
+            Set<String> built;
+            try {
+                built = reconciler.get().rebuild(new BuildScope(names), BuildKind.CLEAN_FULL, new NullProgressMonitor());
+            } catch (Exception e) {
+                log.warn("Refresh + rebuild failed: {}", e.getMessage(), e);
+                built = Set.of();
+            }
+            List<String> notRebuilt = new ArrayList<>();
 
             for (LoadedProject loaded : projects) {
                 IJavaProject jp = loaded.javaProject();
@@ -171,13 +183,8 @@ public class RefreshWorkspaceTool extends AbstractTool {
                 filesRefreshed += projectFileCount;
                 classFilesInvalidated += projectFileCount;
 
-                try {
-                    reconciler.get().rebuild(BuildScope.of(project.getName()), BuildKind.CLEAN_FULL,
-                        new NullProgressMonitor());
-                } catch (Exception e) {
-                    log.warn("Refresh + rebuild failed on project '{}': {}",
-                        loaded.projectKey(), e.getMessage(), e);
-                    // Continue collecting markers — partial results still useful.
+                if (!built.contains(project.getName())) {
+                    notRebuilt.add(loaded.projectKey());   // markers are still collected: partial results are useful
                 }
 
                 IMarker[] problems = project.findMarkers(IMarker.PROBLEM, true,
@@ -197,13 +204,16 @@ public class RefreshWorkspaceTool extends AbstractTool {
             Map<String, Object> summary = new LinkedHashMap<>();
             summary.put("filesRefreshed", filesRefreshed);
             summary.put("classFilesInvalidated", classFilesInvalidated);
-            summary.put("errorCount", errorCount);
+            summary.put("errorCount", errorCount + notRebuilt.size());
             summary.put("warningCount", warningCount);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("operation", "refresh_workspace");
             data.put("wiringRecomputed", true);
             data.put("refreshedProjects", refreshedProjects);
+            if (!notRebuilt.isEmpty()) {
+                data.put("notRebuilt", notRebuilt);
+            }
             data.put("summary", summary);
             data.put("diagnostics", diagnostics);
 

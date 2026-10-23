@@ -92,6 +92,36 @@ class CompileWorkspaceToolTest {
     }
 
     @Test
+    @DisplayName("28k C1 (architect F1): a project the host's reconciler did not build is not counted as compiled — it is named and counted as an error")
+    void aProjectTheReconcilerDidNotBuildIsNamedNotCounted() {
+        // A host whose rebuild builds nothing: before C1 the tool counted the project as compiled and answered 0 errors,
+        // the green gate that never looked.
+        CompileWorkspaceTool skipping = new CompileWorkspaceTool(() -> service,
+            () -> new org.jawata.spi.host.Reconciler() {
+                @Override
+                public org.jawata.spi.host.SyncReport syncBeforeCall() {
+                    return new org.jawata.spi.host.SyncReport(true, 0, 0, 0, 0, 0, false);
+                }
+
+                @Override
+                public java.util.Set<String> rebuild(org.jawata.spi.host.BuildScope scope,
+                        org.jawata.spi.host.BuildKind kind, org.eclipse.core.runtime.IProgressMonitor monitor) {
+                    return java.util.Set.of();
+                }
+            });
+        ToolResponse r = skipping.execute(objectMapper.createObjectNode());
+        assertTrue(r.isSuccess(), "compile_workspace answers; got: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        assertEquals(0, ((Number) data.get("projectsCompiled")).intValue(),
+            "a project nobody built is not compiled: " + data);
+        assertTrue(String.valueOf(data.get("couldNotCompile")).contains(service.allProjects().iterator().next().projectKey()),
+            "the project that was not built is named: " + data);
+        assertTrue(((Number) data.get("errorCount")).intValue() >= 1,
+            "0 errors must never mean 'not built': " + data);
+    }
+
+    @Test
     @DisplayName("P0-a (Sprint 22a): genuinely broken source yields a REAL compiler error (errorCount >= 1)")
     void brokenSource_realCompile_surfacesRealError() throws Exception {
         // Drop a genuinely-broken .java into the main source root and let

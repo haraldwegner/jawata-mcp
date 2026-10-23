@@ -1,5 +1,7 @@
 package org.jawata.spi.host;
 
+import java.util.Set;
+
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
 
@@ -18,6 +20,9 @@ public interface Reconciler {
     /**
      * Refresh the scope's projects from disk and build them the way {@code kind} says, so their problem markers describe the
      * files as they are now. A host that builds on its own (Eclipse) still answers only once that build has run.
+     *
+     * @return the names of the projects it built. A name it does not hold, or a project whose build failed, is LEFT OUT and
+     *         never answered as built: a caller counts only what is here, so "0 errors" cannot mean "not built" (28k C1).
      */
-    void rebuild(BuildScope scope, BuildKind kind, IProgressMonitor monitor) throws CoreException;
+    Set<String> rebuild(BuildScope scope, BuildKind kind, IProgressMonitor monitor) throws CoreException;
 }
