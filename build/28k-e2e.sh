@@ -13,6 +13,11 @@
 #      the captured shape; health_check answers toolCount equal to the README's inventory (44 at
 #      the baseline); tools/list equals the golden captured at the baseline — names, order and
 #      input schemas — so nothing a headless client observes changes during the engine split.
+#   P1 (Stage 1, the reconciler port): a copy of the compile-clean sample project is loaded over MCP;
+#      compile_workspace answers 0 errors; a type error is written into its source file ON DISK, outside
+#      the engine, and compile_workspace reports it in that file; the file is restored and
+#      compile_workspace answers 0 again. compile_workspace refreshes and builds through the host's
+#      Reconciler since E6, so this is the reconciler path, front door to built dist.
 #
 # Usage:  build/28k-e2e.sh [--capture] [dist-dir]
 #         --capture writes the goldens (build/28k-golden-ready.txt, build/28k-golden-tools.json)
@@ -35,6 +40,9 @@ GOLDEN_TOOLS="$ROOT/build/28k-golden-tools.json"
 
 WS="$(mktemp -d)"
 STORE="$(mktemp -d)"
+SAMPLE="$WS/sample/compile-clean"
+mkdir -p "$WS/sample"
+cp -r "$ROOT/org.jawata.core.tests/test-resources/sample-projects/compile-clean" "$SAMPLE"
 LOG="$WS/resident.log"
 RESIDENT_PID=""
 
@@ -71,6 +79,7 @@ done
 
 PROBE_PORT="$PORT" PROBE_TOKEN="$TOKEN" PROBE_ROOT="$ROOT" PROBE_LOG="$LOG" \
 PROBE_CAPTURE="$CAPTURE" PROBE_GOLDEN_READY="$GOLDEN_READY" PROBE_GOLDEN_TOOLS="$GOLDEN_TOOLS" \
+PROBE_SAMPLE="$SAMPLE" \
 python3 - << 'PY'
 import json, os, re, urllib.request
 
@@ -145,6 +154,39 @@ else:
         bad("P0 input schemas changed for: %s" % changed)
     else:
         ok("P0 tools/list equals the golden: %d names in order, schemas identical" % len(golden))
+
+# --- P1: an edit made on disk reaches compile_workspace through the host's reconciler (Stage 1) --
+def call(name, arguments):
+    reply = rpc("tools/call", {"name": name, "arguments": arguments})
+    return json.loads(reply["result"]["content"][0]["text"])
+
+def errors():
+    d = call("compile_workspace", {}).get("data") or {}   # the sample is the only project loaded
+    return d.get("errorCount"), [x.get("filePath", "") for x in d.get("diagnostics", [])]
+
+sample = os.environ["PROBE_SAMPLE"]
+source = os.path.join(sample, "src/main/java/com/example/Clean.java")
+loaded = call("load_project", {"projectPath": sample})
+if not loaded.get("success"):
+    bad("P1 load_project of the sample refused: %s" % loaded.get("error"))
+else:
+    before = errors()
+    original = open(source, encoding="utf-8").read()
+    with open(source, "w", encoding="utf-8") as f:
+        f.write(original.rstrip().rstrip("}") + "\n    int broken() { return \"not an int\"; }\n}\n")
+    during = errors()
+    with open(source, "w", encoding="utf-8") as f:
+        f.write(original)
+    after = errors()
+    if before[0] != 0:
+        bad("P1 the clean sample does not compile clean: %s errors" % before[0])
+    elif not (during[0] and during[0] > 0 and any(p.endswith("Clean.java") for p in during[1])):
+        bad("P1 an error written on disk did not reach compile_workspace: %s errors in %s" % during)
+    elif after[0] != 0:
+        bad("P1 after the file was restored compile_workspace still reports %s errors" % after[0])
+    else:
+        ok("P1 compile_workspace: 0, then %d error(s) in Clean.java after an edit on disk, then 0 after restoring it"
+           % during[0])
 
 print("\n28k-E2E passed=%d failed=%d" % (passed, failed))
 raise SystemExit(1 if failed else 0)

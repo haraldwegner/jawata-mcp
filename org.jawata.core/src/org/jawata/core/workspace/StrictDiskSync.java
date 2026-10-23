@@ -108,6 +108,7 @@ public class StrictDiskSync implements Reconciler {
      * Synchronized: the MCP HTTP transport dispatches on a cached thread pool —
      * concurrent tool calls must not overlap refreshLocal/build or race the snapshot.
      */
+    @Override
     public synchronized SyncReport syncBeforeCall() throws CoreException {
         long t0 = System.nanoTime();
         IJdtService s = service.get();
