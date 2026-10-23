@@ -3,10 +3,11 @@
      C++ later) implement for the engine. org.jawata.spi.host: what the engine asks of its host; org.jawata.spi.lang: what it asks
      of a language.
 
-     ITS ONE DEPENDENCY IS THE ECLIPSE RUNTIME PACKAGE, AND THAT IS THE DELIVERABLE (rule R10: nothing of jawata, no JDT): the contract's
-     ports carry org.eclipse.core.runtime types (IProgressMonitor, CoreException), from org.eclipse.equinox.common here and imported
-     as the package in the MANIFEST, as org.jawata.core imports it. A reference to jawata or to JDT from here would not compile, and
-     the MANIFEST imports nothing else, so OSGi would refuse one at resolve time too.
+     ITS DEPENDENCIES ARE ECLIPSE'S NEUTRAL PLATFORM, AND NOTHING ELSE (rule R10: nothing of jawata, no JDT): the contract's ports
+     carry org.eclipse.core.runtime types (IProgressMonitor, CoreException), org.eclipse.core.resources (IFile, for ChangePaths) and
+     the LTK Change a host performs (WorkspaceWrites, contract §4.2 A3-5; LTK is the language-neutral refactoring layer, not JDT),
+     imported as packages in the MANIFEST. A reference to jawata or to JDT from here would not compile, and the MANIFEST imports
+     nothing else, so OSGi would refuse one at resolve time too.
      It has no resources; a resource added later gets a root of its own (org.jawata.spi/resources), never the source root. -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -22,6 +23,8 @@
 
     <dependencies>
         <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.equinox.common</artifactId><version>${v.equinox.common}</version></dependency>
+        <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.core.resources</artifactId><version>${v.core.resources}</version></dependency>
+        <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.ltk.core.refactoring</artifactId><version>${v.ltk}</version></dependency>
     </dependencies>
 
     <build>
