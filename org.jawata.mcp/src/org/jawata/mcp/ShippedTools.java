@@ -53,8 +53,9 @@ import org.jawata.spi.lang.SymbolAnchors;
  * <p>Since Sprint 28k (E12) the list has two sources. The tools that name no language, and the verbs
  * whose language answer comes through a provider port, are built here. The tools that exist only
  * over a Java model, and the ports themselves (memory's anchors, the test runtime), come from
- * {@link JavaProvider}; this producer names no Java tool class and builds no port. {@link PublishedOrder}
- * puts the two in the order the product publishes.</p>
+ * {@link JavaProvider}; this producer builds no port, and the one Java tool class it still names is
+ * {@code FindQualityIssueTool}, the type of {@code Built.quality}, which the application keeps for the watch engine's detector
+ * binding. {@link PublishedOrder} puts the two sources in the order the product publishes.</p>
  *
  * <p>What the tools need from the running application is {@link Wiring}: suppliers read at call time
  * wherever the application's state changes after boot (the workspace service, the store), and the

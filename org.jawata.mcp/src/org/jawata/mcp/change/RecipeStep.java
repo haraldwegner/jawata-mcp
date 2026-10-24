@@ -1,11 +1,9 @@
-package org.jawata.mcp.refactoring;
-
-import org.jawata.mcp.change.OperationRegistry;
+package org.jawata.mcp.change;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
- * One step of a {@link Recipe}: the operation to run and the arguments to run it with.
+ * One step of a {@code Recipe}: the operation to run and the arguments to run it with.
  *
  * <p>The operation is a name the {@link OperationRegistry} publishes — a tool's own
  * name ({@code move_method}) or a kind a front door publishes ({@code class}, of

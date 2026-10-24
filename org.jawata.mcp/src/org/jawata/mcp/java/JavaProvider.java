@@ -139,7 +139,8 @@ public final class JavaProvider implements LanguageProvider {
     /**
      * The tools that exist only over a Java model (contract §3, E12): navigation, search, analysis, the refactoring doors, the
      * quality and modernization sweeps, the debugger and profiler, the build-file and formatting tools. Built here, not by the
-     * producer, so the engine's producer names no Java tool class. Registers nothing. The contract's {@code ProviderContext}
+     * producer, so the engine's producer constructs none of them; it names only {@link FindQualityIssueTool}, as the type of the
+     * quality tool it keeps for the watch engine. Registers nothing. The contract's {@code ProviderContext}
      * joins this signature with the SPI member, at E19, when the engine hands providers their context.
      */
     public Contribution tools(ToolNeeds needs) {

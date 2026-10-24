@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.change.OperationRegistry;
+import org.jawata.mcp.change.RecipeStep;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -12,6 +12,15 @@ org.jawata.core.workspace.WorkspaceManager#getSessionId()
 org.jawata.core.workspace.WorkspaceManager#getWorkspace()
 org.jawata.core.workspace.WorkspaceManager#projectExists(String)
 org.jawata.core.workspace.WorkspaceManager#refresh()
+# v4.1.0: a question a guard asks of the registry. The product registers; it never asks.
+org.jawata.mcp.change.OperationRegistry#isWired()
+# v4.1.0: convenience overload for tests; the product calls the fuller form.
+org.jawata.mcp.change.OperationRegistry#register(String,Collection<String>)
+# v4.1.0: borrow-and-return for tests that write the global registry. A production
+# caller would be WRONG: the product registers once at boot and never restores.
+org.jawata.mcp.change.OperationRegistry#restore(Snapshot)
+# v4.1.0: the other half of the borrow; same reason as restore.
+org.jawata.mcp.change.OperationRegistry#snapshot()
 org.jawata.mcp.coverage.MechanicalChangeJournal#clear()
 org.jawata.mcp.domain.Finding#warning(String,String,int,String)
 org.jawata.mcp.embed.EmbedderIdentity#parse(String)
@@ -113,15 +122,6 @@ org.jawata.mcp.protocol.McpProtocolHandler#getClientName()
 org.jawata.mcp.protocol.McpProtocolHandler#getClientVersion()
 org.jawata.mcp.protocol.McpProtocolHandler#isInitialized()
 org.jawata.mcp.protocol.McpProtocolHandler#processMessage(String)
-# v4.1.0: a question a guard asks of the registry. The product registers; it never asks.
-org.jawata.mcp.refactoring.OperationRegistry#isWired()
-# v4.1.0: convenience overload for tests; the product calls the fuller form.
-org.jawata.mcp.refactoring.OperationRegistry#register(String,Collection<String>)
-# v4.1.0: borrow-and-return for tests that write the global registry. A production
-# caller would be WRONG: the product registers once at boot and never restores.
-org.jawata.mcp.refactoring.OperationRegistry#restore(Snapshot)
-# v4.1.0: the other half of the borrow; same reason as restore.
-org.jawata.mcp.refactoring.OperationRegistry#snapshot()
 org.jawata.mcp.refactoring.PurityCheck#check(MethodDeclaration,MethodDeclaration)
 org.jawata.mcp.refactoring.RefactoringChangeCache#size()
 org.jawata.mcp.runtime.RuntimeSessionRegistry#size()

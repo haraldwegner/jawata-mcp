@@ -130,7 +130,7 @@ public class ComposeMethodTool extends AbstractTool
         // engine, same order, same arguments; what changed is that a recipe can now be
         // declared by anything, which is how the sprint's eight composed rows ship
         // without eight more copies of the loop this replaced.
-        List<org.jawata.mcp.refactoring.RecipeStep> steps = new ArrayList<>();
+        List<org.jawata.mcp.change.RecipeStep> steps = new ArrayList<>();
         for (Section s : sections) {
             ObjectNode a = mapper.createObjectNode();
             a.put("filePath", filePath);
@@ -143,7 +143,7 @@ public class ComposeMethodTool extends AbstractTool
             // application registers, and ExtractMethodTool is a delegate of the
             // `extract` front door rather than a tool of its own. Naming the delegate
             // would make validate() reject the only recipe the product has.
-            steps.add(new org.jawata.mcp.refactoring.RecipeStep("extract", a));
+            steps.add(new org.jawata.mcp.change.RecipeStep("extract", a));
         }
         org.jawata.mcp.refactoring.Recipe recipe =
             new org.jawata.mcp.refactoring.Recipe("compose method", steps);
