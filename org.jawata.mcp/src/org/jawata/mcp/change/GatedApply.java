@@ -5,8 +5,6 @@ import java.util.Map;
 import java.util.Set;
 
 import org.eclipse.ltk.core.refactoring.Change;
-import org.jawata.mcp.change.ChangeEngine.ApplyOutcome;
-import org.jawata.mcp.refactoring.RecipeEngine;
 
 /**
  * THE ONE WAY TO APPLY A CHANGE, gate included.
@@ -38,7 +36,7 @@ import org.jawata.mcp.refactoring.RecipeEngine;
  * C6 audit was right that the sentence was FALSE: two apply paths still called
  * {@link ChangeEngine#perform} directly — the staged front door
  * ({@code apply_refactoring}), which made staging the way around the gate, and
- * {@link RecipeEngine}, so every composed operation applied unverified. Both were routed
+ * {@code RecipeEngine}, so every composed operation applied unverified. Both were routed
  * through here rather than the claim being softened; a claim about a single way in is
  * worth nothing unless it is true, and the check for it is a reference count.</p>
  *

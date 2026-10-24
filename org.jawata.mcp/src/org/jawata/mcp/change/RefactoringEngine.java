@@ -1,7 +1,6 @@
 package org.jawata.mcp.change;
 
 import org.eclipse.ltk.core.refactoring.Refactoring;
-import org.jawata.mcp.refactoring.JdtRefactoringEngine;
 
 /**
  * The refactoring-engine seam (Sprint 25, D1). A {@code RefactoringEngine}
@@ -26,7 +25,7 @@ import org.jawata.mcp.refactoring.JdtRefactoringEngine;
  *       the ERROR/FATAL precondition reasons. The change, once applied by the
  *       caller, yields the diff and undo the tool reports; verification is
  *       external.</li>
- *   <li><b>Implementations</b> — {@link JdtRefactoringEngine} is the only one;
+ *   <li><b>Implementations</b> — {@code JdtRefactoringEngine} is the only one;
  *       it drives JDT/LTK refactorings, the same engines behind the Eclipse
  *       IDE's Refactor menu. The seam exists so the historically hand-rolled
  *       transforms migrate onto real engines one tool at a time, without each

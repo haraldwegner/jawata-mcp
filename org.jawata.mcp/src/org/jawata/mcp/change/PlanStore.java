@@ -6,11 +6,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
-
 /**
  * Sprint 18 — session-scoped store of in-flight refactoring {@link Plan}s, mirroring
- * {@link RefactoringChangeCache}: bounded (LRU, cap {@value #CAPACITY}), TTL-expired
+ * {@code RefactoringChangeCache}: bounded (LRU, cap {@value #CAPACITY}), TTL-expired
  * lazily on access ({@value #TTL_MILLIS} ms). A plan created by
  * {@code refactoring(action=plan)} is retrieved by {@code apply_plan} /
  * {@code inspect_plan} / {@code undo_plan} via its {@code planId}. In-memory only —
