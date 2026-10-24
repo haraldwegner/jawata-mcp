@@ -1,8 +1,16 @@
 package org.jawata.mcp.tools.project;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.IJdtService;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import org.jawata.core.HeadlessModelSource;
+import org.jawata.mcp.engine.ResidentHostWorkspace;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.LoadProjectTool;
@@ -11,12 +19,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
-
-import static org.junit.jupiter.api.Assertions.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 class LoadProjectToolTest {
 
@@ -24,13 +28,13 @@ class LoadProjectToolTest {
     TestProjectHelper helper = new TestProjectHelper();
     private LoadProjectTool tool;
     private ObjectMapper objectMapper;
-    private AtomicReference<IJdtService> serviceRef;
+    private HeadlessModelSource model;
     private Path projectPath;
 
     @BeforeEach
     void setUp() throws Exception {
-        serviceRef = new AtomicReference<>();
-        tool = new LoadProjectTool(serviceRef::set);
+        model = new HeadlessModelSource();
+        tool = new LoadProjectTool(model, new ResidentHostWorkspace(model));
         objectMapper = new ObjectMapper();
         projectPath = helper.getFixturePath("simple-maven");
     }
@@ -61,7 +65,7 @@ class LoadProjectToolTest {
         assertFalse(packages.isEmpty());
 
         // Verify service was set
-        assertNotNull(serviceRef.get());
+        assertNotNull(model.current());
     }
 
     @Test @DisplayName("requires projectPath parameter")

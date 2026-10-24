@@ -156,7 +156,22 @@ public class ErrorInfo {
      */
     public static final String PRECONDITION_NOT_MET = "PRECONDITION_NOT_MET";
 
+    /**
+     * The host already owns the workspace (an IDE with its own open projects), so the engine follows it and does not load, add or
+     * remove projects itself. The verb is right and the caller is right; the workspace belongs to someone else (Sprint 28k, E14).
+     */
+    public static final String HOST_OWNS_WORKSPACE = "HOST_OWNS_WORKSPACE";
+
     // Factory methods for common errors
+    public static ErrorInfo hostOwnsWorkspace(String verb) {
+        return new ErrorInfo(
+            HOST_OWNS_WORKSPACE,
+            verb + " is not available here: the host that runs this engine owns the workspace.",
+            "Open or close the project in the host itself; the engine follows the host's workspace. "
+                + "Use project(action=list) to see which projects it holds."
+        );
+    }
+
     public static ErrorInfo projectNotLoaded() {
         return new ErrorInfo(
             PROJECT_NOT_LOADED,

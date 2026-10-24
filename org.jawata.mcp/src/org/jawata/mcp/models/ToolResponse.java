@@ -208,6 +208,13 @@ public class ToolResponse {
     }
 
     /**
+     * The host owns the workspace, so {@code verb} (load_project, project add, project remove) does not apply.
+     */
+    public static ToolResponse hostOwnsWorkspace(String verb) {
+        return error(ErrorInfo.hostOwnsWorkspace(verb));
+    }
+
+    /**
      * Create a project loading in progress response.
      * Used when auto-load is still running asynchronously.
      */

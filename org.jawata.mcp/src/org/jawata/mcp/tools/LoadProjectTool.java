@@ -1,20 +1,21 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.core.JdtServiceImpl;
-import org.jawata.mcp.engine.EngineState;
-import org.jawata.mcp.models.ToolResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
+
+import org.jawata.core.IJdtService;
+import org.jawata.core.LoadedProject;
+import org.jawata.core.ModelSource;
+import org.jawata.mcp.engine.EngineState;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.host.HostWorkspace;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Load a Java project for analysis.
@@ -26,17 +27,16 @@ public class LoadProjectTool implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(LoadProjectTool.class);
 
-    private final Supplier<IJdtService> serviceSupplier;
-    private final Consumer<IJdtService> serviceSetter;
+    private final ModelSource model;
+    private final HostWorkspace workspace;
 
-    public LoadProjectTool(Supplier<IJdtService> serviceSupplier, Consumer<IJdtService> serviceSetter) {
-        this.serviceSupplier = serviceSupplier;
-        this.serviceSetter = serviceSetter;
-    }
-
-    /** Back-compat constructor: setter-only. New service per call. */
-    public LoadProjectTool(Consumer<IJdtService> serviceSetter) {
-        this(() -> null, serviceSetter);
+    /**
+     * @param model     where the Java model comes from, and how a project comes into it
+     * @param workspace whether the engine owns the workspace; when it does not, this verb is refused
+     */
+    public LoadProjectTool(ModelSource model, HostWorkspace workspace) {
+        this.model = model;
+        this.workspace = workspace;
     }
 
     @Override
@@ -83,6 +83,9 @@ public class LoadProjectTool implements Tool {
 
     @Override
     public ToolResponse execute(JsonNode arguments) {
+        if (!workspace.ownsWorkspace()) {
+            return ToolResponse.hostOwnsWorkspace("load_project");
+        }
         if (arguments == null || !arguments.has("projectPath")) {
             return ToolResponse.invalidParameter("projectPath", "Required parameter missing");
         }
@@ -107,18 +110,10 @@ public class LoadProjectTool implements Tool {
 
             log.info("Loading project: {}", path);
 
-            // Reuse the existing service instance if one is already in place,
-            // so add_project / remove_project / list_projects (and any
-            // already-running analysis tools) keep operating on the same
-            // workspace. The service's loadProject() implements clear-and-
-            // load semantics: it wipes any previously loaded projects and
-            // installs the new one as the default. Sprint 10 ADR Q6.
-            JdtServiceImpl service = (JdtServiceImpl) serviceSupplier.get();
-            if (service == null) {
-                service = new JdtServiceImpl();
-                serviceSetter.accept(service);
-            }
-            service.loadProject(path);
+            // The model reuses the service already in place, so add_project / remove_project / list_projects (and any
+            // already-running analysis tools) keep operating on the same workspace; its load wipes what was loaded and
+            // installs the new project as the default. Sprint 10 ADR Q6.
+            IJdtService service = model.open(path);
 
             // mcp#35: the load succeeded, so whatever the BOOT concluded about the
             // workspace is now false. This path never wrote the state, so a failed boot
@@ -127,23 +122,25 @@ public class LoadProjectTool implements Tool {
             // nothing could clear.
             EngineState.current().workspaceLoaded();
 
-            // Build response
+            // Build response from the project the load installed as the default
+            LoadedProject loaded = service.defaultProjectKey().flatMap(service::getProject)
+                .orElseThrow(() -> new IllegalStateException("the load installed no default project"));
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("loaded", true);
             result.put("projectPath", service.getPathUtils().formatPath(path));
-            result.put("buildSystem", service.getBuildSystem().name().toLowerCase());
-            result.put("sourceFileCount", service.getSourceFileCount());
-            result.put("packageCount", service.getPackageCount());
+            result.put("buildSystem", loaded.buildSystem().name().toLowerCase());
+            result.put("sourceFileCount", loaded.sourceFileCount());
+            result.put("packageCount", loaded.packageCount());
 
             // Include first 20 packages
-            List<String> packages = service.getPackages();
+            List<String> packages = loaded.packages();
             result.put("packages", packages.size() <= 20 ? packages : packages.subList(0, 20));
 
-            result.put("classpathEntryCount", service.getClasspathEntryCount());
-            result.put("loadedAt", service.getLoadedAt().toString());
+            result.put("classpathEntryCount", loaded.classpathEntryCount());
+            result.put("loadedAt", loaded.loadedAt().toString());
 
             log.info("Project loaded successfully: {} files, {} packages",
-                service.getSourceFileCount(), service.getPackageCount());
+                loaded.sourceFileCount(), loaded.packageCount());
 
             return ToolResponse.success(result);
 

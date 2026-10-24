@@ -7,12 +7,15 @@ import java.util.concurrent.CompletableFuture;
 
 import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
+import org.jawata.core.HeadlessModelSource;
 import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.workspace.WorkspaceFileWatcher;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.engine.EngineState;
 import org.jawata.mcp.engine.ProjectLoadingState;
+import org.jawata.mcp.engine.ResidentHostWorkspace;
+import org.jawata.mcp.engine.ResidentJavaBinding;
 import org.jawata.mcp.knowledge.CatalogueOrigin;
 import org.jawata.mcp.knowledge.CatalogueSeeder;
 import org.jawata.mcp.knowledge.CatalogueSources;
@@ -45,7 +48,10 @@ public class JawataApplication implements IApplication {
 
     private static final Logger log = LoggerFactory.getLogger(JawataApplication.class);
 
-    private volatile IJdtService jdtService;
+    // E14: the workspace service is the Java binding's model; the binding and the host workspace are what the tools are given.
+    private final HeadlessModelSource model = new HeadlessModelSource();
+    private final ResidentJavaBinding javaBinding = new ResidentJavaBinding(model);
+    private final ResidentHostWorkspace hostWorkspace = new ResidentHostWorkspace(model);
     // Sprint 14b: session-scoped cache backing the refactoring apply/undo
     // contract (staged Changes + undo handles, TTL + LRU bounded).
     private final RefactoringChangeCache refactoringChangeCache = new RefactoringChangeCache();
@@ -111,6 +117,8 @@ public class JawataApplication implements IApplication {
         // Sprint 23 (Stage 5): headless JDT-manipulation config (preference
         // node id + JDT-UI-style defaults + code-template store) — the IDE
         // gets this from JDT-UI activation, a headless embedder must do it.
+        // E15: the config stands down when the host has done the setup; the engine that runs alone says so.
+        org.jawata.mcp.tools.shared.HeadlessJdtConfig.hostedBy(javaBinding);
         org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
 
         // Sprint 14a Stage 2: parse transport CLI flags from the application
@@ -597,7 +605,7 @@ public class JawataApplication implements IApplication {
                         identityDataDir, org.jawata.mcp.models.WorkspaceIdentity.name()),
                     peekClient));
             org.jawata.mcp.models.WorkspaceIdentity.installLiveKeys(() -> {
-                IJdtService s = this.jdtService;
+                IJdtService s = this.model.current();
                 if (s == null) {
                     return java.util.List.of();
                 }
@@ -975,7 +983,7 @@ public class JawataApplication implements IApplication {
             JdtServiceImpl service = new JdtServiceImpl();
             WorkspaceFileWatcher watcher = new WorkspaceFileWatcher(dataDir, service);
             watcher.start();  // synchronous initial load + arm watcher thread
-            this.jdtService = service;
+            this.model.install(service);
             this.workspaceWatcher = watcher;
             // v3.2.1 (dogfood #2): a workspace whose EVERY project failed to
             // load is a FAILED load, not a healthy empty one — the 2026-07-19
@@ -1037,7 +1045,7 @@ public class JawataApplication implements IApplication {
         try {
             JdtServiceImpl service = new JdtServiceImpl();
             service.loadProject(path);
-            this.jdtService = service;
+            this.model.install(service);
             EngineState.current().loadSucceeded();
             log.info("Project auto-loaded successfully: {} files, {} packages",
                 service.getSourceFileCount(), service.getPackageCount());
@@ -1062,7 +1070,7 @@ public class JawataApplication implements IApplication {
     private void registerTools() {
         // Sprint 21d: strict disk sync — every tool call reconciles external edits
         // before executing; the unchanged-tree fast path is the only skip.
-        org.jawata.core.workspace.StrictDiskSync reconciler = new org.jawata.core.workspace.StrictDiskSync(() -> jdtService);
+        org.jawata.core.workspace.StrictDiskSync reconciler = new org.jawata.core.workspace.StrictDiskSync(model::current);
         toolRegistry.setReconciler(
             reconciler);
 
@@ -1079,9 +1087,9 @@ public class JawataApplication implements IApplication {
         // (the workspace service, and the store, which is assigned before this runs but replaced on
         // a degraded reopen).
         ShippedTools.Built shipped = ShippedTools.build(new ShippedTools.Wiring(
-            () -> jdtService,
-            service -> this.jdtService = service,
-            () -> jdtService != null,
+            javaBinding,
+            hostWorkspace,
+            () -> model.current() != null,
             () -> toolRegistry.getToolCount(),
             () -> EngineState.current().loading(),
             () -> EngineState.current().loadingError(),

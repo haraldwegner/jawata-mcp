@@ -5,9 +5,12 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
+import org.jawata.core.HeadlessModelSource;
 import org.jawata.mcp.ShippedTools;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.engine.ProjectLoadingState;
+import org.jawata.mcp.engine.ResidentHostWorkspace;
+import org.jawata.mcp.engine.ResidentJavaBinding;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.Tool;
 import org.jawata.mcp.tools.ToolRegistry;
@@ -27,9 +30,10 @@ public final class InertShippedTools {
 
     /** The wiring an application that has booted would give, with nothing behind it. */
     public static ShippedTools.Wiring wiring(ToolRegistry registry) {
+        HeadlessModelSource model = new HeadlessModelSource();
         return new ShippedTools.Wiring(
-            () -> null,
-            service -> { },
+            new ResidentJavaBinding(model),
+            new ResidentHostWorkspace(model),
             () -> false,
             () -> 0,
             () -> ProjectLoadingState.NOT_LOADED,

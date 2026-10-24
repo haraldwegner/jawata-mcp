@@ -9,6 +9,7 @@ import org.eclipse.jface.text.templates.Template;
 import org.eclipse.text.templates.ContextTypeRegistry;
 import org.eclipse.text.templates.TemplatePersistenceData;
 import org.eclipse.text.templates.TemplateStoreCore;
+import org.jawata.core.JavaBinding;
 
 /**
  * Sprint 23 (Stage 5) — one-shot headless configuration of
@@ -25,8 +26,21 @@ public final class HeadlessJdtConfig {
 
     private static volatile boolean initialized;
 
+    /** The host that runs this engine; null until the application says, which is the engine that runs alone. */
+    private static volatile JavaBinding host;
+
     /**
-     * Idempotent; cheap enough to call before any manipulation refactoring.
+     * Say which host runs this engine (Sprint 28k, E15). A host that has a JDT UI of its own has done the setup below already, and
+     * this class stands down rather than overwrite it.
+     *
+     * @param binding what the host supplies for Java; null puts the engine back to running alone
+     */
+    public static void hostedBy(JavaBinding binding) {
+        host = binding;
+    }
+
+    /**
+     * Idempotent; cheap enough to call before any manipulation refactoring. Does nothing when the host provides the JDT UI setup.
      *
      * <h2>The latch does not cover the template store, and that is the point</h2>
      *
@@ -49,6 +63,10 @@ public final class HeadlessJdtConfig {
      * </p>
      */
     public static void ensureInitialized() {
+        JavaBinding hostedBy = host;
+        if (hostedBy != null && hostedBy.providesJdtUiSetup()) {
+            return;
+        }
         installStatics();
         // NOT behind the latch, and NOT a null check. What matters is whether the store
         // ANSWERS: a store object can outlive the workspace whose preference node backs it,

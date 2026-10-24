@@ -213,7 +213,8 @@ class DegradationStampTest {
         // Drive the TOOL, not the state setter — the claim is that load_project clears it,
         // and calling noteWorkspaceLoaded() here would assert that a method exists rather
         // than that anything calls it.
-        LoadProjectTool load = new LoadProjectTool(() -> null, s -> { });
+        org.jawata.core.HeadlessModelSource model = new org.jawata.core.HeadlessModelSource();
+        LoadProjectTool load = new LoadProjectTool(model, new org.jawata.mcp.engine.ResidentHostWorkspace(model));
         ToolResponse loaded = load.execute(
             OM.createObjectNode().put("projectPath", root.toString()));
         assertTrue(loaded.isSuccess(), "the load itself must succeed: " + loaded.getError());

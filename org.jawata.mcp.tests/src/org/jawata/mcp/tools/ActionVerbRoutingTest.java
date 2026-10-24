@@ -82,7 +82,8 @@ class ActionVerbRoutingTest {
     @Test
     @DisplayName("project: list dispatches and succeeds; add/remove present; invalid rejected")
     void project_routes() {
-        ProjectTool tool = new ProjectTool(() -> service);
+        ProjectTool tool = new ProjectTool(() -> service,
+            new org.jawata.mcp.engine.ResidentHostWorkspace(new org.jawata.core.HeadlessModelSource()));
         assertTrue(enumOf(tool, "action").containsAll(List.of("list", "add", "remove")));
         assertTrue(tool.execute(obj("action", "list")).isSuccess(), "list works on a loaded workspace");
         assertFalse(tool.execute(obj("action", "typo")).isSuccess());

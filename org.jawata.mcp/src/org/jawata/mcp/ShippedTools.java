@@ -3,10 +3,10 @@ package org.jawata.mcp;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import org.jawata.core.IJdtService;
+import org.jawata.core.JavaBinding;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.engine.ProjectLoadingState;
@@ -34,6 +34,7 @@ import org.jawata.mcp.tools.RefreshWorkspaceTool;
 import org.jawata.mcp.tools.RunTestsTool;
 import org.jawata.mcp.tools.Tool;
 import org.jawata.mcp.tools.ToolRegistry;
+import org.jawata.spi.host.HostWorkspace;
 import org.jawata.spi.lang.SymbolAnchors;
 
 /**
@@ -71,9 +72,10 @@ public final class ShippedTools {
     /**
      * Everything the tools take from the application.
      *
-     * @param jdt                the workspace service, read at call time (it is replaced by a load)
-     * @param installJdt         how {@code load_project} installs a service
-     * @param projectLoaded      whether a workspace is loaded
+     * @param java               what the host supplies for Java: the workspace service (read at call time, since a load replaces
+     *                           it) and how {@code load_project} brings a project into it
+     * @param workspace          whether the engine owns the workspace, which {@code load_project} and {@code project} ask
+     * @param projectLoaded     whether a workspace is loaded
      * @param toolCount          how many tools are registered, for {@code health_check}
      * @param loadingState       the workspace's load state
      * @param loadingError       the reason a load failed, or null
@@ -90,8 +92,8 @@ public final class ShippedTools {
      * @param defaultMemoryRoots where the experience tool loads memory files from by default
      */
     public record Wiring(
-            Supplier<IJdtService> jdt,
-            Consumer<IJdtService> installJdt,
+            JavaBinding java,
+            HostWorkspace workspace,
             Supplier<Boolean> projectLoaded,
             Supplier<Integer> toolCount,
             Supplier<ProjectLoadingState> loadingState,
@@ -107,6 +109,11 @@ public final class ShippedTools {
             Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> selfEndpoint,
             Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler) {
+
+        /** The workspace service as the tools take it: asked at call time, because a load replaces it. */
+        public Supplier<IJdtService> jdt() {
+            return java.model()::current;
+        }
     }
 
     /**
@@ -163,11 +170,11 @@ public final class ShippedTools {
         // load_project supplies the existing service so it can reuse it (clear-and-load on top) and
         // installs a fresh one on first call, which is what lets add_project / remove_project operate
         // on the same workspace.
-        tools.add(new LoadProjectTool(jdt, w.installJdt()));
+        tools.add(new LoadProjectTool(w.java().model(), w.workspace()));
 
         // project(action) collapses list/add/remove_project; load_project stays separate because it
         // installs the workspace service.
-        tools.add(new ProjectTool(jdt));
+        tools.add(new ProjectTool(jdt, w.workspace()));
 
         // The field lane's one front door. Needs no loaded project: it answers about jawata's own
         // use. The registry's in-flight record lets `pile` report calls that never came back.

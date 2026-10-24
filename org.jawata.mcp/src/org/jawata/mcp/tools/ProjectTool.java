@@ -1,13 +1,15 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.models.ToolResponse;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+
+import org.jawata.core.IJdtService;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.host.HostWorkspace;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Sprint 16b/A (v1.1.1) — workspace-membership front door, collapsing
@@ -22,9 +24,15 @@ public class ProjectTool extends AbstractTool {
     private final ListProjectsTool list;
     private final AddProjectTool add;
     private final RemoveProjectTool remove;
+    private final HostWorkspace workspace;
 
-    public ProjectTool(Supplier<IJdtService> serviceSupplier) {
+    /**
+     * @param serviceSupplier the workspace service, read at call time
+     * @param workspace       whether the engine owns the workspace; when it does not, add and remove are refused
+     */
+    public ProjectTool(Supplier<IJdtService> serviceSupplier, HostWorkspace workspace) {
         super(serviceSupplier);
+        this.workspace = workspace;
         this.list = new ListProjectsTool(serviceSupplier);
         this.add = new AddProjectTool(serviceSupplier);
         this.remove = new RemoveProjectTool(serviceSupplier);
@@ -75,6 +83,10 @@ public class ProjectTool extends AbstractTool {
         String action = getStringParam(arguments, "action");
         if (action == null || action.isBlank()) {
             return ToolResponse.invalidParameter("action", "action is required; one of " + ACTIONS);
+        }
+        // Reading the workspace is always allowed; changing it belongs to whoever owns it.
+        if (!workspace.ownsWorkspace() && ("add".equals(action) || "remove".equals(action))) {
+            return ToolResponse.hostOwnsWorkspace("project " + action);
         }
         return switch (action) {
             case "list"   -> list.execute(arguments);
