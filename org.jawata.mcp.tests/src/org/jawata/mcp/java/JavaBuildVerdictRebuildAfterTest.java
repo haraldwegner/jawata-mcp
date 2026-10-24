@@ -166,6 +166,21 @@ class JavaBuildVerdictRebuildAfterTest {
     }
 
     @Test
+    @DisplayName("a project that was already red is clean again after a step that fixes the file, built incrementally")
+    void aStepThatFixesARedProjectLeavesItClean() throws Exception {
+        Path broken = firstRoot.resolve("src/main/java/com/example/Broken.java");
+        Files.createDirectories(broken.getParent());
+        Files.writeString(broken, "package com.example;\npublic class Broken {\n    int oops() { return ; }\n}\n");
+        ParityGate.Result red = ParityGate.compile(context, List.of(broken.toString()));
+        assertFalse(red.clean(), "precondition: the broken file makes the gate red: " + red.errors());
+
+        Files.writeString(broken, "package com.example;\npublic class Broken {\n    int fine() { return 1; }\n}\n");
+        ParityGate.Result fixed = ParityGate.compile(context, List.of(broken.toString()));
+
+        assertTrue(fixed.clean(), "the incremental rebuild clears the error of the file the step fixed: " + fixed.errors());
+    }
+
+    @Test
     @DisplayName("a file no loaded project owns, or no file at all, means every project in full")
     void withNothingToGoByEverythingIsBuiltInFull() {
         BuildVerdict.Rebuild unknown = verdict.rebuildAfter(List.of(firstRoot.getParent().resolve("elsewhere/X.java").toString()));

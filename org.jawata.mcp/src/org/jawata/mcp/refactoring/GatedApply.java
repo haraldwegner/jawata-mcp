@@ -95,6 +95,24 @@ public final class GatedApply {
             return new Result(outcome, List.of(), outcome.validationError(), true);
         }
 
+        try {
+            return judge(context, mode, before, outcome);
+        } catch (RuntimeException thrown) {
+            // The change is on disk and its undo handle is held only here: anything that throws between applying and answering
+            // would leave it applied with nobody able to undo it (28k ledger C2b-19). Undo it, then let the throw go on.
+            if (outcome.undoChange() != null) {
+                try {
+                    ChangeEngine.perform(outcome.undoChange(), context);
+                } catch (RuntimeException undoFailed) {
+                    thrown.addSuppressed(undoFailed);
+                }
+            }
+            throw thrown;
+        }
+    }
+
+    private static Result judge(org.jawata.mcp.change.ChangeContext context, Mode mode, Map<String, Set<String>> before,
+            ChangeEngine.ApplyOutcome outcome) {
         // SETTLE THE MODEL FIRST — jawata-mcp#69. A change that CREATES a file leaves the
         // Java model briefly not knowing about it, and a modified file re-parsed in that
         // window resolves the new type to nothing. The gate then reports an error the change

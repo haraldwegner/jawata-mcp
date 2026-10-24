@@ -177,13 +177,13 @@ public final class JavaBuildVerdict implements BuildVerdict {
         for (String file : changedFiles) {
             List<String> owners = file == null ? List.of() : ownersOf(file);
             if (owners.isEmpty()) {
-                return new Rebuild(owned(), BuildKind.FULL);
+                return new Rebuild(inBuildOrder(owned().projects()), BuildKind.FULL);
             }
             affected.addAll(owners);
             configuration |= ProjectImporter.BUILD_CONFIGURATION_FILES.contains(Path.of(file).getFileName().toString());
         }
         if (affected.isEmpty()) {
-            return new Rebuild(owned(), BuildKind.FULL);
+            return new Rebuild(inBuildOrder(owned().projects()), BuildKind.FULL);
         }
         for (boolean grew = true; grew; ) {
             grew = false;
@@ -195,7 +195,43 @@ public final class JavaBuildVerdict implements BuildVerdict {
                 }
             }
         }
-        return new Rebuild(new BuildScope(new ArrayList<>(affected)), configuration ? BuildKind.FULL : BuildKind.INCREMENTAL);
+        return new Rebuild(inBuildOrder(affected), configuration ? BuildKind.FULL : BuildKind.INCREMENTAL);
+    }
+
+    /**
+     * The projects named, in the order they must be built: a project is built on the compiled output of the projects it requires,
+     * so those come first (28k ledger C2b-12). "Requires" is the same test that found the requirers ({@link #requiresAnyOf}), so
+     * a dependency through a class folder orders as well as one through a project entry. Among projects that do not depend on each
+     * other the given order is kept; a cycle keeps the given order from where it starts.
+     */
+    private BuildScope inBuildOrder(Iterable<String> names) {
+        List<String> pending = new ArrayList<>();
+        names.forEach(pending::add);
+        List<String> ordered = new ArrayList<>();
+        while (!pending.isEmpty()) {
+            String next = pending.get(0);
+            for (String candidate : pending) {
+                if (!requiresAnyOfThe(candidate, pending)) {
+                    next = candidate;
+                    break;
+                }
+            }
+            ordered.add(next);
+            pending.remove(next);
+        }
+        return new BuildScope(ordered);
+    }
+
+    /** Whether the named project requires any other project of {@code names}; a name that is not a loaded project requires none. */
+    private boolean requiresAnyOfThe(String name, List<String> names) {
+        Set<String> others = new LinkedHashSet<>(names);
+        others.remove(name);
+        for (LoadedProject loaded : service.allProjects()) {
+            if (loaded.javaProject().getProject().getName().equals(name)) {
+                return !others.isEmpty() && requiresAnyOf(loaded, others);
+            }
+        }
+        return false;
     }
 
     /**

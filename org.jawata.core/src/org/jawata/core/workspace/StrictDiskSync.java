@@ -19,7 +19,6 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
-import org.jawata.core.project.ProjectImporter;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.host.Reconciler;
@@ -249,13 +248,13 @@ public class StrictDiskSync implements Reconciler {
      *   <li>a {@code .java} file was added or deleted — the type universe changed,
      *       and the incremental builder lags fresh additions in this headless
      *       runtime (the Sprint 21d finding: an added file produced no markers);</li>
-     *   <li>a build-config file ({@link ProjectImporter#BUILD_CONFIGURATION_FILES})
-     *       changed — the classpath moved, so incremental state is suspect;</li>
      *   <li>the project's previous build was RED — recover from a possibly
      *       inconsistent incremental delta state (the "if something breaks, clean
      *       compile" rule).</li>
      * </ul>
-     * A modify-only, green pass takes the fast incremental path. (The remaining
+     * A modify-only, green pass takes the fast incremental path. A changed build file ({@code pom.xml},
+     * {@code MANIFEST.MF}, …) is NOT a reason here, because the scan behind this sees Java source files only and never learns
+     * of one (28k ledger C2b-16; 28h answer E has each language say which files count). (The remaining
      * refinement — escalating a modify whose DECLARATION surface changed, to catch
      * signature edits that silently stale consumers, {@code bugs.md #8} — needs a
      * per-file declaration-hash cache and is a deliberate follow-up, kept out of this
@@ -264,12 +263,6 @@ public class StrictDiskSync implements Reconciler {
     private boolean decideFullBuild(DiskSyncGuard.ScanResult scan, Set<IProject> toBuild) {
         if (!scan.added().isEmpty() || !scan.deleted().isEmpty()) {
             return true;   // type universe changed; incremental lags fresh additions
-        }
-        for (Path p : scan.changed()) {
-            Path name = p.getFileName();
-            if (name != null && ProjectImporter.BUILD_CONFIGURATION_FILES.contains(name.toString())) {
-                return true;   // classpath / build config changed
-            }
         }
         for (IProject prj : toBuild) {
             if (lastRedProjects.contains(prj.getName())) {
