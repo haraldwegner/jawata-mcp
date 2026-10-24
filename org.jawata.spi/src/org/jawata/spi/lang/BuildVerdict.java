@@ -48,6 +48,32 @@ public interface BuildVerdict {
      */
     List<Diagnostic> errors(BuildScope scope, IProgressMonitor monitor);
 
+    /**
+     * Every problem the last build left in these projects, at every severity, in project order — each row carrying its severity,
+     * project and test-scope (28k E10b: the compile check exists once; {@code compile_workspace}, {@code refresh_workspace} and
+     * {@code get_diagnostics} read this instead of sweeping markers themselves). The error-severity rows are what
+     * {@link #errors} answers. A language that only knows errors answers those, which is also the default.
+     */
+    default List<Diagnostic> diagnostics(BuildScope scope, IProgressMonitor monitor) {
+        return errors(scope, monitor);
+    }
+
+    /**
+     * The to-do markers in these projects — notes in the code, not problems, so they are not in {@link #diagnostics}.
+     * None by default.
+     */
+    default List<Diagnostic> tasks(BuildScope scope, IProgressMonitor monitor) {
+        return List.of();
+    }
+
+    /**
+     * The problems the last build left in this one file, at every severity; empty when the file does not exist or this language
+     * does not own it. None by default.
+     */
+    default List<Diagnostic> diagnosticsIn(String file) {
+        return List.of();
+    }
+
     /** The projects to rebuild after a change and the kind of build that reaches what the change can break. */
     record Rebuild(BuildScope scope, BuildKind kind) {
     }

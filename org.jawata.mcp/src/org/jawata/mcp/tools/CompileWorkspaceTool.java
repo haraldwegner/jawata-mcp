@@ -9,18 +9,18 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IResource;
-import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.mcp.java.JavaBuildVerdict;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.host.Reconciler;
+import org.jawata.spi.lang.BuildVerdict;
+import org.jawata.spi.lang.Diagnostic;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,10 +37,11 @@ import com.fasterxml.jackson.databind.JsonNode;
  * {@code Require-Bundle} or unresolved Tycho deps) or shelling out to
  * Maven / Gradle (slow, suffers classpath drift between IDE and CLI).</p>
  *
- * <p>Uses {@link IResource#findMarkers} on {@link IMarker#PROBLEM} markers,
- * not AST reconcile (the path {@link GetDiagnosticsTool} takes). The
- * incremental builder writes project-level markers — Java compiler errors,
- * classpath errors, manifest errors — that AST reconcile alone misses.</p>
+ * <p>Reads the rows of the language's {@link BuildVerdict} after the build —
+ * the one place the host's problem markers are read (Sprint 28k E10b) — not
+ * AST reconcile. The incremental builder writes project-level problems — Java
+ * compiler errors, classpath errors, manifest errors — that AST reconcile alone
+ * misses.</p>
  */
 public class CompileWorkspaceTool extends AbstractTool {
 
@@ -173,10 +174,10 @@ public class CompileWorkspaceTool extends AbstractTool {
                 "Must be 'main', 'test', or 'both'; got '" + scope + "'");
         }
 
-        int minSeverity;
+        Diagnostic.Severity minSeverity;
         switch (minSeverityRaw.toUpperCase()) {
-            case "ERROR" -> minSeverity = IMarker.SEVERITY_ERROR;
-            case "WARNING" -> minSeverity = IMarker.SEVERITY_WARNING;
+            case "ERROR" -> minSeverity = Diagnostic.Severity.ERROR;
+            case "WARNING" -> minSeverity = Diagnostic.Severity.WARNING;
             default -> {
                 return ToolResponse.invalidParameter("minSeverity",
                     "Must be 'ERROR' or 'WARNING'; got '" + minSeverityRaw + "'");
@@ -237,6 +238,13 @@ public class CompileWorkspaceTool extends AbstractTool {
             }
             int compiled = built.size();
             List<Map<String, Object>> notBuilt = new ArrayList<>();
+            // Sprint 28k (E10b): the compile check exists once — the problem and task rows come from the language's verdict,
+            // read here after the build, instead of this tool sweeping the host's markers itself.
+            BuildVerdict verdict = new JavaBuildVerdict(service);
+            BuildScope selected = new BuildScope(names);
+            Map<String, List<Diagnostic>> problemRows = byProject(verdict.diagnostics(selected, new NullProgressMonitor()));
+            Map<String, List<Diagnostic>> taskRows = includeTaskMarkers
+                ? byProject(verdict.tasks(selected, new NullProgressMonitor())) : Map.of();
 
             for (LoadedProject loaded : projects) {
                 IProject project = loaded.javaProject().getProject();
@@ -269,26 +277,17 @@ public class CompileWorkspaceTool extends AbstractTool {
                 //
                 // Continue collecting markers whatever was built — partial results are still useful.
 
-                IMarker[] problems = project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
-                for (IMarker marker : problems) {
-                    int severity = marker.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO);
-                    if (severity < minSeverity) continue;
-                    if (!matchesScope(marker.getResource(), scope)) continue;
-                    Map<String, Object> entry = describeMarker(marker, loaded, service);
-                    if (entry != null) {
-                        diagnostics.add(entry);
-                        if (severity == IMarker.SEVERITY_ERROR) errorCount++;
-                        else if (severity == IMarker.SEVERITY_WARNING) warningCount++;
-                    }
+                for (Diagnostic row : problemRows.getOrDefault(project.getName(), List.of())) {
+                    if (row.severity().compareTo(minSeverity) < 0) continue;
+                    if (!inScope(row.scope(), scope)) continue;
+                    diagnostics.add(describe(row, loaded, service));
+                    if (row.severity() == Diagnostic.Severity.ERROR) errorCount++;
+                    else if (row.severity() == Diagnostic.Severity.WARNING) warningCount++;
                 }
 
-                if (includeTaskMarkers) {
-                    IMarker[] tasks = project.findMarkers(IMarker.TASK, true, IResource.DEPTH_INFINITE);
-                    for (IMarker task : tasks) {
-                        if (!matchesScope(task.getResource(), scope)) continue;
-                        Map<String, Object> entry = describeMarker(task, loaded, service);
-                        if (entry != null) diagnostics.add(entry);
-                    }
+                for (Diagnostic task : taskRows.getOrDefault(project.getName(), List.of())) {
+                    if (!inScope(task.scope(), scope)) continue;
+                    diagnostics.add(describe(task, loaded, service));
                 }
             }
 
@@ -389,45 +388,35 @@ public class CompileWorkspaceTool extends AbstractTool {
      * which IS the test half, manifests included (the pinned C8-F4 semantics,
      * now derived from the model instead of a name).</p>
      */
-    private static boolean matchesScope(org.eclipse.core.resources.IResource resource, String scope) {
+    private static boolean inScope(Diagnostic.TestScope where, String scope) {
         if ("both".equals(scope)) return true;
-        org.jawata.core.project.SourceRootClassifier.Verdict verdict =
-            org.jawata.core.project.SourceRootClassifier.classify(resource);
-        return switch (verdict) {
+        return switch (where) {
             case CROSS_CUTTING -> true;
             case TEST -> "test".equals(scope);
             case MAIN -> "main".equals(scope);
         };
     }
 
-    private static Map<String, Object> describeMarker(IMarker marker,
-                                                       LoadedProject loaded,
-                                                       IJdtService service) {
-        try {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            IResource resource = marker.getResource();
-            if (resource != null && resource.getLocation() != null) {
-                IPath location = resource.getLocation();
-                entry.put("filePath", service.getPathUtils().formatPath(location.toOSString()));
-            }
-            int line = marker.getAttribute(IMarker.LINE_NUMBER, -1);
-            if (line > 0) entry.put("line", line - 1); // markers are 1-based; tools are 0-based
-            int charStart = marker.getAttribute(IMarker.CHAR_START, -1);
-            if (charStart >= 0) entry.put("charStart", charStart);
-            int charEnd = marker.getAttribute(IMarker.CHAR_END, -1);
-            if (charEnd >= 0) entry.put("charEnd", charEnd);
-            int severity = marker.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO);
-            entry.put("severity", switch (severity) {
-                case IMarker.SEVERITY_ERROR -> "ERROR";
-                case IMarker.SEVERITY_WARNING -> "WARNING";
-                default -> "INFO";
-            });
-            String message = marker.getAttribute(IMarker.MESSAGE, "");
-            entry.put("message", message);
-            entry.put("sourceProject", loaded.projectKey());
-            return entry;
-        } catch (Exception e) {
-            return null;
+    /** The rows grouped by the project they are in, in order; a row naming no project is kept under "null" so it is not lost. */
+    static Map<String, List<Diagnostic>> byProject(List<Diagnostic> rows) {
+        Map<String, List<Diagnostic>> grouped = new LinkedHashMap<>();
+        for (Diagnostic row : rows) {
+            grouped.computeIfAbsent(String.valueOf(row.project()), k -> new ArrayList<>()).add(row);
         }
+        return grouped;
+    }
+
+    static Map<String, Object> describe(Diagnostic row, LoadedProject loaded, IJdtService service) {
+        Map<String, Object> entry = new LinkedHashMap<>();
+        if (row.filePath() != null) {
+            entry.put("filePath", service.getPathUtils().formatPath(row.filePath()));
+        }
+        if (row.line() > 0) entry.put("line", row.line() - 1); // markers are 1-based; tools are 0-based
+        if (row.detail().charStart() >= 0) entry.put("charStart", row.detail().charStart());
+        if (row.detail().charEnd() >= 0) entry.put("charEnd", row.detail().charEnd());
+        entry.put("severity", row.severity().name());
+        entry.put("message", row.message());
+        entry.put("sourceProject", loaded.projectKey());
+        return entry;
     }
 }

@@ -1,10 +1,7 @@
 package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.eclipse.core.resources.IMarker;
-import org.eclipse.core.resources.IResource;
 import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.IJavaModelMarker;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IPackageFragment;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
@@ -14,8 +11,10 @@ import org.eclipse.jdt.core.compiler.IProblem;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.java.JavaBuildVerdict;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.lang.Diagnostic;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -277,65 +276,54 @@ public class GetDiagnosticsTool extends AbstractTool {
     }
 
     /**
-     * Sprint 21e (item C): the honest closed-file path — read the file's post-build
-     * {@link IMarker#PROBLEM} markers. {@code problemId}/{@code category} are
-     * best-effort (marker attributes where present); counts, locations and severity
-     * are the contract.
+     * Sprint 21e (item C): the honest closed-file path — the file's post-build problems, taken
+     * from the language's build verdict (28k E10b: the one place the host's markers are read).
+     * {@code problemId}/{@code category} are carried where the row has them; counts, locations
+     * and severity are the contract.
      */
     private DiagnosticCounts collectFromMarkers(IJdtService service, ICompilationUnit cu, Path path,
                                                   String severity, int remaining,
                                                   List<Map<String, Object>> diagnostics) {
         int errorCount = 0;
         int warningCount = 0;
-        try {
-            IResource resource = cu.getResource();
-            if (resource == null || !resource.exists()) {
-                return new DiagnosticCounts(0, 0);
+        for (Diagnostic row : new JavaBuildVerdict(service).diagnosticsIn(path.toString())) {
+            if (remaining <= 0) {
+                break;
             }
-            for (IMarker marker : resource.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_ZERO)) {
-                if (remaining <= 0) {
-                    break;
-                }
-                int sev = marker.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO);
-                boolean isError = sev == IMarker.SEVERITY_ERROR;
-                boolean isWarning = sev == IMarker.SEVERITY_WARNING;
-                // 22c (2026-07-11): same contract as the AST path above — errors and
-                // warnings only; info markers neither surfaced nor counted.
-                if (!isError && !isWarning) {
-                    continue;
-                }
-                if ("error".equals(severity) && !isError) {
-                    continue;
-                }
-                if ("warning".equals(severity) && !isWarning) {
-                    continue;
-                }
-                if (isError) {
-                    errorCount++;
-                }
-                if (isWarning) {
-                    warningCount++;
-                }
-                Map<String, Object> diag = new LinkedHashMap<>();
-                diag.put("filePath", service.getPathUtils().formatPath(path));
-                diag.put("line", Math.max(0, marker.getAttribute(IMarker.LINE_NUMBER, 1) - 1));
-                diag.put("startOffset", marker.getAttribute(IMarker.CHAR_START, -1));
-                diag.put("endOffset", marker.getAttribute(IMarker.CHAR_END, -1));
-                diag.put("severity", isError ? "error" : isWarning ? "warning" : "info");
-                diag.put("message", marker.getAttribute(IMarker.MESSAGE, ""));
-                int problemId = marker.getAttribute(IJavaModelMarker.ID, -1);
-                if (problemId >= 0) {
-                    diag.put("problemId", problemId);
-                }
-                int categoryId = marker.getAttribute("categoryId", -1);
-                if (categoryId >= 0) {
-                    diag.put("category", String.valueOf(categoryId));
-                }
-                diagnostics.add(diag);
-                remaining--;
+            boolean isError = row.severity() == Diagnostic.Severity.ERROR;
+            boolean isWarning = row.severity() == Diagnostic.Severity.WARNING;
+            // 22c (2026-07-11): same contract as the AST path above — errors and
+            // warnings only; info rows neither surfaced nor counted.
+            if (!isError && !isWarning) {
+                continue;
             }
-        } catch (Exception e) {
-            log.debug("Marker read failed for {}: {}", path, e.getMessage());
+            if ("error".equals(severity) && !isError) {
+                continue;
+            }
+            if ("warning".equals(severity) && !isWarning) {
+                continue;
+            }
+            if (isError) {
+                errorCount++;
+            }
+            if (isWarning) {
+                warningCount++;
+            }
+            Map<String, Object> diag = new LinkedHashMap<>();
+            diag.put("filePath", service.getPathUtils().formatPath(path));
+            diag.put("line", row.line() > 0 ? row.line() - 1 : 0);
+            diag.put("startOffset", row.detail().charStart());
+            diag.put("endOffset", row.detail().charEnd());
+            diag.put("severity", isError ? "error" : "warning");
+            diag.put("message", row.message());
+            if (row.detail().problemId() >= 0) {
+                diag.put("problemId", row.detail().problemId());
+            }
+            if (row.detail().categoryId() >= 0) {
+                diag.put("category", String.valueOf(row.detail().categoryId()));
+            }
+            diagnostics.add(diag);
+            remaining--;
         }
         return new DiagnosticCounts(errorCount, warningCount);
     }

@@ -84,6 +84,12 @@ class GetDiagnosticsMarkersTest {
         assertEquals(3, broke.get("line"), "syntax error on line 4 (1-based) → tool 0-based 3");
         assertTrue(String.valueOf(broke.get("message")).contains("Syntax error"),
             "message should be the real compiler syntax error: " + broke.get("message"));
+        // 28k E10b: the position and the compiler's ids come through the build verdict's row, not a marker read in this tool.
+        int start = ((Number) broke.get("startOffset")).intValue();
+        assertTrue(start >= 0 && ((Number) broke.get("endOffset")).intValue() >= start,
+            "the compiler's own character range travels with the row: " + broke);
+        assertTrue(broke.get("problemId") instanceof Integer id && id >= 0, "and its problem id: " + broke);
+        assertNotNull(broke.get("category"), "and its category: " + broke);
     }
 
     @Test

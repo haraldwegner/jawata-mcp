@@ -9,10 +9,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IResource;
-import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
@@ -20,11 +17,14 @@ import org.eclipse.jdt.core.IPackageFragment;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.mcp.java.JavaBuildVerdict;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.host.Reconciler;
+import org.jawata.spi.lang.BuildVerdict;
+import org.jawata.spi.lang.Diagnostic;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -169,6 +169,10 @@ public class RefreshWorkspaceTool extends AbstractTool {
                 built = Set.of();
             }
             List<String> notRebuilt = new ArrayList<>();
+            // Sprint 28k (E10b): the problem rows come from the language's verdict, read after the build.
+            BuildVerdict verdict = new JavaBuildVerdict(service);
+            Map<String, List<Diagnostic>> problemRows = CompileWorkspaceTool.byProject(
+                verdict.diagnostics(new BuildScope(names), new NullProgressMonitor()));
 
             for (LoadedProject loaded : projects) {
                 IJavaProject jp = loaded.javaProject();
@@ -187,17 +191,11 @@ public class RefreshWorkspaceTool extends AbstractTool {
                     notRebuilt.add(loaded.projectKey());   // markers are still collected: partial results are useful
                 }
 
-                IMarker[] problems = project.findMarkers(IMarker.PROBLEM, true,
-                    IResource.DEPTH_INFINITE);
-                for (IMarker marker : problems) {
-                    int severity = marker.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO);
-                    if (severity < IMarker.SEVERITY_WARNING) continue;
-                    Map<String, Object> entry = describeMarker(marker, loaded, service);
-                    if (entry != null) {
-                        diagnostics.add(entry);
-                        if (severity == IMarker.SEVERITY_ERROR) errorCount++;
-                        else if (severity == IMarker.SEVERITY_WARNING) warningCount++;
-                    }
+                for (Diagnostic row : problemRows.getOrDefault(project.getName(), List.of())) {
+                    if (row.severity().compareTo(Diagnostic.Severity.WARNING) < 0) continue;
+                    diagnostics.add(CompileWorkspaceTool.describe(row, loaded, service));
+                    if (row.severity() == Diagnostic.Severity.ERROR) errorCount++;
+                    else if (row.severity() == Diagnostic.Severity.WARNING) warningCount++;
                 }
             }
 
@@ -249,37 +247,6 @@ public class RefreshWorkspaceTool extends AbstractTool {
                 jp.getElementName(), e.getMessage());
         }
         return count;
-    }
-
-    private static Map<String, Object> describeMarker(IMarker marker,
-                                                       LoadedProject loaded,
-                                                       IJdtService service) {
-        try {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            IResource resource = marker.getResource();
-            if (resource != null && resource.getLocation() != null) {
-                IPath location = resource.getLocation();
-                entry.put("filePath", service.getPathUtils().formatPath(location.toOSString()));
-            }
-            int line = marker.getAttribute(IMarker.LINE_NUMBER, -1);
-            if (line > 0) entry.put("line", line - 1);
-            int charStart = marker.getAttribute(IMarker.CHAR_START, -1);
-            if (charStart >= 0) entry.put("charStart", charStart);
-            int charEnd = marker.getAttribute(IMarker.CHAR_END, -1);
-            if (charEnd >= 0) entry.put("charEnd", charEnd);
-            int severity = marker.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO);
-            entry.put("severity", switch (severity) {
-                case IMarker.SEVERITY_ERROR -> "ERROR";
-                case IMarker.SEVERITY_WARNING -> "WARNING";
-                default -> "INFO";
-            });
-            String message = marker.getAttribute(IMarker.MESSAGE, "");
-            entry.put("message", message);
-            entry.put("sourceProject", loaded.projectKey());
-            return entry;
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     @SuppressWarnings("unused")

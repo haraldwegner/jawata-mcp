@@ -19,6 +19,7 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.IJavaModelMarker;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.compiler.IProblem;
 import org.eclipse.jdt.core.dom.AST;
@@ -27,6 +28,7 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.core.project.ProjectImporter;
+import org.jawata.core.project.SourceRootClassifier;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.lang.BuildVerdict;
@@ -293,29 +295,85 @@ public final class JavaBuildVerdict implements BuildVerdict {
 
     @Override
     public List<Diagnostic> errors(BuildScope scope, IProgressMonitor monitor) {
+        return diagnostics(scope, monitor).stream().filter(d -> d.severity() == Diagnostic.Severity.ERROR).toList();
+    }
+
+    /** Every problem marker the last build left, at every severity; the one place the host's problem markers are read. */
+    @Override
+    public List<Diagnostic> diagnostics(BuildScope scope, IProgressMonitor monitor) {
+        return sweep(scope, IMarker.PROBLEM);
+    }
+
+    @Override
+    public List<Diagnostic> tasks(BuildScope scope, IProgressMonitor monitor) {
+        return sweep(scope, IMarker.TASK);
+    }
+
+    /** One file's problem markers, for a caller asking about a closed file; empty for a file that is not a loaded unit. */
+    @Override
+    public List<Diagnostic> diagnosticsIn(String file) {
+        List<Diagnostic> rows = new ArrayList<>();
+        try {
+            ICompilationUnit cu = file == null || !file.endsWith(".java") ? null : service.getCompilationUnit(resolve(file));
+            IResource resource = cu == null ? null : cu.getResource();
+            if (resource == null || !resource.exists()) {
+                return rows;
+            }
+            String project = resource.getProject().getName();
+            Map<IResource, Diagnostic.TestScope> scopes = new LinkedHashMap<>();
+            for (IMarker marker : resource.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_ZERO)) {
+                rows.add(describe(marker, project, scopes));
+            }
+        } catch (Exception e) {
+            log.debug("marker read failed for '{}': {}", file, e.getMessage());
+        }
+        return rows;
+    }
+
+    /** A project whose markers could not be read is an ERROR row naming it, never an empty answer that reads as clean. */
+    private static Diagnostic sweepFailure(String project, String reason) {
+        return new Diagnostic(null, -1, "marker sweep failed on " + project + ": " + reason, Diagnostic.Severity.ERROR, project,
+            Diagnostic.TestScope.CROSS_CUTTING, Diagnostic.Detail.NONE);
+    }
+
+    private static Diagnostic describe(IMarker marker, String project, Map<IResource, Diagnostic.TestScope> scopes) {
+        IResource resource = marker.getResource();
+        String file = resource != null && resource.getLocation() != null ? resource.getLocation().toOSString() : null;
+        int rating = marker.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO);
+        Diagnostic.Severity severity = rating == IMarker.SEVERITY_ERROR ? Diagnostic.Severity.ERROR
+            : rating == IMarker.SEVERITY_WARNING ? Diagnostic.Severity.WARNING : Diagnostic.Severity.INFO;
+        Diagnostic.Detail detail = new Diagnostic.Detail(marker.getAttribute(IMarker.CHAR_START, -1),
+            marker.getAttribute(IMarker.CHAR_END, -1), marker.getAttribute(IJavaModelMarker.ID, -1),
+            marker.getAttribute("categoryId", -1));
+        return new Diagnostic(file, marker.getAttribute(IMarker.LINE_NUMBER, -1), marker.getAttribute(IMarker.MESSAGE, ""),
+            severity, project, scopes.computeIfAbsent(resource, JavaBuildVerdict::scopeOf), detail);
+    }
+
+    /** Main versus test comes from the model's test attribute on the source root, never from a path or a name. */
+    private static Diagnostic.TestScope scopeOf(IResource resource) {
+        return switch (SourceRootClassifier.classify(resource)) {
+            case MAIN -> Diagnostic.TestScope.MAIN;
+            case TEST -> Diagnostic.TestScope.TEST;
+            case CROSS_CUTTING -> Diagnostic.TestScope.CROSS_CUTTING;
+        };
+    }
+
+    private List<Diagnostic> sweep(BuildScope scope, String markerType) {
         List<Diagnostic> errors = new ArrayList<>();
         for (String name : scope.projects()) {
             IProject project = projectNamed(name);
             if (project == null) {
-                errors.add(new Diagnostic(null, -1, "marker sweep failed on " + name + ": no such project is loaded"));
+                errors.add(sweepFailure(name, "no such project is loaded"));
                 continue;
             }
             try {
-                for (IMarker marker : project.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE)) {
-                    if (marker.getAttribute(IMarker.SEVERITY, IMarker.SEVERITY_INFO) != IMarker.SEVERITY_ERROR) {
-                        continue;
-                    }
-                    String file = null;
-                    IResource resource = marker.getResource();
-                    if (resource != null && resource.getLocation() != null) {
-                        file = resource.getLocation().toOSString();
-                    }
-                    errors.add(new Diagnostic(file, marker.getAttribute(IMarker.LINE_NUMBER, -1),
-                        marker.getAttribute(IMarker.MESSAGE, "")));
+                Map<IResource, Diagnostic.TestScope> scopes = new LinkedHashMap<>();
+                for (IMarker marker : project.findMarkers(markerType, true, IResource.DEPTH_INFINITE)) {
+                    errors.add(describe(marker, name, scopes));
                 }
             } catch (Exception e) {
                 log.warn("marker sweep failed on '{}': {}", name, e.getMessage());
-                errors.add(new Diagnostic(null, -1, "marker sweep failed on " + name + ": " + e.getMessage()));
+                errors.add(sweepFailure(name, e.getMessage()));
             }
         }
         return errors;
