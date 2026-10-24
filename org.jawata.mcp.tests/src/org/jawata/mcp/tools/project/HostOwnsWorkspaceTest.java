@@ -55,10 +55,6 @@ class HostOwnsWorkspaceTest {
             public boolean ownsWorkspace() {
                 return owns;
             }
-
-            @Override
-            public void onFoldersChanged(Runnable listener) {
-            }
         };
     }
 

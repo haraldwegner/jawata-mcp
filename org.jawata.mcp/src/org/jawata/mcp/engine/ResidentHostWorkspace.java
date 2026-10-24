@@ -39,9 +39,4 @@ public final class ResidentHostWorkspace implements HostWorkspace {
     public boolean ownsWorkspace() {
         return true;
     }
-
-    @Override
-    public void onFoldersChanged(Runnable listener) {
-        listeners.add(listener);
-    }
 }

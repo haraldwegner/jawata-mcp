@@ -18,9 +18,6 @@ public interface HostWorkspace {
     /** Whether the engine may load, add and remove projects: true when the engine runs alone, false inside an IDE. */
     boolean ownsWorkspace();
 
-    /** Ask to be told, on the thread that changed them, whenever the set of folders changes. */
-    void onFoldersChanged(Runnable listener);
-
     /**
      * One project in the workspace.
      *

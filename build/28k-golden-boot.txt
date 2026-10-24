@@ -3,5 +3,5 @@
 READY (token given with -token):   READY url=http://127.0.0.1:<port> token=provided
 READY (token given with -token-file): READY url=http://127.0.0.1:<port> token-file=<path>
 token file: written at the path named by -token-file, mode 600 (rw-------), the token plus a line separator
-port taken: exit code 13 (measured on the dist; source JawataApplication:1164), stderr "FATAL: cannot bind port <port> — Address already in use (is another resident already listening on it?)"
+port taken: exit code 13 (measured on the dist; returned by ResidentLifecycle#cannotListen as the application result), stderr "FATAL: cannot bind port <port> — Address already in use (is another resident already listening on it?)"
 listener deaf: exit code 70. Measured 2026-10-24 in a real process on both sides of E16 - before: the old exit path (HttpTransport#exitBecauseDeaf, System.exit(70)) ended a probe JVM with 70; after: the built dist, its listener stopped under it, ends with 70 through the application result (build/28k-e2e-deaf.sh, P5), and the in-process tests HttpTransportReportsToTheHostTest and ResidentLifecycleTest pin the number

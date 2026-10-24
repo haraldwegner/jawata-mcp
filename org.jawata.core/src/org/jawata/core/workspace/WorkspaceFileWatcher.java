@@ -57,7 +57,7 @@ import java.util.concurrent.TimeUnit;
  * </ul>
  *
  * <p>Thread-safety: {@code start()} and {@code close()} are not concurrent —
- * the {@link org.jawata.mcp.JawataApplication} lifecycle calls them from
+ * the application's lifecycle calls them from
  * one thread. The watcher thread reads {@code workspace.json} and mutates the
  * service's project map; the service's add/remove methods are thread-safe.
  */

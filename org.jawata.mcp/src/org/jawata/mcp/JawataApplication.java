@@ -1131,9 +1131,6 @@ public class JawataApplication implements IApplication {
         }
     }
 
-    /** jawata-mcp#2: the exit code for a port the resident could not bind. */
-    static final Integer EXIT_PORT_BIND = 13;
-
     private Object runMessageLoop(TransportConfig config) {
         // Sprint 14a Stage 3: transport.run(handler) drives the I/O loop
         // internally. Stdio loops on its read/write pair; HTTP runs the

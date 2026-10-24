@@ -8,8 +8,10 @@ import java.util.List;
  * Every setting the engine reads through its host (Sprint 28k, E17), in one list: the registry a host builds its settings screen from
  * and is checked against (Stage 17 compares the preference pages with {@link #all()}).
  *
- * <p>A reader asks the host for a key by the name here, never by a literal of its own, so a key that is read is a key that is listed.
- * Keys the engine still reads straight from the process are not here; the list says what a host can set, not what exists.</p>
+ * <p>A key that is read through the host is listed here. Five readers (StoreBackups, SeatRules, StoryWriter, TranscriptStore,
+ * SchemaMigrations) still spell the key as a constant of their own beside this list, and the environment variables and
+ * {@code Boolean.getBoolean} switches the engine reads straight from the process are not here at all (ledger 28k-C5-11, homed to
+ * Stage 6): the list says what a host can set today, not everything the engine reads.</p>
  */
 public final class SettingKeys {
 
