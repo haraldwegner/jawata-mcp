@@ -59,8 +59,8 @@ class JdtServiceImplTest {
         int packages = service.getPackageCount();
 
         assertTrue(packages >= 1, "Should find at least 1 package");
-        assertTrue(service.getPackages().contains("com.example") ||
-                   service.getPackages().stream().anyMatch(p -> p.startsWith("com.example")),
+        java.util.List<String> names = service.getProject(service.defaultProjectKey().orElseThrow()).orElseThrow().packages();
+        assertTrue(names.contains("com.example") || names.stream().anyMatch(p -> p.startsWith("com.example")),
                    "Should find com.example package");
     }
 

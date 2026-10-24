@@ -1,9 +1,5 @@
 package org.jawata.mcp.runtime;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -15,6 +11,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
+
+import org.jawata.mcp.engine.EngineEnvironment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Sprint 24 (D5/D16) — what a runtime session leaves behind: replay captures,
@@ -48,23 +50,11 @@ public final class RuntimeArtifactStore {
     private final Path root;
 
     public RuntimeArtifactStore() {
-        this(resolveRoot());
+        this(EngineEnvironment.directories().runtimeDir());
     }
 
     public RuntimeArtifactStore(Path root) {
         this.root = root;
-    }
-
-    static Path resolveRoot() {
-        String explicit = System.getProperty("jawata.runtime.dir");
-        if (explicit != null && !explicit.isBlank()) {
-            return Path.of(explicit);
-        }
-        String wsRoot = System.getProperty("jawata.workspace.root");
-        if (wsRoot != null && !wsRoot.isBlank()) {
-            return Path.of(wsRoot, ".jawata", "runtime");
-        }
-        return Path.of(System.getProperty("java.io.tmpdir"), "jawata-runtime");
     }
 
     /** {@code <kind>-<millis>-<rand>} — sorts newest-last by name, so listing reverses it. */

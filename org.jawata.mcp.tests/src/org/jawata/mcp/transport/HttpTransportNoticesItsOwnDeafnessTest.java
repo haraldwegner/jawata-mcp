@@ -4,9 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Duration;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import org.jawata.mcp.fixtures.TransportFixtures;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -20,31 +20,18 @@ import org.junit.jupiter.api.Test;
  */
 class HttpTransportNoticesItsOwnDeafnessTest {
 
-    private static Thread runInBackground(HttpTransport transport) {
-        Thread t = new Thread(() -> {
-            try {
-                transport.run((message, caller) -> null);
-            } catch (Exception ignored) {
-                // the transport is closed by the test
-            }
-        }, "transport-under-test");
-        t.setDaemon(true);
-        t.start();
-        return t;
-    }
-
     @Test
     @DisplayName("a listener that dies behind a living process is declared deaf")
     void aDeadListenerBehindALivingProcessIsDeclared() throws Exception {
-        CountDownLatch deaf = new CountDownLatch(1);
-        HttpTransport transport = new HttpTransport(0, "127.0.0.1", "tok", Duration.ofSeconds(30),
-            Duration.ofMillis(50), 2, deaf::countDown);
-        runInBackground(transport);
+        TransportFixtures.RecordingLifecycle lifecycle = new TransportFixtures.RecordingLifecycle();
+        HttpTransport transport = new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", "tok"), lifecycle,
+            Duration.ofSeconds(30), Duration.ofMillis(50), 2);
+        TransportFixtures.runInBackground(transport);
         try {
             transport.getActualPort();
             transport.stopListenerOnly();
 
-            assertTrue(deaf.await(10, TimeUnit.SECONDS),
+            assertTrue(lifecycle.deaf.await(10, TimeUnit.SECONDS),
                 "the listener is gone and the process is alive, and nothing said so");
         } finally {
             transport.close();
@@ -54,14 +41,14 @@ class HttpTransportNoticesItsOwnDeafnessTest {
     @Test
     @DisplayName("CONTROL: the same transport left alone is never declared deaf")
     void aHealthyListenerIsNeverDeclared() throws Exception {
-        CountDownLatch deaf = new CountDownLatch(1);
-        HttpTransport transport = new HttpTransport(0, "127.0.0.1", "tok", Duration.ofSeconds(30),
-            Duration.ofMillis(50), 2, deaf::countDown);
-        runInBackground(transport);
+        TransportFixtures.RecordingLifecycle lifecycle = new TransportFixtures.RecordingLifecycle();
+        HttpTransport transport = new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", "tok"), lifecycle,
+            Duration.ofSeconds(30), Duration.ofMillis(50), 2);
+        TransportFixtures.runInBackground(transport);
         try {
             transport.getActualPort();
 
-            assertFalse(deaf.await(1500, TimeUnit.MILLISECONDS),
+            assertFalse(lifecycle.deaf.await(1500, TimeUnit.MILLISECONDS),
                 "a healthy listener answers every probe (a 405 is an answer)");
         } finally {
             transport.close();

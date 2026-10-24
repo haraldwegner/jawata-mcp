@@ -765,10 +765,6 @@ public class JdtServiceImpl implements IJdtService {
         return packageCount;
     }
 
-    public List<String> getPackages() {
-        return packages;
-    }
-
     public ProjectImporter.BuildSystem getBuildSystem() {
         return buildSystem;
     }

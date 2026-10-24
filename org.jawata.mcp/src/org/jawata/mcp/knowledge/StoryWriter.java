@@ -1,8 +1,5 @@
 package org.jawata.mcp.knowledge;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -12,6 +9,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+
+import org.jawata.mcp.engine.EngineEnvironment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Render a stored row as the markdown file {@code ExperienceMaintenance.parse} reads back
@@ -83,7 +84,7 @@ public final class StoryWriter {
 
     /** The configured folder, or empty when nothing is configured or the export is turned off. */
     public static Optional<Path> directory() {
-        String raw = System.getProperty(DIRECTORY_PROPERTY);
+        String raw = EngineEnvironment.settings().get(DIRECTORY_PROPERTY).orElse(null);
         if (raw == null || raw.isBlank() || OFF.equalsIgnoreCase(raw.trim())) {
             return Optional.empty();
         }
@@ -114,7 +115,7 @@ public final class StoryWriter {
 
     /** Whether the export was explicitly turned off with {@value #OFF}. */
     public static boolean turnedOff() {
-        String raw = System.getProperty(DIRECTORY_PROPERTY);
+        String raw = EngineEnvironment.settings().get(DIRECTORY_PROPERTY).orElse(null);
         return raw != null && OFF.equalsIgnoreCase(raw.trim());
     }
 

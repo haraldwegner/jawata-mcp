@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
+import org.jawata.mcp.engine.EngineEnvironment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -232,7 +233,7 @@ public final class TranscriptStore {
 
     /** Whether the lane captures and answers; read at each call so a deployment can change it. */
     public static boolean enabled() {
-        String value = System.getProperty(ENABLED_PROPERTY);
+        String value = EngineEnvironment.settings().get(ENABLED_PROPERTY).orElse(null);
         if (value == null) {
             value = System.getenv(ENABLED_ENV);
         }

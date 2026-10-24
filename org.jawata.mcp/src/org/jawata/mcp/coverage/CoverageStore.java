@@ -1,9 +1,5 @@
 package org.jawata.mcp.coverage;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +10,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
+
+import org.jawata.mcp.engine.EngineEnvironment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Sprint 23 (D3) — coverage artifacts on disk: one directory per artifact
@@ -35,23 +37,11 @@ public final class CoverageStore {
     private final Path root;
 
     public CoverageStore() {
-        this(resolveRoot());
+        this(EngineEnvironment.directories().coverageDir());
     }
 
     public CoverageStore(Path root) {
         this.root = root;
-    }
-
-    static Path resolveRoot() {
-        String explicit = System.getProperty("jawata.coverage.dir");
-        if (explicit != null && !explicit.isBlank()) {
-            return Path.of(explicit);
-        }
-        String wsRoot = System.getProperty("jawata.workspace.root");
-        if (wsRoot != null && !wsRoot.isBlank()) {
-            return Path.of(wsRoot, ".jawata", "coverage");
-        }
-        return Path.of(System.getProperty("java.io.tmpdir"), "jawata-coverage");
     }
 
     /** Create a fresh artifact directory; the id doubles as its dir name. */

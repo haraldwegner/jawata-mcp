@@ -10,6 +10,8 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import org.jawata.mcp.engine.EngineEnvironment;
+import org.jawata.mcp.engine.SettingKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -136,7 +138,7 @@ public final class StoreBackups {
 
     /** How many copies are kept right now — published because the verbs report it. */
     public static int depth() {
-        String raw = System.getProperty(DEPTH_PROPERTY);
+        String raw = EngineEnvironment.settings().get(DEPTH_PROPERTY).orElse(null);
         if (raw == null || raw.isBlank()) {
             return DEFAULT_DEPTH;
         }
@@ -393,7 +395,7 @@ public final class StoreBackups {
 
     /** How many scheduled copies are kept; the same floor of one as {@link #depth()}. */
     public static int scheduledDepth() {
-        String raw = System.getProperty("jawata.backups.scheduled.depth");
+        String raw = EngineEnvironment.settings().get(SettingKeys.BACKUPS_SCHEDULED_DEPTH.name()).orElse(null);
         if (raw == null || raw.isBlank()) {
             return DEFAULT_SCHEDULED_DEPTH;
         }

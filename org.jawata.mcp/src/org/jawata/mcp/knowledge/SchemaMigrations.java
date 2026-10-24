@@ -1,8 +1,5 @@
 package org.jawata.mcp.knowledge;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -15,6 +12,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import org.jawata.mcp.engine.EngineEnvironment;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sprint 21a (item B): versioned schema + ordered, additive-first migrations for the
@@ -62,7 +63,7 @@ final class SchemaMigrations {
     static final String ALLOW_UPGRADE = "jawata.experience.allowSchemaUpgrade";
 
     private static boolean upgradeAllowed() {
-        return Boolean.parseBoolean(System.getProperty(ALLOW_UPGRADE, "false"));
+        return Boolean.parseBoolean(EngineEnvironment.settings().get(ALLOW_UPGRADE).orElse("false"));
     }
 
     /**

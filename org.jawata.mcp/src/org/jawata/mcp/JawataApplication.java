@@ -12,10 +12,16 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.workspace.WorkspaceFileWatcher;
 import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.engine.EngineEnvironment;
 import org.jawata.mcp.engine.EngineState;
 import org.jawata.mcp.engine.ProjectLoadingState;
+import org.jawata.mcp.engine.ResidentDirectories;
+import org.jawata.mcp.engine.ResidentEndpointPolicy;
 import org.jawata.mcp.engine.ResidentHostWorkspace;
 import org.jawata.mcp.engine.ResidentJavaBinding;
+import org.jawata.mcp.engine.ResidentLifecycle;
+import org.jawata.mcp.engine.ResidentSettings;
+import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.mcp.knowledge.CatalogueOrigin;
 import org.jawata.mcp.knowledge.CatalogueSeeder;
 import org.jawata.mcp.knowledge.CatalogueSources;
@@ -52,6 +58,8 @@ public class JawataApplication implements IApplication {
     private final HeadlessModelSource model = new HeadlessModelSource();
     private final ResidentJavaBinding javaBinding = new ResidentJavaBinding(model);
     private final ResidentHostWorkspace hostWorkspace = new ResidentHostWorkspace(model);
+    // E16: what a listener failure means for this process (status 13 or 70); the engine's transport only reports it.
+    private final ResidentLifecycle lifecycle = new ResidentLifecycle(this::closeActiveTransport);
     // Sprint 14b: session-scoped cache backing the refactoring apply/undo
     // contract (staged Changes + undo handles, TTL + LRU bounded).
     private final RefactoringChangeCache refactoringChangeCache = new RefactoringChangeCache();
@@ -118,6 +126,9 @@ public class JawataApplication implements IApplication {
         // node id + JDT-UI-style defaults + code-template store) — the IDE
         // gets this from JDT-UI activation, a headless embedder must do it.
         // E15: the config stands down when the host has done the setup; the engine that runs alone says so.
+        // E17: and the host of the engine's settings and folders is this process: its system properties, and the folders worked out from them.
+        ResidentSettings settings = new ResidentSettings();
+        EngineEnvironment.hostedBy(settings, new ResidentDirectories(settings));
         org.jawata.mcp.tools.shared.HeadlessJdtConfig.hostedBy(javaBinding);
         org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
 
@@ -739,7 +750,7 @@ public class JawataApplication implements IApplication {
     private ExperienceStore openExperienceStore() {
         Path dataDir = resolveDataDir();
         Path workspaceRoot = resolveWorkspaceRoot(dataDir);
-        String mode = System.getProperty("jawata.experience.store", "shared").trim();
+        String mode = EngineEnvironment.settings().get(SettingKeys.EXPERIENCE_STORE.name()).orElse("shared").trim();
         try {
             return openRealStore(mode, dataDir, workspaceRoot);
         } catch (Exception e) {
@@ -850,7 +861,7 @@ public class JawataApplication implements IApplication {
         return defaultMemoryRoots(
             Path.of(System.getProperty("user.home")),
             workspaceProjectDirs(),
-            System.getProperty("jawata.memory.roots"));
+            EngineEnvironment.settings().get(SettingKeys.MEMORY_ROOTS.name()).orElse(null));
     }
 
     /** Package-private + static for tests (no OSGi). Only existing paths are returned. */
@@ -1133,24 +1144,21 @@ public class JawataApplication implements IApplication {
             this.activeTransport = transport;
             transport.run(protocolHandler::processMessage);
         } catch (Exception e) {
-            // jawata-mcp#2 (Sprint 27a Stage 8): a resident that cannot BIND
-            // must fail LOUDLY and NON-ZERO — a failed start reported as a
-            // clean exit is the lie class this product exists to prevent, and
-            // it left jawata-studio rendering "exited unexpectedly (status 0)"
-            // with nothing to diagnose. stderr, not SLF4J: the dist ships no
-            // logger binding, so a log line here is silence.
-            java.net.BindException bind = causeOf(e, java.net.BindException.class);
-            if (bind != null) {
-                System.err.println("FATAL: cannot bind port " + config.getPort()
-                    + " — " + bind.getMessage()
-                    + " (is another resident already listening on it?)");
-                return EXIT_PORT_BIND;
-            }
+            // A port that is taken is reported by the transport to the lifecycle (status 13, jawata-mcp#2); this is every other failure.
             log.error("Error in message loop", e);
         } finally {
             this.activeTransport = null;
         }
-        return IApplication.EXIT_OK;
+        // 0 unless the listener failed: 13 for a port that is taken, 70 for a listener that went deaf (REL44-32).
+        return lifecycle.exitCode();
+    }
+
+    /** Ends the message loop of the running transport, if there is one. */
+    private void closeActiveTransport() {
+        Transport t = activeTransport;
+        if (t != null) {
+            t.close();
+        }
     }
 
     /**
@@ -1163,16 +1171,6 @@ public class JawataApplication implements IApplication {
             String url = http.localMcpUrl();
             return url == null ? null
                 : new org.jawata.mcp.execution.SelfEndpoint(url, http.bearerToken());
-        }
-        return null;
-    }
-
-    /** The first cause of the given type in the chain, or null. */
-    private static <T extends Throwable> T causeOf(Throwable t, Class<T> type) {
-        for (Throwable c = t; c != null; c = c.getCause()) {
-            if (type.isInstance(c)) {
-                return type.cast(c);
-            }
         }
         return null;
     }
@@ -1196,7 +1194,7 @@ public class JawataApplication implements IApplication {
             config.getPort(), config.getBindAddress(),
             resolved.tokenFile() != null ? "from " + resolved.tokenFile()
                 : resolved.supplied() ? "supplied" : "generated");
-        return new HttpTransport(config.getPort(), config.getBindAddress(), resolved);
+        return new HttpTransport(new ResidentEndpointPolicy(config, resolved), lifecycle);
     }
 
     @Override

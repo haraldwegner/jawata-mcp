@@ -1,13 +1,5 @@
 package org.jawata.mcp.transport;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -18,6 +10,18 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+
+import org.jawata.spi.host.EndpointPolicy;
+import org.jawata.spi.host.EngineLifecycle;
+import org.jawata.spi.host.McpEndpoint;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
 
 /**
  * HTTP transport using the JDK's built-in
@@ -82,24 +86,23 @@ public class HttpTransport implements Transport {
     private final String bindAddress;
     private final String token;
     /**
-     * How the READY line discloses the token — studio#14. The manager tees
-     * stdout into a workspace log file, so a token printed here outlives the
-     * process on disk. A {@link ResolvedToken} answers this itself; the
-     * token-only constructor keeps the historical {@code token=<token>} form
-     * for a bare manual launch, which has no other channel.
+     * Where this transport listens and who hears that it does. The start line the host prints when the listener is up is the host's
+     * own (studio#14: how a token is disclosed there is its decision), so the transport reports and prints nothing itself.
      */
-    private final String readyTokenField;
+    private final EndpointPolicy endpoint;
+    /** Who is told when the listener cannot bind or goes deaf; the host decides what that means for its process. */
+    private final EngineLifecycle lifecycle;
     private final Duration heartbeatInterval;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final List<SseSubscriber> subscribers = new CopyOnWriteArrayList<>();
 
     /**
      * REL44-32: how often the transport asks its own listener whether it answers, how many
-     * CONSECUTIVE silences declare it deaf, and what to do then (production: exit non-zero).
+     * CONSECUTIVE silences declare it deaf. What that means for the process is the host's decision
+     * ({@link EngineLifecycle#listenerDeaf}); the standalone engine ends with status 70.
      */
     private final Duration watchdogInterval;
     private final int watchdogFailures;
-    private final Runnable onDeaf;
     private ScheduledExecutorService watchdog;
 
     private HttpServer server;
@@ -107,68 +110,49 @@ public class HttpTransport implements Transport {
     private final CountDownLatch shutdownLatch = new CountDownLatch(1);
     private volatile int actualPort = -1;
 
-    public HttpTransport(int port, String bindAddress, String token) {
-        this(port, bindAddress, token, DEFAULT_HEARTBEAT_INTERVAL);
-    }
-
     /**
-     * Production constructor — the token knows how it may be disclosed.
+     * Production constructor: listens where the host's endpoint policy says, tells the policy when it is up, and tells the lifecycle
+     * when the listener cannot bind or has gone deaf.
      *
-     * <p>Prefer this over the raw-token form: with a token file in play the
-     * READY line names the FILE instead of the secret, which is what keeps the
-     * credential out of the manager's log (studio#14).
+     * @param endpoint  the address, port and key to serve, and who hears that the listener is up
+     * @param lifecycle who decides what a listener failure means for the process
      */
-    public HttpTransport(int port, String bindAddress, ResolvedToken resolved) {
-        this(port, bindAddress, resolved.token(), DEFAULT_HEARTBEAT_INTERVAL,
-            resolved.readyTokenField());
+    public HttpTransport(EndpointPolicy endpoint, EngineLifecycle lifecycle) {
+        this(endpoint, lifecycle, DEFAULT_HEARTBEAT_INTERVAL);
     }
 
     /**
      * Package-private constructor for tests that need a short heartbeat
      * interval to exercise the keep-alive path quickly. Production callers
-     * use the three-arg constructor with the 30s default.
+     * use the two-arg constructor with the 30s default.
      */
-    HttpTransport(int port, String bindAddress, String token, Duration heartbeatInterval) {
-        this(port, bindAddress, token, heartbeatInterval, "token=" + token);
-    }
-
-    private HttpTransport(int port, String bindAddress, String token, Duration heartbeatInterval,
-                          String readyTokenField) {
-        this(port, bindAddress, token, heartbeatInterval, readyTokenField,
-            DEFAULT_WATCHDOG_INTERVAL, DEFAULT_WATCHDOG_FAILURES, HttpTransport::exitBecauseDeaf);
+    HttpTransport(EndpointPolicy endpoint, EngineLifecycle lifecycle, Duration heartbeatInterval) {
+        this(endpoint, lifecycle, heartbeatInterval, DEFAULT_WATCHDOG_INTERVAL, DEFAULT_WATCHDOG_FAILURES);
     }
 
     /**
-     * Package-private, for the test that must see the watchdog fire quickly and must not exit the
-     * test's own process: a short probe interval, a small failure threshold, and what to do on
-     * deafness (REL44-32).
+     * Package-private, for the test that must see the watchdog fire quickly: a short probe interval and a small failure threshold
+     * (REL44-32).
      */
-    HttpTransport(int port, String bindAddress, String token, Duration heartbeatInterval,
-                  Duration watchdogInterval, int watchdogFailures, Runnable onDeaf) {
-        this(port, bindAddress, token, heartbeatInterval, "token=" + token,
-            watchdogInterval, watchdogFailures, onDeaf);
-    }
-
-    private HttpTransport(int port, String bindAddress, String token, Duration heartbeatInterval,
-                          String readyTokenField, Duration watchdogInterval, int watchdogFailures,
-                          Runnable onDeaf) {
-        if (bindAddress == null || bindAddress.isBlank()) {
+    HttpTransport(EndpointPolicy endpoint, EngineLifecycle lifecycle, Duration heartbeatInterval,
+                  Duration watchdogInterval, int watchdogFailures) {
+        if (endpoint.bindAddress() == null || endpoint.bindAddress().isBlank()) {
             throw new IllegalArgumentException("bindAddress required");
         }
-        if (token == null || token.isBlank()) {
+        if (endpoint.key() == null || endpoint.key().isBlank()) {
             throw new IllegalArgumentException("token required (use TokenGenerator.generate() if not provided)");
         }
         if (heartbeatInterval == null || heartbeatInterval.isNegative() || heartbeatInterval.isZero()) {
             throw new IllegalArgumentException("heartbeatInterval must be positive");
         }
-        this.requestedPort = port;
-        this.bindAddress = bindAddress;
-        this.token = token;
-        this.readyTokenField = readyTokenField;
+        this.endpoint = endpoint;
+        this.lifecycle = lifecycle;
+        this.requestedPort = endpoint.port();
+        this.bindAddress = endpoint.bindAddress();
+        this.token = endpoint.key();
         this.heartbeatInterval = heartbeatInterval;
         this.watchdogInterval = watchdogInterval;
         this.watchdogFailures = watchdogFailures;
-        this.onDeaf = onDeaf;
     }
 
     /**
@@ -183,7 +167,17 @@ public class HttpTransport implements Transport {
         if (handler == null) {
             throw new IllegalArgumentException("handler required");
         }
-        server = HttpServer.create(new InetSocketAddress(bindAddress, requestedPort), 0);
+        try {
+            server = HttpServer.create(new InetSocketAddress(bindAddress, requestedPort), 0);
+        } catch (IOException e) {
+            java.net.BindException bind = bindFailure(e);
+            if (bind == null) {
+                throw e;
+            }
+            // The host decides what a port that is taken means for its process; the transport only says so and returns.
+            lifecycle.cannotListen(requestedPort, bind);
+            return;
+        }
         server.createContext("/mcp", new McpHandler(handler, token, objectMapper));
         server.createContext("/mcp/events", new EventsHandler(token, heartbeatInterval, subscribers));
         // Cached pool — POST handlers return quickly; SSE handlers hold a
@@ -198,11 +192,9 @@ public class HttpTransport implements Transport {
         server.start();
 
         actualPort = server.getAddress().getPort();
-        // READY contract: a single line on stdout. The token field is the
-        // token's own disclosure decision (studio#14) — with a token file it
-        // names the file, so the manager's log never holds the secret.
-        System.out.println("READY url=http://" + bindAddress + ":" + actualPort
-            + " " + readyTokenField);
+        // The host announces the listener its own way: the standalone engine prints the single READY line its supervisor waits for
+        // (the token field there is the token's own disclosure decision, studio#14).
+        endpoint.listening(new McpEndpoint(java.net.URI.create(localMcpUrl()), token));
         readyLatch.countDown();
 
         log.info("HTTP transport listening on {}:{}", bindAddress, actualPort);
@@ -212,7 +204,7 @@ public class HttpTransport implements Transport {
         // zero HTTP threads, 51 connections queued, a main thread waiting on the latch below.
         watchdog = new ServerWatchdog(
             ServerWatchdog.httpProbe(localMcpUrl(), WATCHDOG_PROBE_TIMEOUT), watchdogFailures,
-            onDeaf).start(watchdogInterval);
+            lifecycle::listenerDeaf).start(watchdogInterval);
 
         shutdownLatch.await();
         log.info("HTTP transport shutdown signal received");
@@ -265,26 +257,14 @@ public class HttpTransport implements Transport {
         }
     }
 
-    /**
-     * What a resident does when its listener has stopped answering: say so, then exit non-zero so
-     * whatever supervises it sees a dead process instead of a deaf one (REL44-32). A graceful exit
-     * is tried first so the shared store closes cleanly; if that hangs — a deaf process may have
-     * other things wrong with it — the process is halted after fifteen seconds.
-     */
-    private static void exitBecauseDeaf() {
-        log.error("HTTP LISTENER STOPPED ANSWERING while the process is alive — exiting with status 70"
-            + " so the resident is restarted instead of staying deaf");
-        Thread fallback = new Thread(() -> {
-            try {
-                Thread.sleep(15_000);
-            } catch (InterruptedException ignored) {
-                return;
+    /** The bind failure in the cause chain, or null: a port that is taken is the one failure the host is told about by name. */
+    private static java.net.BindException bindFailure(Throwable t) {
+        for (Throwable c = t; c != null; c = c.getCause()) {
+            if (c instanceof java.net.BindException bind) {
+                return bind;
             }
-            Runtime.getRuntime().halt(70);
-        }, "HttpTransport-deaf-halt");
-        fallback.setDaemon(true);
-        fallback.start();
-        System.exit(70);
+        }
+        return null;
     }
 
     /**

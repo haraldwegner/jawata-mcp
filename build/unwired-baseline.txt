@@ -29,6 +29,11 @@ org.jawata.mcp.embed.EmbedderIdentity#requireComparable(EmbedderIdentity,Embedde
 org.jawata.mcp.embed.MatMuls#scalar()
 org.jawata.mcp.embed.MiniLmEmbedder#identity()
 org.jawata.mcp.embed.WordPieceTokenizer#vocabSize()
+# Sprint 28k E17: the registry of every setting the engine reads through its host. Its consumer is the Eclipse
+# preference page (Stage 17), which is built from this list and checked against it; the standalone engine has no
+# settings screen, so no production caller exists until that stage. EngineEnvironmentTest and ResidentDirectoriesTest
+# are the readers now: the first fails if a key a reader asks is missing from it.
+org.jawata.mcp.engine.SettingKeys#all()
 # Sprint 28g S9a, C9a 2026-10-05 — THE DRIVER'S ENTRY POINTS AND THE LEDGER'S READ SURFACE.
 # These are an ABSENCE this gate is reporting correctly, not a defect: the thing that would
 # call and read them is the /main seat's ledger wiring (plan step M7), which is named and

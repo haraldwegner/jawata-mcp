@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
+import org.jawata.mcp.engine.EngineEnvironment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,7 +54,7 @@ public final class SeatRules {
      * @return the most rules a brief carries, or 0 for no limit
      */
     public static int limit() {
-        String raw = System.getProperty(LIMIT_PROPERTY);
+        String raw = EngineEnvironment.settings().get(LIMIT_PROPERTY).orElse(null);
         if (raw == null || raw.isBlank()) {
             return 0;
         }

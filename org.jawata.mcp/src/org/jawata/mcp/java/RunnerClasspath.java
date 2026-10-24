@@ -16,6 +16,7 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.launching.IRuntimeClasspathEntry;
 import org.eclipse.jdt.launching.JavaRuntime;
+import org.jawata.mcp.engine.EngineEnvironment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -156,19 +157,7 @@ public final class RunnerClasspath {
 
     /** Locate the dist tools/ jars; {@code jawata.tools.dir} overrides for dev runs. */
     static List<Path> toolchainJars(boolean includeTestNgEngine) throws IOException {
-        String override = System.getProperty("jawata.tools.dir");
-        Path toolsDir;
-        if (override != null && !override.isBlank()) {
-            toolsDir = Path.of(override);
-        } else {
-            String distRoot = System.getProperty("jawata.dist.root");
-            if (distRoot == null) {
-                throw new IllegalStateException("Neither jawata.tools.dir nor jawata.dist.root "
-                    + "is set — the forked-runner toolchain cannot be located. "
-                    + "(The boot sets jawata.dist.root; a dev embedding must set jawata.tools.dir.)");
-            }
-            toolsDir = Path.of(distRoot).resolve("tools");
-        }
+        Path toolsDir = EngineEnvironment.directories().toolsDir();
         if (!Files.isDirectory(toolsDir)) {
             throw new IllegalStateException("Runner toolchain directory missing: " + toolsDir
                 + " — the dist is incomplete (tools/ ships the JUnit launcher + jawata runner).");
@@ -184,19 +173,7 @@ public final class RunnerClasspath {
 
     /** Locate a single dist tools/ jar by filename prefix (e.g. the JaCoCo agent). */
     public static Path toolJar(String prefix) throws IOException {
-        String override = System.getProperty("jawata.tools.dir");
-        Path toolsDir;
-        if (override != null && !override.isBlank()) {
-            toolsDir = Path.of(override);
-        } else {
-            String distRoot = System.getProperty("jawata.dist.root");
-            if (distRoot == null) {
-                throw new IllegalStateException("Neither jawata.tools.dir nor jawata.dist.root "
-                    + "is set — cannot locate " + prefix + "*.jar");
-            }
-            toolsDir = Path.of(distRoot).resolve("tools");
-        }
-        return findOne(toolsDir, prefix);
+        return findOne(EngineEnvironment.directories().toolsDir(), prefix);
     }
 
     private static Path findOne(Path dir, String prefix) throws IOException {

@@ -37,6 +37,11 @@
 #      leaves it byte-identical to the original. The plan lifecycle is ChangeEngine, GatedApply, ParityGate and PlanStore in
 #      org.jawata.mcp.change, front door to built dist.
 #
+#   P5 (Stage 5, the host ports: lifecycle and settings): a second start on the port the first holds exits 13 with the captured text on
+#      stderr; a resident whose HTTP listener is stopped under it exits 70 (build/28k-e2e-deaf.sh, about 90 seconds), both leaving
+#      the process as the application's result; and a setting passed at start (-Djawata.backups.depth=3, default 10) takes effect, visible
+#      in the answer of experience(kind=restore), because the engine's readers ask the host's settings. Front door to the built dist.
+#
 # Usage:  build/28k-e2e.sh [--capture] [dist-dir]
 #         --capture writes the goldens (build/28k-golden-ready.txt, build/28k-golden-tools.json)
 #         from the given dist; only Stage 0 uses it.
@@ -86,7 +91,7 @@ java --add-modules jdk.incubator.vector -version >/dev/null 2>&1 \
     && VECTOR="--add-modules jdk.incubator.vector"
 
 # shellcheck disable=SC2086
-java $VECTOR -Djawata.experience.shared.dir="$STORE" \
+java $VECTOR -Djawata.experience.shared.dir="$STORE" -Djawata.backups.depth=3 \
      -jar "$JAR" -data "$WS/ws" -port "$PORT" -token "$TOKEN" > "$LOG" 2>&1 &
 RESIDENT_PID=$!
 READY=0
@@ -310,7 +315,41 @@ else:
             else:
                 ok("P4 refactoring plan -> apply_plan (2 steps) -> undo_plan: ComposeMethodTargets.java changed, then restored byte for byte")
 
+# --- P5: a setting passed at start takes effect, visible in a tool answer (Stage 5, E17) -------------------------------------
+# The resident was started with -Djawata.backups.depth=3 (the default is 10), and experience(kind=restore) with no name lists the copies
+# and says how many it keeps: the engine's reader asked the host's settings, and the host answered with what the process was given.
+listing = (call("experience", {"kind": "restore"}).get("data") or {})
+if listing.get("depth") == 3:
+    ok("P5 -Djawata.backups.depth=3 passed at start takes effect: experience(kind=restore) answers depth 3, not the default 10")
+else:
+    bad("P5 experience(kind=restore) answers depth %r after the resident was started with -Djawata.backups.depth=3" % listing.get("depth"))
+
 print("\n28k-E2E passed=%d failed=%d" % (passed, failed))
 raise SystemExit(1 if failed else 0)
 PY
+PY_STATUS=$?
+[ "$CAPTURE" -eq 1 ] && exit "$PY_STATUS"
+
+# --- P5 (Stage 5, E16): the exit statuses a supervisor reads are the captured ones, on the built dist -------------------------
+P5_FAILED=0
+
+# A second resident on the port the first one holds ends with 13 and the golden text on stderr.
+STORE2="$(mktemp -d)"
+EXPECTED_TAKEN="$(sed -n 's/^port taken:.*stderr "\(.*\)"$/\1/p' "$ROOT/build/28k-golden-boot.txt" | sed "s/<port>/$PORT/")"
+# shellcheck disable=SC2086
+TAKEN_ERR="$(timeout 180 java $VECTOR -Djawata.experience.shared.dir="$STORE2" \
+    -jar "$JAR" -data "$WS/ws-second" -port "$PORT" -token "$TOKEN" 2>&1 >/dev/null)"
+TAKEN_STATUS=$?
+rm -rf "$STORE2"
+if [ "$TAKEN_STATUS" -eq 13 ] && printf '%s\n' "$TAKEN_ERR" | grep -qxF "$EXPECTED_TAKEN"; then
+    echo "  ok    P5 a second start on the taken port exits 13 with the golden text"
+else
+    echo "  FAIL  P5 a second start on the taken port exited $TAKEN_STATUS; expected 13 and the line [$EXPECTED_TAKEN], got [$(printf '%s' "$TAKEN_ERR" | tail -3)]" >&2
+    P5_FAILED=1
+fi
+
+# A deaf listener ends the process with 70 (about 90 seconds: three silent probes, thirty seconds apart).
+bash "$ROOT/build/28k-e2e-deaf.sh" "$DIST" || P5_FAILED=1
+
+[ "$PY_STATUS" -eq 0 ] && [ "$P5_FAILED" -eq 0 ]
 exit $?

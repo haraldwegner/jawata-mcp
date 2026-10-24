@@ -1,7 +1,11 @@
 package org.jawata.mcp.transport;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -17,7 +21,9 @@ import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.jawata.mcp.fixtures.TransportFixtures;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 /**
  * Sprint 14a Stage 3: HttpTransport round-trip + auth + READY contract tests.
@@ -233,13 +239,36 @@ class HttpTransportTest {
         try (TestServer server = new TestServer((msg, session) -> "")) {
             int p = server.port();
             String captured = server.capturedStdout();
-            String expected = "READY url=http://127.0.0.1:" + p + " token=" + TOKEN;
+            // A token handed in is not echoed back: the holder has it already, and this line is teed into a log file on disk.
+            // That is what the standalone engine prints for -token; the line that names the token itself is the generated one,
+            // pinned in readyLineNamesAGeneratedToken.
+            String expected = "READY url=http://127.0.0.1:" + p + " token=provided";
             assertTrue(captured.contains(expected),
                 "expected READY line in stdout, got: [" + captured + "]");
             // Exactly one occurrence of "READY "
             int count = captured.split("READY ", -1).length - 1;
             assertEquals(1, count,
                 "expected exactly one READY occurrence, got " + count + ": " + captured);
+        }
+    }
+
+    @Test
+    @DisplayName("readyLineNamesAGeneratedToken — a bare launch has no other channel, so the line carries the token")
+    void readyLineNamesAGeneratedToken() throws Exception {
+        PrintStream original = System.out;
+        ByteArrayOutputStream capture = new ByteArrayOutputStream();
+        org.jawata.spi.host.EndpointPolicy endpoint = TransportFixtures.residentEndpoint(0, "127.0.0.1", "");
+        HttpTransport transport = new HttpTransport(endpoint, new TransportFixtures.RecordingLifecycle());
+        try {
+            System.setOut(new PrintStream(capture, true, StandardCharsets.UTF_8));
+            TransportFixtures.runInBackground(transport);
+            int p = transport.getActualPort();
+
+            assertEquals("READY url=http://127.0.0.1:" + p + " token=" + endpoint.key(),
+                capture.toString(StandardCharsets.UTF_8).strip());
+        } finally {
+            System.setOut(original);
+            transport.close();
         }
     }
 
@@ -264,14 +293,13 @@ class HttpTransportTest {
     @Test
     @DisplayName("rejectsNullBindAddress / rejectsNullToken at construction")
     void rejectsNullBindAndToken() {
+        TransportFixtures.RecordingLifecycle lifecycle = new TransportFixtures.RecordingLifecycle();
         assertThrows(IllegalArgumentException.class,
-            () -> new HttpTransport(0, null, "tok"));
-        // The cast picks the raw-token constructor: since studio#14 there is
-        // also a ResolvedToken form, and a bare null matches both.
+            () -> new HttpTransport(TransportFixtures.plainEndpoint(0, null, "tok"), lifecycle));
         assertThrows(IllegalArgumentException.class,
-            () -> new HttpTransport(0, "127.0.0.1", (String) null));
+            () -> new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", null), lifecycle));
         assertThrows(IllegalArgumentException.class,
-            () -> new HttpTransport(0, "127.0.0.1", ""));
+            () -> new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", ""), lifecycle));
     }
 
     // ===== Stage 4: SSE channel /mcp/events =====
@@ -426,9 +454,11 @@ class HttpTransportTest {
             this.stdoutCapture = new ByteArrayOutputStream();
             System.setOut(new PrintStream(stdoutCapture, true, StandardCharsets.UTF_8));
 
+            org.jawata.spi.host.EndpointPolicy endpoint = TransportFixtures.residentEndpoint(0, "127.0.0.1", TOKEN);
+            TransportFixtures.RecordingLifecycle lifecycle = new TransportFixtures.RecordingLifecycle();
             this.transport = (heartbeatInterval == null)
-                ? new HttpTransport(0, "127.0.0.1", TOKEN)
-                : new HttpTransport(0, "127.0.0.1", TOKEN, heartbeatInterval);
+                ? new HttpTransport(endpoint, lifecycle)
+                : new HttpTransport(endpoint, lifecycle, heartbeatInterval);
             this.runThread = new Thread(() -> {
                 try {
                     transport.run(handler);
