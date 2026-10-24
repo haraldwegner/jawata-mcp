@@ -10,45 +10,30 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.field.InFlightCalls;
+import org.jawata.mcp.java.JavaProvider;
 import org.jawata.mcp.knowledge.EmbeddingIndex;
 import org.jawata.mcp.knowledge.ExperienceAdvisor;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
+import org.jawata.mcp.learn.PlanLedger;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.runtime.RuntimeArtifactStore;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
-import org.jawata.mcp.tools.AnalyzeTool;
-import org.jawata.mcp.tools.ApplyNullAnnotationsTool;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
-import org.jawata.mcp.tools.DebugTool;
 import org.jawata.mcp.tools.ExperienceTool;
-import org.jawata.mcp.tools.FindDuplicateCodeTool;
-import org.jawata.mcp.tools.FindFieldWritesTool;
-import org.jawata.mcp.tools.FindModernizationTool;
-import org.jawata.mcp.tools.FindPatternUsagesTool;
+import org.jawata.mcp.tools.FieldTool;
 import org.jawata.mcp.tools.FindQualityIssueTool;
-import org.jawata.mcp.tools.FindRefsTool;
-import org.jawata.mcp.tools.FindStringLiteralsTool;
-import org.jawata.mcp.tools.FindTestsTool;
-import org.jawata.mcp.tools.GetAtPositionTool;
-import org.jawata.mcp.tools.GetCallHierarchyTool;
 import org.jawata.mcp.tools.GetDiagnosticsTool;
-import org.jawata.mcp.tools.GoToDefinitionTool;
 import org.jawata.mcp.tools.HealthCheckTool;
 import org.jawata.mcp.tools.HireTool;
-import org.jawata.mcp.tools.InspectTool;
 import org.jawata.mcp.tools.LoadProjectTool;
-import org.jawata.mcp.tools.ProfileTool;
 import org.jawata.mcp.tools.ProjectTool;
-import org.jawata.mcp.tools.QuickFixTool;
 import org.jawata.mcp.tools.RefactoringTool;
 import org.jawata.mcp.tools.RefreshWorkspaceTool;
 import org.jawata.mcp.tools.RunTestsTool;
-import org.jawata.mcp.tools.SearchSymbolsTool;
 import org.jawata.mcp.tools.Tool;
 import org.jawata.mcp.tools.ToolRegistry;
-import org.jawata.mcp.tools.ValidateSyntaxTool;
-import org.jawata.mcp.tools.build.DependencyTool;
-import org.jawata.mcp.tools.workflow.FormatTool;
+import org.jawata.spi.lang.SymbolAnchors;
 
 /**
  * THE ONE PRODUCER OF THE TOOLS THIS PRODUCT SHIPS (Sprint 28g C9a-1).
@@ -64,6 +49,12 @@ import org.jawata.mcp.tools.workflow.FormatTool;
  * <p>It builds the tools and registers NOTHING. {@code ToolRegistry.register} publishes into the
  * process-wide operation registry, so a caller that only wants the names must not register; the
  * application registers what this returns, in the order it returns it.</p>
+ *
+ * <p>Since Sprint 28k (E12) the list has two sources. The tools that name no language, and the verbs
+ * whose language answer comes through a provider port, are built here. The tools that exist only
+ * over a Java model, and the ports themselves (memory's anchors, the test runtime), come from
+ * {@link JavaProvider}; this producer names no Java tool class and builds no port. {@link PublishedOrder}
+ * puts the two in the order the product publishes.</p>
  *
  * <p>What the tools need from the running application is {@link Wiring}: suppliers read at call time
  * wherever the application's state changes after boot (the workspace service, the store), and the
@@ -133,6 +124,33 @@ public final class ShippedTools {
 
     /** Build the shipped tools from the wiring. Registers nothing. */
     public static Built build(Wiring w) {
+        // Until E19 registers the provider as a service it is assembled here, over the same model supplier the tools use.
+        JavaProvider java = new JavaProvider(w.jdt());
+        Supplier<SymbolAnchors> anchors = java.memoryAnchors();
+
+        RunTestsTool runTests = new RunTestsTool(w.jdt(), java::testRuntime);
+
+        // The plan lifecycle consults and records against the knowledge store through the SAME advisor the pre-advice surface uses,
+        // so it is given the embedding index, not left keyword-only.
+        ExperienceAdvisor advisor = new ExperienceAdvisor(w.experienceStore(), anchors, w.embeddingIndex().get());
+
+        // The local experience/knowledge store's front door.
+        ExperienceTool experience = ExperienceTool.withAnchors(w.jdt(), w.experienceStore(), w.defaultMemoryRoots(), anchors);
+
+        List<Tool> tools = new ArrayList<>(neutralTools(w, runTests, advisor, experience));
+        JavaProvider.Contribution contribution = java.tools(new JavaProvider.ToolNeeds(
+            w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests));
+        tools.addAll(contribution.tools());
+
+        return new Built(List.copyOf(PublishedOrder.arrange(tools)), contribution.quality(), advisor, experience);
+    }
+
+    /**
+     * The tools that name no language, and the verbs whose language answer comes through a provider port: health, the workspace
+     * verbs, the field lane, the build and test verbs, the hire path, the refactoring lifecycle and memory.
+     */
+    private static List<Tool> neutralTools(Wiring w, RunTestsTool runTests, ExperienceAdvisor advisor,
+            ExperienceTool experience) {
         Supplier<IJdtService> jdt = w.jdt();
         List<Tool> tools = new ArrayList<>();
 
@@ -151,80 +169,25 @@ public final class ShippedTools {
 
         // The field lane's one front door. Needs no loaded project: it answers about jawata's own
         // use. The registry's in-flight record lets `pile` report calls that never came back.
-        tools.add(new org.jawata.mcp.tools.FieldTool(jdt, w.fieldDir(), w.inFlight()));
+        tools.add(new FieldTool(jdt, w.fieldDir(), w.inFlight()));
 
-        // Core navigation, diagnostics, call hierarchy and analysis.
-        tools.add(new SearchSymbolsTool(jdt));
-        tools.add(new GoToDefinitionTool(jdt));
-        tools.add(new FindRefsTool(jdt));
-        InspectTool inspect = new InspectTool(jdt);
-        tools.add(inspect);
-        tools.add(new AnalyzeTool(jdt));
-        tools.add(new GetAtPositionTool(jdt));
         tools.add(new GetDiagnosticsTool(jdt));
-        tools.add(new ValidateSyntaxTool(jdt));
-        tools.add(new GetCallHierarchyTool(jdt));
-        tools.add(new FindFieldWritesTool(jdt));
-        tools.add(new FindTestsTool(jdt));
-
-        // The refactoring tools that dispatch on nothing, and the doors, each from ONE source, so a
-        // gate can join against what is registered. The store reaches rename_symbol as a SUPPLIER,
-        // read at call time, so a renamed member takes the knowledge anchored at it.
-        tools.addAll(org.jawata.mcp.tools.RefactoringDoors.standalone(
-            jdt, w.changeCache(), w.storeSupplier()));
-        tools.addAll(org.jawata.mcp.tools.RefactoringDoors.all(jdt, w.changeCache()));
-
-        tools.add(new FindPatternUsagesTool(jdt));
-        // The detectors whose cure is a catalogue entry resolve their addresses from the store at
-        // scan time, so this does not depend on whether the store is assigned yet.
-        FindQualityIssueTool quality = new FindQualityIssueTool(jdt, w.storeSupplier());
-        tools.add(quality);
-        tools.add(new FindStringLiteralsTool(jdt));
-
         tools.add(new CompileWorkspaceTool(jdt, w.reconciler()));
-        RunTestsTool runTests = new RunTestsTool(jdt);
         tools.add(runTests);
-        // The impacted-test selection on the read-only door too: a hired Claude is refused run_tests
-        // in plan mode, and inspect is read-only.
-        inspect.setImpactedTests(runTests::impactedTests);
-
-        // The interactive debugger is given the store: a breakpoint hit RECALLS what is recorded
-        // about its symbol. The profiler shares the sessions the debugger opens.
-        tools.add(new DebugTool(jdt, w.runtimeSessions(),
-            new org.jawata.mcp.runtime.RuntimeArtifactStore(),
-            new org.jawata.mcp.knowledge.ExperienceRetrieval(w.experienceStore(),
-                org.jawata.mcp.java.JavaSymbolAnchors.over(jdt))));
-        tools.add(new ProfileTool(jdt, w.runtimeSessions()));
 
         // The hire path. The REGISTRY supplier breaks a real cycle (the tool sits in the registry its
         // own gates run through, so the gate runner is built per call); the JOURNAL supplier may
         // answer null, because a degraded resident has no journal, and the tool is still published
         // and refuses with that reason; the third is this resident's own endpoint.
         tools.add(new HireTool(jdt, HostProcesses.system(),
-            new org.jawata.mcp.runtime.RuntimeArtifactStore(),
-            new org.jawata.mcp.learn.PlanLedger(),
+            new RuntimeArtifactStore(),
+            new PlanLedger(),
             w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore));
 
         tools.add(new RefreshWorkspaceTool(jdt, w.reconciler()));
-        tools.add(new FindDuplicateCodeTool(jdt));
-        tools.add(new FindModernizationTool(jdt));
-        tools.add(new ApplyNullAnnotationsTool(jdt, w.changeCache()));
-        tools.add(new DependencyTool(jdt));
-        tools.add(new FormatTool(jdt));
-        tools.add(new QuickFixTool(jdt));
-
-        // The plan lifecycle consults and records against the knowledge store through the SAME
-        // advisor the pre-advice surface uses, so it is given the embedding index, not left
-        // keyword-only.
-        ExperienceAdvisor advisor = new ExperienceAdvisor(w.experienceStore(),
-            org.jawata.mcp.java.JavaSymbolAnchors.over(jdt), w.embeddingIndex().get());
         tools.add(new RefactoringTool(jdt, w.changeCache(), advisor));
-
-        // The local experience/knowledge store's front door.
-        ExperienceTool experience = new ExperienceTool(jdt, w.experienceStore(),
-            w.defaultMemoryRoots());
         tools.add(experience);
 
-        return new Built(List.copyOf(tools), quality, advisor, experience);
+        return tools;
     }
 }

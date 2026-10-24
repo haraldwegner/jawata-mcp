@@ -11,6 +11,7 @@ import java.util.function.Supplier;
 
 import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.java.JavaProvider;
 import org.jawata.mcp.knowledge.Confidence;
 import org.jawata.mcp.knowledge.DescribedUnits;
 import org.jawata.mcp.knowledge.EntryForm;
@@ -26,6 +27,7 @@ import org.jawata.mcp.knowledge.StoryTemplate;
 import org.jawata.mcp.knowledge.StoryWriter;
 import org.jawata.mcp.knowledge.SymbolFact;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.lang.SymbolAnchors;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -270,12 +272,29 @@ public final class ExperienceTool implements Tool {
             Supplier<List<java.nio.file.Path>> defaultRoots,
             ExperienceMaintenance.PointerResolver resolverOverride,
             org.jawata.mcp.knowledge.StoreBackups backupsOverride) {
+        this(serviceSupplier, store, defaultRoots, resolverOverride, backupsOverride,
+            new JavaProvider(serviceSupplier).memoryAnchors());
+    }
+
+    /**
+     * E12 (ledger 28k-C3-8): the tool over memory's anchors as the language provider builds them, handed in by the one producer so
+     * the tool builds none of its own.
+     */
+    public static ExperienceTool withAnchors(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
+            Supplier<List<java.nio.file.Path>> defaultRoots, Supplier<SymbolAnchors> anchors) {
+        return new ExperienceTool(serviceSupplier, store, defaultRoots, null, null, anchors);
+    }
+
+    private ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
+            Supplier<List<java.nio.file.Path>> defaultRoots,
+            ExperienceMaintenance.PointerResolver resolverOverride,
+            org.jawata.mcp.knowledge.StoreBackups backupsOverride,
+            Supplier<SymbolAnchors> anchors) {
         this.serviceSupplier = serviceSupplier;
         this.store = store;
         this.backups = backupsOverride != null ? backupsOverride
             : new org.jawata.mcp.knowledge.StoreBackups(this::currentH2Store);
-        this.retrieval = new ExperienceRetrieval(store,
-            org.jawata.mcp.java.JavaSymbolAnchors.over(serviceSupplier));
+        this.retrieval = new ExperienceRetrieval(store, anchors);
         // Sprint 28g S14 D32 — THE SWEEP NOW ASKS WHAT THE WRITE GATE ASKS, and that is the
         // whole deliverable. It used to run on `resolvesViaJdt`, a SECOND resolver that split
         // `#member` off and resolved the TYPE only — so a job anchored at a deleted member was
@@ -286,7 +305,7 @@ public final class ExperienceTool implements Tool {
         // nothing calls is a second implementation the next change wires back in.
         this.maintenance = new ExperienceMaintenance(store,
             resolverOverride != null ? resolverOverride : this::anchorResolves, defaultRoots,
-            org.jawata.mcp.java.JavaSymbolAnchors.over(serviceSupplier));
+            anchors);
     }
 
     /**
