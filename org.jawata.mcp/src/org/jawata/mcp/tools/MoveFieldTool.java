@@ -26,15 +26,16 @@ import org.eclipse.jface.text.Document;
 import org.eclipse.text.edits.TextEdit;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.ltk.core.refactoring.Change;
-import org.jawata.mcp.refactoring.ChangeEngine;
+
 import java.util.ArrayList;
 import org.eclipse.jdt.internal.corext.codemanipulation.CodeGenerationSettings;
 import org.eclipse.jdt.internal.corext.refactoring.structure.MoveStaticMembersProcessor;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.eclipse.ltk.core.refactoring.participants.ProcessorBasedRefactoring;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
+import org.jawata.mcp.change.PreparedRefactoring;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.PreparedRefactoring;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 import java.nio.file.Path;

@@ -32,10 +32,10 @@ public final class ArchitectGate {
     public static final int DEFAULT_LOC_THRESHOLD = 500;
 
     private final int locThreshold;
-    private final org.jawata.mcp.refactoring.OperationRegistry registry;
+    private final org.jawata.mcp.change.OperationRegistry registry;
 
     public ArchitectGate(int locThreshold) {
-        this(locThreshold, org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+        this(locThreshold, org.jawata.mcp.change.OperationRegistry.theRegistry());
     }
 
     /**
@@ -48,7 +48,7 @@ public final class ArchitectGate {
      * hiding that behind a singleton would leave the gate's own tests passing over an
      * empty registry, which is a differently-shaped version of the same blindness.</p>
      */
-    public ArchitectGate(int locThreshold, org.jawata.mcp.refactoring.OperationRegistry registry) {
+    public ArchitectGate(int locThreshold, org.jawata.mcp.change.OperationRegistry registry) {
         this.locThreshold = locThreshold;
         this.registry = registry;
     }
@@ -106,7 +106,7 @@ public final class ArchitectGate {
         }
         String kind = arguments == null ? "" : arguments.path("kind").asText("");
         return !kind.isBlank() && registry.isStructural(
-            org.jawata.mcp.refactoring.OperationRegistry.qualify(tool, kind));
+            org.jawata.mcp.change.OperationRegistry.qualify(tool, kind));
     }
 
     /** Changed lines in the response's unified diff (+/− lines, excluding headers). */

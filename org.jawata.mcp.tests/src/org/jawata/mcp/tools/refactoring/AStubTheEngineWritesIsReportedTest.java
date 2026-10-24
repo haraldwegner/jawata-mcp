@@ -9,9 +9,9 @@ import java.util.List;
 import java.util.Map;
 
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.mcp.change.DiffRenderer;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.DiffRenderer;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.ChangeMethodSignatureTool;
 import org.junit.jupiter.api.DisplayName;

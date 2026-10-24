@@ -4,6 +4,8 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.Refactoring;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
+import org.jawata.mcp.change.CheckedChange;
+import org.jawata.mcp.change.RefactoringEngine;
 import org.jawata.mcp.tools.shared.HeadlessJdtConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

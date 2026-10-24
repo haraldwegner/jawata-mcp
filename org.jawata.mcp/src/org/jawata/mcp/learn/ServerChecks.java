@@ -75,15 +75,15 @@ public final class ServerChecks {
      * So these checks fail CLOSED on an unpopulated registry — a seat outcome reads as
      * ungated — and the lane's tests must supply the gates rather than inherit them.</p>
      */
-    private final org.jawata.mcp.refactoring.OperationRegistry registry;
+    private final org.jawata.mcp.change.OperationRegistry registry;
 
     public ServerChecks(LearnerEventStore events, BiConsumer<String, String> defectFiler) {
-        this(events, defectFiler, org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+        this(events, defectFiler, org.jawata.mcp.change.OperationRegistry.theRegistry());
     }
 
     /** @param registry the registry these checks ask which tools are gates; see {@link #registry}. */
     public ServerChecks(LearnerEventStore events, BiConsumer<String, String> defectFiler,
-            org.jawata.mcp.refactoring.OperationRegistry registry) {
+            org.jawata.mcp.change.OperationRegistry registry) {
         this.events = events;
         this.defectFiler = defectFiler;
         this.dial = new PolicyDial(events);

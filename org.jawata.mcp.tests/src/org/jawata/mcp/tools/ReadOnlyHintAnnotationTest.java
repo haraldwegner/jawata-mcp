@@ -98,9 +98,9 @@ class ReadOnlyHintAnnotationTest {
         // RUN instead of CONSIDER, because this test had registered the very operation its
         // cure names. The class run passed in isolation; only the whole suite, in order,
         // could see it.
-        org.jawata.mcp.refactoring.OperationRegistry ops =
-            org.jawata.mcp.refactoring.OperationRegistry.theRegistry();
-        org.jawata.mcp.refactoring.OperationRegistry.Snapshot borrowed = ops.snapshot();
+        org.jawata.mcp.change.OperationRegistry ops =
+            org.jawata.mcp.change.OperationRegistry.theRegistry();
+        org.jawata.mcp.change.OperationRegistry.Snapshot borrowed = ops.snapshot();
         try {
             ToolRegistry registry = new ToolRegistry();
             org.jawata.mcp.refactoring.RefactoringChangeCache cache =

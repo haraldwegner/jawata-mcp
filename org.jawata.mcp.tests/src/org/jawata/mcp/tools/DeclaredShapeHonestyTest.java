@@ -419,8 +419,8 @@ class DeclaredShapeHonestyTest {
     @Test
     @DisplayName("the real front doors publish a set the cure table validates against")
     void theCureTableValidatesAgainstTheRealFrontDoors() {
-        org.jawata.mcp.refactoring.OperationRegistry registry =
-            new org.jawata.mcp.refactoring.OperationRegistry();
+        org.jawata.mcp.change.OperationRegistry registry =
+            new org.jawata.mcp.change.OperationRegistry();
         java.util.Map<String, AbstractTool> tools = new LinkedHashMap<>(frontDoors());
         // `data` used to be added by hand here, because frontDoors() did not carry it — it
         // published no kind enum and so was not a parametric front door at all. Stage 5 made

@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * encapsulation started being asked for tests they cannot need, and nothing failed:
  * a list of names in this package has no way to learn that a name stopped existing.</p>
  *
- * <p>The question is now asked of {@link org.jawata.mcp.refactoring.OperationRegistry},
+ * <p>The question is now asked of {@link org.jawata.mcp.change.OperationRegistry},
  * which is populated by the tools themselves at registration. Every refactoring
  * declares itself mechanical by extending the refactoring base, so the set cannot drift
  * from the tool surface and there is nothing to remember when one changes.</p>
@@ -33,7 +33,7 @@ public final class MechanicalChangeJournal {
      * then ASKS for a test rather than exempting an operation it knows nothing about.</p>
      */
     public static boolean isMechanicalTool(String toolName) {
-        return org.jawata.mcp.refactoring.OperationRegistry.theRegistry()
+        return org.jawata.mcp.change.OperationRegistry.theRegistry()
             .isMechanical(toolName);
     }
 

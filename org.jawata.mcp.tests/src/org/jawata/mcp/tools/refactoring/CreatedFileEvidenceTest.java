@@ -1,8 +1,8 @@
 package org.jawata.mcp.tools.refactoring;
 
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.mcp.change.CompileVerify;
 import org.jawata.mcp.fixtures.TestProjectHelper;
-import org.jawata.mcp.refactoring.CompileVerify;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

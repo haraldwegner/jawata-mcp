@@ -5,7 +5,7 @@ import org.jawata.core.IJdtService;
 import org.jawata.mcp.domain.Advisor;
 import org.jawata.mcp.domain.NoOpAdvisor;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.PlanStore;
+import org.jawata.mcp.change.PlanStore;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 import java.util.LinkedHashMap;

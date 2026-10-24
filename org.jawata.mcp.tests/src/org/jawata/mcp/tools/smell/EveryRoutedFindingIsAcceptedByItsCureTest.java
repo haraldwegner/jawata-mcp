@@ -175,9 +175,9 @@ class EveryRoutedFindingIsAcceptedByItsCureTest {
         // `cures` assertion below would fail for all of them. Publishing the real doors
         // through the real publish path is what makes this test's process resemble the one
         // the claim is about. Borrowed and given back, the way the sibling door gate does it.
-        org.jawata.mcp.refactoring.OperationRegistry operations =
-            org.jawata.mcp.refactoring.OperationRegistry.theRegistry();
-        org.jawata.mcp.refactoring.OperationRegistry.Snapshot borrowed = operations.snapshot();
+        org.jawata.mcp.change.OperationRegistry operations =
+            org.jawata.mcp.change.OperationRegistry.theRegistry();
+        org.jawata.mcp.change.OperationRegistry.Snapshot borrowed = operations.snapshot();
         // DECLARED OUTSIDE THE BORROW so the assertions can read them after it is given back,
         // and so the `try` can open BEFORE `clear()` — a C8b round-2 audit found the try
         // opening after it, which left the whole publish window unguarded: anything throwing

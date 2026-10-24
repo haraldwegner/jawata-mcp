@@ -70,7 +70,7 @@ class EventTapTest {
         // anything noticing. The tools declare it now and the registry answers, so a
         // test that exercises the tap has to wire the tool it names, exactly as the
         // application does at registration.
-        org.jawata.mcp.refactoring.OperationRegistry.theRegistry()
+        org.jawata.mcp.change.OperationRegistry.theRegistry()
             .register("rename_symbol", java.util.List.of(), true, false, false,
                 java.util.Set.of(), "kind");
         tap.onCall(CallerIdentity.supplied("s1"), "rename_symbol", mapper.readTree("{}"),

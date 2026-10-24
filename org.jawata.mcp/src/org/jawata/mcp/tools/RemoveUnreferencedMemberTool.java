@@ -28,11 +28,11 @@ import org.eclipse.jface.text.Document;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
+import org.jawata.mcp.change.PreparedRefactoring;
 import org.jawata.mcp.models.CodeAddress;
 import org.jawata.mcp.models.NextStep;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.ChangeEngine;
-import org.jawata.mcp.refactoring.PreparedRefactoring;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.shared.FormatterOptions;
 

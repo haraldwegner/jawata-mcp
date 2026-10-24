@@ -90,8 +90,8 @@ public class InspectRefactoringTool extends AbstractTool {
         // where the full text is fetched from, so `fullDiff:true` matters most here — the
         // cache holds the whole diff and the cap only decides what the default answer
         // carries.
-        org.jawata.mcp.refactoring.DiffView.of(cached.diff(),
-            org.jawata.mcp.refactoring.DiffView.fullRequested(arguments)).putInto(data);
+        org.jawata.mcp.change.DiffView.of(cached.diff(),
+            org.jawata.mcp.change.DiffView.fullRequested(arguments)).putInto(data);
         data.put("filePaths", cached.filePaths());
         return ToolResponse.success(data, ResponseMeta.builder()
             .suggestedNextTools(List.of(

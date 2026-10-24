@@ -175,7 +175,7 @@ public class ToolRegistry {
      * Register a tool with the registry.
      *
      * <p>Sprint 28d-rescue (P1): this is also where the tool's operations enter
-     * {@link org.jawata.mcp.refactoring.OperationRegistry}. Here rather than in each
+     * {@link org.jawata.mcp.change.OperationRegistry}. Here rather than in each
      * tool's constructor because this method already sees every tool exactly once, so
      * the operation list cannot drift from the tool list.</p>
      */

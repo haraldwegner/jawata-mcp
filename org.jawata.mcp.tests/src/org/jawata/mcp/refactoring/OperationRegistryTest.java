@@ -1,6 +1,8 @@
 package org.jawata.mcp.refactoring;
 
 import com.fasterxml.jackson.databind.JsonNode;
+
+import org.jawata.mcp.change.OperationRegistry;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.Tool;
 import org.jawata.mcp.tools.ToolRegistry;

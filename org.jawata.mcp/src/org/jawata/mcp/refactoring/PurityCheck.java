@@ -15,6 +15,7 @@ import org.eclipse.jdt.core.dom.ReturnStatement;
 import org.eclipse.jdt.core.dom.SuperMethodInvocation;
 import org.eclipse.jdt.core.dom.SwitchCase;
 import org.eclipse.jdt.core.dom.ThrowStatement;
+import org.jawata.mcp.change.ParityGate;
 
 import java.util.ArrayList;
 import java.util.List;

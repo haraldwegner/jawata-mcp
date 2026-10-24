@@ -2,7 +2,7 @@ package org.jawata.mcp.fixtures;
 
 import java.util.List;
 
-import org.jawata.mcp.refactoring.OperationRegistry;
+import org.jawata.mcp.change.OperationRegistry;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
 import org.jawata.mcp.tools.GetDiagnosticsTool;
 import org.jawata.mcp.tools.RunTestsTool;

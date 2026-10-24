@@ -97,7 +97,7 @@ public final class CureLookup {
             // that knows only one front door would have printed a bare `method`, which
             // names nothing a reader can call.
             String rendered =
-                org.jawata.mcp.refactoring.OperationRegistry.theRegistry().invocationOf(operation);
+                org.jawata.mcp.change.OperationRegistry.theRegistry().invocationOf(operation);
             if (rendered != null && !rendered.equals(operation)) {
                 return rendered;
             }

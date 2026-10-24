@@ -1,6 +1,7 @@
-package org.jawata.mcp.refactoring;
+package org.jawata.mcp.change;
 
 import org.eclipse.ltk.core.refactoring.Refactoring;
+import org.jawata.mcp.refactoring.JdtRefactoringEngine;
 
 /**
  * The refactoring-engine seam (Sprint 25, D1). A {@code RefactoringEngine}

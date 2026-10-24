@@ -20,9 +20,9 @@ import org.eclipse.jface.text.Document;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.ChangeEngine;
 import org.jawata.mcp.refactoring.CreateCompilationUnitChange;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.AbstractTool;
@@ -210,8 +210,8 @@ public class CopyClassTool extends AbstractTool
                 // D7f: capped and summarised like every other apply-shaped response. This
                 // door also returns `generatedSource`, so an uncapped diff made the whole
                 // new file arrive TWICE in one answer.
-                org.jawata.mcp.refactoring.DiffView.of(diff,
-                    org.jawata.mcp.refactoring.DiffView.fullRequested(arguments)).putInto(data);
+                org.jawata.mcp.change.DiffView.of(diff,
+                    org.jawata.mcp.change.DiffView.fullRequested(arguments)).putInto(data);
                 data.put("summary", summary);
                 data.put("generatedSource", newSource);
                 return ToolResponse.success(data, ResponseMeta.builder()
@@ -236,8 +236,8 @@ public class CopyClassTool extends AbstractTool
             data.put("operation", "copy_class");
             data.put("applied", true);
             data.put("filesModified", outcome.modifiedFilePaths());
-            org.jawata.mcp.refactoring.DiffView.of(diff,
-                org.jawata.mcp.refactoring.DiffView.fullRequested(arguments)).putInto(data);
+            org.jawata.mcp.change.DiffView.of(diff,
+                org.jawata.mcp.change.DiffView.fullRequested(arguments)).putInto(data);
             data.put("undoChangeId", undoChangeId);
             data.put("summary", summary);
             data.put("newType", newName);

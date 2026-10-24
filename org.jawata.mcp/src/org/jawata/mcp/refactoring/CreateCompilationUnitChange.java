@@ -6,6 +6,7 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.eclipse.ltk.core.refactoring.resource.DeleteResourceChange;
+import org.jawata.mcp.change.ChangeEngine;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;

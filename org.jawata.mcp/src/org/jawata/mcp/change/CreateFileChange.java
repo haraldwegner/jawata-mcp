@@ -1,4 +1,4 @@
-package org.jawata.mcp.refactoring;
+package org.jawata.mcp.change;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.runtime.CoreException;

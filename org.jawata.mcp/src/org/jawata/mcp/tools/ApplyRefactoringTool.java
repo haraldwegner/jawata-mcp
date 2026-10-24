@@ -2,9 +2,9 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.ChangeEngine;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 import java.util.LinkedHashMap;
@@ -83,8 +83,8 @@ public class ApplyRefactoringTool extends AbstractTool {
         // while this stood. The operations that hand-assemble composite changes are the
         // ones it mattered most for: they wrap them in PreparedRefactoring, which answers
         // OK to both LTK condition checks on purpose.
-        org.jawata.mcp.refactoring.GatedApply.Result gated =
-            org.jawata.mcp.refactoring.GatedApply.perform(entry.get().change(), org.jawata.mcp.java.JavaChange.contextFor(service), org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
+        org.jawata.mcp.change.GatedApply.Result gated =
+            org.jawata.mcp.change.GatedApply.perform(entry.get().change(), org.jawata.mcp.java.JavaChange.contextFor(service), org.jawata.mcp.change.GatedApply.Mode.UNDO);
         ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(

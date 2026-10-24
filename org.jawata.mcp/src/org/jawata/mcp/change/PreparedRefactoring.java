@@ -1,4 +1,4 @@
-package org.jawata.mcp.refactoring;
+package org.jawata.mcp.change;
 
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.ltk.core.refactoring.Change;

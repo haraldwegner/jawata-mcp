@@ -2,7 +2,7 @@ package org.jawata.mcp.tools;
 
 import java.util.List;
 
-import org.jawata.mcp.refactoring.OperationRegistry;
+import org.jawata.mcp.change.OperationRegistry;
 
 /**
  * THE ONE PLACE A TOOL BECOMES AN OPERATION — seam D of Stage 6a.

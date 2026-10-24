@@ -8,9 +8,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.jawata.mcp.change.OperationRegistry;
 import org.jawata.mcp.fixtures.InertShippedTools;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.OperationRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

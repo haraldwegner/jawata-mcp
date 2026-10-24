@@ -104,7 +104,7 @@ public final class CureTier {
      * <p>Sprint 28d-rescue (P1) changed what "the real registry" means, and nothing
      * else here. It used to be one front door's kind list, which silently made every
      * standalone operation unnameable as a cure step; it is now
-     * {@link org.jawata.mcp.refactoring.OperationRegistry}, which every tool feeds as
+     * {@link org.jawata.mcp.change.OperationRegistry}, which every tool feeds as
      * it registers. The derivation rules below are untouched — the seam was already a
      * parameter, which is why this is a one-line change rather than a rewrite.</p>
      */
@@ -126,7 +126,7 @@ public final class CureTier {
         // this derivation is entitled to conclude.
         java.util.Set<String> published = new java.util.LinkedHashSet<>(
             org.jawata.mcp.tools.RefactorToPatternTool.patternKinds());
-        published.addAll(org.jawata.mcp.refactoring.OperationRegistry.theRegistry().all());
+        published.addAll(org.jawata.mcp.change.OperationRegistry.theRegistry().all());
         return derive(kind, List.copyOf(published));
     }
 

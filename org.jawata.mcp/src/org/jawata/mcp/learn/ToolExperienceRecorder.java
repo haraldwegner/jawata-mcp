@@ -37,7 +37,7 @@ public final class ToolExperienceRecorder {
      * {@code ArchitectGate}'s constructor gives: a dependency taken from a global is one a
      * test cannot supply.</p>
      */
-    private final org.jawata.mcp.refactoring.OperationRegistry registry;
+    private final org.jawata.mcp.change.OperationRegistry registry;
 
     /** Arg keys that make a situation recognizable for keyword retrieval. */
     private static final String[] SALIENT =
@@ -59,12 +59,12 @@ public final class ToolExperienceRecorder {
     private PrecedentLedger steers;
 
     public ToolExperienceRecorder(ToolExperienceStore store) {
-        this(store, org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+        this(store, org.jawata.mcp.change.OperationRegistry.theRegistry());
     }
 
     /** @param registry the registry this recorder asks which tools are gates; see {@link #registry}. */
     public ToolExperienceRecorder(ToolExperienceStore store,
-            org.jawata.mcp.refactoring.OperationRegistry registry) {
+            org.jawata.mcp.change.OperationRegistry registry) {
         this.store = store;
         this.registry = registry;
     }

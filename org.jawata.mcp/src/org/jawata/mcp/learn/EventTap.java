@@ -39,7 +39,7 @@ public class EventTap {
      * reach here would leave this tap's own tests passing over an empty registry — a
      * differently-shaped version of the same blindness.</p>
      */
-    private final org.jawata.mcp.refactoring.OperationRegistry registry;
+    private final org.jawata.mcp.change.OperationRegistry registry;
 
     /** Sprint 26a D2: the experience-loop capture — null until the application
      *  wires it (the real edit-outcome capture that replaces the retired edit switch). */
@@ -54,12 +54,12 @@ public class EventTap {
     private java.util.function.BiConsumer<String, String> originStamper;
 
     public EventTap(SessionLedger ledger, LearnerEventStore events) {
-        this(ledger, events, org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+        this(ledger, events, org.jawata.mcp.change.OperationRegistry.theRegistry());
     }
 
     /** @param registry the registry this tap asks which tools are gates; see {@link #registry}. */
     public EventTap(SessionLedger ledger, LearnerEventStore events,
-            org.jawata.mcp.refactoring.OperationRegistry registry) {
+            org.jawata.mcp.change.OperationRegistry registry) {
         this.ledger = ledger;
         this.events = events;
         this.registry = registry;

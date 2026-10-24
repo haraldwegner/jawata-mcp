@@ -19,6 +19,7 @@ import org.eclipse.ltk.core.refactoring.TextFileChange;
 import org.eclipse.text.edits.InsertEdit;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.change.ChangeContext;
+import org.jawata.mcp.change.GatedApply;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.java.JavaChange;
 import org.jawata.spi.host.BuildScope;

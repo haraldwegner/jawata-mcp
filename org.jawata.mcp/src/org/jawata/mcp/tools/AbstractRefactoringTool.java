@@ -7,9 +7,9 @@ import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.Refactoring;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.ChangeEngine;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -305,8 +305,8 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
         String summary = operationLabel + ": " + change.getName();
         // D7f: the RESPONSE is capped and summarised; `diff` stays whole for the cache, so
         // a staged change is still served in full by `refactoring action=inspect`.
-        org.jawata.mcp.refactoring.DiffView view = org.jawata.mcp.refactoring.DiffView.of(
-            diff, org.jawata.mcp.refactoring.DiffView.fullRequested(arguments));
+        org.jawata.mcp.change.DiffView view = org.jawata.mcp.change.DiffView.of(
+            diff, org.jawata.mcp.change.DiffView.fullRequested(arguments));
 
         boolean autoApply = getBooleanParam(arguments, "auto_apply", true);
         if (!autoApply) {
@@ -338,8 +338,8 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
         // applied unverified". An architect watch found it; the fix is that the gate now
         // hangs off the APPLY STEP rather than off whichever base an author happened to
         // extend.
-        org.jawata.mcp.refactoring.GatedApply.Result gated =
-            org.jawata.mcp.refactoring.GatedApply.perform(change, org.jawata.mcp.java.JavaChange.contextFor(service), org.jawata.mcp.refactoring.GatedApply.Mode.UNDO);
+        org.jawata.mcp.change.GatedApply.Result gated =
+            org.jawata.mcp.change.GatedApply.perform(change, org.jawata.mcp.java.JavaChange.contextFor(service), org.jawata.mcp.change.GatedApply.Mode.UNDO);
         ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(

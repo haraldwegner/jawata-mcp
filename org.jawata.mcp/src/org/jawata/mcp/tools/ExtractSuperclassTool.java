@@ -33,13 +33,13 @@ import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.eclipse.ltk.core.refactoring.participants.ProcessorBasedRefactoring;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
+import org.jawata.mcp.change.CheckedChange;
+import org.jawata.mcp.change.RefactoringEngine;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.ChangeEngine;
-import org.jawata.mcp.refactoring.CheckedChange;
 import org.jawata.mcp.refactoring.CreateCompilationUnitChange;
 import org.jawata.mcp.refactoring.JdtRefactoringEngine;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
-import org.jawata.mcp.refactoring.RefactoringEngine;
 import org.jawata.mcp.tools.shared.HeadlessJdtConfig;
 
 import java.util.ArrayList;

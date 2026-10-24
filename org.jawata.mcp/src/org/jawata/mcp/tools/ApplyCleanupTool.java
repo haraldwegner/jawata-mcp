@@ -13,12 +13,13 @@ import org.eclipse.jdt.ui.cleanup.ICleanUpFix;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.SourceScan;
 
 import java.util.Optional;
-import org.jawata.mcp.refactoring.ChangeEngine;
+
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

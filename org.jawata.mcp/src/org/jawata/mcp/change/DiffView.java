@@ -1,4 +1,4 @@
-package org.jawata.mcp.refactoring;
+package org.jawata.mcp.change;
 
 import com.fasterxml.jackson.databind.JsonNode;
 

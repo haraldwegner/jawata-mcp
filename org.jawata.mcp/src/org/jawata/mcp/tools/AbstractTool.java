@@ -232,7 +232,7 @@ public abstract class AbstractTool implements Tool {
             "type", "boolean",
             "description", "Default false: the response carries diffSummary (one row per "
                 + "file with its hunk and line counts) and the diff text capped at "
-                + org.jawata.mcp.refactoring.DiffView.DEFAULT_MAX_CHARS
+                + org.jawata.mcp.change.DiffView.DEFAULT_MAX_CHARS
                 + " characters, setting truncated:true when it was cut. Set true for the "
                 + "whole diff — a 144-reference rename answered 167,785 characters, which "
                 + "a client could not display at all."
@@ -265,8 +265,8 @@ public abstract class AbstractTool implements Tool {
      * @param arguments the call's arguments, read ONLY for {@code fullDiff}
      */
     protected static void putDiff(Map<String, Object> data, String diff, JsonNode arguments) {
-        org.jawata.mcp.refactoring.DiffView
-            .of(diff, org.jawata.mcp.refactoring.DiffView.fullRequested(arguments))
+        org.jawata.mcp.change.DiffView
+            .of(diff, org.jawata.mcp.change.DiffView.fullRequested(arguments))
             .putInto(data);
     }
 

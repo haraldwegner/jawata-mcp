@@ -30,11 +30,11 @@ import org.eclipse.jface.text.Document;
 import org.eclipse.ltk.core.refactoring.CompositeChange;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
+import org.jawata.mcp.change.CheckedChange;
+import org.jawata.mcp.change.PreparedRefactoring;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.ChangeEngine;
-import org.jawata.mcp.refactoring.CheckedChange;
 import org.jawata.mcp.refactoring.JdtRefactoringEngine;
-import org.jawata.mcp.refactoring.PreparedRefactoring;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.refactoring.atoms.DeleteAtom;
 

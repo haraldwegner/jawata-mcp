@@ -1,5 +1,7 @@
 package org.jawata.mcp.refactoring;
 
+import org.jawata.mcp.change.OperationRegistry;
+
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**

@@ -6,6 +6,7 @@ import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.ltk.core.refactoring.TextFileChange;
 import org.eclipse.text.edits.ReplaceEdit;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.DiffRenderer;
 
 import java.util.List;
 

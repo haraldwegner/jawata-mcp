@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.function.Supplier;
 
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.refactoring.OperationRegistry;
+import org.jawata.mcp.change.OperationRegistry;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

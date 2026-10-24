@@ -41,9 +41,9 @@ class ArchitectGateTest {
      * was invisible here. A guard over a fact the door renders is the copy that grows when the
      * owner is not asked.</p>
      */
-    private static org.jawata.mcp.refactoring.OperationRegistry wiredRegistry() {
-        org.jawata.mcp.refactoring.OperationRegistry registry =
-            new org.jawata.mcp.refactoring.OperationRegistry();
+    private static org.jawata.mcp.change.OperationRegistry wiredRegistry() {
+        org.jawata.mcp.change.OperationRegistry registry =
+            new org.jawata.mcp.change.OperationRegistry();
         // EVERY refactoring door comes from the tool, not from a literal. Three were literals
         // until a C6 audit read them: `extract` was registered with seven kinds and two
         // structural ones, `move` with three and one, and `inline` NOT AT ALL — the

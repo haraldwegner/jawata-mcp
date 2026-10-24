@@ -16,6 +16,7 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.jawata.mcp.change.ChangeContext;
+import org.jawata.mcp.change.GatedApply;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.host.WorkspaceWrites;
 import org.jawata.spi.lang.BuildVerdict;

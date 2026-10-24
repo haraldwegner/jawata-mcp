@@ -14,6 +14,10 @@ import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.CompositeChange;
 import org.eclipse.ltk.core.refactoring.TextFileChange;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
+import org.jawata.mcp.change.CompileVerify;
+import org.jawata.mcp.change.DiffRenderer;
+import org.jawata.mcp.change.GatedApply;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -1,5 +1,6 @@
 package org.jawata.mcp.refactoring;
 
+import org.jawata.mcp.change.OperationRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

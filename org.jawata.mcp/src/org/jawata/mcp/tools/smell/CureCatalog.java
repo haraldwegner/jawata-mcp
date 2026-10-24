@@ -995,7 +995,7 @@ public final class CureCatalog {
      * <p><b>Why this is not in the static initializer, where it used to be.</b> It used
      * to validate against one front door's published kinds, which is a constant and so
      * could be read at class-load. It now validates against
-     * {@link org.jawata.mcp.refactoring.OperationRegistry}, which tools populate as they
+     * {@link org.jawata.mcp.change.OperationRegistry}, which tools populate as they
      * register — so at class-load the registry may legitimately be empty, and a check
      * there would refuse every step for a reason that is about ORDERING rather than
      * about a wrong table. Called once from the application after registration, it asks
@@ -1004,7 +1004,7 @@ public final class CureCatalog {
      *
      * @throws IllegalStateException naming the kind, the step, and that nothing backs it
      */
-    public static void validateAgainst(org.jawata.mcp.refactoring.OperationRegistry registry) {
+    public static void validateAgainst(org.jawata.mcp.change.OperationRegistry registry) {
         for (Map.Entry<String, List<Cure>> e : BY_KIND.entrySet()) {
             for (Cure c : e.getValue()) {
                 if (c.recipe() == null) {
@@ -1026,7 +1026,7 @@ public final class CureCatalog {
                         + "' declares step '" + c.recipe() + "', which is published by"
                         + " more than one tool: " + registry.toolsFor(c.recipe())
                         + ". Declare the qualified form instead, e.g. '"
-                        + org.jawata.mcp.refactoring.OperationRegistry.qualify(
+                        + org.jawata.mcp.change.OperationRegistry.qualify(
                             registry.toolsFor(c.recipe()).iterator().next(), c.recipe())
                         + "'.");
                 }

@@ -21,9 +21,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import org.jawata.mcp.change.OperationRegistry;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.OperationRegistry;
 import org.jawata.mcp.tools.OperationSurface;
 import org.jawata.mcp.tools.Tool;
 import org.junit.jupiter.api.AfterEach;

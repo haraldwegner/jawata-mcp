@@ -1,4 +1,4 @@
-package org.jawata.mcp.refactoring;
+package org.jawata.mcp.change;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -6,7 +6,6 @@ import java.util.Set;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.jawata.mcp.change.ChangeContext;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.lang.BuildVerdict;
 import org.jawata.spi.lang.Diagnostic;

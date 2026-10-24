@@ -5,6 +5,7 @@ import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.text.edits.InsertEdit;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

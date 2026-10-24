@@ -1,10 +1,12 @@
-package org.jawata.mcp.refactoring;
+package org.jawata.mcp.change;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 import org.eclipse.ltk.core.refactoring.Change;
+import org.jawata.mcp.change.ChangeEngine.ApplyOutcome;
+import org.jawata.mcp.refactoring.RecipeEngine;
 
 /**
  * THE ONE WAY TO APPLY A CHANGE, gate included.

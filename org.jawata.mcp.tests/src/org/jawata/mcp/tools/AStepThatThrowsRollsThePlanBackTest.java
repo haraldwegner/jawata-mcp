@@ -11,7 +11,7 @@ import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.domain.NoOpAdvisor;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.PlanStore;
+import org.jawata.mcp.change.PlanStore;
 import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

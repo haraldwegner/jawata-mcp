@@ -1,11 +1,12 @@
 package org.jawata.mcp.tools.refactoring;
 
-import org.jawata.mcp.refactoring.DiffRenderer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import org.jawata.mcp.change.DiffRenderer;
 
 /**
  * Sprint 28a (1b, step M10) — a diff over a CRLF project must not carry

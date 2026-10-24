@@ -5,8 +5,8 @@ import org.eclipse.jdt.internal.corext.refactoring.reorg.IConfirmQuery;
 import org.eclipse.jdt.internal.corext.refactoring.reorg.IReorgQueries;
 import org.eclipse.jdt.internal.corext.refactoring.reorg.JavaDeleteProcessor;
 import org.eclipse.ltk.core.refactoring.participants.ProcessorBasedRefactoring;
-import org.jawata.mcp.refactoring.CheckedChange;
-import org.jawata.mcp.refactoring.RefactoringEngine;
+import org.jawata.mcp.change.CheckedChange;
+import org.jawata.mcp.change.RefactoringEngine;
 
 /**
  * DELETE, as an ATOM — an internal step, not a published operation.

@@ -1,10 +1,12 @@
-package org.jawata.mcp.refactoring;
+package org.jawata.mcp.change;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+
+import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 /**
  * Sprint 18 — session-scoped store of in-flight refactoring {@link Plan}s, mirroring

@@ -354,7 +354,7 @@ public class JawataApplication implements IApplication {
         // no longer work: the registry is populated by registration, and a class-load
         // before that would refuse every step for a reason about ordering.
         org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(
-            org.jawata.mcp.refactoring.OperationRegistry.theRegistry());
+            org.jawata.mcp.change.OperationRegistry.theRegistry());
 
         // Sprint 28g D39 / the architecture's P2 step 3. The same moment, and the same reason:
         // every tool has registered, so this is the first point at which the engine's coverage

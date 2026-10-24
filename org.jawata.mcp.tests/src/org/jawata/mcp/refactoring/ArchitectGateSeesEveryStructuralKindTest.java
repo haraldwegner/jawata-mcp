@@ -1,5 +1,6 @@
 package org.jawata.mcp.refactoring;
 
+import org.jawata.mcp.change.OperationRegistry;
 import org.jawata.mcp.tools.ExtractTool;
 import org.jawata.mcp.tools.InlineTool;
 import org.jawata.mcp.tools.MoveTool;
