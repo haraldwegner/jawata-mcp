@@ -390,7 +390,8 @@ public final class ForkedTestRunner {
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
             }
-            String[] lines = buf.toString().split("\n");
+            // S19-20: a library's DEBUG chatter must not fill the 100 lines that are left to show.
+            String[] lines = LogNoise.withoutDebug(buf.toString()).split("\n");
             int from = Math.max(0, lines.length - 100);
             StringBuilder out = new StringBuilder();
             if (truncated) out.append("[…stream truncated…]\n");
