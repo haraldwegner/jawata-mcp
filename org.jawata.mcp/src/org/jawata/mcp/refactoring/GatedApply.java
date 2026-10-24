@@ -102,7 +102,11 @@ public final class GatedApply {
             // would leave it applied with nobody able to undo it (28k ledger C2b-19). Undo it, then let the throw go on.
             if (outcome.undoChange() != null) {
                 try {
-                    ChangeEngine.perform(outcome.undoChange(), context);
+                    ChangeEngine.ApplyOutcome undone = ChangeEngine.perform(outcome.undoChange(), context);
+                    if (undone.validationError() != null) {
+                        thrown.addSuppressed(new IllegalStateException(
+                            "UNDO FAILED — the change IS on disk; restore from VCS: " + undone.validationError()));
+                    }
                 } catch (RuntimeException undoFailed) {
                     thrown.addSuppressed(undoFailed);
                 }

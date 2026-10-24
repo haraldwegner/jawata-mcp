@@ -42,14 +42,24 @@ public final class ParityGate {
      * Rebuild the projects the language says the changed files reach, the way it says, and collect their error-severity
      * problems. {@code clean} is true iff none remain. Only what is touched is built (Sprint 28k E7c, his word): the language
      * answers, from the files a step changed, the projects that own them and the ones that require those, built
-     * incrementally; with no files to go by it answers every project it owns, in full.
+     * incrementally; with no files to go by it answers every project it owns, in full. Total: a language that cannot say what to
+     * build, a build that throws, or a language that cannot read the errors it left is a failed gate with a diagnostic naming
+     * which, never an exception out of the plan loop.
      *
      * @param changedFiles the files the step just changed, as the language names them; empty builds everything in full
      */
     public static Result compile(ChangeContext context, List<String> changedFiles) {
         List<Diagnostic> errors = new ArrayList<>();
         NullProgressMonitor monitor = new NullProgressMonitor();
-        BuildVerdict.Rebuild rebuild = context.verdict().rebuildAfter(changedFiles);
+        BuildVerdict.Rebuild rebuild;
+        try {
+            rebuild = context.verdict().rebuildAfter(changedFiles);
+        } catch (RuntimeException e) {
+            // The language is asked what to build; if it cannot say, nothing was checked, and nothing checked is not clean.
+            log.warn("ParityGate could not work out what to build: {}", causeOf(e));
+            errors.add(new Diagnostic(null, -1, "could not work out what to build: " + causeOf(e)));
+            return new Result(false, errors.size(), errors);
+        }
         for (String name : rebuild.scope().projects()) {
             BuildScope project = BuildScope.of(name);
             String cause = "not built (the host's log names the cause)";
@@ -60,15 +70,24 @@ public final class ParityGate {
                 // Any failure of a build is a failed gate: the plan loop rolls the plan back on it. An unchecked one
                 // escaping here would leave earlier steps applied and unrolled (28k C2, auditor finding A).
                 built = Set.of();
-                cause = e.getMessage() != null ? e.getMessage() : e.toString();
+                cause = causeOf(e);
             }
             if (!built.contains(name)) {
                 log.warn("ParityGate build failed on '{}': {}", name, cause);
                 errors.add(new Diagnostic(null, -1, "build failed on " + name + ": " + cause));
                 continue;
             }
-            errors.addAll(context.verdict().errors(project, monitor));
+            try {
+                errors.addAll(context.verdict().errors(project, monitor));
+            } catch (RuntimeException e) {
+                log.warn("ParityGate could not read the errors of '{}': {}", name, causeOf(e));
+                errors.add(new Diagnostic(null, -1, "could not read the errors of " + name + ": " + causeOf(e)));
+            }
         }
         return new Result(errors.isEmpty(), errors.size(), errors);
+    }
+
+    private static String causeOf(Exception e) {
+        return e.getMessage() != null ? e.getMessage() : e.toString();
     }
 }

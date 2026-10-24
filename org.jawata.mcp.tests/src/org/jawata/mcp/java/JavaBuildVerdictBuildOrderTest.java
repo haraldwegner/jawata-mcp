@@ -11,7 +11,9 @@ import org.eclipse.jdt.core.JavaCore;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.fixtures.TestProjectHelper;
+import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.lang.BuildVerdict;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -25,18 +27,27 @@ class JavaBuildVerdictBuildOrderTest {
     @RegisterExtension
     TestProjectHelper helper = new TestProjectHelper();
 
-    @Test
-    @DisplayName("projects are listed required-first, whatever order they were loaded in")
-    void aRequiredProjectIsBuiltBeforeItsRequirers() throws Exception {
+    private JdtServiceImpl service;
+    private LoadedProject first;
+    private LoadedProject middle;
+    private LoadedProject last;
+
+    @BeforeEach
+    void loadedLastRequirerFirst() throws Exception {
         // Loaded last-requirer first, so the order the workspace holds them in is the reverse of the order they must be built in.
-        JdtServiceImpl service = helper.loadWorkspaceCopy(new String[] {"compose-clean", "extract-crossfile", "compile-clean"});
+        service = helper.loadWorkspaceCopy(new String[] {"compose-clean", "extract-crossfile", "compile-clean"});
         List<LoadedProject> loaded = new ArrayList<>(service.allProjects());
-        LoadedProject last = loaded.get(0);
-        LoadedProject middle = loaded.get(1);
-        LoadedProject first = loaded.get(2);
+        last = loaded.get(0);
+        middle = loaded.get(1);
+        first = loaded.get(2);
         requires(middle, first);
         requires(last, first);
         requires(last, middle);
+    }
+
+    @Test
+    @DisplayName("projects are listed required-first, whatever order they were loaded in")
+    void aRequiredProjectIsBuiltBeforeItsRequirers() throws Exception {
         BuildVerdict verdict = JavaChange.contextFor(service).verdict();
 
         BuildVerdict.Rebuild rebuild = verdict.rebuildAfter(
@@ -44,6 +55,18 @@ class JavaBuildVerdictBuildOrderTest {
 
         assertEquals(List.of(name(first), name(middle), name(last)), rebuild.scope().projects(),
             "the changed project, then the one that requires only it, then the one that requires both");
+    }
+
+    @Test
+    @DisplayName("with no changed file to go by, every project is built in full, required-first")
+    void everyProjectInFullIsAlsoBuiltRequiredFirst() throws Exception {
+        BuildVerdict verdict = JavaChange.contextFor(service).verdict();
+
+        BuildVerdict.Rebuild rebuild = verdict.rebuildAfter(List.of());
+
+        assertEquals(BuildKind.FULL, rebuild.kind());
+        assertEquals(List.of(name(first), name(middle), name(last)), rebuild.scope().projects(),
+            "the every-project fallback keeps the same order as the changed-file answer");
     }
 
     private static void requires(LoadedProject requirer, LoadedProject required) throws Exception {

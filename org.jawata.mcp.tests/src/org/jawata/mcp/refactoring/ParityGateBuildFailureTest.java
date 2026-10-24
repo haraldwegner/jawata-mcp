@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,6 +31,8 @@ import org.junit.jupiter.api.Test;
 class ParityGateBuildFailureTest {
 
     private static final String PROJECT = "p";
+
+    private static final String OTHER = "q";
 
     @Test
     @DisplayName("a build that throws a RuntimeException fails the gate, naming the project and the cause")
@@ -64,8 +67,64 @@ class ParityGateBuildFailureTest {
         assertTrue(result.clean(), () -> "built and error-free: " + result.errors());
     }
 
+    @Test
+    @DisplayName("a project whose build threw does not stop the next project from being built and read")
+    void aFailedBuildOfOneProjectDoesNotHideTheNext() {
+        List<String> built = new ArrayList<>();
+        ParityGate.Result result = ParityGate.compile(context(BuildScope.of(PROJECT, OTHER),
+            scope -> {
+                String name = scope.projects().get(0);
+                built.add(name);
+                if (name.equals(PROJECT)) {
+                    throw new IllegalStateException("the build blew up");
+                }
+                return Set.of(name);
+            },
+            scope -> List.of(new Diagnostic("Q.java", 3, "cannot find symbol")), null), List.of());
+
+        assertEquals(List.of(PROJECT, OTHER), built, "the second project is still built after the first one failed");
+        assertEquals(2, result.errorCount());
+        assertTrue(result.errors().get(0).message().contains("build failed on " + PROJECT), result.errors().get(0).message());
+        assertEquals("cannot find symbol", result.errors().get(1).message());
+    }
+
+    @Test
+    @DisplayName("a language that cannot say what to build fails the gate, naming the cause, instead of throwing")
+    void aVerdictThatCannotSayWhatToBuildFailsTheGate() {
+        ParityGate.Result result = ParityGate.compile(context(BuildScope.of(PROJECT), scope -> Set.of(PROJECT),
+            scope -> List.of(), files -> {
+                throw new IllegalStateException("no model to ask");
+            }), List.of());
+
+        assertFalse(result.clean(), "nothing was checked, and nothing checked is not clean");
+        String text = result.errors().get(0).message();
+        assertTrue(text.contains("could not work out what to build") && text.contains("no model to ask"), text);
+    }
+
+    @Test
+    @DisplayName("a language that cannot read the errors a build left fails the gate for that project, and the next is still read")
+    void aVerdictThatCannotReadTheErrorsFailsTheGate() {
+        ParityGate.Result result = ParityGate.compile(context(BuildScope.of(PROJECT, OTHER),
+            scope -> Set.of(scope.projects().get(0)),
+            scope -> {
+                if (scope.projects().get(0).equals(PROJECT)) {
+                    throw new IllegalStateException("markers unreadable");
+                }
+                return List.of(new Diagnostic("Q.java", 3, "cannot find symbol"));
+            }, null), List.of());
+
+        assertEquals(2, result.errorCount());
+        String first = result.errors().get(0).message();
+        assertTrue(first.contains("could not read the errors of " + PROJECT) && first.contains("markers unreadable"), first);
+        assertEquals("cannot find symbol", result.errors().get(1).message());
+    }
+
     /** The build step of a one-project context: what the step does is what {@code rebuild} does. */
     private static ChangeContext contextBuilding(BuildStep step) {
+        return context(BuildScope.of(PROJECT), scope -> step.build(), scope -> List.of(), null);
+    }
+
+    private static ChangeContext context(BuildScope owned, ScopedBuild build, ScopedErrors errors, RebuildAnswer rebuildAnswer) {
         Reconciler reconciler = new Reconciler() {
             @Override
             public SyncReport syncBeforeCall() {
@@ -74,7 +133,7 @@ class ParityGateBuildFailureTest {
 
             @Override
             public Set<String> rebuild(BuildScope scope, BuildKind kind, IProgressMonitor monitor) throws CoreException {
-                return step.build();
+                return build.build(scope);
             }
         };
         BuildVerdict verdict = new BuildVerdict() {
@@ -95,12 +154,17 @@ class ParityGateBuildFailureTest {
 
             @Override
             public BuildScope owned() {
-                return BuildScope.of(PROJECT);
+                return owned;
+            }
+
+            @Override
+            public Rebuild rebuildAfter(List<String> changedFiles) {
+                return rebuildAnswer == null ? BuildVerdict.super.rebuildAfter(changedFiles) : rebuildAnswer.answer(changedFiles);
             }
 
             @Override
             public List<Diagnostic> errors(BuildScope scope, IProgressMonitor monitor) {
-                return List.of();
+                return errors.of(scope);
             }
         };
         return new ChangeContext(null, reconciler, verdict, null);
@@ -110,5 +174,23 @@ class ParityGateBuildFailureTest {
     @FunctionalInterface
     private interface BuildStep {
         Set<String> build() throws CoreException;
+    }
+
+    /** What the rebuild of one named project does in a many-project test. */
+    @FunctionalInterface
+    private interface ScopedBuild {
+        Set<String> build(BuildScope scope) throws CoreException;
+    }
+
+    /** The error-severity problems the language reads for one named project. */
+    @FunctionalInterface
+    private interface ScopedErrors {
+        List<Diagnostic> of(BuildScope scope);
+    }
+
+    /** What the language answers to "what must be rebuilt after these files changed". */
+    @FunctionalInterface
+    private interface RebuildAnswer {
+        BuildVerdict.Rebuild answer(List<String> changedFiles);
     }
 }
