@@ -287,4 +287,95 @@ class JawataBootTest {
             dirs.close();
         }
     }
+
+    // ----------------------------------- a boot that fails before the framework starts (S19-19)
+
+    /** Calls {@code boot} with {@code java.io.tmpdir} pointing at an empty folder; returns what it left there. */
+    private List<String> leftInTempAfterAFailedBoot(String name,
+            org.junit.jupiter.api.function.Executable boot) throws Exception {
+        Path tempRoot = Files.createDirectories(tmp.resolve(name));
+        String saved = System.getProperty("java.io.tmpdir");
+        System.setProperty("java.io.tmpdir", tempRoot.toString());
+        try {
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, boot);
+        } finally {
+            System.setProperty("java.io.tmpdir", saved);
+        }
+        try (java.util.stream.Stream<Path> left = Files.list(tempRoot)) {
+            return left.map(p -> p.getFileName().toString()).toList();
+        }
+    }
+
+    @Test
+    @DisplayName("serve: a boot that fails before the framework starts removes the folder it made")
+    void serve_failingEarlyLeavesNothing() throws Exception {
+        Path noBundles = Files.createDirectories(tmp.resolve("serve-no-bundles"));
+        List<String> left = leftInTempAfterAFailedBoot("serve-tmp",
+            () -> JawataBoot.serve(tmp, noBundles, List.of()));
+        assertEquals(List.of(), left, "the failed serve boot left folders in the temp folder");
+    }
+
+    @Test
+    @DisplayName("runTests: a boot that fails before the framework starts removes the folders it made")
+    void runTests_failingEarlyLeavesNothing() throws Exception {
+        Path home = Files.createDirectories(tmp.resolve("run-home"));
+        Files.createDirectories(home.resolve("test-bundles"));
+        Path noBundles = Files.createDirectories(tmp.resolve("run-no-bundles"));
+        List<String> left = leftInTempAfterAFailedBoot("run-tmp",
+            () -> JawataBoot.runTests(home, noBundles));
+        assertEquals(List.of(), left, "the failed test boot left folders in the temp folder");
+    }
+
+    // ---------------------------------------- a deletion that fails is said, not swallowed (S19-19)
+
+    /** A folder whose subfolder cannot be written to, so what is inside it cannot be deleted. */
+    private Path stubbornFolder(Path parent, String name) throws Exception {
+        Path dir = Files.createDirectories(parent.resolve(name));
+        Path locked = Files.createDirectories(dir.resolve("locked"));
+        Files.writeString(locked.resolve("kept"), "x");
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            locked.toFile().setWritable(false) && !locked.toFile().canWrite(),
+            "this machine lets the test user delete from a read-only folder (running as root?)");
+        return dir;
+    }
+
+    @Test
+    @DisplayName("removeTree: removes what it can and says how many it could not")
+    void removeTree_countsWhatItCouldNotRemove() throws Exception {
+        Path dir = stubbornFolder(tmp, "stubborn");
+        Files.writeString(dir.resolve("gone"), "x");
+        try {
+            int failed = JawataBoot.removeTree(dir);
+
+            assertTrue(failed >= 1, "a deletion failed and removeTree said nothing: " + failed);
+            assertFalse(Files.exists(dir.resolve("gone")), "what could be removed was not");
+            assertTrue(Files.exists(dir.resolve("locked/kept")));
+        } finally {
+            dir.resolve("locked").toFile().setWritable(true);
+        }
+    }
+
+    @Test
+    @DisplayName("BootDirs: a folder it could not fully remove is named on stderr")
+    void bootDirs_closeSaysWhatItCouldNotRemove() throws Exception {
+        JawataBoot.BootDirs dirs = JawataBoot.BootDirs.open(tmp.resolve("tmp-root-stubborn"), false);
+        Path locked = Files.createDirectories(dirs.configuration.resolve("locked"));
+        Files.writeString(locked.resolve("kept"), "x");
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            locked.toFile().setWritable(false) && !locked.toFile().canWrite(),
+            "this machine lets the test user delete from a read-only folder (running as root?)");
+        java.io.PrintStream saved = System.err;
+        java.io.ByteArrayOutputStream captured = new java.io.ByteArrayOutputStream();
+        System.setErr(new java.io.PrintStream(captured, true, java.nio.charset.StandardCharsets.UTF_8));
+        try {
+            dirs.close();
+        } finally {
+            System.setErr(saved);
+            locked.toFile().setWritable(true);
+        }
+
+        String said = captured.toString(java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(said.contains("could not remove") && said.contains(dirs.configuration.toString()),
+            "close() swallowed the failure; stderr was: [" + said + "]");
+    }
 }

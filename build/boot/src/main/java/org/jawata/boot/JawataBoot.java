@@ -71,7 +71,7 @@ public final class JawataBoot {
 
     // ------------------------------------------------------------------ serve
 
-    private static int serve(Path home, Path bundlesDir, List<String> args) throws Exception {
+    static int serve(Path home, Path bundlesDir, List<String> args) throws Exception {
         // Session isolation, ported in behaviour from JawataLauncher:
         // -data <base> becomes <base>/<uuid8>; the ORIGINAL base is published as
         // jawata.workspace.root; the session dir is deleted on shutdown.
@@ -84,50 +84,51 @@ public final class JawataBoot {
         }
         List<String> modified = session.rewrittenArgs;
 
-        BootDirs dirs = BootDirs.open(Path.of(System.getProperty("java.io.tmpdir")), false);
-        Runtime.getRuntime().addShutdownHook(new Thread(dirs::close));
-        Map<String, String> props = baseProps(home, bundlesDir, null, dirs);
-        props.put("eclipse.application", "org.jawata.mcp.application");
-        EclipseStarter.setInitialProperties(props);
-        try {
-            Object exit = EclipseStarter.run(modified.toArray(new String[0]), null);
-            return exit instanceof Integer i ? i : 0;
-        } finally {
-            EclipseStarter.shutdown();
-            dirs.close();
+        // Everything that can refuse the boot (a stale bundle, no bundles) is inside this block, so
+        // the folders go on that path too (S19-19); a signal skips the block, the hook covers it.
+        try (BootDirs dirs = BootDirs.open(Path.of(System.getProperty("java.io.tmpdir")), false)) {
+            Runtime.getRuntime().addShutdownHook(new Thread(dirs::close));
+            Map<String, String> props = baseProps(home, bundlesDir, null, dirs);
+            props.put("eclipse.application", "org.jawata.mcp.application");
+            EclipseStarter.setInitialProperties(props);
+            try {
+                Object exit = EclipseStarter.run(modified.toArray(new String[0]), null);
+                return exit instanceof Integer i ? i : 0;
+            } finally {
+                EclipseStarter.shutdown();
+            }
         }
     }
 
     // -------------------------------------------------------------- run tests
 
-    private static int runTests(Path home, Path bundlesDir) throws Exception {
+    static int runTests(Path home, Path bundlesDir) throws Exception {
         Path testBundles = home.resolve("test-bundles");
         if (!Files.isDirectory(testBundles)) {
             System.err.println("FATAL: -runTests needs a test-bundles/ directory beside the boot jar");
             return 2;
         }
-        BootDirs dirs = BootDirs.open(Path.of(System.getProperty("java.io.tmpdir")), true);
-        Path instance = dirs.instance;
-        // A halt (the boot watchdog's) skips hooks and finally blocks; that path is the one the
-        // suite runner's sweep of /tmp still covers.
-        Runtime.getRuntime().addShutdownHook(new Thread(dirs::close));
-
-        Map<String, String> props = baseProps(home, bundlesDir, testBundles, dirs);
-        props.put("eclipse.ignoreApp", "true");
-        props.put("osgi.noShutdown", "true");
-        props.put("osgi.instance.area", instance.toUri().toString());
-        EclipseStarter.setInitialProperties(props);
-        BundleContext ctx = EclipseStarter.startup(new String[0], null);
-        try {
-            return runInFramework(ctx, testBundles);
-        } finally {
-            // v2.9.0 lesson: failure must never skip shutdown — Equinox's
-            // non-daemon threads otherwise keep a dead JVM alive (the fake
-            // 75-minute CI "hang" was a 30-second resolution failure).
-            EclipseStarter.shutdown();
-            // The workspace and configuration folders are this run's alone: a test boot left
-            // both behind on every run (34.7 GB in /tmp on 2026-10-24).
-            dirs.close();
+        // The workspace and configuration folders are this run's alone: a test boot left both
+        // behind on every run (34.7 GB in /tmp on 2026-10-24). Everything that can refuse the boot
+        // (a stale bundle, no bundles, a framework that will not start) is inside this block, so
+        // they go on that path too (S19-19). A halt (the boot watchdog's) skips the block and the
+        // hook; that path is the one the suite runner's sweep of /tmp still covers.
+        try (BootDirs dirs = BootDirs.open(Path.of(System.getProperty("java.io.tmpdir")), true)) {
+            Runtime.getRuntime().addShutdownHook(new Thread(dirs::close));
+            Map<String, String> props = baseProps(home, bundlesDir, testBundles, dirs);
+            props.put("eclipse.ignoreApp", "true");
+            props.put("osgi.noShutdown", "true");
+            props.put("osgi.instance.area", dirs.instance.toUri().toString());
+            EclipseStarter.setInitialProperties(props);
+            BundleContext ctx = EclipseStarter.startup(new String[0], null);
+            try {
+                return runInFramework(ctx, testBundles);
+            } finally {
+                // v2.9.0 lesson: failure must never skip shutdown — Equinox's
+                // non-daemon threads otherwise keep a dead JVM alive (the fake
+                // 75-minute CI "hang" was a 30-second resolution failure).
+                EclipseStarter.shutdown();
+            }
         }
     }
 
@@ -364,16 +365,35 @@ public final class JawataBoot {
     }
 
     private static void cleanupSession(Path sessionPath) {
-        removeTree(sessionPath);
+        sayWhatWasNotRemoved(sessionPath, removeTree(sessionPath));
     }
 
-    private static void removeTree(Path sessionPath) {
-        if (sessionPath == null || !Files.exists(sessionPath)) return;
+    /**
+     * Removes a folder and what it holds.
+     *
+     * @return how many files or folders could not be removed (0 when all went, or it was not there)
+     */
+    static int removeTree(Path sessionPath) {
+        if (sessionPath == null || !Files.exists(sessionPath)) return 0;
+        int[] failed = {0};
         try (Stream<Path> walk = Files.walk(sessionPath)) {
             walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try { Files.delete(p); } catch (IOException ignored) { }
+                try { Files.delete(p); } catch (IOException e) { failed[0]++; }
             });
-        } catch (IOException ignored) { }
+        } catch (IOException e) {
+            failed[0]++;
+        }
+        return failed[0];
+    }
+
+    /**
+     * A deletion that fails is said, because a folder left in /tmp that nobody was told about is how
+     * 41.6 GB piled up (2026-10-24).
+     */
+    private static void sayWhatWasNotRemoved(Path folder, int failed) {
+        if (failed > 0) {
+            System.err.println("jawata boot: could not remove " + failed + " file(s) under " + folder);
+        }
     }
 
     /**
@@ -400,8 +420,8 @@ public final class JawataBoot {
         /** Removes both folders; safe to call twice (the shutdown hook and the finally both do). */
         @Override
         public void close() {
-            removeTree(configuration);
-            removeTree(instance);
+            sayWhatWasNotRemoved(configuration, removeTree(configuration));
+            sayWhatWasNotRemoved(instance, removeTree(instance));
         }
     }
 
