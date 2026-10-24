@@ -1019,15 +1019,29 @@ public class ProjectImporter {
      */
     private static java.nio.file.Path owningModuleDir(java.nio.file.Path srcPath,
             java.nio.file.Path projectPath) {
+        return owningModuleDir(srcPath, projectPath, DECLARING_FILES);
+    }
+
+    /** The files that make a folder DECLARE its sources for the classifier above: Maven's and Eclipse's. */
+    private static final List<String> DECLARING_FILES = List.of("pom.xml", ".classpath");
+
+    /**
+     * The same walk with the caller's own marker files. The test runner counts Gradle's build files
+     * as well when it looks for the folder a module's tests start in (S19-17); the classifier above
+     * keeps its two, so what it calls a test root does not change.
+     */
+    public static java.nio.file.Path owningModuleDir(java.nio.file.Path srcPath,
+            java.nio.file.Path projectPath, List<String> declaringFiles) {
         if (!srcPath.startsWith(projectPath)) {
             return null;
         }
         java.nio.file.Path dir = srcPath.getParent();
         for (int i = 0; dir != null && dir.startsWith(projectPath) && i < 12;
                 i++, dir = dir.getParent()) {
-            if (Files.isRegularFile(dir.resolve("pom.xml"))
-                    || Files.isRegularFile(dir.resolve(".classpath"))) {
-                return dir;
+            for (String file : declaringFiles) {
+                if (Files.isRegularFile(dir.resolve(file))) {
+                    return dir;
+                }
             }
         }
         return null;

@@ -10,6 +10,7 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.execution.ForkedTestRunner;
 import org.jawata.mcp.execution.RunnerClasspath;
+import org.jawata.mcp.execution.TestWorkingFolder;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.junit.JUnitLaunchHelper;
@@ -499,10 +500,9 @@ public class RunTestsTool extends AbstractTool {
                 arguments.get("extraClasspath").forEach(n ->
                     spec.classpath.add(Path.of(n.asText())));
             }
-            org.eclipse.core.runtime.IPath loc = javaProject.getProject().getLocation();
-            if (loc != null) {
-                spec.workingDirectory = loc.toFile().toPath();
-            }
+            // S19-17: the folder of the module that owns the tests, as Maven and Gradle start them,
+            // not the JDT project's own folder (a link folder in the studio's cache).
+            spec.workingDirectory = TestWorkingFolder.of(loaded);
 
             String frameworkLabel = frameworkRaw.equals("auto")
                 ? runnerKindToShortName(runner) : frameworkRaw;
