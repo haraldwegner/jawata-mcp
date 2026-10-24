@@ -129,8 +129,8 @@ class PrecedentGuardHalvesTest {
     @Test
     @DisplayName("half 1, against the shipped tools: every refactoring tool is revertible, readers are not")
     void theShippedRefactoringToolsAreAllSubjectsOfThePrecedent() {
-        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
-            new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        org.jawata.mcp.change.RefactoringChangeCache cache =
+            new org.jawata.mcp.change.RefactoringChangeCache();
         List<AbstractTool> shipped = new java.util.ArrayList<>(
             RefactoringDoors.all(() -> null, cache));
         shipped.addAll(RefactoringDoors.standalone(() -> null, cache, () -> null));

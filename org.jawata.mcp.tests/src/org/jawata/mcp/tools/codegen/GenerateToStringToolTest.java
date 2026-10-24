@@ -32,7 +32,7 @@ class GenerateToStringToolTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("simple-maven");
-        var cache = new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        var cache = new org.jawata.mcp.change.RefactoringChangeCache();
         tool = new GenerateToStringTool(() -> service, cache);
         undoTool = new org.jawata.mcp.tools.UndoRefactoringTool(() -> service, cache);
         objectMapper = new ObjectMapper();

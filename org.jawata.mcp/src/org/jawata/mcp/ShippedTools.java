@@ -8,6 +8,7 @@ import java.util.function.Supplier;
 
 import org.jawata.core.IJdtService;
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.field.InFlightCalls;
 import org.jawata.mcp.java.JavaProvider;
@@ -16,7 +17,6 @@ import org.jawata.mcp.knowledge.ExperienceAdvisor;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.PlanLedger;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.runtime.RuntimeArtifactStore;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.CompileWorkspaceTool;

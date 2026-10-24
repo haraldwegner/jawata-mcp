@@ -4,8 +4,8 @@ import java.util.List;
 import java.util.function.Supplier;
 
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.knowledge.ExperienceStore;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 /**
  * THE REFACTORING FRONT DOORS, IN ONE PLACE — the population, not a description of it.

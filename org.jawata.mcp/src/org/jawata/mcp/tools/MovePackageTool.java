@@ -8,7 +8,7 @@ import org.eclipse.jdt.core.refactoring.IJavaRefactorings;
 import org.eclipse.jdt.core.refactoring.descriptors.RenameJavaElementDescriptor;
 import org.eclipse.ltk.core.refactoring.RefactoringCore;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
 
 import java.util.LinkedHashMap;

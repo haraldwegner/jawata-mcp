@@ -1,6 +1,6 @@
 package org.jawata.mcp.tools;
 
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

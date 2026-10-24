@@ -33,7 +33,7 @@ import org.jawata.mcp.change.PreparedRefactoring;
 import org.jawata.mcp.models.CodeAddress;
 import org.jawata.mcp.models.NextStep;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.tools.shared.FormatterOptions;
 
 import com.fasterxml.jackson.databind.JsonNode;

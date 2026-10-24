@@ -54,7 +54,7 @@ class AMovedBodyThatStillNeedsItsOldOwnerTest {
     void setUp() throws Exception {
         service = helper.loadProjectCopy("move-method");
         tool = new MoveMethodTool(() -> service,
-            new org.jawata.mcp.refactoring.RefactoringChangeCache());
+            new org.jawata.mcp.change.RefactoringChangeCache());
         mapper = new ObjectMapper();
         projectPath = service.getProjectRoot();
     }

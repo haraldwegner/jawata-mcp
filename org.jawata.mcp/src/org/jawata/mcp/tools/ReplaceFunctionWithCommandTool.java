@@ -31,9 +31,9 @@ import org.eclipse.ltk.core.refactoring.CompositeChange;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.change.ChangeEngine;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.CreateCompilationUnitChange;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.shared.FormatterOptions;
 import org.jawata.mcp.tools.shared.MethodLookup;
 

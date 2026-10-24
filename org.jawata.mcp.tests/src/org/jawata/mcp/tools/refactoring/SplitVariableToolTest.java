@@ -44,7 +44,7 @@ class SplitVariableToolTest {
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        tool = new DataTool(() -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        tool = new DataTool(() -> service, new org.jawata.mcp.change.RefactoringChangeCache());
         targets = service.getProjectRoot()
             .resolve("src/main/java/com/example/SplitVariableTargets.java");
     }

@@ -35,7 +35,7 @@ import org.jawata.mcp.change.CheckedChange;
 import org.jawata.mcp.change.PreparedRefactoring;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.JdtRefactoringEngine;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.refactoring.atoms.DeleteAtom;
 
 import java.nio.file.Path;

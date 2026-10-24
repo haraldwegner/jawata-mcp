@@ -46,8 +46,8 @@ class RemoveSettingMethodToolTest {
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
-            new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        org.jawata.mcp.change.RefactoringChangeCache cache =
+            new org.jawata.mcp.change.RefactoringChangeCache();
         tool = new DataTool(() -> service, cache);
         // The SAME cache, because staging and undo are two calls about one change: a
         // lifecycle door holding its own cache would answer about nothing.

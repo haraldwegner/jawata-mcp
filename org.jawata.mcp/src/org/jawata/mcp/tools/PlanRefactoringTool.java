@@ -22,7 +22,7 @@ import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.change.PlanStore;
 import org.jawata.mcp.refactoring.PurityCheck;
 import org.jawata.mcp.refactoring.PurityCheck.PurityFinding;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.tools.smell.CureCatalog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

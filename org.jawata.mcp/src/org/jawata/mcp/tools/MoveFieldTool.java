@@ -35,8 +35,8 @@ import org.eclipse.ltk.core.refactoring.participants.ProcessorBasedRefactoring;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.change.PreparedRefactoring;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 import java.nio.file.Path;
 import java.util.LinkedHashMap;

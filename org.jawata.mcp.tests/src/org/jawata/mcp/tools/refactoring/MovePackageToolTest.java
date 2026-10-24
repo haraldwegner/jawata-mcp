@@ -32,7 +32,7 @@ class MovePackageToolTest {
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        tool = new MovePackageTool(() -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        tool = new MovePackageTool(() -> service, new org.jawata.mcp.change.RefactoringChangeCache());
         objectMapper = new ObjectMapper();
         projectPath = service.getProjectRoot();
     }

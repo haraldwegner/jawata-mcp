@@ -29,7 +29,7 @@ import org.eclipse.jdt.core.dom.rewrite.ListRewrite;
 import org.eclipse.jface.text.Document;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.refactoring.SourceCommit;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
@@ -80,7 +80,7 @@ public class OverrideMethodsTool extends AbstractTool
 
     private static final Logger log = LoggerFactory.getLogger(OverrideMethodsTool.class);
 
-    private final org.jawata.mcp.refactoring.RefactoringChangeCache changeCache;
+    private final org.jawata.mcp.change.RefactoringChangeCache changeCache;
 
     public OverrideMethodsTool(Supplier<IJdtService> serviceSupplier,
                               RefactoringChangeCache changeCache) {

@@ -40,7 +40,7 @@ class ChangeVisibilityTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("visibility");
-        tool = new ChangeMethodSignatureTool(() -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        tool = new ChangeMethodSignatureTool(() -> service, new org.jawata.mcp.change.RefactoringChangeCache());
         mapper = new ObjectMapper();
         widget = service.getProjectRoot().resolve("src/main/java/com/example/Widget.java");
     }

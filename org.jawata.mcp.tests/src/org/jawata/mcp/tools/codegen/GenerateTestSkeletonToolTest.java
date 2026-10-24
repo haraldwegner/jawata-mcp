@@ -32,7 +32,7 @@ class GenerateTestSkeletonToolTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("simple-maven");
-        tool = new GenerateTestSkeletonTool(() -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        tool = new GenerateTestSkeletonTool(() -> service, new org.jawata.mcp.change.RefactoringChangeCache());
         objectMapper = new ObjectMapper();
     }
 

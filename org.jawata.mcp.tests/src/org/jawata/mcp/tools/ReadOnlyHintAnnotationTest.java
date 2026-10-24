@@ -1,33 +1,21 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.mcp.models.ToolResponse;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.jawata.mcp.fixtures.StubTool;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 /**
  * Sprint 14b Stage A2 — readOnlyHint annotations on detect tools
  * (MCP spec ≥ 2025-03-26; Cursor Ask-mode unblock).
  */
 class ReadOnlyHintAnnotationTest {
-
-    private static Tool stub(String name) {
-        return new Tool() {
-            @Override public String getName() { return name; }
-            @Override public String getDescription() { return "stub"; }
-            @Override public Map<String, Object> getInputSchema() {
-                return Map.of("type", "object", "properties", Map.of());
-            }
-            @Override public ToolResponse execute(JsonNode arguments) {
-                return ToolResponse.success(Map.of());
-            }
-        };
-    }
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> definitionOf(ToolRegistry registry, String name) {
@@ -52,7 +40,7 @@ class ReadOnlyHintAnnotationTest {
             // tools were folded away; the registry's policy no longer names them, C9a-1)
             "go_to_definition", "health_check",
             "validate_syntax");
-        readOnly.forEach(name -> registry.register(stub(name)));
+        readOnly.forEach(name -> registry.register(StubTool.named(name)));
 
         for (String name : readOnly) {
             Map<String, Object> def = definitionOf(registry, name);
@@ -103,8 +91,8 @@ class ReadOnlyHintAnnotationTest {
         org.jawata.mcp.change.OperationRegistry.Snapshot borrowed = ops.snapshot();
         try {
             ToolRegistry registry = new ToolRegistry();
-            org.jawata.mcp.refactoring.RefactoringChangeCache cache =
-                new org.jawata.mcp.refactoring.RefactoringChangeCache();
+            org.jawata.mcp.change.RefactoringChangeCache cache =
+                new org.jawata.mcp.change.RefactoringChangeCache();
             // The SAME call the application registers from, so this cannot drift from what
             // actually ships.
             List<AbstractTool> real = new java.util.ArrayList<>(
@@ -135,7 +123,7 @@ class ReadOnlyHintAnnotationTest {
         // it destructive would have jawata telling clients to gate the tool jawata tells
         // agents to use.
         ToolRegistry registry = new ToolRegistry();
-        registry.register(stub("compile_workspace"));
+        registry.register(StubTool.named("compile_workspace"));
 
         Map<String, Object> annotations = annotationsOf(registry, "compile_workspace");
 

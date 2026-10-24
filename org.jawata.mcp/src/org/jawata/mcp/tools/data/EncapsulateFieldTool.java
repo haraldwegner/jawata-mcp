@@ -6,8 +6,8 @@ import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.internal.corext.refactoring.sef.SelfEncapsulateFieldRefactoring;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.AbstractRefactoringTool;
 import org.jawata.mcp.tools.ToolKindDelegate;
 

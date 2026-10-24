@@ -1,5 +1,7 @@
 package org.jawata.mcp.refactoring;
 
+import java.util.List;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.ICompilationUnit;
@@ -7,8 +9,7 @@ import org.eclipse.ltk.core.refactoring.TextFileChange;
 import org.eclipse.text.edits.ReplaceEdit;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.change.DiffRenderer;
-
-import java.util.List;
+import org.jawata.mcp.change.RefactoringChangeCache;
 
 /**
  * Sprint 14b — undo support for the codegen tools, which rewrite a whole

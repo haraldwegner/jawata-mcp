@@ -55,7 +55,7 @@ class StateFromNullableFieldsTest {
     void setUp() throws Exception {
         service = helper.loadProjectCopy("dead-api");
         tool = new RefactorToStateTool(() -> service,
-            new org.jawata.mcp.refactoring.RefactoringChangeCache());
+            new org.jawata.mcp.change.RefactoringChangeCache());
         mapper = new ObjectMapper();
         projectPath = service.getProjectRoot();
     }

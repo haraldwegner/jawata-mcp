@@ -10,11 +10,9 @@ import java.util.Map;
 
 import org.jawata.mcp.change.OperationRegistry;
 import org.jawata.mcp.fixtures.InertShippedTools;
-import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.fixtures.StubTool;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * A CLIENT THAT MUST DECIDE "DID THIS CALL CHANGE CODE?" READS IT FROM {@code tools/list}.
@@ -31,20 +29,6 @@ class PublishedChangesCodeTest {
 
     private static final String KEY = "jawata/changesCode";
 
-    private static Tool stub(String name, boolean changes) {
-        return new Tool() {
-            @Override public String getName() { return name; }
-            @Override public String getDescription() { return "stub"; }
-            @Override public Map<String, Object> getInputSchema() {
-                return Map.of("type", "object", "properties", Map.of());
-            }
-            @Override public ToolResponse execute(JsonNode arguments) {
-                return ToolResponse.success(Map.of());
-            }
-            @Override public boolean changesCode() { return changes; }
-        };
-    }
-
     @SuppressWarnings("unchecked")
     private static Object flagOf(Map<String, Object> definition) {
         Map<String, Object> meta = (Map<String, Object>) definition.get("_meta");
@@ -56,8 +40,8 @@ class PublishedChangesCodeTest {
     @DisplayName("a tool's flag is published as it answers it, both ways")
     void theFlagIsPublishedAsTheToolAnswersIt() {
         ToolRegistry registry = new ToolRegistry();
-        registry.register(stub("stub_writer", true));
-        registry.register(stub("stub_reader", false));
+        registry.register(StubTool.named("stub_writer", true));
+        registry.register(StubTool.named("stub_reader", false));
 
         Map<String, Object> byName = new LinkedHashMap<>();
         for (Map<String, Object> def : registry.getToolDefinitions()) {

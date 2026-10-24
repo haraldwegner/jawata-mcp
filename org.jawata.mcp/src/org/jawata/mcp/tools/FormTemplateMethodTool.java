@@ -21,8 +21,8 @@ import org.eclipse.text.edits.ReplaceEdit;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.change.ChangeEngine;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 import java.nio.file.Path;
 import java.util.ArrayList;

@@ -41,8 +41,8 @@ class TheCureTableRefusesAnAmbiguousStepTest {
      */
     private static OperationRegistry theRealFrontDoors() {
         OperationRegistry registry = new OperationRegistry();
-        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
-            new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        org.jawata.mcp.change.RefactoringChangeCache cache =
+            new org.jawata.mcp.change.RefactoringChangeCache();
         java.util.function.Supplier<org.jawata.core.IJdtService> none = () -> null;
         // EVERY door DERIVED, not five of six hand-listed. The apply_cleanup entry was
         // already derived, with a comment saying a hand-written copy "cost a red suite"

@@ -43,7 +43,7 @@ class MoveClassToolCrossProjectTest {
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadWorkspaceCopy("simple-maven", "simple-maven-b");
-        tool = new MoveClassTool(() -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        tool = new MoveClassTool(() -> service, new org.jawata.mcp.change.RefactoringChangeCache());
         objectMapper = new ObjectMapper();
         simpleMavenA = helper.getTempDirectory().resolve("simple-maven");
         simpleMavenB = helper.getTempDirectory().resolve("simple-maven-b");

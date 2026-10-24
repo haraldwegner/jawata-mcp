@@ -42,8 +42,8 @@ class ReplaceExceptionWithPrecheckToolTest {
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
-            new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        org.jawata.mcp.change.RefactoringChangeCache cache =
+            new org.jawata.mcp.change.RefactoringChangeCache();
         tool = new ChangeMethodSignatureTool(() -> service, cache);
         lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
         targets = service.getProjectRoot()

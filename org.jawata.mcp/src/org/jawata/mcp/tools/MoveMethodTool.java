@@ -14,8 +14,8 @@ import org.eclipse.jdt.internal.corext.refactoring.structure.MoveStaticMembersPr
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.eclipse.ltk.core.refactoring.participants.ProcessorBasedRefactoring;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 import java.nio.file.Path;
 import java.util.Arrays;

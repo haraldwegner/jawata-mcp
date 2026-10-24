@@ -8,7 +8,7 @@ import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.SyncReport;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.tools.GetDiagnosticsTool;
 import org.jawata.mcp.tools.RenameSymbolTool;
 import org.jawata.mcp.tools.SearchSymbolsTool;

@@ -87,7 +87,7 @@ class MoveClassRootFidelityTest {
         // outside it — rather than a test-only refresh, which would prove less.
         new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
 
-        tool = new MoveClassTool(() -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        tool = new MoveClassTool(() -> service, new org.jawata.mcp.change.RefactoringChangeCache());
     }
 
     @Test

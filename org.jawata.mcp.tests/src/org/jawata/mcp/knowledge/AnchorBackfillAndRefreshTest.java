@@ -48,7 +48,7 @@ class AnchorBackfillAndRefreshTest {
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             ExperienceMaintenance maint =
                 new ExperienceMaintenance(store, fqn -> null, List::of,
-                    org.jawata.mcp.java.JavaSymbolAnchors.over(serviceRef::get));
+                    new org.jawata.mcp.java.JavaProvider(serviceRef::get).memoryAnchors());
             writeMemory(dir, "lesson.md", """
                 ---
                 description: pre-project greeting lesson

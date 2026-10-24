@@ -20,7 +20,7 @@ import org.jawata.mcp.tools.shared.SourceScan;
 
 import java.util.Optional;
 
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

@@ -33,7 +33,7 @@ class PullUpToolTest {
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        tool = new PullUpTool(() -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        tool = new PullUpTool(() -> service, new org.jawata.mcp.change.RefactoringChangeCache());
         objectMapper = new ObjectMapper();
         projectPath = service.getProjectRoot();
     }

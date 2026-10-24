@@ -1,13 +1,14 @@
-package org.jawata.mcp.refactoring;
+package org.jawata.mcp.change;
 
-import org.eclipse.ltk.core.refactoring.NullChange;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.eclipse.ltk.core.refactoring.NullChange;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 class RefactoringChangeCacheTest {
 

@@ -1,21 +1,23 @@
 package org.jawata.mcp.refactoring;
 
-import org.jawata.mcp.change.OperationRegistry;
-import org.jawata.mcp.tools.ExtractTool;
-import org.jawata.mcp.tools.InlineTool;
-import org.jawata.mcp.tools.MoveTool;
-import org.jawata.mcp.tools.Tool;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.mcp.change.OperationRegistry;
+import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.learn.ArchitectGate;
+import org.jawata.mcp.tools.ExtractTool;
+import org.jawata.mcp.tools.InlineTool;
+import org.jawata.mcp.tools.MoveTool;
+import org.jawata.mcp.tools.Tool;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 /**
  * WHAT THE ARCHITECT GATE WOULD ACTUALLY SEE, asked of the real tools.

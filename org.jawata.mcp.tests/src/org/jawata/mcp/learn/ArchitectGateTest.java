@@ -53,17 +53,17 @@ class ArchitectGateTest {
         // and the same blindness applied: see the javadoc above.
         for (org.jawata.mcp.tools.Tool tool : java.util.List.<org.jawata.mcp.tools.Tool>of(
                 new org.jawata.mcp.tools.ExtractTool(() -> null,
-                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
+                    new org.jawata.mcp.change.RefactoringChangeCache()),
                 new org.jawata.mcp.tools.InlineTool(() -> null,
-                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
+                    new org.jawata.mcp.change.RefactoringChangeCache()),
                 new org.jawata.mcp.tools.MoveTool(() -> null,
-                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
+                    new org.jawata.mcp.change.RefactoringChangeCache()),
                 new org.jawata.mcp.tools.ChangeMethodSignatureTool(() -> null,
-                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
+                    new org.jawata.mcp.change.RefactoringChangeCache()),
                 new org.jawata.mcp.tools.HierarchyTool(() -> null,
-                    new org.jawata.mcp.refactoring.RefactoringChangeCache()),
+                    new org.jawata.mcp.change.RefactoringChangeCache()),
                 new org.jawata.mcp.tools.RefactorToPatternTool(() -> null,
-                    new org.jawata.mcp.refactoring.RefactoringChangeCache()))) {
+                    new org.jawata.mcp.change.RefactoringChangeCache()))) {
             registry.register(tool.getName(), tool.publishedKinds(), tool.isMechanical(),
                 tool.isStructural(), tool.isGate(), tool.structuralKinds(), "kind");
         }
@@ -119,7 +119,7 @@ class ArchitectGateTest {
      */
     private static org.jawata.mcp.tools.ChangeMethodSignatureTool signatureDoor() {
         return new org.jawata.mcp.tools.ChangeMethodSignatureTool(() -> null,
-            new org.jawata.mcp.refactoring.RefactoringChangeCache());
+            new org.jawata.mcp.change.RefactoringChangeCache());
     }
 
     private static String aStructuralSignatureKind() {

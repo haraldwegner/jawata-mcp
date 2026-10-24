@@ -8,10 +8,10 @@ import java.util.function.Supplier;
 
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.change.ChangeContext;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.knowledge.ExperienceRetrieval;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.runtime.RuntimeArtifactStore;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.AnalyzeTool;

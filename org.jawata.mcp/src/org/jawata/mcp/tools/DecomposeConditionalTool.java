@@ -18,11 +18,11 @@ import org.eclipse.jdt.core.dom.PrefixExpression;
 import org.eclipse.jdt.core.dom.Statement;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.change.RecipeStep;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.Recipe;
 import org.jawata.mcp.refactoring.RecipeEngine;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 import java.nio.file.Path;
 import java.util.ArrayList;

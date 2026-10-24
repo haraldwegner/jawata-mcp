@@ -5,14 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
-import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.fixtures.StubTool;
 import org.jawata.mcp.tools.Tool;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Where the 44 sit in the published list, and where a tool that is not one of them goes (Sprint 28k, E12). The whole list against the
@@ -20,22 +17,9 @@ import com.fasterxml.jackson.databind.JsonNode;
  */
 class PublishedOrderTest {
 
-    private static Tool stub(String name) {
-        return new Tool() {
-            @Override public String getName() { return name; }
-            @Override public String getDescription() { return "stub"; }
-            @Override public Map<String, Object> getInputSchema() {
-                return Map.of("type", "object", "properties", Map.of());
-            }
-            @Override public ToolResponse execute(JsonNode arguments) {
-                return ToolResponse.success(Map.of());
-            }
-        };
-    }
-
     private static List<Tool> stubs(List<String> names) {
         List<Tool> tools = new ArrayList<>();
-        names.forEach(name -> tools.add(stub(name)));
+        names.forEach(name -> tools.add(StubTool.named(name)));
         return tools;
     }
 

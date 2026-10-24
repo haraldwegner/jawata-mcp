@@ -22,7 +22,7 @@ public final class JavaSymbolAnchors implements SymbolAnchors {
     private final IJdtService service;
     private final SymbolAnchorResolver resolver;
 
-    public JavaSymbolAnchors(IJdtService service) {
+    JavaSymbolAnchors(IJdtService service) {
         this.service = service;
         this.resolver = new SymbolAnchorResolver(() -> service);
     }
@@ -32,7 +32,7 @@ public final class JavaSymbolAnchors implements SymbolAnchors {
      * hold as their {@code Supplier<SymbolAnchors>} (E9, K10). Each ask gets a fresh instance, so the resolver's token memo spans
      * one load or backfill run and never outlives a project load or removal.
      */
-    public static Supplier<SymbolAnchors> over(Supplier<IJdtService> model) {
+    static Supplier<SymbolAnchors> over(Supplier<IJdtService> model) {
         return () -> {
             IJdtService loaded = model == null ? null : model.get();
             return loaded == null ? null : new JavaSymbolAnchors(loaded);

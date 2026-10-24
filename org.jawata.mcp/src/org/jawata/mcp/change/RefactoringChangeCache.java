@@ -1,4 +1,4 @@
-package org.jawata.mcp.refactoring;
+package org.jawata.mcp.change;
 
 import org.eclipse.ltk.core.refactoring.Change;
 import org.slf4j.Logger;

@@ -9,7 +9,7 @@ import java.util.function.Supplier;
 import org.jawata.catalogue.CatalogueRow;
 import org.jawata.catalogue.Refactorings;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.tools.AbstractTool;
 import org.jawata.mcp.tools.FrontDoor;
 import org.jawata.mcp.tools.RefactoringDoors;

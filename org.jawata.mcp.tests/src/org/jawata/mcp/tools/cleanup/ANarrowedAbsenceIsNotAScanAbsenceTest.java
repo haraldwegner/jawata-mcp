@@ -71,7 +71,7 @@ class ANarrowedAbsenceIsNotAScanAbsenceTest {
         Files.writeString(pkg.resolve("NarrowedTargets.java"), TARGET);
         new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
         tool = new ApplyCleanupTool(() -> service,
-            new org.jawata.mcp.refactoring.RefactoringChangeCache());
+            new org.jawata.mcp.change.RefactoringChangeCache());
         mapper = new ObjectMapper();
     }
 

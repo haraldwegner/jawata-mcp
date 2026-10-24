@@ -1,17 +1,16 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.mcp.models.ToolResponse;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertAll;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.mcp.fixtures.StubTool;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 /**
  * jawata-mcp#22 — <b>a client that truncates the tool list by position must not be handed the
@@ -31,19 +30,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PublishedToolOrderTest {
 
-    private static Tool stub(String name) {
-        return new Tool() {
-            @Override public String getName() { return name; }
-            @Override public String getDescription() { return "stub"; }
-            @Override public Map<String, Object> getInputSchema() {
-                return Map.of("type", "object", "properties", Map.of());
-            }
-            @Override public ToolResponse execute(JsonNode arguments) {
-                return ToolResponse.success(Map.of());
-            }
-        };
-    }
-
     /**
      * The order the issue MEASURED, reproduced deliberately: a status tool, then the two
      * workspace-mutating ones, then the analysis. Registering them already-sorted would make
@@ -55,7 +41,7 @@ class PublishedToolOrderTest {
                 "health_check", "load_project", "project",
                 "search_symbols", "go_to_definition", "find_references",
                 "rename_symbol", "inspect", "analyze", "get_diagnostics")) {
-            registry.register(stub(name));
+            registry.register(StubTool.named(name));
         }
         return registry;
     }

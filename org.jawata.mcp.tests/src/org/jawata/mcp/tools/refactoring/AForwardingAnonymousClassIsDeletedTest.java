@@ -54,8 +54,8 @@ class AForwardingAnonymousClassIsDeletedTest {
         service = helper.loadProjectCopy("dead-api");
         // The cache is SHARED with the lifecycle door, which is what makes a staged change
         // findable by its changeId — a fresh cache per tool would lose it between the two.
-        org.jawata.mcp.refactoring.RefactoringChangeCache cache =
-            new org.jawata.mcp.refactoring.RefactoringChangeCache();
+        org.jawata.mcp.change.RefactoringChangeCache cache =
+            new org.jawata.mcp.change.RefactoringChangeCache();
         tool = new DeleteAnonymousImplementationTool(() -> service, cache);
         lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
         mapper = new ObjectMapper();

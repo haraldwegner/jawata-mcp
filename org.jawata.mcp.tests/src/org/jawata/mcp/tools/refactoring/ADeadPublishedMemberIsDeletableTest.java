@@ -56,7 +56,7 @@ class ADeadPublishedMemberIsDeletableTest {
     void setUp() throws Exception {
         service = helper.loadProjectCopy("dead-api");
         inline = new InlineTool(() -> service,
-            new org.jawata.mcp.refactoring.RefactoringChangeCache());
+            new org.jawata.mcp.change.RefactoringChangeCache());
         mapper = new ObjectMapper();
         projectPath = service.getProjectRoot();
     }

@@ -16,7 +16,7 @@ import org.eclipse.jdt.internal.corext.refactoring.structure.MoveInnerToTopRefac
 import org.eclipse.ltk.core.refactoring.RefactoringCore;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.models.ToolResponse;
 

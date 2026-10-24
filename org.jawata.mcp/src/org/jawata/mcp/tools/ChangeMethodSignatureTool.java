@@ -2,8 +2,8 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.api.ChangeSignatureTool;
 import org.jawata.mcp.tools.api.IntroduceParameterObjectTool;
 import org.jawata.mcp.tools.api.ParameterizeFunctionTool;

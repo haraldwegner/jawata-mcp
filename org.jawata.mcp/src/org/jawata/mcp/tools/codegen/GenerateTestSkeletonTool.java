@@ -7,7 +7,7 @@ import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.change.DiffRenderer;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
@@ -57,7 +57,7 @@ public class GenerateTestSkeletonTool extends AbstractTool
 
     private static final Logger log = LoggerFactory.getLogger(GenerateTestSkeletonTool.class);
 
-    private final org.jawata.mcp.refactoring.RefactoringChangeCache changeCache;
+    private final org.jawata.mcp.change.RefactoringChangeCache changeCache;
 
     public GenerateTestSkeletonTool(Supplier<IJdtService> serviceSupplier,
                                    RefactoringChangeCache changeCache) {

@@ -18,9 +18,9 @@ import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.CreateCompilationUnitChange;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

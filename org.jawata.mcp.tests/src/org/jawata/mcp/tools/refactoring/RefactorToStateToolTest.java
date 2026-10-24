@@ -10,7 +10,7 @@ import org.eclipse.jdt.core.compiler.IProblem;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.tools.RefactorToPatternTool;
 import org.jawata.mcp.tools.UndoRefactoringTool;
 import org.junit.jupiter.api.BeforeEach;

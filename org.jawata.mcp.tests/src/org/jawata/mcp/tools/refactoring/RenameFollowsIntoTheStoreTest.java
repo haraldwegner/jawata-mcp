@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.knowledge.Confidence;
 import org.jawata.mcp.knowledge.ExperienceEntry;
@@ -18,7 +19,6 @@ import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.knowledge.SymbolFact;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.AbstractTool;
 import org.jawata.mcp.tools.RefactoringDoors;
 import org.jawata.mcp.tools.RenameSymbolTool;

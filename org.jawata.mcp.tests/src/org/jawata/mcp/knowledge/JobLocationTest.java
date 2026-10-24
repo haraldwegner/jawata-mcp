@@ -84,7 +84,7 @@ class JobLocationTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> pointerFor(ExperienceStore store, String cue) {
         ExperienceRetrieval retrieval = ExperienceRetrieval.keywordOnly(store,
-            org.jawata.mcp.java.JavaSymbolAnchors.over(() -> service));
+            new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
         Map<String, Object> answer = retrieval.recall(new RecallQuery(cue, null, null, null, null, LaneScope.everyLane()));
         assertEquals(ExperienceRetrieval.RESULT_MATCH, answer.get("result"),
             "the cue is an exact FQN, which the keyword side answers deterministically;"

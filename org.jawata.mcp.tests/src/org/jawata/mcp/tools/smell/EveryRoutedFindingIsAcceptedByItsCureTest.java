@@ -8,7 +8,7 @@ import org.jawata.mcp.domain.Detector;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.CodeAddress;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.tools.Tool;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

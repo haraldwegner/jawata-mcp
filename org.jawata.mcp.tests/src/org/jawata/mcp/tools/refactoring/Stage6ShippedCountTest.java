@@ -6,8 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.fixtures.TestProjectHelper;
-import org.jawata.mcp.refactoring.RefactoringChangeCache;
 import org.jawata.mcp.tools.AbstractTool;
 import org.jawata.mcp.tools.ExtractTool;
 import org.jawata.mcp.tools.InlineTool;

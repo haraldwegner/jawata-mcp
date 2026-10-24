@@ -38,7 +38,7 @@ class GenerateEqualsHashCodeToolTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("simple-maven");
-        tool = new GenerateEqualsHashCodeTool(() -> service, new org.jawata.mcp.refactoring.RefactoringChangeCache());
+        tool = new GenerateEqualsHashCodeTool(() -> service, new org.jawata.mcp.change.RefactoringChangeCache());
         objectMapper = new ObjectMapper();
     }
 

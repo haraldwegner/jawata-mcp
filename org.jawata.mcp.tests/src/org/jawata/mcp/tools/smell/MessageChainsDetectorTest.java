@@ -134,7 +134,7 @@ class MessageChainsDetectorTest {
         });
         ToolResponse door = new org.jawata.mcp.tools.DataTool(
             () -> service,
-            new org.jawata.mcp.refactoring.RefactoringChangeCache()).execute(call);
+            new org.jawata.mcp.change.RefactoringChangeCache()).execute(call);
 
         String refusal = door.isSuccess() ? "" : String.valueOf(door.getError().getMessage());
         assertFalse(refusal.contains("no two-deep call chain at that position"),

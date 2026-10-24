@@ -17,7 +17,7 @@ public final class JavaTestRuntime implements TestRuntime {
 
     private final IJdtService service;
 
-    public JavaTestRuntime(IJdtService service) {
+    JavaTestRuntime(IJdtService service) {
         this.service = service;
     }
 
