@@ -45,9 +45,9 @@ org.jawata.mcp.knowledge.CatalogueManifest#size()
 org.jawata.mcp.knowledge.CatalogueOrigin#inWorkspace()
 org.jawata.mcp.knowledge.DispatchRecall#renderLine(PastRun)
 org.jawata.mcp.knowledge.EmbeddingIndex#nearestEntries(String)
-org.jawata.mcp.knowledge.ExperienceAnalogies#rank(List<StoredEntry>,RecallQuery,Map<String,Double>,int,Supplier<IJdtService>)
+org.jawata.mcp.knowledge.ExperienceAnalogies#rank(List<StoredEntry>,RecallQuery,Map<String,Double>,int,Supplier<SymbolAnchors>)
 org.jawata.mcp.knowledge.ExperienceMaintenance#load(Path)
-org.jawata.mcp.knowledge.ExperienceRetrieval#keywordOnly(ExperienceStore,Supplier<IJdtService>)
+org.jawata.mcp.knowledge.ExperienceRetrieval#keywordOnly(ExperienceStore,Supplier<SymbolAnchors>)
 # Sprint 28g S13, C13 2026-10-06 — REACHED POLYMORPHICALLY, which this gate cannot see.
 #
 # The production caller is ExperienceRetrieval:1091, which calls it on an ExperienceStore;

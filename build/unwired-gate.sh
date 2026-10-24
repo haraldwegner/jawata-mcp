@@ -191,7 +191,11 @@ callers = payload["data"]["callers"]
 # caller under a *.tests/ path would be dropped silently. Instead BOTH sets are
 # enumerated by name: anything not listed is a new consumer, and a new consumer
 # is classified deliberately here, not guessed at runtime.
-expected_production = {"org.jawata.mcp.tools.CompileWorkspaceTool",
+# Sprint 28k E10b: compile_workspace no longer sweeps markers itself, so it no longer asks the classifier itself; the
+# build verdict classifies each problem row as main, test or neither (JavaBuildVerdict#scopeOf) and the tool filters by
+# the row's scope. The consumer of main-vs-test that goes through SourceRootClassifier is therefore JavaBuildVerdict.
+# What pins the tool side is CompileWorkspaceToolTest's scope tests and JavaBuildVerdictRowsTest (controls M1 and M8).
+expected_production = {"org.jawata.mcp.java.JavaBuildVerdict",
                        "org.jawata.mcp.tools.AnalyzeNamingTool",
                        "org.jawata.mcp.tools.smell.AbstractAstDetector",
                        "org.jawata.mcp.tools.smell.TestOnlyCallerDetector"}
