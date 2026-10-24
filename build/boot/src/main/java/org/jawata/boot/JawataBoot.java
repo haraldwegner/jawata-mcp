@@ -84,7 +84,9 @@ public final class JawataBoot {
         }
         List<String> modified = session.rewrittenArgs;
 
-        Map<String, String> props = baseProps(home, bundlesDir, null);
+        BootDirs dirs = BootDirs.open(Path.of(System.getProperty("java.io.tmpdir")), false);
+        Runtime.getRuntime().addShutdownHook(new Thread(dirs::close));
+        Map<String, String> props = baseProps(home, bundlesDir, null, dirs);
         props.put("eclipse.application", "org.jawata.mcp.application");
         EclipseStarter.setInitialProperties(props);
         try {
@@ -92,6 +94,7 @@ public final class JawataBoot {
             return exit instanceof Integer i ? i : 0;
         } finally {
             EclipseStarter.shutdown();
+            dirs.close();
         }
     }
 
@@ -103,9 +106,13 @@ public final class JawataBoot {
             System.err.println("FATAL: -runTests needs a test-bundles/ directory beside the boot jar");
             return 2;
         }
-        Path instance = Files.createTempDirectory("jawata-test-ws");
+        BootDirs dirs = BootDirs.open(Path.of(System.getProperty("java.io.tmpdir")), true);
+        Path instance = dirs.instance;
+        // A halt (the boot watchdog's) skips hooks and finally blocks; that path is the one the
+        // suite runner's sweep of /tmp still covers.
+        Runtime.getRuntime().addShutdownHook(new Thread(dirs::close));
 
-        Map<String, String> props = baseProps(home, bundlesDir, testBundles);
+        Map<String, String> props = baseProps(home, bundlesDir, testBundles, dirs);
         props.put("eclipse.ignoreApp", "true");
         props.put("osgi.noShutdown", "true");
         props.put("osgi.instance.area", instance.toUri().toString());
@@ -118,6 +125,9 @@ public final class JawataBoot {
             // non-daemon threads otherwise keep a dead JVM alive (the fake
             // 75-minute CI "hang" was a 30-second resolution failure).
             EclipseStarter.shutdown();
+            // The workspace and configuration folders are this run's alone: a test boot left
+            // both behind on every run (34.7 GB in /tmp on 2026-10-24).
+            dirs.close();
         }
     }
 
@@ -299,8 +309,8 @@ public final class JawataBoot {
 
     // ------------------------------------------------------------------ common
 
-    private static Map<String, String> baseProps(Path home, Path bundlesDir, Path extraBundles)
-            throws Exception {
+    static Map<String, String> baseProps(Path home, Path bundlesDir, Path extraBundles,
+                                         BootDirs dirs) throws Exception {
         Map<String, String> props = new HashMap<>();
         StringBuilder list = new StringBuilder(osgiBundlesList(bundlesDir));
         if (extraBundles != null) {
@@ -308,8 +318,7 @@ public final class JawataBoot {
         }
         props.put("osgi.bundles", list.toString());
         props.put("osgi.bundles.defaultStartLevel", "4");
-        props.put("osgi.configuration.area",
-            Files.createTempDirectory("jawata-boot-config").toString());
+        props.put("osgi.configuration.area", dirs.configuration.toString());
         props.put("osgi.install.area", home.toString());
         props.put("osgi.compatibility.bootdelegation", "true");
         // v3.5.1 (Finding A): slf4j-api + a binding (slf4j-simple) ride the BOOT
@@ -355,12 +364,45 @@ public final class JawataBoot {
     }
 
     private static void cleanupSession(Path sessionPath) {
+        removeTree(sessionPath);
+    }
+
+    private static void removeTree(Path sessionPath) {
         if (sessionPath == null || !Files.exists(sessionPath)) return;
         try (Stream<Path> walk = Files.walk(sessionPath)) {
             walk.sorted(Comparator.reverseOrder()).forEach(p -> {
                 try { Files.delete(p); } catch (IOException ignored) { }
             });
         } catch (IOException ignored) { }
+    }
+
+    /**
+     * The temp folders ONE boot creates: the OSGi configuration area, and for a test boot the JDT
+     * workspace (osgi.instance.area). Closing removes both with what they hold.
+     */
+    static final class BootDirs implements AutoCloseable {
+        final Path configuration;
+        /** The workspace of a test boot; {@code null} when serving (its workspace is {@code -data}). */
+        final Path instance;
+
+        private BootDirs(Path configuration, Path instance) {
+            this.configuration = configuration;
+            this.instance = instance;
+        }
+
+        static BootDirs open(Path parent, boolean withInstance) throws IOException {
+            Files.createDirectories(parent);
+            Path configuration = Files.createTempDirectory(parent, "jawata-boot-config");
+            Path instance = withInstance ? Files.createTempDirectory(parent, "jawata-test-ws") : null;
+            return new BootDirs(configuration, instance);
+        }
+
+        /** Removes both folders; safe to call twice (the shutdown hook and the finally both do). */
+        @Override
+        public void close() {
+            removeTree(configuration);
+            removeTree(instance);
+        }
     }
 
     private JawataBoot() {}

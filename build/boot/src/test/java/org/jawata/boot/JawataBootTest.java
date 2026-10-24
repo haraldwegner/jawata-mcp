@@ -221,4 +221,70 @@ class JawataBootTest {
         assertNotNull(JawataBoot.osgiBundlesList(dir),
             "core + mcp + a non-jawata carried bundle is the NORMAL dist — never refused");
     }
+
+    // ------------------------------------------- what a boot leaves in the temp folder
+
+    /**
+     * 2026-10-24: 1,324 {@code jawata-test-ws<N>} folders (34.7 GB, 404 of them over 1 MB, one 340 MB)
+     * and 1,782 {@code jawata-boot-config<N>} folders (4.4 MB each) sat in /tmp. A test boot made its
+     * workspace and its OSGi configuration folder and removed neither; only a run through
+     * build/run-suite.sh swept them, a single class run by hand never did, and the resident server
+     * left its configuration folder on every start.
+     */
+    @Test
+    @DisplayName("BootDirs: closing removes the configuration and workspace folders and what they hold")
+    void bootDirs_closeRemovesBoth() throws Exception {
+        Path parent = tmp.resolve("tmp-root");
+        JawataBoot.BootDirs dirs = JawataBoot.BootDirs.open(parent, true);
+        Files.createDirectories(dirs.configuration.resolve("org.eclipse.osgi/bundles/1"));
+        Files.writeString(dirs.configuration.resolve("org.eclipse.osgi/bundles/1/data"), "x");
+        Files.createDirectories(dirs.instance.resolve(".metadata/.plugins"));
+        Files.writeString(dirs.instance.resolve(".metadata/.plugins/state"), "x");
+        Files.createDirectories(dirs.instance.resolve("jawata-simple-maven-1/target"));
+        Files.writeString(dirs.instance.resolve("jawata-simple-maven-1/target/out"), "x");
+
+        dirs.close();
+
+        assertFalse(Files.exists(dirs.configuration), "the configuration folder is still there");
+        assertFalse(Files.exists(dirs.instance), "the workspace folder is still there");
+        try (java.util.stream.Stream<Path> left = Files.list(parent)) {
+            assertEquals(List.of(), left.toList(), "the boot left something in its temp folder");
+        }
+    }
+
+    @Test
+    @DisplayName("BootDirs: a serving boot has a configuration folder and no workspace folder")
+    void bootDirs_servingHasNoInstance() throws Exception {
+        Path parent = tmp.resolve("tmp-root-serve");
+        JawataBoot.BootDirs dirs = JawataBoot.BootDirs.open(parent, false);
+        assertNull(dirs.instance, "serving takes its workspace from -data, not from the temp folder");
+        assertTrue(Files.isDirectory(dirs.configuration));
+        dirs.close();
+        assertFalse(Files.exists(dirs.configuration));
+    }
+
+    @Test
+    @DisplayName("BootDirs: closing twice is harmless (the shutdown hook and the finally both close)")
+    void bootDirs_closeTwice() throws Exception {
+        JawataBoot.BootDirs dirs = JawataBoot.BootDirs.open(tmp.resolve("tmp-root-twice"), true);
+        dirs.close();
+        dirs.close();
+        assertFalse(Files.exists(dirs.configuration));
+    }
+
+    @Test
+    @DisplayName("baseProps: the configuration area is the BootDirs' folder — it makes no folder of its own")
+    void baseProps_usesTheBootDirs() throws Exception {
+        Path bundles = tmp.resolve("bundles-for-props");
+        Files.createDirectories(bundles);
+        Files.createFile(bundles.resolve("org.eclipse.core.runtime-3.34.200.jar"));
+        JawataBoot.BootDirs dirs = JawataBoot.BootDirs.open(tmp.resolve("tmp-root-props"), false);
+        try {
+            java.util.Map<String, String> props = JawataBoot.baseProps(tmp, bundles, null, dirs);
+            assertEquals(dirs.configuration.toString(), props.get("osgi.configuration.area"),
+                "baseProps made its own configuration folder, which nothing closes");
+        } finally {
+            dirs.close();
+        }
+    }
 }
