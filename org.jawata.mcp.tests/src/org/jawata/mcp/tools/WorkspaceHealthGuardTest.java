@@ -64,7 +64,7 @@ class WorkspaceHealthGuardTest {
 
         // And health_check agrees.
         HealthCheckTool health = new HealthCheckTool(() -> true, () -> 56,
-            () -> org.jawata.mcp.ProjectLoadingState.LOADED, () -> null, () -> service);
+            () -> org.jawata.mcp.engine.ProjectLoadingState.LOADED, () -> null, () -> service);
         @SuppressWarnings("unchecked")
         Map<String, Object> workspace =
             (Map<String, Object>) data(health.execute(om.createObjectNode())).get("workspace");

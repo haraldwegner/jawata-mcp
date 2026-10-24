@@ -1,7 +1,8 @@
 package org.jawata.mcp.tools.project;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jawata.mcp.ProjectLoadingState;
+
+import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.HealthCheckTool;
 import org.junit.jupiter.api.BeforeEach;

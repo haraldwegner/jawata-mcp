@@ -3,6 +3,7 @@ package org.jawata.mcp.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.mcp.engine.EngineState;
 import org.jawata.mcp.models.ToolResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -124,7 +125,7 @@ public class LoadProjectTool implements Tool {
             // followed by a successful load left health_check reporting the boot's error
             // for the rest of the process — an alarm that outlived its cause and that
             // nothing could clear.
-            org.jawata.mcp.JawataApplication.noteWorkspaceLoaded();
+            EngineState.current().workspaceLoaded();
 
             // Build response
             Map<String, Object> result = new LinkedHashMap<>();

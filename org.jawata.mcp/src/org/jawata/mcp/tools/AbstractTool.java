@@ -1,6 +1,12 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
@@ -9,16 +15,11 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.core.ScopedJdtService;
 import org.jawata.core.exceptions.ProjectNotLoadedException;
-import org.jawata.mcp.JawataApplication;
-import org.jawata.mcp.ProjectLoadingState;
+import org.jawata.mcp.engine.EngineState;
+import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Abstract base class for JAWATA tools.
@@ -150,10 +151,10 @@ public abstract class AbstractTool implements Tool {
 
         if (requiresLoadedProject() && (service == null || service.allProjects().isEmpty())) {
             // Check loading state to provide more specific feedback
-            ProjectLoadingState loadingState = JawataApplication.getLoadingState();
+            ProjectLoadingState loadingState = EngineState.current().loading();
             return switch (loadingState) {
                 case LOADING -> ToolResponse.projectLoading();
-                case FAILED -> ToolResponse.projectLoadFailed(JawataApplication.getLoadingError());
+                case FAILED -> ToolResponse.projectLoadFailed(EngineState.current().loadingError());
                 default -> ToolResponse.projectNotLoaded();
             };
         }

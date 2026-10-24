@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.AbstractTool;
 import org.junit.jupiter.api.AfterEach;

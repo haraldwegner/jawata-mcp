@@ -3,6 +3,7 @@ package org.jawata.mcp.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.mcp.engine.EngineState;
 import org.jawata.mcp.models.ToolResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -117,7 +118,7 @@ public class AddProjectTool implements Tool {
             // touching the load state — and the first fix wired only load_project, so
             // the stale boot alarm survived through here. Found by an architect watch
             // reading that javadoc against its one call site.
-            org.jawata.mcp.JawataApplication.noteWorkspaceLoaded();
+            EngineState.current().workspaceLoaded();
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "loaded");

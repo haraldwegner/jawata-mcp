@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.core.host.HostOS;
-import org.jawata.mcp.ProjectLoadingState;
+import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.WorkspaceHealth;
 

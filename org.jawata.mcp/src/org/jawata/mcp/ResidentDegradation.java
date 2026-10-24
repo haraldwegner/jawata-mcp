@@ -5,6 +5,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentSkipListMap;
 
+import org.jawata.mcp.engine.EngineState;
+import org.jawata.mcp.engine.ProjectLoadingState;
+
 /**
  * EVERY DEGRADED STATE THIS RESIDENT IS IN, IN ONE PLACE — the answer to
  * jawata-mcp#12, and the mechanism the degradation stamp
@@ -30,7 +33,7 @@ import java.util.concurrent.ConcurrentSkipListMap;
  * <h2>Two halves, and the difference matters</h2>
  *
  * <p><b>DERIVED</b> — the workspace's own load state is read from
- * {@link JawataApplication#getLoadingState()} at the moment the question is asked. It is
+ * {@link org.jawata.mcp.engine.EngineState#loading()} at the moment the question is asked. It is
  * NOT copied in here, because a copy is a second source of truth for one fact and this
  * sprint has already paid for that shape more than once: it would go stale exactly when
  * the state changed, which is the only moment it matters.</p>
@@ -102,14 +105,14 @@ public final class ResidentDegradation {
      * still loading.</p>
      */
     private static String workspaceNotice() {
-        ProjectLoadingState state = JawataApplication.getLoadingState();
+        ProjectLoadingState state = EngineState.current().loading();
         if (state == ProjectLoadingState.LOADING) {
             return "the workspace is still LOADING — this answer covers only the projects "
                 + "loaded so far, so an absence in it is not yet a real absence. "
                 + "health_check reports when the load finishes.";
         }
         if (state == ProjectLoadingState.FAILED) {
-            String why = JawataApplication.getLoadingError();
+            String why = EngineState.current().loadingError();
             return "the workspace FAILED to load"
                 + (why == null || why.isBlank() ? "" : " (" + why + ")")
                 + " — answers are over whatever loaded, and a whole-workspace question "

@@ -2,7 +2,8 @@ package org.jawata.mcp.models;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jawata.mcp.ProjectLoadingState;
+
+import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.protocol.McpProtocolHandler;
 import org.jawata.mcp.tools.SearchSymbolsTool;
 import org.jawata.mcp.tools.ToolRegistry;

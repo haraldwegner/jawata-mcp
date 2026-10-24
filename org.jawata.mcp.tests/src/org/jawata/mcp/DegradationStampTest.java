@@ -11,6 +11,8 @@ import java.util.Map;
 
 import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.mcp.engine.EngineState;
+import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.AbstractTool;
 import org.jawata.mcp.tools.HealthCheckTool;
@@ -259,8 +261,8 @@ class DegradationStampTest {
         return new HealthCheckTool(
             () -> false,
             () -> 42,
-            JawataApplication::getLoadingState,
-            JawataApplication::getLoadingError,
+            () -> {return EngineState.current().loading();},
+            () -> {return EngineState.current().loadingError();},
             () -> null).execute(OM.createObjectNode());
     }
 }

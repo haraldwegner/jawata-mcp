@@ -9,6 +9,7 @@ import java.util.function.Supplier;
 import org.jawata.core.IJdtService;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.field.InFlightCalls;
 import org.jawata.mcp.java.JavaProvider;

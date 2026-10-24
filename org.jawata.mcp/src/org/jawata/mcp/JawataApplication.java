@@ -11,6 +11,8 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.workspace.WorkspaceFileWatcher;
 import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.engine.EngineState;
+import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.knowledge.CatalogueOrigin;
 import org.jawata.mcp.knowledge.CatalogueSeeder;
 import org.jawata.mcp.knowledge.CatalogueSources;
@@ -44,8 +46,6 @@ public class JawataApplication implements IApplication {
     private static final Logger log = LoggerFactory.getLogger(JawataApplication.class);
 
     private volatile IJdtService jdtService;
-    private volatile ProjectLoadingState loadingState = ProjectLoadingState.NOT_LOADED;
-    private volatile String loadingError = null;
     // Sprint 14b: session-scoped cache backing the refactoring apply/undo
     // contract (staged Changes + undo handles, TTL + LRU bounded).
     private final RefactoringChangeCache refactoringChangeCache = new RefactoringChangeCache();
@@ -86,48 +86,6 @@ public class JawataApplication implements IApplication {
     /** Sprint 28g S13-9: the daily store copy's schedule; interrupted at shutdown. */
     private volatile Thread scheduledBackupThread;
 
-    // Static instance for loading state access by tools
-    private static volatile JawataApplication instance;
-
-    /**
-     * Get the current project loading state.
-     * Used by tools to provide appropriate feedback when project is loading.
-     */
-    public static ProjectLoadingState getLoadingState() {
-        JawataApplication app = instance;
-        return app != null ? app.loadingState : ProjectLoadingState.NOT_LOADED;
-    }
-
-    /**
-     * Get the loading error message if loading failed.
-     */
-    public static String getLoadingError() {
-        JawataApplication app = instance;
-        return app != null ? app.loadingError : null;
-    }
-
-    /**
-     * A LOAD OUTSIDE THE BOOT PATH SUCCEEDED — clear whatever the boot concluded (mcp#35).
-     *
-     * <p>{@code loadingState} was written on the boot paths only, and {@code load_project}
-     * and {@code add_project} install a service through the setter without touching it. So
-     * after a FAILED boot followed by a successful {@code load_project} the workspace was
-     * genuinely fine and {@code health_check} still answered <i>"Project load failed"</i>,
-     * with the original boot error, indefinitely — a stale alarm nothing could clear, which
-     * teaches a caller to disregard the one channel that reports real failures.</p>
-     *
-     * <p>The tool gate at {@code AbstractTool.execute} could not see it either, because it
-     * consults this state only when NO project is loaded — so the moment a load succeeded,
-     * the stale verdict became invisible to every tool and visible only in health_check.</p>
-     */
-    public static void noteWorkspaceLoaded() {
-        JawataApplication app = instance;
-        if (app != null) {
-            app.loadingState = ProjectLoadingState.LOADED;
-            app.loadingError = null;
-        }
-    }
-
     /**
      * Test hook — stand in a workspace-load state without booting Equinox.
      *
@@ -137,21 +95,18 @@ public class JawataApplication implements IApplication {
      * exactly what the hollow-wiring gate refuses.
      */
     static void setLoadingStateForTest(ProjectLoadingState state, String error) {
-        JawataApplication app = new JawataApplication();
-        app.loadingState = state;
-        app.loadingError = error;
-        instance = app;
+        EngineState.current().set(state, error);
     }
 
-    /** Test hook — a static instance left behind poisons every later test. */
+    /** Test hook — a state left behind poisons every later test. */
     static void clearLoadingStateForTest() {
-        instance = null;
+        EngineState.current().reset();
     }
 
     @Override
     public Object start(IApplicationContext context) throws Exception {
         log.info("JAWATA MCP Server starting...");
-        instance = this;
+        EngineState.current().booted();
 
         // Sprint 23 (Stage 5): headless JDT-manipulation config (preference
         // node id + JDT-UI-style defaults + code-template store) — the IDE
@@ -653,7 +608,7 @@ public class JawataApplication implements IApplication {
             // load has terminally failed, the identity says so instead of
             // naming projects this server does not have.
             org.jawata.mcp.models.WorkspaceIdentity.installLoadFailure(() ->
-                getLoadingState() == ProjectLoadingState.FAILED ? getLoadingError() : null);
+                EngineState.current().loading() == ProjectLoadingState.FAILED ? EngineState.current().loadingError() : null);
             // mcp#65: and the other end of the same window. The load is asynchronous and on
             // a 194-module workspace takes minutes; until this says false, a miss is "not
             // yet" rather than "no".
@@ -671,7 +626,7 @@ public class JawataApplication implements IApplication {
             // exists — and in exactly that case installWorkspaceIdentity installed nothing,
             // so installed() is false and every sentence below is unreachable.
             org.jawata.mcp.models.WorkspaceIdentity.installLoadPending(() ->
-                getLoadingState().loadPending());
+                EngineState.current().loading().loadPending());
         } catch (Exception e) {
             // Identity is a courtesy layer — a failure here must never stop the server.
             log.warn("Workspace identity not installed: {}", e.getMessage());
@@ -1015,7 +970,7 @@ public class JawataApplication implements IApplication {
 
     private void loadFromWorkspaceJson(Path dataDir) {
         log.info("Loading workspace from {}", dataDir.resolve("workspace.json"));
-        loadingState = ProjectLoadingState.LOADING;
+        EngineState.current().loadStarted();
         try {
             JdtServiceImpl service = new JdtServiceImpl();
             WorkspaceFileWatcher watcher = new WorkspaceFileWatcher(dataDir, service);
@@ -1029,15 +984,15 @@ public class JawataApplication implements IApplication {
             // carry the diagnosis + remedy.
             Map<String, String> failures = watcher.loadFailures();
             if (service.allProjects().isEmpty() && !failures.isEmpty()) {
-                loadingState = ProjectLoadingState.FAILED;
                 var first = failures.entrySet().iterator().next();
-                loadingError = "all " + failures.size() + " workspace project(s) FAILED to "
+                String reason = "all " + failures.size() + " workspace project(s) FAILED to "
                     + "load — first: " + first.getKey() + ": " + first.getValue()
                     + ". Remedy: fix the cause (e.g. run the project's build once so "
                     + "dependencies resolve), then reload via load_project or restart.";
-                log.error("Workspace auto-load: {}", loadingError);
+                EngineState.current().loadFailed(reason);
+                log.error("Workspace auto-load: {}", reason);
             } else {
-                loadingState = ProjectLoadingState.LOADED;
+                EngineState.current().loadSucceeded();
                 if (!failures.isEmpty()) {
                     log.warn("Workspace loaded PARTIALLY — {} project(s) failed: {}",
                         failures.size(), failures);
@@ -1046,8 +1001,7 @@ public class JawataApplication implements IApplication {
             }
         } catch (Exception e) {
             log.error("Failed to load workspace from workspace.json: {}", e.getMessage(), e);
-            loadingState = ProjectLoadingState.FAILED;
-            loadingError = e.getMessage();
+            EngineState.current().loadFailed(e.getMessage());
         }
     }
 
@@ -1067,32 +1021,29 @@ public class JawataApplication implements IApplication {
         Path path = Path.of(projectPath).toAbsolutePath().normalize();
         if (!Files.exists(path)) {
             log.warn("JAVA_PROJECT_PATH points to non-existent path: {}", projectPath);
-            loadingState = ProjectLoadingState.FAILED;
-            loadingError = "JAVA_PROJECT_PATH points to non-existent path: " + projectPath;
+            EngineState.current().loadFailed("JAVA_PROJECT_PATH points to non-existent path: " + projectPath);
             return;
         }
 
         if (!Files.isDirectory(path)) {
             log.warn("JAVA_PROJECT_PATH is not a directory: {}", projectPath);
-            loadingState = ProjectLoadingState.FAILED;
-            loadingError = "JAVA_PROJECT_PATH is not a directory: " + projectPath;
+            EngineState.current().loadFailed("JAVA_PROJECT_PATH is not a directory: " + projectPath);
             return;
         }
 
         log.info("Auto-loading project from JAVA_PROJECT_PATH: {}", path);
-        loadingState = ProjectLoadingState.LOADING;
+        EngineState.current().loadStarted();
 
         try {
             JdtServiceImpl service = new JdtServiceImpl();
             service.loadProject(path);
             this.jdtService = service;
-            loadingState = ProjectLoadingState.LOADED;
+            EngineState.current().loadSucceeded();
             log.info("Project auto-loaded successfully: {} files, {} packages",
                 service.getSourceFileCount(), service.getPackageCount());
         } catch (Exception e) {
             log.error("Failed to auto-load project from JAVA_PROJECT_PATH: {}", e.getMessage(), e);
-            loadingState = ProjectLoadingState.FAILED;
-            loadingError = e.getMessage();
+            EngineState.current().loadFailed(e.getMessage());
         }
     }
 
@@ -1132,8 +1083,8 @@ public class JawataApplication implements IApplication {
             service -> this.jdtService = service,
             () -> jdtService != null,
             () -> toolRegistry.getToolCount(),
-            () -> loadingState,
-            () -> loadingError,
+            () -> EngineState.current().loading(),
+            () -> EngineState.current().loadingError(),
             this::fieldDir,
             toolRegistry::inFlight,
             refactoringChangeCache,

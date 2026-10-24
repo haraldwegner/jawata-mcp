@@ -5,9 +5,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
-import org.jawata.mcp.ProjectLoadingState;
 import org.jawata.mcp.ShippedTools;
 import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.Tool;
 import org.jawata.mcp.tools.ToolRegistry;

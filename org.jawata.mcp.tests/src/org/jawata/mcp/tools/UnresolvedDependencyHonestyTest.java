@@ -117,7 +117,7 @@ class UnresolvedDependencyHonestyTest {
         HealthCheckTool tool = new HealthCheckTool(
             () -> Boolean.TRUE,
             () -> 1,
-            () -> org.jawata.mcp.ProjectLoadingState.LOADED,
+            () -> org.jawata.mcp.engine.ProjectLoadingState.LOADED,
             () -> "",
             () -> service);
         Map<String, Object> d = data(tool.execute(mapper.createObjectNode()));

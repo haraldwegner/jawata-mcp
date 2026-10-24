@@ -1,4 +1,4 @@
-package org.jawata.mcp;
+package org.jawata.mcp.engine;
 
 /**
  * Represents the state of project loading.
