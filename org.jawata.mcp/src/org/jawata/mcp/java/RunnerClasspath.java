@@ -1,4 +1,4 @@
-package org.jawata.mcp.execution;
+package org.jawata.mcp.java;
 
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;

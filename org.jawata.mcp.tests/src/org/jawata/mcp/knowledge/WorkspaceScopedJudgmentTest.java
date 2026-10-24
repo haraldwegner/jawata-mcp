@@ -125,7 +125,8 @@ class WorkspaceScopedJudgmentTest {
                 .build());
 
             Map<String, Object> report = new ExperienceMaintenance(
-                store, fqn -> null, List::of, () -> service).backfillAutoAnchors();
+                store, fqn -> null, List::of,
+                org.jawata.mcp.java.JavaSymbolAnchors.over(() -> service)).backfillAutoAnchors();
 
             assertEquals(1, report.get("anchored"), "only the own-stamped entry: " + report);
             assertEquals("com.example.HelloWorld#printGreeting",

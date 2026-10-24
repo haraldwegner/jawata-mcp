@@ -262,7 +262,7 @@ class CoverageDeltaTest {
         service.getJavaProject().getProject().refreshLocal(
             org.eclipse.core.resources.IResource.DEPTH_INFINITE,
             new org.eclipse.core.runtime.NullProgressMonitor());
-        String problem = org.jawata.mcp.execution.RunnerClasspath.buildAndCheck(
+        String problem = org.jawata.mcp.java.RunnerClasspath.buildAndCheck(
             service.getJavaProject(), new org.eclipse.core.runtime.NullProgressMonitor());
         assertEquals(null, problem, "fixture must rebuild cleanly");
     }

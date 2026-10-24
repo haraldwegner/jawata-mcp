@@ -8,10 +8,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.eclipse.jdt.core.IMember;
-import org.eclipse.jdt.core.IType;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.java.JavaSymbolAnchors;
+import org.jawata.spi.lang.SymbolAnchors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -88,7 +85,7 @@ public final class ExperienceRetrieval {
         "bounded_context", "domain_concept", STANDING_FILE_SCOPE);
 
     private final ExperienceStore store;
-    private final Supplier<IJdtService> jdt;
+    private final Supplier<SymbolAnchors> anchorSource;
     /** Sprint 27: the meaning nominator. NULL is the supported degrade state —
      *  with no index this class behaves exactly as it did in v3.3.1. */
     private final EmbeddingIndex index;
@@ -109,7 +106,7 @@ public final class ExperienceRetrieval {
      * DEFAULT and a caller cannot forget it. A store that cannot carry an index
      * still degrades to exactly the keyword behaviour.</p>
      */
-    public ExperienceRetrieval(ExperienceStore store, Supplier<IJdtService> jdt) {
+    public ExperienceRetrieval(ExperienceStore store, Supplier<SymbolAnchors> jdt) {
         this(store, jdt, EmbeddingIndex.forStore(store));
     }
 
@@ -124,14 +121,14 @@ public final class ExperienceRetrieval {
      * secretly the same.</p>
      */
     public static ExperienceRetrieval keywordOnly(ExperienceStore store,
-            Supplier<IJdtService> jdt) {
+            Supplier<SymbolAnchors> jdt) {
         return new ExperienceRetrieval(store, jdt, null);
     }
 
-    public ExperienceRetrieval(ExperienceStore store, Supplier<IJdtService> jdt,
+    public ExperienceRetrieval(ExperienceStore store, Supplier<SymbolAnchors> jdt,
                                EmbeddingIndex index) {
         this.store = store;
-        this.jdt = jdt;
+        this.anchorSource = jdt;
         this.index = index;
     }
 
@@ -893,7 +890,7 @@ public final class ExperienceRetrieval {
             ? java.util.Set.of()
             : index.unembeddedAmong(rankedIds);
         return ExperienceAnalogies.rank(pool, q, meaning, lexical, nominated,
-            AnalogyPolicy.MAX_NOMINEES * Math.max(1, q.scope().lanes().size()), jdt, unembedded);
+            AnalogyPolicy.MAX_NOMINEES * Math.max(1, q.scope().lanes().size()), anchorSource, unembedded);
     }
 
     /** The text a cue is embedded as — its words, in the order a human would say them. */
@@ -2280,8 +2277,9 @@ public final class ExperienceRetrieval {
      * location lost that renders as "learned here; the symbol no longer exists" is the
      * signal dressed as history.</p>
      *
-     * <p><b>The line is 1-BASED and converted in exactly one place — here.</b>
-     * {@link IJdtService#getLineNumber} answers ZERO-based, as its own javadoc says, while
+     * <p><b>The line is 1-BASED and converted in exactly one place — Java's anchors
+     * ({@code JavaSymbolAnchors#locate}, where this body moved at E9).</b>
+     * {@code IJdtService#getLineNumber} answers ZERO-based, as its own javadoc says, while
      * a reader of a recall answer opens a file at a 1-based line and every other row this
      * product puts on the wire is 1-based. Two sites each spelling their own arithmetic is
      * how this repository's coordinates came to disagree; there is one site.</p>
@@ -2331,96 +2329,15 @@ public final class ExperienceRetrieval {
         if (symbolFqn == null || symbolFqn.isBlank()) {
             return null;
         }
-        int hash = symbolFqn.indexOf('#');
-        String typeName = hash < 0 ? symbolFqn : symbolFqn.substring(0, hash);
-        String member = hash < 0 ? null : symbolFqn.substring(hash + 1).strip();
-        IJdtService service = jdt == null ? null : jdt.get();
-        Map<String, Object> p = new LinkedHashMap<>();
-        p.put("symbol", symbolFqn);
-        if (service == null) {
-            p.put("resolved", false);
-            p.put("note", "no project loaded");
-            return p;
+        SymbolAnchors anchors = anchorSource == null ? null : anchorSource.get();
+        if (anchors == null) {
+            Map<String, Object> none = new LinkedHashMap<>();
+            none.put("symbol", symbolFqn);
+            none.put("resolved", false);
+            none.put("note", "no project loaded");
+            return none;
         }
-        // Sprint 28g S14 D40d — A CLOSED PROJECT IS A FAILURE TO LOOK, NOT A MISSING SYMBOL.
-        //
-        // The guard above catches "there is no service". It does NOT catch the state one step
-        // in: a service in hand with NOTHING LOADED. There `findType` answers null without
-        // throwing, which falls into the branch below and sets `stale` — so an unopened or
-        // closed workspace reports every anchor in the store as GONE, and the write gate
-        // refuses correct rows while the sweep would queue the whole store for re-anchoring.
-        //
-        // D40d's measure is that "the answer distinguishes the two", and the distinction has
-        // to be made HERE rather than at each caller, because the whole of D32's clause is
-        // that the two callers ask ONE object. A per-caller guard is how the member-blindness
-        // below survived in one resolver and not the other.
-        //
-        // AN UNREADABLE PROJECT SET FALLS THROUGH; IT DOES NOT ANSWER HERE. The first version
-        // answered UNKNOWN with its own wording for a set it could not read, and the full
-        // suite refused it: two tests whose doubles answer null from `projectKeys` assert that
-        // a THROWING resolver and a THROWING member lookup each report what actually went
-        // wrong, and this branch caught the NPE and reported "the project set could not be
-        // read" over both of them. Same verdict, wrong reason — and the reason is the entire
-        // deliverable, since it is what tells an author where to look.
-        //
-        // That is the shadowing shape this sprint has recorded repeatedly: a new, EARLIER
-        // precondition answering in place of a later one that was already correct. The cure is
-        // that this branch speaks only for the ONE state it was written for, and says nothing
-        // about any other — so where it cannot tell, the resolution below proceeds and its own
-        // error wording survives.
-        //
-        // AND THE EMPTY SET IS A PROXY, WHICH IS WORTH NAMING. `projectKeys` is a default on
-        // the interface returning List.of(), so "empty" is also what any implementation that
-        // never overrode it answers. The resolver cannot tell that from a real workspace with
-        // nothing loaded — and UNKNOWN is the safe direction for both, because it never
-        // retires a row and never refuses a write. What it must not do is claim the reason.
-        java.util.Collection<String> loaded;
-        try {
-            loaded = service.projectKeys();
-        } catch (RuntimeException ex) {
-            loaded = null;
-        }
-        if (loaded != null && loaded.isEmpty()) {
-            p.put("resolved", false);
-            p.put("note", "no project is loaded in this workspace, so nothing could be"
-                + " looked up — this is a failure to look and not a missing symbol");
-            return p;
-        }
-        try {
-            IType type = service.findType(typeName);
-            if (type == null || !type.exists()) {
-                p.put("resolved", false);
-                p.put("stale", true);
-                p.put("note", "symbol not found in current workspace");
-                return p;
-            }
-            IMember target = type;
-            if (member != null && !member.isEmpty()) {
-                // THE STRICT FORM, because this answer backs a REFUSAL. The forgiving
-                // `memberOn` turns an unreadable type into "no such member", which for the
-                // auto-anchoring heuristic is right and for a user-facing refusal is the
-                // sprint's own defect: the author would be told the member is gone when the
-                // lookup merely failed. Anything that stops the lookup completing now
-                // propagates to the catch below, where it becomes "could not check".
-                IMember found = SymbolAnchorResolver.memberOnOrThrow(type, member);
-                if (found == null) {
-                    p.put("resolved", false);
-                    p.put("stale", true);
-                    p.put("note", "the type is here and '" + member + "' is not — "
-                        + "the anchored member is gone");
-                    JavaSymbolAnchors.locate(service, type, type, p);
-                    return p;
-                }
-                p.put("member", member);
-                target = found;
-            }
-            p.put("resolved", true);
-            JavaSymbolAnchors.locate(service, type, target, p);
-        } catch (Exception ex) {
-            p.put("resolved", false);
-            p.put("note", "resolution error: " + ex.getMessage());
-        }
-        return p;
+        return anchors.pointer(symbolFqn);
     }
 
     /**

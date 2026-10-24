@@ -1,4 +1,4 @@
-package org.jawata.mcp.execution;
+package org.jawata.mcp.java;
 
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;

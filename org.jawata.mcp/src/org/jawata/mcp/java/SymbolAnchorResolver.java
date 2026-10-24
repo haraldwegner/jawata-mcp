@@ -1,4 +1,4 @@
-package org.jawata.mcp.knowledge;
+package org.jawata.mcp.java;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -14,6 +14,7 @@ import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.knowledge.AnchorCandidates;
 
 /**
  * Sprint 21e (item A): turns an entry's text into at most ONE grounded symbol anchor.

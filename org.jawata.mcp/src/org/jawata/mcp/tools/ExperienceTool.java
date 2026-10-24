@@ -274,7 +274,8 @@ public final class ExperienceTool implements Tool {
         this.store = store;
         this.backups = backupsOverride != null ? backupsOverride
             : new org.jawata.mcp.knowledge.StoreBackups(this::currentH2Store);
-        this.retrieval = new ExperienceRetrieval(store, serviceSupplier);
+        this.retrieval = new ExperienceRetrieval(store,
+            org.jawata.mcp.java.JavaSymbolAnchors.over(serviceSupplier));
         // Sprint 28g S14 D32 — THE SWEEP NOW ASKS WHAT THE WRITE GATE ASKS, and that is the
         // whole deliverable. It used to run on `resolvesViaJdt`, a SECOND resolver that split
         // `#member` off and resolved the TYPE only — so a job anchored at a deleted member was
@@ -285,7 +286,7 @@ public final class ExperienceTool implements Tool {
         // nothing calls is a second implementation the next change wires back in.
         this.maintenance = new ExperienceMaintenance(store,
             resolverOverride != null ? resolverOverride : this::anchorResolves, defaultRoots,
-            serviceSupplier);
+            org.jawata.mcp.java.JavaSymbolAnchors.over(serviceSupplier));
     }
 
     /**

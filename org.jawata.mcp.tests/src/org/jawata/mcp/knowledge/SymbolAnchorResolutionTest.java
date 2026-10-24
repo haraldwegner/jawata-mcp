@@ -36,7 +36,8 @@ class SymbolAnchorResolutionTest {
     }
 
     private static ExperienceMaintenance maint(ExperienceStore store, JdtServiceImpl service) {
-        return new ExperienceMaintenance(store, fqn -> null, List::of, () -> service);
+        return new ExperienceMaintenance(store, fqn -> null, List::of,
+            org.jawata.mcp.java.JavaSymbolAnchors.over(() -> service));
     }
 
     private static StoredEntry bySummary(ExperienceStore store, String summary) {

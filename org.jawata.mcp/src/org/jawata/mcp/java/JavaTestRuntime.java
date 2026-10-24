@@ -6,7 +6,6 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jdt.core.IJavaProject;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
-import org.jawata.mcp.execution.RunnerClasspath;
 import org.jawata.spi.lang.RunnerSpec;
 import org.jawata.spi.lang.TestRuntime;
 

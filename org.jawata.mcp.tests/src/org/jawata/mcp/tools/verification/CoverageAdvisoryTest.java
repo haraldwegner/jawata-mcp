@@ -211,7 +211,7 @@ class CoverageAdvisoryTest {
         service.getJavaProject().getProject().refreshLocal(
             org.eclipse.core.resources.IResource.DEPTH_INFINITE,
             new org.eclipse.core.runtime.NullProgressMonitor());
-        assertEquals(null, org.jawata.mcp.execution.RunnerClasspath.buildAndCheck(
+        assertEquals(null, org.jawata.mcp.java.RunnerClasspath.buildAndCheck(
             service.getJavaProject(), new org.eclipse.core.runtime.NullProgressMonitor()),
             "fixture must rebuild cleanly");
     }

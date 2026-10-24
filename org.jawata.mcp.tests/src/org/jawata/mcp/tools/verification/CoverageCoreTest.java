@@ -163,7 +163,7 @@ class CoverageCoreTest {
         service.getJavaProject().getProject().refreshLocal(
             org.eclipse.core.resources.IResource.DEPTH_INFINITE,
             new org.eclipse.core.runtime.NullProgressMonitor());
-        org.jawata.mcp.execution.RunnerClasspath.buildAndCheck(
+        org.jawata.mcp.java.RunnerClasspath.buildAndCheck(
             service.getJavaProject(), new org.eclipse.core.runtime.NullProgressMonitor());
 
         Map<String, Object> report = coverageAction("coverage_report", artifactId, null);

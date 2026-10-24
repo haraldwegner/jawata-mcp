@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import org.jawata.core.IJdtService;
+import org.jawata.spi.lang.SymbolAnchors;
 
 /**
  * Sprint 27 D2 — experience returned as ANALOGY: ranked, capped, and labeled in
@@ -57,7 +57,7 @@ public final class ExperienceAnalogies {
      */
     public static List<Analogy> rank(List<StoredEntry> candidates, RecallQuery cue,
                                      Map<String, Double> semantic, int cap,
-                                     Supplier<IJdtService> jdt) {
+                                     Supplier<SymbolAnchors> jdt) {
         return rank(candidates, cue, semantic, Map.of(), List.of(), cap, jdt);
     }
 
@@ -80,7 +80,7 @@ public final class ExperienceAnalogies {
                                      Map<String, Double> semantic,
                                      Map<String, Double> lexical,
                                      List<String> nominated, int cap,
-                                     Supplier<IJdtService> jdt) {
+                                     Supplier<SymbolAnchors> jdt) {
         return rank(candidates, cue, semantic, lexical, nominated, cap, jdt, Set.of());
     }
 
@@ -108,7 +108,7 @@ public final class ExperienceAnalogies {
                                      Map<String, Double> semantic,
                                      Map<String, Double> lexical,
                                      List<String> nominated, int cap,
-                                     Supplier<IJdtService> jdt,
+                                     Supplier<SymbolAnchors> jdt,
                                      Set<String> unembedded) {
         record Scored(StoredEntry entry, double score, List<String> basis) {
         }
@@ -249,7 +249,7 @@ public final class ExperienceAnalogies {
      * <p>"since removed" is a statement about the CODE, not about the lesson's
      * validity. An experience entry is never stale.</p>
      */
-    static String provenanceOf(StoredEntry e, Supplier<IJdtService> jdt) {
+    static String provenanceOf(StoredEntry e, Supplier<SymbolAnchors> jdt) {
         String anchor = e.symbolFqn();
         if (anchor == null || anchor.isBlank()) {
             return null;
@@ -257,15 +257,16 @@ public final class ExperienceAnalogies {
         if (!e.isJavaResolvable()) {
             return "learned on " + anchor;
         }
-        IJdtService service = jdt == null ? null : jdt.get();
-        if (service == null) {
+        SymbolAnchors anchors = jdt == null ? null : jdt.get();
+        if (anchors == null) {
             return "learned on " + anchor;
         }
         try {
             String typeName = anchor.contains("#")
                 ? anchor.substring(0, anchor.indexOf('#')) : anchor;
-            var type = service.findType(typeName);
-            boolean gone = type == null || !type.exists();
+            // The TYPE only, as before: stale is set only when the language positively found it gone, so a failed lookup
+            // (no stale flag) is not an absence.
+            boolean gone = Boolean.TRUE.equals(anchors.pointer(typeName).get("stale"));
             return "learned on " + anchor + (gone ? ", since removed" : "");
         } catch (Exception ex) {
             return "learned on " + anchor;     // a failed lookup is not an absence

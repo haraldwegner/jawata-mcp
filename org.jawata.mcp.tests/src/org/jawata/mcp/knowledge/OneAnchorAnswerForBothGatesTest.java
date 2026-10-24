@@ -100,7 +100,8 @@ class OneAnchorAnswerForBothGatesTest {
             // PROOF OF LIFE FIRST. If the fixture's own anchor does not resolve, every
             // assertion below is about a broken lookup rather than about a missing member,
             // and the two read identically from a red test.
-            ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> service);
+            ExperienceRetrieval retrieval = new ExperienceRetrieval(store,
+                org.jawata.mcp.java.JavaSymbolAnchors.over(() -> service));
             assertEquals(ExperienceRetrieval.AnchorAnswer.RESOLVES,
                 retrieval.anchorAnswer(STILL_HERE),
                 "proof of life: the sibling anchor must resolve, or this test measures nothing");
@@ -161,7 +162,8 @@ class OneAnchorAnswerForBothGatesTest {
     void theAnswerHasThreeNamedValues() throws Exception {
         JdtServiceImpl service = helper.loadProject("simple-maven");
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
-            ExperienceRetrieval loaded = new ExperienceRetrieval(store, () -> service);
+            ExperienceRetrieval loaded = new ExperienceRetrieval(store,
+                org.jawata.mcp.java.JavaSymbolAnchors.over(() -> service));
             ExperienceRetrieval serviceless = new ExperienceRetrieval(store, () -> null);
             assertAll(
                 () -> assertEquals(ExperienceRetrieval.AnchorAnswer.RESOLVES,
@@ -197,7 +199,8 @@ class OneAnchorAnswerForBothGatesTest {
     void aBareOverloadedMemberResolves() throws Exception {
         JdtServiceImpl service = helper.loadProject("simple-maven");
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
-            ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> service);
+            ExperienceRetrieval retrieval = new ExperienceRetrieval(store,
+                org.jawata.mcp.java.JavaSymbolAnchors.over(() -> service));
             assertAll(
                 () -> assertEquals(ExperienceRetrieval.AnchorAnswer.RESOLVES,
                     retrieval.anchorAnswer("com.example.HelloWorld#HelloWorld"),
@@ -231,7 +234,8 @@ class OneAnchorAnswerForBothGatesTest {
     void aClosedWorkspaceCannotLookRatherThanFindNothing() throws Exception {
         JdtServiceImpl service = helper.loadProject("simple-maven");
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
-            ExperienceRetrieval retrieval = new ExperienceRetrieval(store, () -> service);
+            ExperienceRetrieval retrieval = new ExperienceRetrieval(store,
+                org.jawata.mcp.java.JavaSymbolAnchors.over(() -> service));
 
             // PROOF OF LIFE while the project IS loaded. Without it, UNKNOWN below could be
             // UNKNOWN for any reason at all — a bad anchor, a broken fixture — and the

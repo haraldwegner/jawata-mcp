@@ -249,7 +249,8 @@ class DebugClosureTest {
         RuntimeSessionRegistry freshSessions = new RuntimeSessionRegistry();
         DebugTool recallingTool = new DebugTool(() -> service, freshSessions,
             new org.jawata.mcp.runtime.RuntimeArtifactStore(),
-            new org.jawata.mcp.knowledge.ExperienceRetrieval(store, () -> service));
+            new org.jawata.mcp.knowledge.ExperienceRetrieval(store,
+                org.jawata.mcp.java.JavaSymbolAnchors.over(() -> service)));
         try {
             Path classes = Files.createTempDirectory("jawata-recall-");
             Path file = service.getProjectRoot()

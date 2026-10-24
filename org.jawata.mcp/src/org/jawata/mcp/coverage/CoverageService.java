@@ -21,7 +21,7 @@ import org.jawata.core.host.HostOS;
 import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.ForkedTestRunner;
-import org.jawata.mcp.execution.RunnerClasspath;
+import org.jawata.mcp.java.RunnerClasspath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

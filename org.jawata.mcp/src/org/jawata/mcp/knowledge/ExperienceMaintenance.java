@@ -17,7 +17,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
-import org.jawata.core.IJdtService;
+import org.jawata.spi.lang.SymbolAnchors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,8 +76,8 @@ public final class ExperienceMaintenance {
     private final ExperienceStore store;
     private final PointerResolver resolver;
     private final Supplier<List<Path>> defaultRoots;
-    /** Sprint 21e (item A): JDT access for ingest-time anchor RESOLUTION; null = no auto-anchoring. */
-    private final Supplier<IJdtService> anchorService;
+    /** Sprint 21e (item A): the language's symbol anchors for ingest-time anchor RESOLUTION; null = no auto-anchoring. */
+    private final Supplier<SymbolAnchors> anchorService;
 
     public ExperienceMaintenance(ExperienceStore store, PointerResolver resolver) {
         this(store, resolver, List::of);
@@ -91,7 +91,7 @@ public final class ExperienceMaintenance {
 
     /** Sprint 21e (item A): {@code anchorService} enables ingest-time symbol-anchor resolution. */
     public ExperienceMaintenance(ExperienceStore store, PointerResolver resolver,
-            Supplier<List<Path>> defaultRoots, Supplier<IJdtService> anchorService) {
+            Supplier<List<Path>> defaultRoots, Supplier<SymbolAnchors> anchorService) {
         this.store = store;
         this.resolver = resolver == null ? fqn -> null : resolver;
         this.defaultRoots = defaultRoots == null ? List::of : defaultRoots;
@@ -251,8 +251,7 @@ public final class ExperienceMaintenance {
         long bytes = 0;
         // Sprint 21e (item A): one resolver per load run — its token memo spans the run
         // but never outlives project loads/removals.
-        SymbolAnchorResolver anchors =
-            anchorService == null ? null : new SymbolAnchorResolver(anchorService);
+        SymbolAnchors anchors = anchorService == null ? null : anchorService.get();
         while (!queue.isEmpty()) {
             Item item = queue.poll();
             Path f = item.file().toAbsolutePath().normalize();
@@ -664,7 +663,7 @@ public final class ExperienceMaintenance {
      * frozen {@code body_json} carries no {@code symbol} key for auto-anchored entries.
      * Java-language entries only (non-Java anchors are opaque to JDT by contract).
      */
-    private int autoAnchor(SymbolAnchorResolver anchors, String entryId, String text, String language) {
+    private int autoAnchor(SymbolAnchors anchors, String entryId, String text, String language) {
         if (anchors == null || entryId == null || text == null || text.isBlank()) {
             return 0;
         }
@@ -672,7 +671,7 @@ public final class ExperienceMaintenance {
         if (!java) {
             return 0;
         }
-        return anchors.resolve(text)
+        return anchors.anchorFor(text)
             .map(fqn -> store.updateSymbolAnchor(entryId, fqn) ? 1 : 0)
             .orElse(0);
     }
@@ -965,8 +964,8 @@ public final class ExperienceMaintenance {
         long start = System.nanoTime();
         int checked = 0;
         int anchored = 0;
-        if (anchorService != null && anchorService.get() != null) {
-            SymbolAnchorResolver anchors = new SymbolAnchorResolver(anchorService);
+        SymbolAnchors anchors = anchorService == null ? null : anchorService.get();
+        if (anchors != null) {
             String ownWorkspace = store.provenanceWorkspaceId();
             for (StoredEntry e : store.all()) {
                 if (e.symbolFqn() != null && !e.symbolFqn().isBlank()) {
@@ -991,7 +990,7 @@ public final class ExperienceMaintenance {
                     continue;
                 }
                 checked++;
-                anchored += anchors.resolve(text)
+                anchored += anchors.anchorFor(text)
                     .map(fqn -> store.updateSymbolAnchor(e.id(), fqn) ? 1 : 0)
                     .orElse(0);
             }

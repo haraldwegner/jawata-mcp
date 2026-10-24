@@ -1,6 +1,13 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IJavaProject;
@@ -9,22 +16,18 @@ import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.execution.ForkedTestRunner;
-import org.jawata.mcp.execution.RunnerClasspath;
-import org.jawata.mcp.execution.TestWorkingFolder;
+import org.jawata.mcp.java.JavaTestRuntime;
+import org.jawata.mcp.java.TestWorkingFolder;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.junit.JUnitLaunchHelper;
 import org.jawata.mcp.tools.shared.FrameworkDetection;
+import org.jawata.spi.lang.RunnerSpec;
+import org.jawata.spi.lang.TestRuntime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Sprint 12 (v1.6.0) — {@code run_tests}: launch JUnit tests via
@@ -481,7 +484,10 @@ public class RunTestsTool extends AbstractTool {
 
             // Evidence needs compiled classes: build, and refuse honestly on
             // compile errors instead of running tests against stale bytes.
-            String buildProblem = RunnerClasspath.buildAndCheck(javaProject, new NullProgressMonitor());
+            // The language is asked (contract §4.5, E10): what the forked run needs, and whether the project builds.
+            TestRuntime tests = new JavaTestRuntime(service);
+            String projectName = javaProject.getProject().getName();
+            String buildProblem = tests.buildAndCheck(projectName, new NullProgressMonitor()).orElse(null);
             if (buildProblem != null) {
                 // Every argument was valid; the project's own state declined (S19 dogfood: it was
                 // INVALID_PARAMETER, whose hint sends a caller to re-read the input schema).
@@ -489,11 +495,11 @@ public class RunTestsTool extends AbstractTool {
             }
 
             boolean testng = "testng".equalsIgnoreCase(frameworkRaw);
-            RunnerClasspath.Assembled assembled = RunnerClasspath.assemble(javaProject, testng);
-            if (assembled.isRefused()) {
-                return ToolResponse.invalidParameter("project", assembled.refusalReason);
+            RunnerSpec runnerSpec = tests.specFor(projectName, testng);
+            if (runnerSpec.isRefused()) {
+                return ToolResponse.invalidParameter("project", runnerSpec.refusalReason());
             }
-            spec.classpath = assembled.classpath;
+            spec.classpath = new ArrayList<>(runnerSpec.classpath());
             // Launch descriptor (Stage 3): caller-supplied runtime-only
             // classpath additions — the plain-Java shape's escape hatch.
             if (arguments.has("extraClasspath") && arguments.get("extraClasspath").isArray()) {
@@ -1821,8 +1827,8 @@ public class RunTestsTool extends AbstractTool {
 
             LoadedProject project = service.allProjects().stream().findFirst().orElse(null);
             if (project == null) return ToolResponse.projectNotLoaded();
-            String buildProblem = RunnerClasspath.buildAndCheck(
-                project.javaProject(), new NullProgressMonitor());
+            String buildProblem = new JavaTestRuntime(service)
+                .buildAndCheck(project.javaProject().getProject().getName(), new NullProgressMonitor()).orElse(null);
             if (buildProblem != null) {
                 return ToolResponse.preconditionNotMet(buildProblem, PROJECT_DOES_NOT_COMPILE);
             }

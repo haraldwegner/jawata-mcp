@@ -4,7 +4,7 @@ import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
 import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostProcesses;
-import org.jawata.mcp.execution.RunnerClasspath;
+import org.jawata.mcp.java.RunnerClasspath;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;

@@ -47,7 +47,8 @@ class AnchorBackfillAndRefreshTest {
         AtomicReference<JdtServiceImpl> serviceRef = new AtomicReference<>();
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
             ExperienceMaintenance maint =
-                new ExperienceMaintenance(store, fqn -> null, List::of, serviceRef::get);
+                new ExperienceMaintenance(store, fqn -> null, List::of,
+                    org.jawata.mcp.java.JavaSymbolAnchors.over(serviceRef::get));
             writeMemory(dir, "lesson.md", """
                 ---
                 description: pre-project greeting lesson

@@ -1,16 +1,16 @@
 package org.jawata.mcp.knowledge;
 
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.domain.Advisor;
-import org.jawata.mcp.domain.Outcome;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Supplier;
+
+import org.jawata.mcp.domain.Advisor;
+import org.jawata.mcp.domain.Outcome;
+import org.jawata.spi.lang.SymbolAnchors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sprint 21 Stage 3 — the store-backed {@link Advisor} that FILLS the Sprint-18 seam
@@ -44,7 +44,7 @@ public final class ExperienceAdvisor implements Advisor {
      * existed; production uses the index-bearing constructor below, because a
      * pre-advice surface with no embedder can only match on exact words.
      */
-    public ExperienceAdvisor(ExperienceStore store, Supplier<IJdtService> jdt) {
+    public ExperienceAdvisor(ExperienceStore store, Supplier<SymbolAnchors> jdt) {
         this(store, jdt, null);
     }
 
@@ -55,7 +55,7 @@ public final class ExperienceAdvisor implements Advisor {
      * it matched — the surface computed nothing to discard, and then discarded
      * it (audit finding F3).
      */
-    public ExperienceAdvisor(ExperienceStore store, Supplier<IJdtService> jdt,
+    public ExperienceAdvisor(ExperienceStore store, Supplier<SymbolAnchors> jdt,
                              EmbeddingIndex index) {
         this.store = store;
         this.retrieval = new ExperienceRetrieval(store, jdt, index);

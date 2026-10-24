@@ -192,7 +192,8 @@ public final class ShippedTools {
         // about its symbol. The profiler shares the sessions the debugger opens.
         tools.add(new DebugTool(jdt, w.runtimeSessions(),
             new org.jawata.mcp.runtime.RuntimeArtifactStore(),
-            new org.jawata.mcp.knowledge.ExperienceRetrieval(w.experienceStore(), jdt)));
+            new org.jawata.mcp.knowledge.ExperienceRetrieval(w.experienceStore(),
+                org.jawata.mcp.java.JavaSymbolAnchors.over(jdt))));
         tools.add(new ProfileTool(jdt, w.runtimeSessions()));
 
         // The hire path. The REGISTRY supplier breaks a real cycle (the tool sits in the registry its
@@ -215,8 +216,8 @@ public final class ShippedTools {
         // The plan lifecycle consults and records against the knowledge store through the SAME
         // advisor the pre-advice surface uses, so it is given the embedding index, not left
         // keyword-only.
-        ExperienceAdvisor advisor = new ExperienceAdvisor(w.experienceStore(), jdt,
-            w.embeddingIndex().get());
+        ExperienceAdvisor advisor = new ExperienceAdvisor(w.experienceStore(),
+            org.jawata.mcp.java.JavaSymbolAnchors.over(jdt), w.embeddingIndex().get());
         tools.add(new RefactoringTool(jdt, w.changeCache(), advisor));
 
         // The local experience/knowledge store's front door.
