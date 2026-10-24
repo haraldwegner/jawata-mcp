@@ -15,6 +15,7 @@ import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.jdt.core.IClasspathEntry;
@@ -367,16 +368,28 @@ public final class JavaBuildVerdict implements BuildVerdict {
                 continue;
             }
             try {
-                Map<IResource, Diagnostic.TestScope> scopes = new LinkedHashMap<>();
-                for (IMarker marker : project.findMarkers(markerType, true, IResource.DEPTH_INFINITE)) {
-                    errors.add(describe(marker, name, scopes));
-                }
+                errors.addAll(markersOf(project, markerType));
             } catch (Exception e) {
                 log.warn("marker sweep failed on '{}': {}", name, e.getMessage());
                 errors.add(sweepFailure(name, e.getMessage()));
             }
         }
         return errors;
+    }
+
+    /** The markers of one kind a project holds, as rows: the one read of them, for the verdict and for the runner's pre-flight. */
+    static List<Diagnostic> markersOf(IProject project, String markerType) throws CoreException {
+        List<Diagnostic> rows = new ArrayList<>();
+        Map<IResource, Diagnostic.TestScope> scopes = new LinkedHashMap<>();
+        for (IMarker marker : project.findMarkers(markerType, true, IResource.DEPTH_INFINITE)) {
+            rows.add(describe(marker, project.getName(), scopes));
+        }
+        return rows;
+    }
+
+    /** The error-severity problem rows one project holds now. */
+    static List<Diagnostic> errorsOf(IProject project) throws CoreException {
+        return markersOf(project, IMarker.PROBLEM).stream().filter(d -> d.severity() == Diagnostic.Severity.ERROR).toList();
     }
 
     private IProject projectNamed(String name) {

@@ -197,6 +197,19 @@ class JavaBuildVerdictRowsTest {
         assertTrue(ending(rows, "NotedAndUnused.java"), "the warning is in it: " + rows);
     }
 
+    @Test
+    @DisplayName("the runner's pre-flight refuses a broken project with the verdict's error count and the file and line of its first error")
+    void theRunnersPreflightReadsTheVerdictsRows() {
+        String refusal = RunnerClasspath.buildAndCheck(service.getJavaProject(), new NullProgressMonitor());
+
+        List<Diagnostic> errors = verdict.errors(scope, new NullProgressMonitor());
+        Diagnostic first = errors.get(0);
+        assertNotNull(refusal, "a project with errors is refused");
+        assertTrue(refusal.contains("has " + errors.size() + " compile error(s)"), refusal);
+        assertTrue(refusal.contains("First: " + new Path(first.filePath()).lastSegment() + ":" + first.line() + " " + first.message()),
+            refusal);
+    }
+
     private JsonNode answered(ToolResponse response) {
         assertTrue(response.isSuccess(), "the tool answers: " + response.getError());
         return mapper.valueToTree(response.getData());

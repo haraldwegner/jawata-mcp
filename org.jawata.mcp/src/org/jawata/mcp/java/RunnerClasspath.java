@@ -1,17 +1,5 @@
 package org.jawata.mcp.java;
 
-import org.eclipse.core.resources.IMarker;
-import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IResource;
-import org.eclipse.core.resources.IncrementalProjectBuilder;
-import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.jdt.core.IJavaProject;
-import org.eclipse.jdt.launching.IRuntimeClasspathEntry;
-import org.eclipse.jdt.launching.JavaRuntime;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,6 +8,16 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Stream;
+
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IncrementalProjectBuilder;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.jdt.core.IJavaProject;
+import org.eclipse.jdt.launching.IRuntimeClasspathEntry;
+import org.eclipse.jdt.launching.JavaRuntime;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Sprint 23 (D1) — assembles the forked runner JVM's classpath: the dist
@@ -62,23 +60,15 @@ public final class RunnerClasspath {
         try {
             buildRequiredProjects(project, monitor, new java.util.HashSet<>());
             p.build(IncrementalProjectBuilder.INCREMENTAL_BUILD, monitor);
-            IMarker[] problems = p.findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
-            int errors = 0;
-            String first = null;
-            for (IMarker m : problems) {
-                if (m.getAttribute(IMarker.SEVERITY, -1) == IMarker.SEVERITY_ERROR) {
-                    errors++;
-                    if (first == null) {
-                        first = m.getResource().getName() + ":"
-                            + m.getAttribute(IMarker.LINE_NUMBER, 0) + " "
-                            + m.getAttribute(IMarker.MESSAGE, "");
-                    }
-                }
-            }
-            if (errors > 0) {
-                return "Project '" + p.getName() + "' has " + errors
+            // 28k E10b: the errors a build left are read from the build verdict's rows, not from a second marker sweep.
+            var errors = JavaBuildVerdict.errorsOf(p);
+            if (!errors.isEmpty()) {
+                var first = errors.get(0);
+                String where = first.filePath() == null ? p.getName() : Path.of(first.filePath()).getFileName().toString();
+                return "Project '" + p.getName() + "' has " + errors.size()
                     + " compile error(s); tests cannot produce evidence on broken classes. "
-                    + "First: " + first + ". Run compile_workspace for the full list.";
+                    + "First: " + where + ":" + Math.max(0, first.line()) + " " + first.message()
+                    + ". Run compile_workspace for the full list.";
             }
             return null;
         } catch (CoreException e) {
