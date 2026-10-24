@@ -26,6 +26,11 @@
 #      undo restores the files byte for byte. This is the change lifecycle through ChangeContext, front door to built dist: the
 #      rename is applied by GatedApply (verdict, paths, writes), and the undo goes through ChangeEngine under the same context.
 #
+#   P3 (Stage 3, memory and the test runner ask the Java provider): on the same sample, experience(record) with a symbol anchor and
+#      experience(recall, symbol=...) answer the anchor resolved to its CURRENT file and line (read back from the file on disk, not
+#      from the store); then run_tests on a class of a second sample (simple-maven, which has JUnit tests) runs and reports its count.
+#      Memory's anchor goes through SymbolAnchors and the runner's classpath through TestRuntime, front door to built dist.
+#
 # Usage:  build/28k-e2e.sh [--capture] [dist-dir]
 #         --capture writes the goldens (build/28k-golden-ready.txt, build/28k-golden-tools.json)
 #         from the given dist; only Stage 0 uses it.
@@ -50,6 +55,8 @@ STORE="$(mktemp -d)"
 SAMPLE="$WS/sample/compile-clean"
 mkdir -p "$WS/sample"
 cp -r "$ROOT/org.jawata.core.tests/test-resources/sample-projects/compile-clean" "$SAMPLE"
+TESTS_SAMPLE="$WS/sample/simple-maven"
+cp -r "$ROOT/org.jawata.core.tests/test-resources/sample-projects/simple-maven" "$TESTS_SAMPLE"
 LOG="$WS/resident.log"
 RESIDENT_PID=""
 
@@ -86,7 +93,7 @@ done
 
 PROBE_PORT="$PORT" PROBE_TOKEN="$TOKEN" PROBE_ROOT="$ROOT" PROBE_LOG="$LOG" \
 PROBE_CAPTURE="$CAPTURE" PROBE_GOLDEN_READY="$GOLDEN_READY" PROBE_GOLDEN_TOOLS="$GOLDEN_TOOLS" \
-PROBE_SAMPLE="$SAMPLE" \
+PROBE_SAMPLE="$SAMPLE" PROBE_TESTS_SAMPLE="$TESTS_SAMPLE" \
 python3 - << 'PY'
 import json, os, re, urllib.request
 
@@ -217,6 +224,42 @@ if loaded.get("success"):
             bad("P2 refactoring undo did not restore Clean.java byte for byte")
         else:
             ok("P2 rename_symbol applied (greet -> welcome), compile_workspace 0 errors, refactoring undo restored Clean.java byte for byte")
+
+# --- P3: memory's anchor resolves to the symbol's current place, and the runner runs a test class (Stage 3) -----------------
+if loaded.get("success"):
+    greet_line = next((n for n, text in enumerate(open(source, encoding="utf-8").read().splitlines(), 1)
+                       if re.search(r"\bString\s+greet\s*\(", text)), None)
+    recorded = call("experience", {"kind": "record", "type": "domain_fact", "symbol": "com.example.Clean#greet",
+                                   "summary": "The sample's greeting is the one method its callers print, so a rename of it reaches every caller."})
+    recalled = call("experience", {"kind": "recall", "lane": "domain", "symbol": "com.example.Clean#greet"})
+    entries = (recalled.get("data") or {}).get("entries") or []
+    pointer = (entries[0].get("resolved_pointer") if entries else None) or {}
+    if not recorded.get("success"):
+        bad("P3 experience(record) with a symbol anchor was refused: %s" % recorded.get("error"))
+    elif greet_line is None:
+        bad("P3 the sample no longer declares greet; the probe cannot say where it lives")
+    elif pointer.get("resolved") is not True or not str(pointer.get("file", "")).endswith("Clean.java"):
+        bad("P3 the recalled anchor did not resolve to Clean.java: %s" % pointer)
+    elif pointer.get("line") != greet_line:
+        bad("P3 the anchor resolved to line %s, greet is declared on line %s of the file on disk" % (pointer.get("line"), greet_line))
+    else:
+        ok("P3 experience(record) + recall(symbol): com.example.Clean#greet resolves to Clean.java line %d, the line the file on disk declares it on"
+           % greet_line)
+
+    opened = call("load_project", {"projectPath": os.environ["PROBE_TESTS_SAMPLE"]})
+    if not opened.get("success"):
+        bad("P3 load_project of the test sample refused: %s" % opened.get("error"))
+    else:
+        ran = call("run_tests", {"scope": {"kind": "class", "typeName": "com.example.SampleTest"},
+                                 "framework": "junit5", "timeoutSeconds": 120})
+        summary = (ran.get("data") or {}).get("summary") or {}
+        if not ran.get("success"):
+            bad("P3 run_tests refused: %s" % ran.get("error"))
+        elif summary.get("total") != 7 or summary.get("evidenceFinalized") is not True:
+            bad("P3 run_tests on SampleTest did not report its 7 tests: %s" % summary)
+        else:
+            ok("P3 run_tests on com.example.SampleTest ran and reported its count: total %d, passed %d, failed %d, skipped %d"
+               % (summary["total"], summary.get("passed", -1), summary.get("failed", -1), summary.get("skipped", -1)))
 
 print("\n28k-E2E passed=%d failed=%d" % (passed, failed))
 raise SystemExit(1 if failed else 0)
