@@ -31,6 +31,12 @@
 #      from the store); then run_tests on a class of a second sample (simple-maven, which has JUnit tests) runs and reports its count.
 #      Memory's anchor goes through SymbolAnchors and the runner's classpath through TestRuntime, front door to built dist.
 #
+#   P4 (Stage 4, the change lifecycle in its own package and the one tool producer): tools/list, rendered the way the golden was written,
+#      equals build/28k-golden-tools.json byte for byte (P0 compares parsed names, order and schemas; this is the file itself); and on a
+#      copy of compose-clean, refactoring(plan, compose_method) -> apply_plan -> undo_plan changes ComposeMethodTargets.java and then
+#      leaves it byte-identical to the original. The plan lifecycle is ChangeEngine, GatedApply, ParityGate and PlanStore in
+#      org.jawata.mcp.change, front door to built dist.
+#
 # Usage:  build/28k-e2e.sh [--capture] [dist-dir]
 #         --capture writes the goldens (build/28k-golden-ready.txt, build/28k-golden-tools.json)
 #         from the given dist; only Stage 0 uses it.
@@ -57,6 +63,8 @@ mkdir -p "$WS/sample"
 cp -r "$ROOT/org.jawata.core.tests/test-resources/sample-projects/compile-clean" "$SAMPLE"
 TESTS_SAMPLE="$WS/sample/simple-maven"
 cp -r "$ROOT/org.jawata.core.tests/test-resources/sample-projects/simple-maven" "$TESTS_SAMPLE"
+COMPOSE_SAMPLE="$WS/sample/compose-clean"
+cp -r "$ROOT/org.jawata.core.tests/test-resources/sample-projects/compose-clean" "$COMPOSE_SAMPLE"
 LOG="$WS/resident.log"
 RESIDENT_PID=""
 
@@ -93,7 +101,7 @@ done
 
 PROBE_PORT="$PORT" PROBE_TOKEN="$TOKEN" PROBE_ROOT="$ROOT" PROBE_LOG="$LOG" \
 PROBE_CAPTURE="$CAPTURE" PROBE_GOLDEN_READY="$GOLDEN_READY" PROBE_GOLDEN_TOOLS="$GOLDEN_TOOLS" \
-PROBE_SAMPLE="$SAMPLE" PROBE_TESTS_SAMPLE="$TESTS_SAMPLE" \
+PROBE_SAMPLE="$SAMPLE" PROBE_TESTS_SAMPLE="$TESTS_SAMPLE" PROBE_COMPOSE_SAMPLE="$COMPOSE_SAMPLE" \
 python3 - << 'PY'
 import json, os, re, urllib.request
 
@@ -260,6 +268,47 @@ if loaded.get("success"):
         else:
             ok("P3 run_tests on com.example.SampleTest ran and reported its count: total %d, passed %d, failed %d, skipped %d"
                % (summary["total"], summary.get("passed", -1), summary.get("failed", -1), summary.get("skipped", -1)))
+
+# --- P4: the published surface is the golden byte for byte, and a plan applies and undoes byte-identically (Stage 4) --------
+rendered = (json.dumps(surface, indent=1, sort_keys=True) + "\n").encode("utf-8")
+golden_bytes = open(os.environ["PROBE_GOLDEN_TOOLS"], "rb").read()
+if rendered == golden_bytes:
+    ok("P4 tools/list rendered as the golden was is build/28k-golden-tools.json byte for byte: %d tools, %d bytes"
+       % (len(surface), len(golden_bytes)))
+else:
+    bad("P4 tools/list is not the golden byte for byte: %d bytes against the golden's %d" % (len(rendered), len(golden_bytes)))
+
+compose = os.environ["PROBE_COMPOSE_SAMPLE"]
+target = os.path.join(compose, "src/main/java/com/example/ComposeMethodTargets.java")
+composed = call("load_project", {"projectPath": compose})
+if not composed.get("success"):
+    bad("P4 load_project of the compose sample refused: %s" % composed.get("error"))
+else:
+    original = open(target, "rb").read()
+    def section(line, name):
+        return {"startLine": line, "startColumn": 8, "endLine": line, "endColumn": 44, "methodName": name}
+    planned = call("refactoring", {"action": "plan", "kind": "compose_method", "filePath": target,
+                                   "sections": [section(13, "writeHeader"), section(18, "writeFooter")]})
+    plan_id = (planned.get("data") or {}).get("planId")
+    if not planned.get("success") or not plan_id:
+        bad("P4 refactoring(plan, compose_method) did not return a plan: %s" % (planned.get("error") or planned.get("data")))
+    else:
+        applied = call("refactoring", {"action": "apply_plan", "planId": plan_id})
+        applied_data = applied.get("data") or {}
+        composed_bytes = open(target, "rb").read()
+        if not applied.get("success") or applied_data.get("applied") is not True or applied_data.get("stepsRun") != 2:
+            bad("P4 apply_plan did not apply both steps: %s" % (applied.get("error") or applied_data))
+        elif composed_bytes == original or b"void writeHeader()" not in composed_bytes or b"void writeFooter()" not in composed_bytes:
+            bad("P4 apply_plan answered applied and the file did not change as planned")
+        else:
+            undone = call("refactoring", {"action": "undo_plan", "planId": plan_id})
+            restored = open(target, "rb").read()
+            if not undone.get("success"):
+                bad("P4 undo_plan failed: %s" % undone.get("error"))
+            elif restored != original:
+                bad("P4 undo_plan did not restore ComposeMethodTargets.java byte for byte")
+            else:
+                ok("P4 refactoring plan -> apply_plan (2 steps) -> undo_plan: ComposeMethodTargets.java changed, then restored byte for byte")
 
 print("\n28k-E2E passed=%d failed=%d" % (passed, failed))
 raise SystemExit(1 if failed else 0)
