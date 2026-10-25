@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
 
+import org.jawata.mcp.engine.SettingKeys;
+
 /**
  * The store's entries held in memory, with the word index built from them, rebuilt only
  * when the store changes.
@@ -121,7 +123,7 @@ public final class StoreCorpus {
     }
 
     /** The setting behind {@link #maxIncremental()}; unset means 200. */
-    static final String MAX_INCREMENTAL_PROPERTY = "jawata.corpus.max.incremental";
+    static final String MAX_INCREMENTAL_PROPERTY = SettingKeys.CORPUS_MAX_INCREMENTAL.name();
 
     /**
      * Above this many changed rows a refresh reads the whole store instead: one read of everything is
@@ -129,7 +131,7 @@ public final class StoreCorpus {
      * A setting, read each time, so a test can exercise the bulk case without writing 200 rows.
      */
     static int maxIncremental() {
-        return Integer.getInteger(MAX_INCREMENTAL_PROPERTY, 200);
+        return SettingKeys.CORPUS_MAX_INCREMENTAL.intValue(200);
     }
 
     /** Rows asked of the store in one lookup. */

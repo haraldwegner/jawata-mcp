@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import org.jawata.mcp.engine.EngineEnvironment;
+import org.jawata.mcp.engine.SettingKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,7 +54,7 @@ public final class SeatRules {
      * @return the most rules a brief carries, or 0 for no limit
      */
     public static int limit() {
-        String raw = EngineEnvironment.settings().get(LIMIT_PROPERTY).orElse(null);
+        String raw = SettingKeys.RULES_LIMIT.value().orElse(null);
         if (raw == null || raw.isBlank()) {
             return 0;
         }
@@ -77,7 +77,7 @@ public final class SeatRules {
         return limit > 0 && all.size() > limit ? List.copyOf(all.subList(0, limit)) : all;
     }
 
-    private static final String LIMIT_PROPERTY = "jawata.rules.limit";
+    private static final String LIMIT_PROPERTY = SettingKeys.RULES_LIMIT.name();
 
     private static List<String> binding(ExperienceStore store, String seat, Collection<String> activities) {
         String own = SEAT_PREFIX + seat.strip().toLowerCase(Locale.ROOT);

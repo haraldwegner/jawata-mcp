@@ -17,6 +17,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.spi.lang.SymbolAnchors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,15 +57,15 @@ public final class ExperienceMaintenance {
     static final long DEFAULT_MAX_BYTES = 268_435_456L;
 
     static int maxDepth() {
-        return Integer.getInteger("jawata.memory.maxDepth", DEFAULT_MAX_DEPTH);
+        return SettingKeys.MEMORY_MAX_DEPTH.intValue(DEFAULT_MAX_DEPTH);
     }
 
     static int maxFiles() {
-        return Integer.getInteger("jawata.memory.maxFiles", DEFAULT_MAX_FILES);
+        return SettingKeys.MEMORY_MAX_FILES.intValue(DEFAULT_MAX_FILES);
     }
 
     static long maxBytes() {
-        return Long.getLong("jawata.memory.maxBytes", DEFAULT_MAX_BYTES);
+        return SettingKeys.MEMORY_MAX_BYTES.longValue(DEFAULT_MAX_BYTES);
     }
 
     /** Resolve a symbol pointer: {@code TRUE}=resolves, {@code FALSE}=stale, {@code null}=unknown (no project). */

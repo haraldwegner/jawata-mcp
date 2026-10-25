@@ -24,6 +24,7 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import org.jawata.mcp.engine.EngineEnvironment;
+import org.jawata.mcp.engine.SettingKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +59,7 @@ public final class TranscriptStore {
     private static final Logger log = LoggerFactory.getLogger(TranscriptStore.class);
 
     /** System property: {@code false} or {@code off} turns the lane off as a whole. */
-    public static final String ENABLED_PROPERTY = "jawata.transcript.enabled";
+    public static final String ENABLED_PROPERTY = SettingKeys.TRANSCRIPT_ENABLED.name();
 
     /** Environment variable with the same meaning, for a deployment that sets no properties. */
     public static final String ENABLED_ENV = "JAWATA_TRANSCRIPT";
@@ -234,9 +235,6 @@ public final class TranscriptStore {
     /** Whether the lane captures and answers; read at each call so a deployment can change it. */
     public static boolean enabled() {
         String value = EngineEnvironment.settings().get(ENABLED_PROPERTY).orElse(null);
-        if (value == null) {
-            value = System.getenv(ENABLED_ENV);
-        }
         if (value == null) {
             return true;
         }

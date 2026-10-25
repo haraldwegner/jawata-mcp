@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
-import org.jawata.mcp.engine.EngineEnvironment;
+import org.jawata.mcp.engine.SettingKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -70,7 +70,7 @@ public final class StoryWriter {
      * <p>Read per call so a change does not need a restart — the same choice
      * {@code StoreBackups.DEPTH_PROPERTY} makes, and for the same reason.</p>
      */
-    public static final String DIRECTORY_PROPERTY = "jawata.stories.dir";
+    public static final String DIRECTORY_PROPERTY = SettingKeys.STORIES_DIR.name();
 
     /** The {@link #DIRECTORY_PROPERTY} value that turns the export off. */
     public static final String OFF = "off";
@@ -84,7 +84,7 @@ public final class StoryWriter {
 
     /** The configured folder, or empty when nothing is configured or the export is turned off. */
     public static Optional<Path> directory() {
-        String raw = EngineEnvironment.settings().get(DIRECTORY_PROPERTY).orElse(null);
+        String raw = SettingKeys.STORIES_DIR.value().orElse(null);
         if (raw == null || raw.isBlank() || OFF.equalsIgnoreCase(raw.trim())) {
             return Optional.empty();
         }
@@ -115,7 +115,7 @@ public final class StoryWriter {
 
     /** Whether the export was explicitly turned off with {@value #OFF}. */
     public static boolean turnedOff() {
-        String raw = EngineEnvironment.settings().get(DIRECTORY_PROPERTY).orElse(null);
+        String raw = SettingKeys.STORIES_DIR.value().orElse(null);
         return raw != null && OFF.equalsIgnoreCase(raw.trim());
     }
 

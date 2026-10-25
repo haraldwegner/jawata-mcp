@@ -5,6 +5,7 @@ import java.nio.ByteOrder;
 
 import org.jawata.mcp.embed.EmbedderIdentity;
 import org.jawata.mcp.embed.MiniLmEmbedder;
+import org.jawata.mcp.engine.SettingKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,7 +28,7 @@ public final class EmbeddingService {
     private static final Logger log = LoggerFactory.getLogger(EmbeddingService.class);
 
     /** Escape hatch: disables semantic recall process-wide (degrade tests, incidents). */
-    public static final String DISABLE_PROPERTY = "jawata.embed.disabled";
+    public static final String DISABLE_PROPERTY = SettingKeys.EMBED_DISABLED.name();
 
     private static volatile EmbeddingService instance;
 
@@ -56,7 +57,7 @@ public final class EmbeddingService {
     }
 
     private static EmbeddingService create() {
-        if (Boolean.getBoolean(DISABLE_PROPERTY)) {
+        if (SettingKeys.EMBED_DISABLED.flag()) {
             log.warn("semantic embedding DISABLED via -D{}; recall falls back to keyword only",
                 DISABLE_PROPERTY);
             return new EmbeddingService(null, "disabled via " + DISABLE_PROPERTY);

@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.jawata.mcp.engine.EngineEnvironment;
+import org.jawata.mcp.engine.SettingKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,7 +61,7 @@ final class SchemaMigrations {
      * flag intended AS consent would be indistinguishable from forgetting it. A property
      * that is absent is unambiguously absent.</p>
      */
-    static final String ALLOW_UPGRADE = "jawata.experience.allowSchemaUpgrade";
+    static final String ALLOW_UPGRADE = SettingKeys.ALLOW_SCHEMA_UPGRADE.name();
 
     private static boolean upgradeAllowed() {
         return Boolean.parseBoolean(EngineEnvironment.settings().get(ALLOW_UPGRADE).orElse("false"));

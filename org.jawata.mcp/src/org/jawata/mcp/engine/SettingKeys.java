@@ -76,6 +76,30 @@ public final class SettingKeys {
     public static final SettingKey WORKSPACE_ROOT = register("jawata.workspace.root", "set by the launcher",
         "The workspace folder the launcher was started with, which outlives its per-session folder.");
 
+    /** How deep the memory crawl follows links. */
+    public static final SettingKey MEMORY_MAX_DEPTH = register("jawata.memory.maxDepth", "32",
+        "How many levels of links and folders the memory crawl follows before it stops and says so; a backstop against a runaway tree.");
+
+    /** How many files the memory crawl reads. */
+    public static final SettingKey MEMORY_MAX_FILES = register("jawata.memory.maxFiles", "10000",
+        "How many memory files one crawl reads before it stops and says so; a backstop against a runaway tree.");
+
+    /** How many bytes the memory crawl reads. */
+    public static final SettingKey MEMORY_MAX_BYTES = register("jawata.memory.maxBytes", "268435456",
+        "How many bytes of memory files one crawl reads before it stops and says so; a backstop against a runaway tree.");
+
+    /** How many changed rows the corpus refreshes one by one. */
+    public static final SettingKey CORPUS_MAX_INCREMENTAL = register("jawata.corpus.max.incremental", "200",
+        "Above this many changed knowledge rows a refresh reads the whole store instead of looking each one up.");
+
+    /** Whether semantic embedding is switched off. */
+    public static final SettingKey EMBED_DISABLED = register("jawata.embed.disabled", "false",
+        "When true the knowledge store answers by keywords only and loads no embedding model.");
+
+    /** Whether symptoms are added to the text that is embedded. */
+    public static final SettingKey EMBED_SYMPTOMS = register("jawata.embed.symptoms", "false",
+        "A measurement arm: when true the recorded symptoms are added to the text of each lesson before it is embedded, under an identity of its own.");
+
     private SettingKeys() {
     }
 

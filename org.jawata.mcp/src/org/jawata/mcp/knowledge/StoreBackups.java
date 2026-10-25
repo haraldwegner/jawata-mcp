@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import org.jawata.mcp.engine.EngineEnvironment;
 import org.jawata.mcp.engine.SettingKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -65,7 +64,7 @@ public final class StoreBackups {
     public static final int DEFAULT_DEPTH = 10;
 
     /** The setting, read per call so a change does not need a restart. */
-    public static final String DEPTH_PROPERTY = "jawata.backups.depth";
+    public static final String DEPTH_PROPERTY = SettingKeys.BACKUPS_DEPTH.name();
 
     /**
      * Sprint 28g S13-9 — how many SCHEDULED copies are kept: two weeks of daily copies.
@@ -138,7 +137,7 @@ public final class StoreBackups {
 
     /** How many copies are kept right now — published because the verbs report it. */
     public static int depth() {
-        String raw = EngineEnvironment.settings().get(DEPTH_PROPERTY).orElse(null);
+        String raw = SettingKeys.BACKUPS_DEPTH.value().orElse(null);
         if (raw == null || raw.isBlank()) {
             return DEFAULT_DEPTH;
         }
@@ -395,7 +394,7 @@ public final class StoreBackups {
 
     /** How many scheduled copies are kept; the same floor of one as {@link #depth()}. */
     public static int scheduledDepth() {
-        String raw = EngineEnvironment.settings().get(SettingKeys.BACKUPS_SCHEDULED_DEPTH.name()).orElse(null);
+        String raw = SettingKeys.BACKUPS_SCHEDULED_DEPTH.value().orElse(null);
         if (raw == null || raw.isBlank()) {
             return DEFAULT_SCHEDULED_DEPTH;
         }

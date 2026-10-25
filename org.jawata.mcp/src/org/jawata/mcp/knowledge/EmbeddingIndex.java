@@ -1,6 +1,5 @@
 package org.jawata.mcp.knowledge;
 
-import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -10,6 +9,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 
+import org.jawata.mcp.engine.SettingKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -361,7 +361,7 @@ public final class EmbeddingIndex {
         // the flag on would keep mixed vectors that self-heal can never see.
         // currentIdentity() applies the same suffix on every read and count.
         boolean withSymptoms = "experience_entry".equals(table)
-            && Boolean.getBoolean("jawata.embed.symptoms");
+            && SettingKeys.EMBED_SYMPTOMS.flag();
         String identity = currentIdentity(table);
         String symptomsSelect = withSymptoms
             ? ", (SELECT LISTAGG(s.symptom, '; ') FROM experience_symptom s"
@@ -655,7 +655,7 @@ public final class EmbeddingIndex {
      *  share an identity, in either flag direction (C4b audit F3). */
     private String currentIdentity(String table) {
         return "experience_entry".equals(table)
-            && Boolean.getBoolean("jawata.embed.symptoms")
+            && SettingKeys.EMBED_SYMPTOMS.flag()
             ? embeddings.identityKey() + "+symptoms-arm"
             : embeddings.identityKey();
     }

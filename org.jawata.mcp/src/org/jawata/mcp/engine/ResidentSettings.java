@@ -1,5 +1,6 @@
 package org.jawata.mcp.engine;
 
+import java.util.Map;
 import java.util.Optional;
 
 import org.jawata.spi.host.EngineSettings;
@@ -10,8 +11,16 @@ import org.jawata.spi.host.EngineSettings;
  */
 public final class ResidentSettings implements EngineSettings {
 
+    /** The settings that may also come from an environment variable, which applies when no system property says otherwise. */
+    private static final Map<String, String> ENVIRONMENT = Map.of("jawata.transcript.enabled", "JAWATA_TRANSCRIPT");
+
     @Override
     public Optional<String> get(String key) {
-        return Optional.ofNullable(System.getProperty(key));
+        String property = System.getProperty(key);
+        if (property != null) {
+            return Optional.of(property);
+        }
+        String variable = ENVIRONMENT.get(key);
+        return variable == null ? Optional.empty() : Optional.ofNullable(System.getenv(variable));
     }
 }
