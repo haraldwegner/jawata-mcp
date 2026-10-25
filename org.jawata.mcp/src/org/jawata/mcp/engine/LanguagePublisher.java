@@ -75,10 +75,18 @@ public final class LanguagePublisher {
         publish.accept(published);
         log.info("Published {} tools over {} language(s)", published.tools().size(), board.providers().size());
 
-        if (awaiting && board.providers().stream().anyMatch(provider -> provider.language().equals(awaitedLanguage))) {
+        if (awaitedLanguage == null) {
+            return;
+        }
+        boolean awaitedBound = board.providers().stream().anyMatch(provider -> provider.language().equals(awaitedLanguage));
+        if (awaiting && awaitedBound) {
             awaiting = false;
             whenAwaitedLanguageBound.run();
             state.awaitingLanguage(false);
+        } else if (!awaiting && !awaitedBound) {
+            // The language the host serves has left: the engine has no tools of its own for it, so it is loading again.
+            awaiting = true;
+            state.awaitingLanguage(true);
         }
     }
 }

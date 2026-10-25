@@ -197,11 +197,9 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         }
         Map<String, Tool> next = new LinkedHashMap<>(tools);
         next.put(name, tool);
-        tools = next;
-        // Stage 6a (M8): the publishing half moved to OperationSurface. Registering a tool
-        // and deciding which of its kinds are OPERATIONS are two jobs that shared a method,
-        // and a test that wanted the second had to build a whole registry to reach it.
-        OperationSurface.publish(tool);
+        // One way in: the same swap and the same entry into OperationSurface that a language's arrival uses (Stage 6a, M8: which of a
+        // tool's kinds are OPERATIONS is OperationSurface's decision, not this map's).
+        publish(new java.util.ArrayList<>(next.values()));
         log.debug("Registered tool: {}", name);
     }
 

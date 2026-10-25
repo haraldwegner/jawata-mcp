@@ -225,6 +225,23 @@ class LanguagePublisherTest {
     }
 
     @Test
+    @DisplayName("when the awaited language leaves the engine is loading again, and it is not loading once the language is back")
+    void theAwaitedLanguageLeavingPutsTheEngineBackToLoading() {
+        new LanguagePublisher(board, neutral(), published::add, Optional.of("fake"), state, surfaceChecks::incrementAndGet);
+        FakeLanguage fake = new FakeLanguage("fake", "fake_tool");
+
+        board.bindProvider(fake);
+        assertNotEquals(ProjectLoadingState.LOADING, state.loading());
+
+        board.unbindProvider(fake);
+        assertEquals(ProjectLoadingState.LOADING, state.loading(), "no language: the engine is waiting for it again");
+
+        board.bindProvider(fake);
+        assertNotEquals(ProjectLoadingState.LOADING, state.loading());
+        assertEquals(2, surfaceChecks.get(), "the surface is checked each time the language arrives");
+    }
+
+    @Test
     @DisplayName("a language that is not the awaited one does not end the loading state")
     void anotherLanguageDoesNotEndLoading() {
         new LanguagePublisher(board, neutral(), published::add, Optional.of("java"), state, surfaceChecks::incrementAndGet);
