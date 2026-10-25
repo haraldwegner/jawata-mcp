@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.eclipse.core.resources.IResource;
 import org.eclipse.jdt.core.ICompilationUnit;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.core.project.SourceRootClassifier;
 import org.jawata.core.project.SourceRootClassifier.Verdict;
 import org.jawata.mcp.fixtures.TestProjectHelper;
@@ -189,7 +189,7 @@ class ScopeClassificationTest {
         service.loadProject(mainCopy);
         service.addProject(testsCopy);
         org.jawata.mcp.tools.CompileWorkspaceTool tool =
-            new org.jawata.mcp.tools.CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
+            new org.jawata.mcp.tools.CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         com.fasterxml.jackson.databind.ObjectMapper mapper =
             new com.fasterxml.jackson.databind.ObjectMapper();
 

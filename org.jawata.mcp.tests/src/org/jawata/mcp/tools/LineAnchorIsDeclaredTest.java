@@ -2,7 +2,7 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,7 +73,7 @@ class LineAnchorIsDeclaredTest {
         targetFile = service.getProjectRoot()
             .resolve("src/main/java/com/example/AnchorTarget.java");
         Files.writeString(targetFile, TARGET);
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
     }
 
     @Test

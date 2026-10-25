@@ -47,6 +47,11 @@
 #      (no search_symbols); the dist as shipped (P0) publishes all 44 once the provider has bound. The engine is "loading" until the
 #      Java provider arrives, front door to the built dist.
 #
+#   P7 (Stage 7, the headless host bundle): the resident starts from the new bundle layout (org.jawata.resident holds the application,
+#      the engine and core jars do not), a -token-file start prints the golden READY line and writes the token with mode 600, and
+#      build/two-resident-probe.sh shows two residents each loading the project their own workspace.json names, the first reaching the
+#      second through residents.json. Front door to the built dist.
+#
 # Usage:  build/28k-e2e.sh [--capture] [dist-dir]
 #         --capture writes the goldens (build/28k-golden-ready.txt, build/28k-golden-tools.json)
 #         from the given dist; only Stage 0 uses it.
@@ -434,5 +439,88 @@ fi
 kill "$P6_PID" 2>/dev/null; wait "$P6_PID" 2>/dev/null
 rm -rf "$P6_DIST" "$P6_STORE"
 
-[ "$PY_STATUS" -eq 0 ] && [ "$P5_FAILED" -eq 0 ] && [ "$P6_FAILED" -eq 0 ]
+# --- P7 (Stage 7, E21): the resident starts from the new bundle layout and every observation of Stage 0 still holds -----------------
+# The headless host is its own bundle (org.jawata.resident): the application, the lifecycle, the workspace manager, the importer and the
+# resolver live in its jar and in no other. Three promises, all on the built dist:
+#   (a) the layout: the resident jar holds the application class and the extension that names it under the unchanged id
+#       org.jawata.mcp.application; the engine jar holds no application class; the core jar holds no workspace-building class.
+#   (b) the token file: a start with -token-file prints the READY line of the golden shape and writes the token with mode 600.
+#   (c) workspace.json and residents.json: build/two-resident-probe.sh starts two residents, each loading the project named in its own
+#       workspace.json, and a search on the first reaches the second through residents.json, as before the move.
+P7_FAILED=0
+
+python3 - "$DIST" << 'PY' || P7_FAILED=1
+import glob, sys, zipfile
+
+dist = sys.argv[1]
+def jar(prefix):
+    found = glob.glob("%s/bundles/%s-[0-9]*.jar" % (dist, prefix))
+    return zipfile.ZipFile(found[0]) if len(found) == 1 else None
+
+failed = False
+resident, engine, core = jar("org.jawata.resident"), jar("org.jawata.mcp"), jar("org.jawata.core")
+if not (resident and engine and core):
+    print("  FAIL  P7 the dist does not hold exactly one jar each of org.jawata.resident, org.jawata.mcp, org.jawata.core"); sys.exit(1)
+names = lambda z: set(z.namelist())
+checks = [
+    ("the resident jar holds the application class", "org/jawata/resident/JawataApplication.class" in names(resident)),
+    ("the resident jar holds the workspace manager and the importer",
+     {"org/jawata/resident/workspace/WorkspaceManager.class", "org/jawata/resident/project/ProjectImporter.class"} <= names(resident)),
+    ("the resident extension names the application under the unchanged id",
+     b'id="org.jawata.mcp.application"' in resident.read("plugin.xml")
+     and b'class="org.jawata.resident.JawataApplication"' in resident.read("plugin.xml")),
+    ("the engine jar holds no application class and no extension", "org/jawata/mcp/JawataApplication.class" not in names(engine)
+     and "plugin.xml" not in names(engine)),
+    ("the core jar holds no workspace-building class", not any(n.startswith(("org/jawata/core/workspace/WorkspaceManager",
+     "org/jawata/core/JdtServiceImpl", "org/jawata/core/project/ProjectImporter", "org/jawata/core/resolve/")) for n in names(core))),
+    ("the Gradle tooling jar travels with the resident, not with core",
+     "lib/gradle-tooling-api-8.10.jar" in names(resident) and "lib/gradle-tooling-api-8.10.jar" not in names(core)),
+]
+for label, held in checks:
+    print(("  ok    P7 " if held else "  FAIL  P7 ") + label)
+    failed = failed or not held
+sys.exit(1 if failed else 0)
+PY
+
+P7_PORT=$((PORT + 2))
+P7_DIR="$(mktemp -d)"
+P7_STORE="$(mktemp -d)"
+P7_TOKEN_FILE="$P7_DIR/token"
+P7_LOG="$P7_DIR/resident.log"
+# shellcheck disable=SC2086
+java $VECTOR -Djawata.experience.shared.dir="$P7_STORE" -jar "$JAR" -data "$P7_DIR/ws" -port "$P7_PORT" \
+     -token-file "$P7_TOKEN_FILE" > "$P7_LOG" 2>&1 &
+P7_PID=$!
+P7_READY=0
+for _ in $(seq 1 120); do
+    grep -q "READY" "$P7_LOG" 2>/dev/null && { P7_READY=1; break; }
+    kill -0 "$P7_PID" 2>/dev/null || break
+    sleep 1
+done
+if [ "$P7_READY" -ne 1 ]; then
+    echo "  FAIL  P7 the resident started with -token-file never printed READY: $(tail -3 "$P7_LOG")" >&2
+    P7_FAILED=1
+else
+    P7_SHAPE="$(grep -m1 'READY' "$P7_LOG" | sed -e "s/:$P7_PORT/:<port>/" -e "s#token-file=.*#token-file=<path>#")"
+    P7_GOLDEN="$(sed -n 's/^READY (token given with -token-file): //p' "$ROOT/build/28k-golden-boot.txt")"
+    if [ "$P7_SHAPE" = "$P7_GOLDEN" ]; then
+        echo "  ok    P7 the READY line of a -token-file start has the golden shape"
+    else
+        echo "  FAIL  P7 the READY line is [$P7_SHAPE], the golden is [$P7_GOLDEN]" >&2
+        P7_FAILED=1
+    fi
+    if [ "$(stat -c %a "$P7_TOKEN_FILE" 2>/dev/null)" = "600" ] && [ "$(wc -l < "$P7_TOKEN_FILE")" -eq 1 ] && [ -s "$P7_TOKEN_FILE" ]; then
+        echo "  ok    P7 the token file holds the token and a line separator, mode 600"
+    else
+        echo "  FAIL  P7 the token file is missing, not mode 600, or not one line: $(ls -l "$P7_TOKEN_FILE" 2>&1)" >&2
+        P7_FAILED=1
+    fi
+fi
+kill "$P7_PID" 2>/dev/null; wait "$P7_PID" 2>/dev/null
+rm -rf "$P7_DIR" "$P7_STORE"
+
+# (c) two residents, each loading the project its own workspace.json names, the first reaching the second through residents.json
+bash "$ROOT/build/two-resident-probe.sh" "$DIST" || P7_FAILED=1
+
+[ "$PY_STATUS" -eq 0 ] && [ "$P5_FAILED" -eq 0 ] && [ "$P6_FAILED" -eq 0 ] && [ "$P7_FAILED" -eq 0 ]
 exit $?

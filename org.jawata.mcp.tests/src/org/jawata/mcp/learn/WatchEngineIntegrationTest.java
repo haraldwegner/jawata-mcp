@@ -2,7 +2,7 @@ package org.jawata.mcp.learn;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;

@@ -2,8 +2,7 @@ package org.jawata.mcp.tools.verification;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
-import org.jawata.core.workspace.StrictDiskSync;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.knowledge.Confidence;
 import org.jawata.mcp.knowledge.ExperienceEntry;
@@ -13,6 +12,7 @@ import org.jawata.mcp.knowledge.SymbolFact;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.ExperienceTool;
 import org.jawata.mcp.tools.ToolRegistry;
+import org.jawata.resident.workspace.OwnedReconciler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -59,7 +59,7 @@ class StrictDiskSyncStoreTest {
         try {
             ToolRegistry registry = new ToolRegistry();
             registry.register(ExperienceTool.withAnchors(() -> service, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors()));
-            registry.setReconciler(new StrictDiskSync(() -> service));
+            registry.setReconciler(new OwnedReconciler(() -> service));
 
             // Prime the guard: the first call reconciles the new root once.
             ObjectNode stats = mapper.createObjectNode();

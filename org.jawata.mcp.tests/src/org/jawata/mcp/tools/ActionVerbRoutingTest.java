@@ -3,7 +3,7 @@ package org.jawata.mcp.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
@@ -83,7 +83,7 @@ class ActionVerbRoutingTest {
     @DisplayName("project: list dispatches and succeeds; add/remove present; invalid rejected")
     void project_routes() {
         ProjectTool tool = new ProjectTool(() -> service,
-            new org.jawata.mcp.engine.ResidentHostWorkspace(new org.jawata.core.HeadlessModelSource()));
+            new org.jawata.resident.ResidentHostWorkspace(new org.jawata.resident.workspace.HeadlessModelSource()));
         assertTrue(enumOf(tool, "action").containsAll(List.of("list", "add", "remove")));
         assertTrue(tool.execute(obj("action", "list")).isSuccess(), "list works on a loaded workspace");
         assertFalse(tool.execute(obj("action", "typo")).isSuccess());

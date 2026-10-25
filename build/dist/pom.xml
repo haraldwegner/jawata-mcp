@@ -33,6 +33,7 @@
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.spi</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.resident</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core.tests</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp.tests</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.testrunner</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
@@ -170,6 +171,7 @@
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.spi</artifactId><version>${project.version}</version></artifactItem>
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version></artifactItem>
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.mcp</artifactId><version>${project.version}</version></artifactItem>
+                                <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.resident</artifactId><version>${project.version}</version></artifactItem>
                                 <!-- JDT (compiler.batch comes from patched-bundles, below) -->
                                 <artifactItem><groupId>org.eclipse.jdt</groupId><artifactId>org.eclipse.jdt.core</artifactId><version>${v.jdt.core}</version></artifactItem>
                                 <artifactItem><groupId>org.eclipse.jdt</groupId><artifactId>org.eclipse.jdt.launching</artifactId><version>${v.jdt.launching}</version></artifactItem>

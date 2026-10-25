@@ -2,8 +2,7 @@ package org.jawata.mcp.tools.verification;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
-import org.jawata.core.workspace.StrictDiskSync;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.SyncReport;
 import org.jawata.mcp.fixtures.TestProjectHelper;
@@ -13,6 +12,7 @@ import org.jawata.mcp.tools.GetDiagnosticsTool;
 import org.jawata.mcp.tools.RenameSymbolTool;
 import org.jawata.mcp.tools.SearchSymbolsTool;
 import org.jawata.mcp.tools.ToolRegistry;
+import org.jawata.resident.workspace.OwnedReconciler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -49,7 +49,7 @@ class StrictDiskSyncDispatchTest {
         registry.register(new GetDiagnosticsTool(() -> service));
         registry.register(
             new RenameSymbolTool(() -> service, new RefactoringChangeCache(), () -> null));
-        registry.setReconciler(new StrictDiskSync(() -> service));
+        registry.setReconciler(new OwnedReconciler(() -> service));
     }
 
     private Path projectRoot() {
@@ -154,7 +154,7 @@ class StrictDiskSyncDispatchTest {
     @DisplayName("unchanged tree: the second sync does zero work (the only legitimate skip)")
     void unchanged_tree_second_sync_does_zero_work() throws Exception {
         wire(helper.loadProjectCopy("simple-maven"));
-        Reconciler sync = new StrictDiskSync(() -> service);
+        Reconciler sync = new OwnedReconciler(() -> service);
 
         SyncReport first = sync.syncBeforeCall();
         assertEquals(1, first.newProjects(), "first pass reconciles the new root once");
@@ -169,7 +169,7 @@ class StrictDiskSyncDispatchTest {
     @DisplayName("two-project workspace: edits in BOTH projects are reconciled by one pass")
     void two_project_workspace_edits_in_both_are_reconciled() throws Exception {
         wire(helper.loadWorkspaceCopy("pde-bundle-a", "pde-bundle-b"));
-        Reconciler sync = new StrictDiskSync(() -> service);
+        Reconciler sync = new OwnedReconciler(() -> service);
         assertEquals(2, sync.syncBeforeCall().newProjects(), "both roots primed");
 
         int i = 0;
@@ -187,7 +187,7 @@ class StrictDiskSyncDispatchTest {
     @DisplayName("guard crash: the tool call proceeds (WARN-and-proceed, never a switch)")
     void guard_crash_warns_and_the_tool_call_proceeds() throws Exception {
         wire(helper.loadProjectCopy("simple-maven"));
-        registry.setReconciler(new StrictDiskSync(() -> service) {
+        registry.setReconciler(new OwnedReconciler(() -> service) {
             @Override
             public synchronized SyncReport syncBeforeCall() {
                 throw new IllegalStateException("deliberate guard crash");

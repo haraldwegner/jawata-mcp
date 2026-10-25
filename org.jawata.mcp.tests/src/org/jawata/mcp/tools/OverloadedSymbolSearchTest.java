@@ -3,7 +3,7 @@ package org.jawata.mcp.tools;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.eclipse.jdt.core.IJavaElement;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.fqn.FqnResolver;
@@ -88,7 +88,7 @@ class OverloadedSymbolSearchTest {
         Files.writeString(pkg.resolve("OverloadCaller.java"), CALLER);
         // The production reconcile, which is how the product itself notices a file written
         // outside it — rather than a test-only refresh that would prove less.
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
     }
 
     @Test

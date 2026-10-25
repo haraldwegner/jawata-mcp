@@ -1,7 +1,7 @@
 package org.jawata.mcp.tools.verification;
 
 import org.eclipse.jdt.core.ICompilationUnit;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;

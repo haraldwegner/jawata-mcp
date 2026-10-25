@@ -7,7 +7,7 @@ import org.eclipse.jdt.core.refactoring.descriptors.ExtractClassDescriptor;
 import org.eclipse.jdt.internal.corext.refactoring.structure.ExtractClassRefactoring;
 import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.tools.shared.HeadlessJdtConfig;
 import org.junit.jupiter.api.BeforeEach;

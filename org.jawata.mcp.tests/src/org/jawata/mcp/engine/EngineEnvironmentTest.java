@@ -35,7 +35,7 @@ class EngineEnvironmentTest {
         return key -> Optional.ofNullable(values.get(key));
     }
 
-    private static final EngineDirectories NO_FOLDERS = new ResidentDirectories(key -> Optional.empty());
+    private static final EngineDirectories NO_FOLDERS = new DefaultEngineDirectories(key -> Optional.empty());
 
     @AfterEach
     void backToTheEngineThatRunsAlone() {

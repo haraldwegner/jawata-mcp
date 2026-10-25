@@ -2,7 +2,7 @@ package org.jawata.mcp.tools.build;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.models.ToolResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

@@ -1,7 +1,7 @@
 package org.jawata.core.project;
 
 import org.eclipse.jdt.core.IClasspathEntry;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.core.LoadedProject;
 import org.jawata.core.fixtures.TestProjectHelper;
 import org.junit.jupiter.api.DisplayName;

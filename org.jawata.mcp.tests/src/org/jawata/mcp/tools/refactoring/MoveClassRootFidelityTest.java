@@ -2,7 +2,7 @@ package org.jawata.mcp.tools.refactoring;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.MoveClassTool;
@@ -85,7 +85,7 @@ class MoveClassRootFidelityTest {
             MAIN_TARGET);
         // The production reconcile, which is how the product itself notices a file written
         // outside it — rather than a test-only refresh, which would prove less.
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
 
         tool = new MoveClassTool(() -> service, new org.jawata.mcp.change.RefactoringChangeCache());
     }

@@ -1,6 +1,6 @@
 package org.jawata.mcp.tools.shared;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

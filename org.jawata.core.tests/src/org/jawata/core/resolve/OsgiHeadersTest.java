@@ -1,5 +1,7 @@
 package org.jawata.core.resolve;
 
+import org.jawata.resident.resolve.BundleFacts;
+import org.jawata.resident.resolve.OsgiHeaders;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

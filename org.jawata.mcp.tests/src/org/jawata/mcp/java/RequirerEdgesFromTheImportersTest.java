@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.spi.host.BuildKind;

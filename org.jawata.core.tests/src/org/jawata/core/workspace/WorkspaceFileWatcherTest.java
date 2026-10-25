@@ -1,12 +1,9 @@
 package org.jawata.core.workspace;
 
-import org.jawata.core.JdtServiceImpl;
-import org.jawata.core.fixtures.TestProjectHelper;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,7 +11,14 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.jawata.core.fixtures.TestProjectHelper;
+import org.jawata.resident.workspace.JdtServiceImpl;
+import org.jawata.resident.workspace.WorkspaceFileWatcher;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * Integration tests for {@link WorkspaceFileWatcher}. Drives the watcher

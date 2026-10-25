@@ -1,6 +1,7 @@
 package org.jawata.core.project;
 
 import org.jawata.core.fixtures.TestJars;
+import org.jawata.resident.project.ExternalBundlePool;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

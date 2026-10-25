@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.launching.IRuntimeClasspathEntry;
 import org.eclipse.jdt.launching.JavaRuntime;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ErrorInfo;
 import org.jawata.mcp.models.ToolResponse;

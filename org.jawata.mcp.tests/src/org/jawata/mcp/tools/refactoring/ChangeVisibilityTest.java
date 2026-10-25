@@ -2,7 +2,7 @@ package org.jawata.mcp.tools.refactoring;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.ChangeMethodSignatureTool;
@@ -75,7 +75,7 @@ class ChangeVisibilityTest {
     }
 
     private int compileErrors() {
-        ToolResponse cr = new CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service)).execute(mapper.createObjectNode());
+        ToolResponse cr = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service)).execute(mapper.createObjectNode());
         assertTrue(cr.isSuccess(), "compile failed: " + cr.getError());
         @SuppressWarnings("unchecked")
         Map<String, Object> d = (Map<String, Object>) cr.getData();

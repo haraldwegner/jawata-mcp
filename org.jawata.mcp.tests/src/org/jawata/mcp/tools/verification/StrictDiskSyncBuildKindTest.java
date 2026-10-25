@@ -3,11 +3,11 @@ package org.jawata.mcp.tools.verification;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
-import org.jawata.core.JdtServiceImpl;
-import org.jawata.core.workspace.StrictDiskSync;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.SyncReport;
 import org.jawata.mcp.fixtures.TestProjectHelper;
+import org.jawata.resident.workspace.OwnedReconciler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -42,7 +42,7 @@ class StrictDiskSyncBuildKindTest {
     @DisplayName("a body-only modify stays INCREMENTAL and still surfaces the error")
     void bodyModify_incremental_surfacesError() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
-        Reconciler sync = new StrictDiskSync(() -> service);
+        Reconciler sync = new OwnedReconciler(() -> service);
         Path root = service.getProjectRoot();
 
         // Prime: establish the root as known + green.
@@ -63,7 +63,7 @@ class StrictDiskSyncBuildKindTest {
     @DisplayName("adding a .java escalates to a clean FULL build")
     void addFile_escalatesToFull() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
-        Reconciler sync = new StrictDiskSync(() -> service);
+        Reconciler sync = new OwnedReconciler(() -> service);
         Path root = service.getProjectRoot();
 
         sync.syncBeforeCall();   // prime, green

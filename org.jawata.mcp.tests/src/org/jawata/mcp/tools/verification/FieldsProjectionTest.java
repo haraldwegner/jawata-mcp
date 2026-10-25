@@ -2,8 +2,7 @@ package org.jawata.mcp.tools.verification;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
-import org.jawata.core.workspace.StrictDiskSync;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.FindPatternUsagesTool;
@@ -13,6 +12,7 @@ import org.jawata.mcp.tools.GetDiagnosticsTool;
 import org.jawata.mcp.tools.SearchSymbolsTool;
 import org.jawata.mcp.tools.ToolRegistry;
 import org.jawata.mcp.tools.shared.FieldsProjection;
+import org.jawata.resident.workspace.OwnedReconciler;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -229,7 +229,7 @@ class FieldsProjectionTest {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
         ToolRegistry registry = new ToolRegistry();
         registry.register(new GetDiagnosticsTool(() -> service));
-        registry.setReconciler(new StrictDiskSync(() -> service));
+        registry.setReconciler(new OwnedReconciler(() -> service));
 
         // Prime the guard, write a broken file externally, let the builder see it
         // (the GetDiagnosticsMarkersTest recipe — real markers, no synthetic rows).

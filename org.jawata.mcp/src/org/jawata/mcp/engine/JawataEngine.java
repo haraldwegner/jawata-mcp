@@ -295,9 +295,9 @@ public class JawataEngine {
 		};
 		Path workspaceJson = workspaceRoot != null && Files.isRegularFile(workspaceRoot.resolve("workspace.json"))
 				? workspaceRoot.resolve("workspace.json")
-				: ResidentDirectories.findWorkspaceJson(dataDir);
+				: DefaultEngineDirectories.findWorkspaceJson(dataDir);
 		if (workspaceJson != null) {
-			String[] prov = ResidentDirectories.readProvenance(workspaceJson);
+			String[] prov = DefaultEngineDirectories.readProvenance(workspaceJson);
 			store.setProvenance(prov[0], prov[1]);
 		}
 		// One-time sweep: pre-21a stores stranded in session-isolation dirs (item A).

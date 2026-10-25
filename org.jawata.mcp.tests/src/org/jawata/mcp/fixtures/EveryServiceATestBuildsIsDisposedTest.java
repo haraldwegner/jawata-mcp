@@ -91,8 +91,8 @@ class EveryServiceATestBuildsIsDisposedTest {
     void aServiceHandedToTheHelperLeavesTheWorkspace() throws Exception {
         TestProjectHelper helper = new TestProjectHelper();
         helper.beforeEach(null);
-        org.jawata.core.JdtServiceImpl service =
-            helper.disposeAfter(new org.jawata.core.JdtServiceImpl());
+        org.jawata.resident.workspace.JdtServiceImpl service =
+            helper.disposeAfter(new org.jawata.resident.workspace.JdtServiceImpl());
         service.loadProject(helper.copyFixture("simple-maven"));
         org.eclipse.core.resources.IProject project = service.getJavaProject().getProject();
         assertTrue(project.exists(), "the fixture loaded into the shared workspace: " + project);

@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
@@ -109,7 +109,7 @@ class StateFromNullableFieldsTest {
         assertFalse(bodyOf(after, "public void advance(int by)").contains("ticks += by * 2"),
             () -> "the branch bodies must have moved out of advance():\n" + after);
 
-        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
+        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         @SuppressWarnings("unchecked")
         Map<String, Object> cdata =
             (Map<String, Object>) compile.execute(mapper.createObjectNode()).getData();

@@ -37,10 +37,6 @@
     <build>
         <sourceDirectory>${project.basedir}/../../org.jawata.mcp/src</sourceDirectory>
         <resources>
-            <resource>
-                <directory>${project.basedir}/../../org.jawata.mcp</directory>
-                <includes><include>plugin.xml</include></includes>
-            </resource>
             <!-- Sprint 27 D1: the owned embedder's bundled resources (WordPiece
                  vocabulary now; model weights at Stage 2). They land at the jar
                  root so the tokenizer reads /embed/vocab.txt off its own

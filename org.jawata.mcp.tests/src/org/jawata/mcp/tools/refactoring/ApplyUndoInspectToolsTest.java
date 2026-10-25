@@ -6,7 +6,7 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.ltk.core.refactoring.TextFileChange;
 import org.eclipse.text.edits.InsertEdit;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.fixtures.TestProjectHelper;

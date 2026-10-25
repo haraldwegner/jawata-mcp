@@ -1,14 +1,15 @@
 package org.jawata.core;
 
-import org.eclipse.jdt.core.ICompilationUnit;
-import org.jawata.core.fixtures.TestProjectHelper;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.nio.file.Path;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import org.eclipse.jdt.core.ICompilationUnit;
+import org.jawata.core.fixtures.TestProjectHelper;
+import org.jawata.resident.workspace.JdtServiceImpl;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * Sprint 28 — the last untested structural difference between the passing

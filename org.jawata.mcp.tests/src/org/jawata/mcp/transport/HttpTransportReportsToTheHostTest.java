@@ -17,8 +17,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.jawata.mcp.engine.ResidentLifecycle;
 import org.jawata.mcp.fixtures.TransportFixtures;
+import org.jawata.resident.ResidentLifecycle;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

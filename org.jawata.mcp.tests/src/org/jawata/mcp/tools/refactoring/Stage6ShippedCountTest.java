@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.tools.AbstractTool;

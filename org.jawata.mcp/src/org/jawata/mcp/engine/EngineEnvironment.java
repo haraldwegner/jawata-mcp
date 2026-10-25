@@ -12,8 +12,8 @@ import org.jawata.spi.host.EngineSettings;
  */
 public final class EngineEnvironment {
 
-    private static volatile EngineSettings settings = new ResidentSettings();
-    private static volatile EngineDirectories directories = new ResidentDirectories(settings);
+    private static volatile EngineSettings settings = new DefaultEngineSettings();
+    private static volatile EngineDirectories directories = new DefaultEngineDirectories(settings);
 
     private EngineEnvironment() {
     }
@@ -35,8 +35,8 @@ public final class EngineEnvironment {
      * @param hostDirectories the host's folders; null puts the engine back to running alone
      */
     public static void hostedBy(EngineSettings hostSettings, EngineDirectories hostDirectories) {
-        EngineSettings s = hostSettings != null ? hostSettings : new ResidentSettings();
+        EngineSettings s = hostSettings != null ? hostSettings : new DefaultEngineSettings();
         settings = s;
-        directories = hostDirectories != null ? hostDirectories : new ResidentDirectories(s);
+        directories = hostDirectories != null ? hostDirectories : new DefaultEngineDirectories(s);
     }
 }

@@ -103,7 +103,7 @@ class HealthCheckToolTest {
             + "Maven resolution failed. Remedy: run the project's build once.";
         HealthCheckTool tool = new HealthCheckTool(() -> false, () -> 56,
             () -> ProjectLoadingState.FAILED, () -> reason,
-            () -> new org.jawata.core.JdtServiceImpl());
+            () -> new org.jawata.resident.workspace.JdtServiceImpl());
 
         @SuppressWarnings("unchecked")
         Map<String, Object> workspace = (Map<String, Object>)
@@ -124,7 +124,7 @@ class HealthCheckToolTest {
         // loaded is waiting, not broken.
         HealthCheckTool tool = new HealthCheckTool(() -> false, () -> 56,
             () -> ProjectLoadingState.NOT_LOADED, () -> null,
-            () -> new org.jawata.core.JdtServiceImpl());
+            () -> new org.jawata.resident.workspace.JdtServiceImpl());
 
         @SuppressWarnings("unchecked")
         Map<String, Object> workspace = (Map<String, Object>)

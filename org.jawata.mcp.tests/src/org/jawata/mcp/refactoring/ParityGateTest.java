@@ -1,6 +1,6 @@
 package org.jawata.mcp.refactoring;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.ParityGate;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.junit.jupiter.api.BeforeEach;

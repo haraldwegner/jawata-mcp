@@ -546,7 +546,7 @@ class WorkspaceIdentityTest {
         // It lives in THIS class because the identity reset is a package-private test hook,
         // and widening it to public so a test in another package could call it would put a
         // test's convenience into the bundle's API.
-        org.jawata.core.JdtServiceImpl service = projectHelper.loadProjectCopy("simple-maven");
+        org.jawata.resident.workspace.JdtServiceImpl service = projectHelper.loadProjectCopy("simple-maven");
         WorkspaceIdentity.install("javata-dev", List.of(Path.of("/tmp/jawata-mcp")));
         WorkspaceIdentity.installSiblings(() -> List.of(
             new SiblingRegistry.Sibling("orb-strategy", 8082, "t")));

@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.Map;
 
 import org.jawata.core.IJdtService;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.engine.EngineState;
 import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
@@ -18,6 +18,7 @@ import org.jawata.mcp.tools.AbstractTool;
 import org.jawata.mcp.tools.HealthCheckTool;
 import org.jawata.mcp.tools.LoadProjectTool;
 import org.jawata.mcp.tools.ToolRegistry;
+import org.jawata.resident.JawataApplication;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -213,8 +214,8 @@ class DegradationStampTest {
         // Drive the TOOL, not the state setter — the claim is that load_project clears it,
         // and calling noteWorkspaceLoaded() here would assert that a method exists rather
         // than that anything calls it.
-        org.jawata.core.HeadlessModelSource model = new org.jawata.core.HeadlessModelSource();
-        LoadProjectTool load = new LoadProjectTool(model, new org.jawata.mcp.engine.ResidentHostWorkspace(model));
+        org.jawata.resident.workspace.HeadlessModelSource model = new org.jawata.resident.workspace.HeadlessModelSource();
+        LoadProjectTool load = new LoadProjectTool(model, new org.jawata.resident.ResidentHostWorkspace(model));
         ToolResponse loaded = load.execute(
             OM.createObjectNode().put("projectPath", root.toString()));
         assertTrue(loaded.isSuccess(), "the load itself must succeed: " + loaded.getError());
@@ -243,7 +244,7 @@ class DegradationStampTest {
             "all 1 workspace project(s) FAILED to load — first: Maven resolution failed");
         assertNotNull(((Map<?, ?>) health().getData()).get("degraded"), "the alarm is standing");
 
-        ToolResponse added = new org.jawata.mcp.tools.AddProjectTool(() -> service, new org.jawata.mcp.engine.ResidentHostWorkspace(new org.jawata.core.HeadlessModelSource())).execute(
+        ToolResponse added = new org.jawata.mcp.tools.AddProjectTool(() -> service, new org.jawata.resident.ResidentHostWorkspace(new org.jawata.resident.workspace.HeadlessModelSource())).execute(
             OM.createObjectNode().put("projectPath", root.toString()));
         assertTrue(added.isSuccess(), "the add itself must succeed: " + added.getError());
 

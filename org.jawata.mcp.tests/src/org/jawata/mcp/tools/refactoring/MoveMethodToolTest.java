@@ -2,7 +2,7 @@ package org.jawata.mcp.tools.refactoring;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
@@ -88,7 +88,7 @@ class MoveMethodToolTest {
             "the call site must be rewritten onto the new receiver:\n" + clientAfter);
 
         // Non-vacuous: the move + call-site rewrite leaves the project compiling.
-        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
+        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         ToolResponse cr = compile.execute(mapper.createObjectNode());
         assertTrue(cr.isSuccess(), "compile must succeed; got: " + cr.getError());
         @SuppressWarnings("unchecked")

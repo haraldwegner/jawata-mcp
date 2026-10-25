@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.DiffRenderer;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.fixtures.TestProjectHelper;
@@ -61,7 +61,7 @@ class AStubTheEngineWritesIsReportedTest {
                 }
             }
             """);
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
 
         ObjectMapper mapper = new ObjectMapper();
         ObjectNode args = mapper.createObjectNode();

@@ -8,7 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
@@ -111,7 +111,7 @@ class AMovedBodyThatStillNeedsItsOldOwnerTest {
         assertTrue(port.contains("return id() + \":\" + reason + \":\" + pipeline.budget;"),
             () -> "and the body reads it through that parameter:\n" + port);
 
-        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
+        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         ToolResponse cr = compile.execute(mapper.createObjectNode());
         @SuppressWarnings("unchecked")
         Map<String, Object> cdata = (Map<String, Object>) cr.getData();

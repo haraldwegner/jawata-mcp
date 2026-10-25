@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 import java.nio.file.Path;
 
-import org.jawata.mcp.engine.ResidentDirectories;
+import org.jawata.mcp.engine.DefaultEngineDirectories;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -43,7 +43,7 @@ class LegacyGojaNamesIgnoredTest {
 
     /** The folder a resident whose settings are the process properties would share its store in. */
     private static Path sharedStoreDir() {
-        return new ResidentDirectories(key -> java.util.Optional.ofNullable(System.getProperty(key))).sharedStoreDir();
+        return new DefaultEngineDirectories(key -> java.util.Optional.ofNullable(System.getProperty(key))).sharedStoreDir();
     }
 
     static void restore(String key, String value) {

@@ -2,7 +2,7 @@ package org.jawata.mcp.tools.verification;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.RefreshWorkspaceTool;
@@ -46,7 +46,7 @@ class RefreshWorkspaceToolTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("simple-maven");
-        tool = new RefreshWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
+        tool = new RefreshWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         objectMapper = new ObjectMapper();
     }
 

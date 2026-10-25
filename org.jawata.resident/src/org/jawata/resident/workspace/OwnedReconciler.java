@@ -1,0 +1,299 @@
+package org.jawata.resident.workspace;
+
+import java.nio.file.Path;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Supplier;
+
+import org.eclipse.core.resources.IContainer;
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IncrementalProjectBuilder;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.jdt.core.IPackageFragmentRoot;
+import org.jawata.core.IJdtService;
+import org.jawata.core.LoadedProject;
+import org.jawata.core.workspace.DiskSyncGuard;
+import org.jawata.spi.host.BuildKind;
+import org.jawata.spi.host.BuildScope;
+import org.jawata.spi.host.Reconciler;
+import org.jawata.spi.host.SyncReport;
+
+/**
+ * Sprint 21d (item B) — strict disk sync: run ONCE per tool call at the dispatch seam,
+ * BEFORE the tool computes anything, so every answer — search, analysis, refactor
+ * change computation, store pointer judgment — reflects the CURRENT working tree.
+ *
+ * <p>{@link DiskSyncGuard} detects what changed by evidence; this class reconciles it:
+ * {@code refreshLocal} on ONLY the changed files (added/deleted files reconcile their
+ * nearest existing ancestor container so brand-new package chains materialize), then
+ * one build per affected project. A root seen for the first time gets one whole-project
+ * reconcile — closing the blind window between model load and first guard pass.
+ *
+ * <p><b>No opt-out.</b> Correctness is not configurable; the unchanged-tree fast path
+ * (scan finds nothing → zero reconcile work) is the only skip, earned per call.
+ *
+ * <p>Non-final so tests can inject failure (the dispatch layer's WARN-and-proceed
+ * crash policy is itself under test).
+ */
+public class OwnedReconciler implements Reconciler {
+
+    /**
+     * Sprint 28k (E6): the headless host's rebuild — each named project refreshed from disk, then built (a clean build
+     * first for {@link BuildKind#CLEAN_FULL}). The loaded projects' own handles are used, so a linked source folder is
+     * refreshed as the project mounts it. A failing project does not stop the others; it is logged and left out of the
+     * answer, as is a name this service does not hold (C1, architect F1). Synchronized with {@link #syncBeforeCall()}, so a
+     * rebuild and a per-call sync never overlap a refresh and a build.
+     */
+    @Override
+    public synchronized Set<String> rebuild(BuildScope scope, BuildKind kind, IProgressMonitor monitor) {
+        Set<String> built = new LinkedHashSet<>();
+        IJdtService s = service.get();
+        if (s == null) {
+            return built;
+        }
+        for (LoadedProject loaded : s.allProjects()) {
+            IProject project = loaded.javaProject().getProject();
+            if (!scope.projects().contains(project.getName())) {
+                continue;
+            }
+            try {
+                project.refreshLocal(IResource.DEPTH_INFINITE, monitor);
+                if (kind == BuildKind.CLEAN_FULL) {
+                    project.build(IncrementalProjectBuilder.CLEAN_BUILD, monitor);
+                }
+                project.build(kind == BuildKind.INCREMENTAL
+                    ? IncrementalProjectBuilder.INCREMENTAL_BUILD : IncrementalProjectBuilder.FULL_BUILD, monitor);
+                built.add(project.getName());
+            } catch (CoreException e) {
+                java.util.logging.Logger.getLogger(OwnedReconciler.class.getName())
+                    .warning("rebuild failed on project '" + project.getName() + "': " + e.getMessage());
+            }
+        }
+        return built;
+    }
+
+    /** Cap on paths carried in a report — a mass refresh is not a watchable delta. */
+    public static final int MAX_REPORTED_PATHS = 50;
+
+    /** Project names whose last build produced error markers (→ next build is FULL). */
+    private final Set<String> lastRedProjects = new java.util.HashSet<>();
+
+    private final Supplier<IJdtService> service;
+    private final DiskSyncGuard guard = new DiskSyncGuard();
+
+    public OwnedReconciler(Supplier<IJdtService> service) {
+        this.service = service;
+    }
+
+    /**
+     * Scan all loaded projects' roots and reconcile whatever external edits are found.
+     * Synchronized: the MCP HTTP transport dispatches on a cached thread pool —
+     * concurrent tool calls must not overlap refreshLocal/build or race the snapshot.
+     */
+    @Override
+    public synchronized SyncReport syncBeforeCall() throws CoreException {
+        long t0 = System.nanoTime();
+        IJdtService s = service.get();
+        if (s == null) {
+            return new SyncReport(true, 0, 0, 0, 0, System.nanoTime() - t0, false);
+        }
+        Collection<LoadedProject> projects = s.allProjects();
+        if (projects.isEmpty()) {
+            return new SyncReport(true, 0, 0, 0, 0, System.nanoTime() - t0, false);
+        }
+
+        Map<Path, LoadedProject> byRoot = new LinkedHashMap<>();
+        for (LoadedProject lp : projects) {
+            byRoot.put(lp.projectRoot().toAbsolutePath().normalize(), lp);
+        }
+        DiskSyncGuard.ScanResult scan = guard.scan(byRoot.keySet());
+
+        NullProgressMonitor monitor = new NullProgressMonitor();
+        Set<IProject> toBuild = new LinkedHashSet<>();
+        int refreshed = 0;
+        java.util.List<String> refreshedPaths = new java.util.ArrayList<>();
+
+        for (Path root : scan.newRoots()) {
+            LoadedProject lp = byRoot.get(root);
+            if (lp != null) {
+                IProject prj = lp.javaProject().getProject();
+                prj.refreshLocal(IResource.DEPTH_INFINITE, monitor);
+                toBuild.add(prj);
+            }
+        }
+        for (Path p : scan.changed()) {
+            int r = refreshExisting(byRoot, p, toBuild, monitor);
+            refreshed += r;
+            if (r > 0 && refreshedPaths.size() < MAX_REPORTED_PATHS
+                    && p.toString().endsWith(".java")) {
+                refreshedPaths.add(p.toString());
+            }
+        }
+        for (Path p : scan.deleted()) {
+            refreshed += refreshExisting(byRoot, p, toBuild, monitor);
+        }
+        for (Path p : scan.added()) {
+            int r = refreshAdded(byRoot, p, toBuild, monitor);
+            refreshed += r;
+            if (r > 0 && refreshedPaths.size() < MAX_REPORTED_PATHS
+                    && p.toString().endsWith(".java")) {
+                refreshedPaths.add(p.toString());
+            }
+        }
+        // Structure changes (added/deleted files): the JAVA MODEL caches each source
+        // root's package-fragment children, and this headless runtime does not
+        // repopulate that cache from the resource delta alone (observed live: the
+        // diagnostics model walk stayed at N files until an element lookup opened the
+        // chain). Closing the source roots drops the stale cache; the model
+        // repopulates lazily from the just-refreshed resources.
+        if (!scan.added().isEmpty() || !scan.deleted().isEmpty()) {
+            Set<LoadedProject> structureChanged = new LinkedHashSet<>();
+            for (Path p : scan.added()) {
+                LoadedProject lp = LoadedProject.owning(byRoot.values(), p);
+                if (lp != null) {
+                    structureChanged.add(lp);
+                }
+            }
+            for (Path p : scan.deleted()) {
+                LoadedProject lp = LoadedProject.owning(byRoot.values(), p);
+                if (lp != null) {
+                    structureChanged.add(lp);
+                }
+            }
+            for (LoadedProject lp : structureChanged) {
+                for (IPackageFragmentRoot root : lp.javaProject().getPackageFragmentRoots()) {
+                    if (root.getKind() == IPackageFragmentRoot.K_SOURCE) {
+                        root.close();
+                    }
+                }
+            }
+        }
+        boolean full = decideFullBuild(scan, toBuild);
+        int buildKind = full ? IncrementalProjectBuilder.FULL_BUILD
+                             : IncrementalProjectBuilder.INCREMENTAL_BUILD;
+        for (IProject prj : toBuild) {
+            prj.build(buildKind, monitor);
+        }
+        recordRedState(toBuild);
+        return new SyncReport(false, scan.newRoots().size(), refreshed, toBuild.size(),
+            scan.durationNanos(), System.nanoTime() - t0, full,
+            java.util.List.copyOf(refreshedPaths));
+    }
+
+    /** Changed or deleted: refresh exactly the file handle (deletion drops it from the model). */
+    private static int refreshExisting(Map<Path, LoadedProject> byRoot, Path file,
+            Set<IProject> toBuild, NullProgressMonitor monitor) throws CoreException {
+        LoadedProject lp = LoadedProject.owning(byRoot.values(), file);
+        if (lp == null) {
+            return 0;
+        }
+        IProject prj = lp.javaProject().getProject();
+        IFile handle = fileHandle(prj, file);
+        if (handle == null) {
+            return 0;
+        }
+        handle.refreshLocal(IResource.DEPTH_ZERO, monitor);
+        toBuild.add(prj);
+        return 1;
+    }
+
+    /** Added: a brand-new package chain has no existing handle chain — reconcile the
+     *  nearest ancestor container that EXISTS in the model (subtree-bounded). */
+    private static int refreshAdded(Map<Path, LoadedProject> byRoot, Path file,
+            Set<IProject> toBuild, NullProgressMonitor monitor) throws CoreException {
+        LoadedProject lp = LoadedProject.owning(byRoot.values(), file);
+        if (lp == null) {
+            return 0;
+        }
+        IProject prj = lp.javaProject().getProject();
+        IFile handle = fileHandle(prj, file);
+        if (handle == null) {
+            return 0;
+        }
+        IContainer c = handle.getParent();
+        while (c != null && c.getType() != IResource.PROJECT && !c.exists()) {
+            c = c.getParent();
+        }
+        (c != null ? c : prj).refreshLocal(IResource.DEPTH_INFINITE, monitor);
+        toBuild.add(prj);
+        return 1;
+    }
+
+    private static IFile fileHandle(IProject prj, Path abs) {
+        // Resolve by LOCATION through the workspace root — jawata projects mount their
+        // source dirs as LINKED folders (the project lives in the -data area, the
+        // sources stay in the real checkout), so project-relative path math yields
+        // garbage; findFilesForLocationURI searches linked resources too. Observed
+        // live: without this, the targeted reconcile silently refreshed NOTHING.
+        IFile[] mapped = prj.getWorkspace().getRoot().findFilesForLocationURI(abs.toUri());
+        for (IFile f : mapped) {
+            if (prj.equals(f.getProject())) {
+                return f;
+            }
+        }
+        return mapped.length > 0 ? mapped[0] : null;
+    }
+
+    /**
+     * Sprint 22a P2-d — the build kind is decided per sync pass, not a constant.
+     * {@code INCREMENTAL_BUILD} by default (fast — the common method-body edit); a
+     * clean {@code FULL_BUILD} only when incremental is unsafe or unreliable:
+     * <ul>
+     *   <li>a {@code .java} file was added or deleted — the type universe changed,
+     *       and the incremental builder lags fresh additions in this headless
+     *       runtime (the Sprint 21d finding: an added file produced no markers);</li>
+     *   <li>the project's previous build was RED — recover from a possibly
+     *       inconsistent incremental delta state (the "if something breaks, clean
+     *       compile" rule).</li>
+     * </ul>
+     * A modify-only, green pass takes the fast incremental path. A changed build file ({@code pom.xml},
+     * {@code MANIFEST.MF}, …) is NOT a reason here, because the scan behind this sees Java source files only and never learns
+     * of one (28k ledger C2b-16; 28h answer E has each language say which files count). (The remaining
+     * refinement — escalating a modify whose DECLARATION surface changed, to catch
+     * signature edits that silently stale consumers, {@code bugs.md #8} — needs a
+     * per-file declaration-hash cache and is a deliberate follow-up, kept out of this
+     * correctness hot path until it can be done + tested carefully.)
+     */
+    private boolean decideFullBuild(DiskSyncGuard.ScanResult scan, Set<IProject> toBuild) {
+        if (!scan.added().isEmpty() || !scan.deleted().isEmpty()) {
+            return true;   // type universe changed; incremental lags fresh additions
+        }
+        for (IProject prj : toBuild) {
+            if (lastRedProjects.contains(prj.getName())) {
+                return true;   // recover from a previously-broken build
+            }
+        }
+        return false;
+    }
+
+    /** After building, remember which projects are red so the next pass runs FULL. */
+    private void recordRedState(Set<IProject> built) {
+        for (IProject prj : built) {
+            boolean red = false;
+            try {
+                for (org.eclipse.core.resources.IMarker m : prj.findMarkers(
+                        org.eclipse.core.resources.IMarker.PROBLEM, true, IResource.DEPTH_INFINITE)) {
+                    if (m.getAttribute(org.eclipse.core.resources.IMarker.SEVERITY, 0)
+                            == org.eclipse.core.resources.IMarker.SEVERITY_ERROR) {
+                        red = true;
+                        break;
+                    }
+                }
+            } catch (CoreException e) {
+                // marker read failed — leave the prior red-state unchanged
+            }
+            if (red) {
+                lastRedProjects.add(prj.getName());
+            } else {
+                lastRedProjects.remove(prj.getName());
+            }
+        }
+    }
+}

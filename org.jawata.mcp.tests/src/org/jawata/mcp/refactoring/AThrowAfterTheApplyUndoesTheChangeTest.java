@@ -17,7 +17,7 @@ import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.eclipse.ltk.core.refactoring.TextFileChange;
 import org.eclipse.text.edits.InsertEdit;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.ChangeContext;
 import org.jawata.mcp.change.GatedApply;
 import org.jawata.mcp.fixtures.TestProjectHelper;

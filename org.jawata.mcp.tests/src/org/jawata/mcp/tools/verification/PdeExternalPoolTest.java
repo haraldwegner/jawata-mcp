@@ -3,7 +3,7 @@ package org.jawata.mcp.tools.verification;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.java.RunnerClasspath;

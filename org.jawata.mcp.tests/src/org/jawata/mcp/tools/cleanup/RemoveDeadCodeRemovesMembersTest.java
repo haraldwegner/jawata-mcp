@@ -8,7 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.ApplyCleanupTool;
@@ -78,7 +78,7 @@ class RemoveDeadCodeRemovesMembersTest {
         Files.createDirectories(pkg);
         file = pkg.resolve("DeadMembers.java");
         Files.writeString(file, TARGET);
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
         tool = new ApplyCleanupTool(() -> service,
             new org.jawata.mcp.change.RefactoringChangeCache());
         mapper = new ObjectMapper();
@@ -172,7 +172,7 @@ class RemoveDeadCodeRemovesMembersTest {
                 }
             }
             """);
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
 
         ObjectNode args = mapper.createObjectNode();
         args.put("kind", "remove_dead_code");

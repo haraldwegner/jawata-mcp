@@ -25,22 +25,10 @@
         <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.osgi</artifactId><version>${v.osgi}</version></dependency>
         <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>${v.jackson}</version></dependency>
         <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>${v.slf4j}</version></dependency>
-        <dependency>
-            <groupId>org.gradle</groupId><artifactId>gradle-tooling-api</artifactId><version>8.10</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/../../org.jawata.core/lib/gradle-tooling-api-8.10.jar</systemPath>
-        </dependency>
     </dependencies>
 
     <build>
         <sourceDirectory>${project.basedir}/../../org.jawata.core/src</sourceDirectory>
-        <resources>
-            <!-- embed the Bundle-ClassPath lib exactly as the Tycho jar does -->
-            <resource>
-                <directory>${project.basedir}/../../org.jawata.core</directory>
-                <includes><include>lib/*.jar</include></includes>
-            </resource>
-        </resources>
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

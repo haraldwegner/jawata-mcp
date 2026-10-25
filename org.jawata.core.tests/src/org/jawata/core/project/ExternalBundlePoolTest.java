@@ -1,5 +1,6 @@
 package org.jawata.core.project;
 
+import org.jawata.resident.project.ExternalBundlePool;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -26,7 +27,7 @@ class ExternalBundlePoolTest {
     @Test
     @DisplayName("splitTopLevel honours quoted commas (uses/version-range attributes)")
     void splitTopLevel_quotedCommas() {
-        List<String> parts = org.jawata.core.resolve.OsgiHeaders.splitTopLevel(
+        List<String> parts = org.jawata.resident.resolve.OsgiHeaders.splitTopLevel(
             "org.foo;uses:=\"a.b,c.d\";version=\"1.0\",org.bar;version=\"[1.0,2.0)\",org.baz");
         assertEquals(3, parts.size(), "got: " + parts);
         assertTrue(parts.get(0).startsWith("org.foo"), "got: " + parts);

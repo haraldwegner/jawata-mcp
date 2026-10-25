@@ -1,20 +1,19 @@
 package org.jawata.mcp.java;
 
-import org.eclipse.core.resources.IResource;
-import org.eclipse.core.resources.IWorkspaceRoot;
-import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.jdt.core.IClasspathEntry;
-import org.eclipse.jdt.core.JavaModelException;
-import org.jawata.core.LoadedProject;
-import org.jawata.core.project.ProjectImporter;
-import org.jawata.core.project.SourceRootClassifier;
-
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IWorkspaceRoot;
+import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.jdt.core.IClasspathEntry;
+import org.eclipse.jdt.core.JavaModelException;
+import org.jawata.core.LoadedProject;
+import org.jawata.core.project.SourceRootClassifier;
 
 /**
  * The folder a forked test JVM starts in (S19-17).
@@ -26,7 +25,7 @@ import java.util.Set;
  * relative, passed 19 of 19.</p>
  *
  * <p>The folder is the module that owns the test source roots. Which folder owns a root is the
- * importer's own question ({@link ProjectImporter#owningModuleDir}); this class does not walk a
+ * importer's own question ({@link SourceRootClassifier#owningModuleDir}); this class does not walk a
  * second time. When the roots belong to several modules, or one of them belongs to no module, one
  * JVM cannot start in all of them and the project's real root is used.</p>
  */

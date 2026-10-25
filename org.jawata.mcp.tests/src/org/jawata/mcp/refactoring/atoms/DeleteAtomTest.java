@@ -3,7 +3,7 @@ package org.jawata.mcp.refactoring.atoms;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IType;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.change.CheckedChange;
 import org.jawata.mcp.fixtures.TestProjectHelper;

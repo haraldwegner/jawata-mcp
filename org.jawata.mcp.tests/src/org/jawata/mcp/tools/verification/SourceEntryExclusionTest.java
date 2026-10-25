@@ -2,7 +2,7 @@ package org.jawata.mcp.tools.verification;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
@@ -75,7 +75,7 @@ class SourceEntryExclusionTest {
     @Test
     @DisplayName("P0-c: the project compiles with zero duplicate-type errors (real builder)")
     void compile_hasNoDuplicateTypeError() {
-        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
+        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         ToolResponse r = compile.execute(mapper.createObjectNode());
         assertTrue(r.isSuccess(), "compile must succeed; got: " + r.getError());
         Map<String, Object> d = data(r);

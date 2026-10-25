@@ -6,13 +6,10 @@ Bundle-Version: 4.4.15
 Bundle-Vendor: JAWATA
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
-Bundle-ClassPath: .,
- lib/gradle-tooling-api-8.10.jar
 Export-Package: org.jawata.core,
  org.jawata.core.exceptions,
  org.jawata.core.host,
  org.jawata.core.project,
- org.jawata.core.resolve,
  org.jawata.core.search,
  org.jawata.core.workspace
 Import-Package: org.jawata.spi.host;version="[1.0,2.0)",

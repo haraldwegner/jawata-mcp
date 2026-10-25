@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
+import org.jawata.resident.project.ClasspathCache;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -80,7 +81,7 @@ class ClasspathCachePersistenceTest {
     void aVanishedJarIsAMiss() throws Exception {
         Path a = jar("present.jar");
         Path b = jar("about-to-vanish.jar");
-        ClasspathCache.put("key-stale", List.of(a.toString(), b.toString()));
+        ClasspathCache.put("key-stale", List.of(a.toString(),b.toString()));
         ClasspathCache.clearMemory();
 
         // The local repository is purged/evicted. The POMs are untouched, so the

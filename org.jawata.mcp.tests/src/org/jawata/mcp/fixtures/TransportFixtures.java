@@ -3,10 +3,10 @@ package org.jawata.mcp.fixtures;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 
-import org.jawata.mcp.engine.ResidentEndpointPolicy;
 import org.jawata.mcp.transport.HttpTransport;
 import org.jawata.mcp.transport.ResolvedToken;
 import org.jawata.mcp.transport.TransportConfig;
+import org.jawata.resident.ResidentEndpointPolicy;
 import org.jawata.spi.host.EndpointPolicy;
 import org.jawata.spi.host.EngineLifecycle;
 import org.jawata.spi.host.McpEndpoint;

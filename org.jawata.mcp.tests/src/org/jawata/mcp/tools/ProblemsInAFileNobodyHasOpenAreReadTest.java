@@ -9,7 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,7 +71,7 @@ class ProblemsInAFileNobodyHasOpenAreReadTest {
                 }
             }
             """);
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
     }
 
     @SuppressWarnings("unchecked")

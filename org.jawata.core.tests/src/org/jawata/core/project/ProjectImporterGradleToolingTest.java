@@ -1,5 +1,6 @@
 package org.jawata.core.project;
 
+import org.jawata.resident.project.ProjectImporter;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

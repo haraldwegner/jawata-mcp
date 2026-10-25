@@ -5,7 +5,8 @@ import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
 import org.jawata.core.fixtures.TestProjectHelper;
-import org.jawata.core.workspace.WorkspaceManager;
+import org.jawata.resident.workspace.WorkspaceManager;
+import org.jawata.resident.project.ProjectImporter;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -352,7 +353,7 @@ class BuildSystemLoadTest {
         // cannot resolve ANY bundle. That is an absent environment, not a
         // defect, and reporting it as a failure would train the reader to
         // ignore a red test.
-        org.jawata.core.JdtServiceImpl service = helper.loadWorkspaceCopy("pde-bundle-a");
+        org.jawata.resident.workspace.JdtServiceImpl service = helper.loadWorkspaceCopy("pde-bundle-a");
         IJavaProject jp = service.allProjects().iterator().next().javaProject();
         List<String> entries = allClasspathEntries(jp);
         // Guard on LIBRARY entries, not on the string "org.eclipse" (C1 audit

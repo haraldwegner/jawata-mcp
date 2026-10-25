@@ -10,7 +10,7 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.knowledge.Confidence;

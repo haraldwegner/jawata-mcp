@@ -4,11 +4,12 @@ import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IResource;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.core.LoadedProject;
 import org.jawata.core.fixtures.TestJars;
 import org.jawata.core.fixtures.TestProjectHelper;
 import org.jawata.core.host.HostOS;
+import org.jawata.resident.project.ExternalBundlePool;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -279,15 +280,15 @@ class WorkspaceResolveRedTest {
         // no longer carries a second map that could disagree. Resolve a
         // consumer importing the package and assert the wired jar IS the
         // symbolic-name winner.
-        org.jawata.core.resolve.BundleFacts consumer = new org.jawata.core.resolve.BundleFacts(
+        org.jawata.resident.resolve.BundleFacts consumer = new org.jawata.resident.resolve.BundleFacts(
             "org.example.consumer", java.util.Optional.of("1.0.0"), List.of(),
             List.of("org.example.api"), List.of(), java.util.Optional.empty(),
             List.of(), java.util.Optional.empty());
-        org.jawata.core.resolve.PlatformResolver.Wiring wiring =
-            new org.jawata.core.resolve.GraphWalkResolver()
+        org.jawata.resident.resolve.PlatformResolver.Wiring wiring =
+            new org.jawata.resident.resolve.GraphWalkResolver()
                 .resolve(java.util.Map.of("org.example.consumer", consumer),
                     indexed.poolBundles(),
-                    new org.jawata.core.resolve.PlatformResolver.Platform("linux", "gtk", "x86_64"))
+                    new org.jawata.resident.resolve.PlatformResolver.Platform("linux", "gtk", "x86_64"))
                 .get("org.example.consumer");
         List<Path> jars = wiring.providers().stream()
             .map(pr -> pr.jar().orElseThrow()).toList();
@@ -367,9 +368,9 @@ class WorkspaceResolveRedTest {
                 + "Bundle-SymbolicName: org.example.ranged\nBundle-Version: 1.0.0\n"
                 + "Require-Bundle: org.example.pinned;bundle-version=\"[1.0.0,2.0.0)\",\n"
                 + " org.example.plain\n");
-        List<String> required = org.jawata.core.resolve.BundleFacts.of(project).orElseThrow()
+        List<String> required = org.jawata.resident.resolve.BundleFacts.of(project).orElseThrow()
             .requiredBundles().stream()
-            .map(org.jawata.core.resolve.OsgiHeaders.Requirement::name)
+            .map(org.jawata.resident.resolve.OsgiHeaders.Requirement::name)
             .toList();
         assertEquals(List.of("org.example.pinned", "org.example.plain"), required,
             "the comma INSIDE the quoted range is not a separator; today's naive "

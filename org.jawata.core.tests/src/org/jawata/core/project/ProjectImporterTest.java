@@ -6,7 +6,8 @@ import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.JavaCore;
 import org.jawata.core.fixtures.TestProjectHelper;
-import org.jawata.core.workspace.WorkspaceManager;
+import org.jawata.resident.workspace.WorkspaceManager;
+import org.jawata.resident.project.ProjectImporter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -621,8 +622,8 @@ class ProjectImporterTest {
     void mavenResolution_noOutputFile_refuses(@TempDir Path dir) throws IOException {
         fakeMavenProject(dir, "exit 0\n", "@exit /b 0\r\n");
         ProjectImporter importer = new ProjectImporter();
-        org.jawata.core.project.DependencyResolutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
-            org.jawata.core.project.DependencyResolutionException.class,
+        org.jawata.resident.project.DependencyResolutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
+            org.jawata.resident.project.DependencyResolutionException.class,
             () -> importer.getMavenDependencies(dir));
         assertTrue(ex.getMessage().contains("no classpath output file"),
             "the refusal must NAME the anomaly: " + ex.getMessage());
@@ -637,8 +638,8 @@ class ProjectImporterTest {
             // Prefix redirection, so cmd writes exactly "x" with no trailing space.
             "@echo BOOM-a-dependency-broke\r\n@>> attempts.log echo x\r\n@exit /b 1\r\n");
         ProjectImporter importer = new ProjectImporter();
-        org.jawata.core.project.DependencyResolutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
-            org.jawata.core.project.DependencyResolutionException.class,
+        org.jawata.resident.project.DependencyResolutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
+            org.jawata.resident.project.DependencyResolutionException.class,
             () -> importer.getMavenDependencies(dir));
         assertTrue(ex.getMessage().contains("exit 1"), "exit code named: " + ex.getMessage());
         assertTrue(ex.getMessage().contains("BOOM-a-dependency-broke"),

@@ -2,7 +2,7 @@ package org.jawata.mcp.tools.refactoring;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
@@ -45,7 +45,7 @@ class OrganizeImportsAddsMissingTest {
             .resolve("src/main/java/com/example/" + name + ".java");
         Files.createDirectories(file.getParent());
         Files.writeString(file, body);
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
         return file;
     }
 

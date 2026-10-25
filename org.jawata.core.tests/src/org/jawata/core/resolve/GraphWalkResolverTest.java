@@ -1,9 +1,11 @@
 package org.jawata.core.resolve;
 
-import org.jawata.core.resolve.PlatformResolver.Platform;
-import org.jawata.core.resolve.PlatformResolver.PoolBundle;
-import org.jawata.core.resolve.PlatformResolver.Provider;
-import org.jawata.core.resolve.PlatformResolver.Wiring;
+import org.jawata.resident.resolve.BundleFacts;
+import org.jawata.resident.resolve.GraphWalkResolver;
+import org.jawata.resident.resolve.PlatformResolver.Platform;
+import org.jawata.resident.resolve.PlatformResolver.PoolBundle;
+import org.jawata.resident.resolve.PlatformResolver.Provider;
+import org.jawata.resident.resolve.PlatformResolver.Wiring;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

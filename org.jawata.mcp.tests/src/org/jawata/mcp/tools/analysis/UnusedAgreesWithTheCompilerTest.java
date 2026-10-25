@@ -2,7 +2,7 @@ package org.jawata.mcp.tools.analysis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.FindUnusedCodeTool;
@@ -104,7 +104,7 @@ class UnusedAgreesWithTheCompilerTest {
         Files.writeString(pkg.resolve("UnusedTargets.java"), TARGET);
         // The production reconcile, the way a sibling test does it — a test-only refresh would
         // prove less about how the product notices a file written outside it.
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
         tool = new FindUnusedCodeTool(() -> service);
         mapper = new ObjectMapper();
     }

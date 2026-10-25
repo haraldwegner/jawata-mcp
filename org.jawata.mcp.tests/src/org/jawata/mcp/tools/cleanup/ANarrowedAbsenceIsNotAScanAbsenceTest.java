@@ -2,7 +2,7 @@ package org.jawata.mcp.tools.cleanup;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.ApplyCleanupTool;
@@ -69,7 +69,7 @@ class ANarrowedAbsenceIsNotAScanAbsenceTest {
         Path pkg = service.getProjectRoot().resolve("src/main/java/com/example");
         Files.createDirectories(pkg);
         Files.writeString(pkg.resolve("NarrowedTargets.java"), TARGET);
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
         tool = new ApplyCleanupTool(() -> service,
             new org.jawata.mcp.change.RefactoringChangeCache());
         mapper = new ObjectMapper();

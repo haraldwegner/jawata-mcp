@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28k (contract step E21): org.jawata.resident — the headless host. It holds the application that starts the engine
+     alone (JawataApplication and its extension), the host the engine asks (ResidentHost and its ports), and everything that builds
+     a workspace of Java projects from disk (JdtServiceImpl, the importer, the file watcher, the platform resolver).
+     org.jawata.mcp (the engine) and org.jawata.core (the model's interfaces) depend on none of it: rules R1, R3, R4, R5.
+     The extension (plugin.xml) and the Gradle tooling jar are resources at the bundle root, apart from the source root. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.jawata</groupId>
+        <artifactId>org.jawata.build</artifactId>
+        <version>4.4.15</version>
+    </parent>
+
+    <artifactId>org.jawata.resident</artifactId>
+
+    <dependencies>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.catalogue</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.spi</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.equinox.app</artifactId><version>${v.equinox.app}</version></dependency>
+        <dependency><groupId>org.eclipse.jdt</groupId><artifactId>org.eclipse.jdt.core</artifactId><version>${v.jdt.core}</version></dependency>
+        <dependency><groupId>org.eclipse.jdt</groupId><artifactId>org.eclipse.jdt.launching</artifactId><version>${v.jdt.launching}</version></dependency>
+        <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.core.resources</artifactId><version>${v.core.resources}</version></dependency>
+        <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.core.runtime</artifactId><version>${v.core.runtime}</version></dependency>
+        <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.core.jobs</artifactId><version>${v.core.jobs}</version></dependency>
+        <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.osgi</artifactId><version>${v.osgi}</version></dependency>
+        <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>${v.jackson}</version></dependency>
+        <dependency><groupId>org.slf4j</groupId><artifactId>slf4j-api</artifactId><version>${v.slf4j}</version></dependency>
+        <dependency>
+            <groupId>org.gradle</groupId><artifactId>gradle-tooling-api</artifactId><version>8.10</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/../../org.jawata.resident/lib/gradle-tooling-api-8.10.jar</systemPath>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <sourceDirectory>${project.basedir}/../../org.jawata.resident/src</sourceDirectory>
+        <resources>
+            <resource>
+                <directory>${project.basedir}/../../org.jawata.resident</directory>
+                <includes>
+                    <include>plugin.xml</include>
+                    <include>lib/*.jar</include>
+                </includes>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestFile>${project.basedir}/../../org.jawata.resident/META-INF/MANIFEST.MF</manifestFile>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

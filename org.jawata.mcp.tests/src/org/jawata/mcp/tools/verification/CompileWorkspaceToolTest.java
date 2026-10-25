@@ -7,7 +7,7 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ErrorInfo;
 import org.jawata.mcp.models.ToolResponse;
@@ -69,7 +69,7 @@ class CompileWorkspaceToolTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("compile-clean");
-        tool = new CompileWorkspaceTool(() -> service, () -> new org.jawata.core.workspace.StrictDiskSync(() -> service));
+        tool = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         objectMapper = new ObjectMapper();
     }
 

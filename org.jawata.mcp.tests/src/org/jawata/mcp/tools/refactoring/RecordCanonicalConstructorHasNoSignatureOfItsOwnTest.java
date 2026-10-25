@@ -3,7 +3,7 @@ package org.jawata.mcp.tools.refactoring;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
@@ -107,7 +107,7 @@ class RecordCanonicalConstructorHasNoSignatureOfItsOwnTest {
         Files.writeString(pkg.resolve("RecordImplicitTargets.java"), IMPLICIT);
         // The production reconcile, so the test proves how the product notices a file written
         // outside it rather than how a test-only refresh does.
-        new org.jawata.core.workspace.StrictDiskSync(() -> service).syncBeforeCall();
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
         tool = new ChangeMethodSignatureTool(() -> service, new RefactoringChangeCache());
         mapper = new ObjectMapper();
     }

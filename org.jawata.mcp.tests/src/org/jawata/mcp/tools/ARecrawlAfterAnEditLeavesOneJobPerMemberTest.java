@@ -12,7 +12,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.knowledge.DescribedUnits;
 import org.jawata.mcp.knowledge.H2ExperienceStore;

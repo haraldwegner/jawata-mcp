@@ -5,17 +5,17 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
-import org.jawata.core.HeadlessModelSource;
+import org.jawata.resident.workspace.HeadlessModelSource;
 import org.jawata.mcp.ShippedTools;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.engine.ProviderPorts;
-import org.jawata.mcp.engine.ResidentHostWorkspace;
-import org.jawata.mcp.engine.ResidentJavaBinding;
 import org.jawata.mcp.java.JavaProvider;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.Tool;
 import org.jawata.mcp.tools.ToolRegistry;
+import org.jawata.resident.ResidentHostWorkspace;
+import org.jawata.resident.ResidentJavaBinding;
 
 /**
  * The shipped tools, built the way the application builds them but with nothing behind the wiring

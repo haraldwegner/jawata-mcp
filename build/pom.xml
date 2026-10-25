@@ -19,6 +19,8 @@
         <module>spi</module>
         <module>core</module>
         <module>mcp</module>
+        <!-- 28k E21: the headless host; depends on core, spi and mcp, none of which depend on it. -->
+        <module>resident</module>
         <module>boot</module>
         <module>testrunner</module>
         <module>pitplugin</module>

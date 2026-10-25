@@ -1,14 +1,15 @@
 package org.jawata.core;
 
-import org.jawata.core.fixtures.TestProjectHelper;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.core.fixtures.TestProjectHelper;
+import org.jawata.resident.workspace.JdtServiceImpl;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * Sprint 14 (bugs.md #11): {@code JdtServiceImpl} must track recently-dropped

@@ -9,11 +9,11 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import org.jawata.core.HeadlessModelSource;
-import org.jawata.mcp.engine.ResidentHostWorkspace;
+import org.jawata.resident.workspace.HeadlessModelSource;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.LoadProjectTool;
+import org.jawata.resident.ResidentHostWorkspace;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;

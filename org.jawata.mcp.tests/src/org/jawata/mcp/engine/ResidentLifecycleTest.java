@@ -13,6 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import org.jawata.resident.ResidentLifecycle;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

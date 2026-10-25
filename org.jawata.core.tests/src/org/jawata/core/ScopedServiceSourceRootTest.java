@@ -1,18 +1,19 @@
 package org.jawata.core;
 
-import org.eclipse.jdt.core.ICompilationUnit;
-import org.jawata.core.fixtures.TestProjectHelper;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.eclipse.jdt.core.ICompilationUnit;
+import org.jawata.core.fixtures.TestProjectHelper;
+import org.jawata.resident.workspace.JdtServiceImpl;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 /**
  * Sprint 28 (v3.6.2) — the SCOPED view must resolve exactly what the unscoped

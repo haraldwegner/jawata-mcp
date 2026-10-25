@@ -2,6 +2,7 @@ package org.jawata.core.project;
 
 import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.launching.IVMInstallType;
+import org.jawata.resident.project.ProjectImporter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

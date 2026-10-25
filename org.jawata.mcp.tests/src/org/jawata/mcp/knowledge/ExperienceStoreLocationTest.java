@@ -13,7 +13,7 @@ import java.sql.Statement;
 import java.util.Map;
 
 import org.h2.jdbcx.JdbcDataSource;
-import org.jawata.mcp.engine.ResidentDirectories;
+import org.jawata.mcp.engine.DefaultEngineDirectories;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -36,7 +36,7 @@ class ExperienceStoreLocationTest {
         // Case 1: legacy goja dir present, jawata absent -> whole dir moves.
         Files.createDirectories(base.resolve("goja"));
         Files.writeString(base.resolve("goja").resolve("experience.mv.db"), "store-bytes");
-        Path resolved = ResidentDirectories.migrateLegacySharedDir(base);
+        Path resolved = DefaultEngineDirectories.migrateLegacySharedDir(base);
         assertEquals(base.resolve("jawata"), resolved);
         assertEquals("store-bytes",
             Files.readString(base.resolve("jawata").resolve("experience.mv.db")),
@@ -46,7 +46,7 @@ class ExperienceStoreLocationTest {
         // Case 2: jawata already exists -> never clobber; legacy left alone.
         Files.createDirectories(base.resolve("goja"));
         Files.writeString(base.resolve("goja").resolve("stale.txt"), "old");
-        Path again = ResidentDirectories.migrateLegacySharedDir(base);
+        Path again = DefaultEngineDirectories.migrateLegacySharedDir(base);
         assertEquals(base.resolve("jawata"), again);
         assertEquals("store-bytes",
             Files.readString(base.resolve("jawata").resolve("experience.mv.db")),
@@ -102,7 +102,7 @@ class ExperienceStoreLocationTest {
     @Test
     void shared_store_honors_dir_override_and_persists(@TempDir Path dir) {
         // The folder is the host's answer, so the override is a setting the host reads, not a property the store reads.
-        Path shared = new ResidentDirectories(key -> "jawata.experience.shared.dir".equals(key)
+        Path shared = new DefaultEngineDirectories(key -> "jawata.experience.shared.dir".equals(key)
             ? java.util.Optional.of(dir.toString()) : java.util.Optional.empty()).sharedStoreDir();
         assertEquals(dir, shared, "a named shared folder is used exactly as given");
         String id;

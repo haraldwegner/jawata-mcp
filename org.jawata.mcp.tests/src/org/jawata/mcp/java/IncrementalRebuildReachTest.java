@@ -10,7 +10,7 @@ import java.util.List;
 
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.change.ChangeContext;
 import org.jawata.mcp.change.ParityGate;
 import org.jawata.mcp.fixtures.TestProjectHelper;

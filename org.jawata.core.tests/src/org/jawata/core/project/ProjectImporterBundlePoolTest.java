@@ -2,7 +2,7 @@ package org.jawata.core.project;
 
 import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.IJavaProject;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.core.fixtures.TestProjectHelper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -44,8 +44,8 @@ class ProjectImporterBundlePoolTest {
             "Bundle-SymbolicName: com.foo;singleton:=true\r\n" +
             "Bundle-Version: 1.0.0\r\n");
 
-        org.jawata.core.resolve.BundleFacts facts =
-            org.jawata.core.resolve.BundleFacts.of(tempDir).orElseThrow();
+        org.jawata.resident.resolve.BundleFacts facts =
+            org.jawata.resident.resolve.BundleFacts.of(tempDir).orElseThrow();
 
         assertEquals("com.foo", facts.symbolicName(),
             "Symbolic name must be stripped of trailing ;directive=value pairs");
@@ -66,9 +66,9 @@ class ProjectImporterBundlePoolTest {
             " com.example.second;visibility:=reexport,\r\n" +
             " com.example.third\r\n");
 
-        List<String> required = org.jawata.core.resolve.BundleFacts.of(tempDir).orElseThrow()
+        List<String> required = org.jawata.resident.resolve.BundleFacts.of(tempDir).orElseThrow()
             .requiredBundles().stream()
-            .map(org.jawata.core.resolve.OsgiHeaders.Requirement::name)
+            .map(org.jawata.resident.resolve.OsgiHeaders.Requirement::name)
             .toList();
 
         assertEquals(List.of("com.example.first", "com.example.second", "com.example.third"), required);

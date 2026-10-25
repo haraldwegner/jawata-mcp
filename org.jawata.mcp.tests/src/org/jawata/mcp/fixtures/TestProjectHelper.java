@@ -1,7 +1,7 @@
 package org.jawata.mcp.fixtures;
 
 import org.eclipse.core.runtime.CoreException;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
@@ -40,7 +40,7 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
     static {
         // The host half of every change context is the host's. These tests have no host, so the one they stand in for supplies a
         // reconciler over the service this helper loaded last and the direct writes (28k-C2-3).
-        org.jawata.mcp.java.JavaChange.hostedBy(new org.jawata.core.workspace.StrictDiskSync(() -> latest),
+        org.jawata.mcp.java.JavaChange.hostedBy(new org.jawata.resident.workspace.OwnedReconciler(() -> latest),
             org.jawata.spi.host.WorkspaceWrites.DIRECT);
     }
 

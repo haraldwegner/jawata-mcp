@@ -17,12 +17,12 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
-import org.jawata.core.JdtServiceImpl;
-import org.jawata.core.workspace.StrictDiskSync;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
 import org.jawata.mcp.tools.RefreshWorkspaceTool;
+import org.jawata.resident.workspace.OwnedReconciler;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.lang.BuildVerdict;
@@ -62,7 +62,7 @@ class JavaBuildVerdictRowsTest {
             "    void broken() {\n        int x = ;\n    }\n", "");
         writeBeside("CleanSupport.java", "BrokenInTest", "    void broken() {\n        int x = ;\n    }\n", "");
         writeBeside("Clean.java", "NotedAndUnused", "    // TODO tidy later\n", "import java.util.List;\n");
-        new StrictDiskSync(() -> service).rebuild(scope, BuildKind.FULL, new NullProgressMonitor());
+        new OwnedReconciler(() -> service).rebuild(scope, BuildKind.FULL, new NullProgressMonitor());
         verdict = new JavaBuildVerdict(service);
     }
 
@@ -147,7 +147,7 @@ class JavaBuildVerdictRowsTest {
     @Test
     @DisplayName("compile_workspace answers the verdict's rows: errors by default, warnings and notes only when asked, test code only for scope=test")
     void compileWorkspaceAnswersTheRowsThatMeetItsFilters() {
-        CompileWorkspaceTool tool = new CompileWorkspaceTool(() -> service, () -> new StrictDiskSync(() -> service));
+        CompileWorkspaceTool tool = new CompileWorkspaceTool(() -> service, () -> new OwnedReconciler(() -> service));
 
         JsonNode byDefault = answered(tool.execute(mapper.createObjectNode()));
         assertTrue(rowsOf(byDefault).stream().allMatch(d -> "ERROR".equals(d.get("severity").asText())),
@@ -185,7 +185,7 @@ class JavaBuildVerdictRowsTest {
     @Test
     @DisplayName("refresh_workspace answers the verdict's errors and warnings, and no notes")
     void refreshWorkspaceAnswersErrorsAndWarnings() {
-        RefreshWorkspaceTool tool = new RefreshWorkspaceTool(() -> service, () -> new StrictDiskSync(() -> service));
+        RefreshWorkspaceTool tool = new RefreshWorkspaceTool(() -> service, () -> new OwnedReconciler(() -> service));
 
         JsonNode data = answered(tool.execute(mapper.createObjectNode()));
 

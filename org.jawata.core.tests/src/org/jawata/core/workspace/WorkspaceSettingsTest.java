@@ -3,6 +3,7 @@ package org.jawata.core.workspace;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.preferences.InstanceScope;
+import org.jawata.resident.workspace.WorkspaceSettings;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

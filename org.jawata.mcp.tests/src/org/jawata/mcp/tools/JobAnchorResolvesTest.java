@@ -11,7 +11,7 @@ import java.util.Map;
 import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.H2ExperienceStore;

@@ -2,7 +2,7 @@ package org.jawata.mcp.tools.smell;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.jawata.mcp.domain.DetectorCatalog;
 import org.jawata.mcp.domain.Detector;
 import org.jawata.mcp.fixtures.TestProjectHelper;

@@ -23,7 +23,7 @@ import org.eclipse.jdt.core.JavaModelException;
  * service that owns the others.
  * </p>
  */
-final class ModelLookup {
+public final class ModelLookup {
 
 	private ModelLookup() {
 	}
@@ -60,7 +60,7 @@ final class ModelLookup {
 	 * shape, path form or existing caller moves.
 	 * </p>
 	 */
-	static Path underRoot(Path rootPath, Path projectRelative) {
+	public static Path underRoot(Path rootPath, Path projectRelative) {
 		int segments = projectRelative.getNameCount();
 		if (segments < 2)
 			return null; // needs at least one root segment plus a file name
@@ -88,7 +88,7 @@ final class ModelLookup {
 	 * @return the compilation unit, or null when no declared root contains the file
 	 *         (the caller then falls back to the convention guess)
 	 */
-	static ICompilationUnit lookupViaSourceRoots(IJavaProject jp, Path filePath) throws JavaModelException {
+	public static ICompilationUnit lookupViaSourceRoots(IJavaProject jp, Path filePath) throws JavaModelException {
 		Path absolute = filePath.isAbsolute() ? filePath.normalize() : null;
 		Path projectRelative = absolute == null ? filePath.normalize() : null;
 
@@ -148,7 +148,7 @@ final class ModelLookup {
 	 * again.
 	 * </p>
 	 */
-	static ICompilationUnit lookupCompilationUnit(IJavaProject jp, Path filePath) {
+	static public ICompilationUnit lookupCompilationUnit(IJavaProject jp, Path filePath) {
 		if (jp == null)
 			return null;
 		try {
