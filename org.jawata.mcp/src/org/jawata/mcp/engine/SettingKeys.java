@@ -8,10 +8,10 @@ import java.util.List;
  * Every setting the engine reads through its host (Sprint 28k, E17), in one list: the registry a host builds its settings screen from
  * and is checked against (Stage 17 compares the preference pages with {@link #all()}).
  *
- * <p>A key that is read through the host is listed here. Five readers (StoreBackups, SeatRules, StoryWriter, TranscriptStore,
- * SchemaMigrations) still spell the key as a constant of their own beside this list, and the environment variables and
- * {@code Boolean.getBoolean} switches the engine reads straight from the process are not here at all (ledger 28k-C5-11, homed to
- * Stage 6): the list says what a host can set today, not everything the engine reads.</p>
+ * <p>A key that is read through the host is listed here, and the readers in {@code org.jawata.mcp} hold the key itself. The
+ * environment variables the engine reads for itself are keys too, bridged to their variable in {@code ResidentSettings}. What is
+ * not here (ledger 28k-C5-11): the variables {@code org.jawata.core} reads straight from the process, and the allow-list of
+ * variables the test runner hands to a child JVM. The list says what a host can set today, not everything the engine reads.</p>
  */
 public final class SettingKeys {
 
