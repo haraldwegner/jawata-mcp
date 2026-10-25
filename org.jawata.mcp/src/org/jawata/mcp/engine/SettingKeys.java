@@ -49,6 +49,11 @@ public final class SettingKeys {
         "Which knowledge store the resident opens: shared (one per user, spanning workspaces), workspace, memory (nothing is kept), "
             + "or the path of a folder.");
 
+    /** Where the knowledge store shared by every resident of the user is kept. */
+    public static final SettingKey EXPERIENCE_SHARED_DIR = register("jawata.experience.shared.dir",
+        "jawata in $XDG_DATA_HOME, or in ~/.local/share",
+        "The folder of the knowledge store shared by every resident on the machine; used exactly as given.");
+
     /** The folders and files memory is loaded from. */
     public static final SettingKey MEMORY_ROOTS = register("jawata.memory.roots", "discovered from the project folders",
         "The folders and files memory is loaded from when no path is given, separated by the path separator; when set they are the "

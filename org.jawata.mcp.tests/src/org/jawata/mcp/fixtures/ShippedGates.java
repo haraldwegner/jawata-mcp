@@ -49,7 +49,7 @@ public final class ShippedGates {
         return List.of(
             new CompileWorkspaceTool(() -> null, () -> null),
             new GetDiagnosticsTool(() -> null),
-            new RunTestsTool(() -> null));
+            new RunTestsTool(() -> null, () -> null));
     }
 
     /**

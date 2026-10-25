@@ -373,7 +373,7 @@ class ImpactedTestsFromDiffTest {
         // explain the different answer.
         JdtServiceImpl service = helper.loadProjectCopy("selection-target");
         commitEverything(selRoot());
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         runAttribution(tool, "class", WIDGET_TEST);
         editWidget();
 
@@ -426,7 +426,7 @@ class ImpactedTestsFromDiffTest {
         // first. Note what is NOT done here — no attribution run.
         JdtServiceImpl service = helper.loadProjectCopy("selection-target");
         commitEverything(selRoot());
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         editWidget();
 
         Map<String, Object> run = packageRun(tool, Map.of());
@@ -498,7 +498,7 @@ class ImpactedTestsFromDiffTest {
     private RunTestsTool selectionFixture() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("selection-target");
         commitEverything(selRoot());
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         runAttribution(tool, "package", "com.example.sel");
         return tool;
     }
@@ -548,7 +548,7 @@ class ImpactedTestsFromDiffTest {
     private RunTestsTool attributedFixture() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("coverage-target");
         commitEverything(root());
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         runAttribution(tool, "com.example.cov.CoveredTest");
         return tool;
     }

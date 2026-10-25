@@ -298,7 +298,7 @@ public class JawataEngine {
 		H2ExperienceStore store = switch (mode) {
 		case "memory" -> H2ExperienceStore.openMemory();
 		case "workspace" -> H2ExperienceStore.open(workspaceRoot);
-		case "", "shared" -> H2ExperienceStore.openShared();
+		case "", "shared" -> H2ExperienceStore.openShared(host().directories().sharedStoreDir());
 		default -> H2ExperienceStore.openAt(Path.of(mode));
 		};
 		Path workspaceJson = workspaceRoot != null && Files.isRegularFile(workspaceRoot.resolve("workspace.json"))
@@ -516,7 +516,10 @@ public class JawataEngine {
 				this.getRefactoringChangeCache(), this.getExperienceStore(), () -> this.getExperienceStore(),
 				() -> this.experienceEmbeddingIndex(), this.getRuntimeSessions(), () -> this.getLearnerEvents(),
 				() -> this.getToolRegistry(), () -> this.selfEndpoint(), () -> this.host().directories().memoryRoots(),
-				() -> reconciler), ProviderPorts.over(whiteboard, languageContext));
+				() -> reconciler, new org.jawata.mcp.runtime.RuntimeArtifactStore(this.host().directories().runtimeDir()),
+				new org.jawata.mcp.coverage.CoverageService(
+						new org.jawata.mcp.coverage.CoverageStore(this.host().directories().coverageDir()))),
+				ProviderPorts.over(whiteboard, languageContext));
 
 		// Kept for what reads them later: the quality ledger's reach to the pre-advice surface (wired in assemble()), and the
 		// automatic refresh after a project load. The watch engine's detector binding is kept when a language contributes it.

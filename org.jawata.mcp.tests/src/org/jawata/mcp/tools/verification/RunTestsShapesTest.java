@@ -78,7 +78,7 @@ class RunTestsShapesTest {
 
         JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(root);
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
 
         ObjectNode args = classScope("com.example.gradle.GradleShapeTest");
         args.put("timeoutSeconds", 120);
@@ -145,7 +145,7 @@ class RunTestsShapesTest {
 
         JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(root);
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
 
         // WITHOUT the descriptor: the reflective test fails (CNFE), the plain one passes.
         ObjectNode without = classScope("com.example.plain.PlainShapeTest");
@@ -175,7 +175,7 @@ class RunTestsShapesTest {
     @DisplayName("reactor shape: module-b tests exercise module-a classes")
     void reactorCrossModule_bTestsExerciseA() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("reactor-cross");
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
 
         ObjectNode args = classScope("com.example.cross.CrossModuleTest");
         args.put("timeoutSeconds", 120);

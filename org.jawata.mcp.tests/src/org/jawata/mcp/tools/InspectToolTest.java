@@ -152,7 +152,7 @@ class InspectToolTest {
     @DisplayName("kind=impacted_tests is the SAME answer as run_tests(action=coverage_impacted_tests)")
     void impacted_tests_is_the_same_answer_as_run_tests() throws Exception {
         JdtServiceImpl service = helper.loadProject("simple-maven");
-        RunTestsTool runTests = new RunTestsTool(() -> service);
+        RunTestsTool runTests = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         InspectTool wired = new InspectTool(() -> service);
         wired.setImpactedTests(runTests::impactedTests);
 

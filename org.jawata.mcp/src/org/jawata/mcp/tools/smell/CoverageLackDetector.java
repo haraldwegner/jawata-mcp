@@ -41,7 +41,8 @@ public final class CoverageLackDetector implements Detector {
     @Override
     public ToolResponse detect(IJdtService service, JsonNode arguments) {
         try {
-            CoverageService coverage = new CoverageService();
+            CoverageService coverage = new CoverageService(
+                new org.jawata.mcp.coverage.CoverageStore(org.jawata.mcp.engine.EngineEnvironment.directories().coverageDir()));
             String artifactId = null;
             CoverageManifest manifest = null;
             for (String id : coverage.store().list()) {

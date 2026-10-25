@@ -55,7 +55,7 @@ class CoverageAttributionTest {
     @DisplayName("C9: exact both directions, unit ranked before integration, impacted minimal, honest unavailable")
     void attribution_exactRankedMinimalHonest() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("coverage-target");
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
 
         // Honest "unavailable" BEFORE any attribution run exists.
         Map<String, Object> unavailable = action(tool, "coverage_tests_covering",
@@ -110,7 +110,7 @@ class CoverageAttributionTest {
     @DisplayName("C9 cross-module: module-b tests attributed to module-a symbols")
     void attribution_crossModule() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("reactor-cross");
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         runAttribution(tool, "com.example.cross.CrossModuleTest", "unit");
 
         Map<String, Object> covering = action(tool, "coverage_tests_covering",

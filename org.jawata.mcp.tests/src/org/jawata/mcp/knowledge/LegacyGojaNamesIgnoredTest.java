@@ -1,14 +1,15 @@
 package org.jawata.mcp.knowledge;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+
+import java.nio.file.Path;
+
+import org.jawata.mcp.engine.ResidentDirectories;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-
-import java.nio.file.Path;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 /**
  * Sprint 22d Stage A (carried obligation D6): the {@code goja.*} property
@@ -40,6 +41,11 @@ class LegacyGojaNamesIgnoredTest {
         restore(GOJA_DIR, savedGojaDir);
     }
 
+    /** The folder a resident whose settings are the process properties would share its store in. */
+    private static Path sharedStoreDir() {
+        return new ResidentDirectories(key -> java.util.Optional.ofNullable(System.getProperty(key))).sharedStoreDir();
+    }
+
     static void restore(String key, String value) {
         if (value == null) {
             System.clearProperty(key);
@@ -52,7 +58,7 @@ class LegacyGojaNamesIgnoredTest {
     @DisplayName("goja.experience.shared.dir is ignored — the XDG/default resolution wins")
     void legacySharedDirPropertyIsIgnored() {
         System.setProperty(GOJA_DIR, "/tmp/legacy-goja-store-dir");
-        Path resolved = H2ExperienceStore.sharedStoreDir();
+        Path resolved = sharedStoreDir();
         assertNotEquals(Path.of("/tmp/legacy-goja-store-dir"), resolved,
             "a value supplied ONLY under the legacy goja name must not be honored");
     }
@@ -62,7 +68,7 @@ class LegacyGojaNamesIgnoredTest {
     void jawataSharedDirPropertyStillWorks() {
         System.setProperty(JAWATA_DIR, "/tmp/jawata-store-dir");
         System.setProperty(GOJA_DIR, "/tmp/legacy-goja-store-dir");
-        assertEquals(Path.of("/tmp/jawata-store-dir"), H2ExperienceStore.sharedStoreDir(),
+        assertEquals(Path.of("/tmp/jawata-store-dir"), sharedStoreDir(),
             "the jawata name is the only accepted property");
     }
 }

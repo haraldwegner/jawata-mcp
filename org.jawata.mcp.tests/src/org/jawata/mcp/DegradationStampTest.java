@@ -243,7 +243,7 @@ class DegradationStampTest {
             "all 1 workspace project(s) FAILED to load — first: Maven resolution failed");
         assertNotNull(((Map<?, ?>) health().getData()).get("degraded"), "the alarm is standing");
 
-        ToolResponse added = new org.jawata.mcp.tools.AddProjectTool(() -> service).execute(
+        ToolResponse added = new org.jawata.mcp.tools.AddProjectTool(() -> service, new org.jawata.mcp.engine.ResidentHostWorkspace(new org.jawata.core.HeadlessModelSource())).execute(
             OM.createObjectNode().put("projectPath", root.toString()));
         assertTrue(added.isSuccess(), "the add itself must succeed: " + added.getError());
 

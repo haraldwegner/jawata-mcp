@@ -92,7 +92,8 @@ public class DebugTool extends AbstractTool {
     private final org.jawata.mcp.knowledge.ExperienceRetrieval experience;
 
     public DebugTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions) {
-        this(serviceSupplier, sessions, new RuntimeArtifactStore(), null);
+        this(serviceSupplier, sessions,
+            new RuntimeArtifactStore(org.jawata.mcp.engine.EngineEnvironment.directories().runtimeDir()), null);
     }
 
     public DebugTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions,

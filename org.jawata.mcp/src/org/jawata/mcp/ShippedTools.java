@@ -15,13 +15,11 @@ import org.jawata.mcp.engine.ToolNeeds;
 import org.jawata.mcp.engine.ToolSource;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.field.InFlightCalls;
-import org.jawata.mcp.java.JavaProvider;
 import org.jawata.mcp.knowledge.EmbeddingIndex;
 import org.jawata.mcp.knowledge.ExperienceAdvisor;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.PlanLedger;
-import org.jawata.mcp.runtime.RuntimeArtifactStore;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
 import org.jawata.mcp.tools.ExperienceTool;
@@ -111,7 +109,7 @@ public final class ShippedTools {
             Supplier<LearnerEventStore> learnerEvents,
             Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> selfEndpoint,
-            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler) {
+            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage) {
 
         /** The workspace service as the tools take it: asked at call time, because a load replaces it. */
         public Supplier<IJdtService> jdt() {
@@ -152,7 +150,7 @@ public final class ShippedTools {
      * the advisor and the experience tool, which it wires further, so these objects must not be built again when a language arrives.
      */
     public static Built neutral(Wiring w, ProviderPorts ports) {
-        RunTestsTool runTests = new RunTestsTool(w.jdt(), ports.tests());
+        RunTestsTool runTests = new RunTestsTool(w.jdt(), ports.tests(), w.coverage());
 
         // The plan lifecycle consults and records against the knowledge store through the SAME advisor the pre-advice surface uses,
         // so it is given the embedding index, not left keyword-only.
@@ -162,7 +160,8 @@ public final class ShippedTools {
         ExperienceTool experience = ExperienceTool.withAnchors(w.jdt(), w.experienceStore(), w.defaultMemoryRoots(), ports.anchors());
 
         ToolNeeds needs = new ToolNeeds(
-            w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests);
+            w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests,
+            w.runtimeArtifacts());
         return new Built(List.copyOf(neutralTools(w, runTests, advisor, experience)), null, advisor, experience, needs);
     }
 
@@ -219,7 +218,7 @@ public final class ShippedTools {
         // answer null, because a degraded resident has no journal, and the tool is still published
         // and refuses with that reason; the third is this resident's own endpoint.
         tools.add(new HireTool(jdt, HostProcesses.system(),
-            new RuntimeArtifactStore(),
+            w.runtimeArtifacts(),
             new PlanLedger(),
             w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore));
 

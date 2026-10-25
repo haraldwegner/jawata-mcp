@@ -40,7 +40,7 @@ class RunTestsRefusesABrokenProjectTest {
         ObjectNode scope = args.putObject("scope");
         scope.put("kind", "class");
         scope.put("typeName", "com.example.cov.CoveredTest");
-        ToolResponse response = new RunTestsTool(() -> service).execute(args);
+        ToolResponse response = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime).execute(args);
 
         assertRefusedAsNotCompiling(response);
     }
@@ -54,7 +54,7 @@ class RunTestsRefusesABrokenProjectTest {
         args.put("action", "coverage_mutation");
         args.putArray("targetClasses").add("com.example.cov.Covered");
         args.putArray("targetTests").add("com.example.cov.CoveredTest");
-        ToolResponse response = new RunTestsTool(() -> service).execute(args);
+        ToolResponse response = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime).execute(args);
 
         assertRefusedAsNotCompiling(response);
     }

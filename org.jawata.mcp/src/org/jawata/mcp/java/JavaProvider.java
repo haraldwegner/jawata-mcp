@@ -11,7 +11,6 @@ import org.jawata.mcp.change.ChangeContext;
 import org.jawata.mcp.engine.ToolNeeds;
 import org.jawata.mcp.engine.ToolSource;
 import org.jawata.mcp.knowledge.ExperienceRetrieval;
-import org.jawata.mcp.runtime.RuntimeArtifactStore;
 import org.jawata.mcp.tools.AnalyzeTool;
 import org.jawata.mcp.tools.ApplyNullAnnotationsTool;
 import org.jawata.mcp.tools.DebugTool;
@@ -164,9 +163,9 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
 
         // The interactive debugger is given the store: a breakpoint hit RECALLS what is recorded about its symbol. The profiler
         // shares the sessions the debugger opens.
-        tools.add(new DebugTool(jdt, needs.runtimeSessions(), new RuntimeArtifactStore(),
+        tools.add(new DebugTool(jdt, needs.runtimeSessions(), needs.runtimeArtifacts(),
             new ExperienceRetrieval(needs.experienceStore(), memoryAnchors())));
-        tools.add(new ProfileTool(jdt, needs.runtimeSessions()));
+        tools.add(new ProfileTool(jdt, needs.runtimeSessions(), needs.runtimeArtifacts()));
 
         tools.add(new FindDuplicateCodeTool(jdt));
         tools.add(new FindModernizationTool(jdt));

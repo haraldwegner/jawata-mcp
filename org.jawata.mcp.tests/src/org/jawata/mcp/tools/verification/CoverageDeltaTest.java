@@ -48,7 +48,7 @@ class CoverageDeltaTest {
         System.setProperty("jawata.coverage.dir",
             Files.createTempDirectory("jawata-cov-store-").toString());
         service = helper.loadProjectCopy("coverage-target");
-        tool = new RunTestsTool(() -> service);
+        tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         om = new ObjectMapper();
         root = service.getProjectRoot();
         git("init", "-q");
@@ -221,7 +221,8 @@ class CoverageDeltaTest {
     void import_classIdGate() throws Exception {
         String local = runWithCoverage("com.example.cov.CoveredTest");
         Path exported = Files.createTempFile("ci-export-", ".exec");
-        Files.copy(new org.jawata.mcp.coverage.CoverageStore().execFile(local), exported,
+        Files.copy(new org.jawata.mcp.coverage.CoverageStore(org.jawata.mcp.engine.EngineEnvironment.directories().coverageDir())
+                .execFile(local), exported,
             java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 
         ObjectNode args = om.createObjectNode();

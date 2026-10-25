@@ -3,6 +3,7 @@ package org.jawata.mcp.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.host.HostWorkspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,8 +30,15 @@ public class RemoveProjectTool implements Tool {
 
     private final Supplier<IJdtService> serviceSupplier;
 
-    public RemoveProjectTool(Supplier<IJdtService> serviceSupplier) {
+    private final HostWorkspace workspace;
+
+    /**
+     * @param serviceSupplier the workspace service, read at call time
+     * @param workspace       whether the engine may change the workspace; when it may not, the tool answers HOST_OWNS_WORKSPACE
+     */
+    public RemoveProjectTool(Supplier<IJdtService> serviceSupplier, HostWorkspace workspace) {
         this.serviceSupplier = serviceSupplier;
+        this.workspace = workspace;
     }
 
     @Override
@@ -74,6 +82,9 @@ public class RemoveProjectTool implements Tool {
 
     @Override
     public ToolResponse execute(JsonNode arguments) {
+        if (!workspace.ownsWorkspace()) {
+            return ToolResponse.hostOwnsWorkspace("project remove");
+        }
         if (arguments == null || !arguments.has("projectKey")) {
             return ToolResponse.invalidParameter("projectKey", "Required parameter missing");
         }

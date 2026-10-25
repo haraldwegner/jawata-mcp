@@ -41,7 +41,7 @@ class RunTestsWorkingFolderTest {
     @DisplayName("a test that reads a file of its sibling module by a relative path passes through run_tests")
     void testsStartInTheirOwnModuleFolder() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("runner-module-relative-file");
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
 
         ObjectMapper mapper = new ObjectMapper();
         ObjectNode args = mapper.createObjectNode();

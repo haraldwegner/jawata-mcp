@@ -99,12 +99,9 @@ class JawataApplicationAutoLoadTest {
     @Test
     @DisplayName("resolveWorkspaceRoot prefers the launcher-published jawata.workspace.root property")
     void resolveWorkspaceRoot_prefersLauncherProperty(@TempDir Path real, @TempDir Path other) {
-        System.setProperty("jawata.workspace.root", real.toString());
-        try {
-            assertEquals(real, ResidentDirectories.resolveWorkspaceRoot(other));
-        } finally {
-            System.clearProperty("jawata.workspace.root");
-        }
+        ResidentDirectories published = new ResidentDirectories(key -> "jawata.workspace.root".equals(key)
+            ? java.util.Optional.of(real.toString()) : java.util.Optional.empty());
+        assertEquals(real, published.stableWorkspaceRoot(other));
     }
 
     @Test

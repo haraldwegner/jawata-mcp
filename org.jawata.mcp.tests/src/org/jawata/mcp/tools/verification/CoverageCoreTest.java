@@ -46,7 +46,7 @@ class CoverageCoreTest {
         Path covDir = Files.createTempDirectory("jawata-cov-store-");
         System.setProperty("jawata.coverage.dir", covDir.toString());
         service = helper.loadProjectCopy("coverage-target");
-        tool = new RunTestsTool(() -> service);
+        tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         om = new ObjectMapper();
     }
 
@@ -209,7 +209,7 @@ class CoverageCoreTest {
     @Test
     @DisplayName("C7 instrumentation-failure: no exec data means no invented claims")
     void instrumentationFailure() throws Exception {
-        CoverageStore store = new CoverageStore();
+        CoverageStore store = new CoverageStore(org.jawata.mcp.engine.EngineEnvironment.directories().coverageDir());
         String id = store.newArtifactId();
         Path dir = store.createArtifactDir(id);
         Files.createFile(dir.resolve(CoverageStore.EXEC_FILE)); // empty = agent collected nothing

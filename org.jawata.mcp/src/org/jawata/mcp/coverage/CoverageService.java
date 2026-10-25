@@ -35,7 +35,7 @@ public final class CoverageService {
 
     private static final Logger log = LoggerFactory.getLogger(CoverageService.class);
 
-    private final CoverageStore store = new CoverageStore();
+    private final CoverageStore store;
     /** Tiny model cache — reports are re-read often within a session. */
     private final Map<String, CoverageModel> modelCache =
         new LinkedHashMap<>(8, 0.75f, true) {
@@ -320,5 +320,9 @@ public final class CoverageService {
 
     public synchronized void evict(String artifactId) {
         modelCache.remove(artifactId);
+    }
+
+    public CoverageService(CoverageStore store) {
+        this.store = store;
     }
 }

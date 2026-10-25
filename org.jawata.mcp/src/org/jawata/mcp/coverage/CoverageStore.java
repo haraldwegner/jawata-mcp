@@ -11,7 +11,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
-import org.jawata.mcp.engine.EngineEnvironment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,10 +35,9 @@ public final class CoverageStore {
 
     private final Path root;
 
-    public CoverageStore() {
-        this(EngineEnvironment.directories().coverageDir());
-    }
-
+    /**
+     * @param root the folder the host keeps coverage evidence in ({@code EngineDirectories#coverageDir})
+     */
     public CoverageStore(Path root) {
         this.root = root;
     }

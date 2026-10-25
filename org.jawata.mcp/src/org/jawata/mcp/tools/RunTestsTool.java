@@ -86,24 +86,24 @@ public class RunTestsTool extends AbstractTool {
     private final org.jawata.mcp.execution.TestSessionRegistry sessions =
         new org.jawata.mcp.execution.TestSessionRegistry();
 
-    private final org.jawata.mcp.coverage.CoverageService coverage =
-        new org.jawata.mcp.coverage.CoverageService();
+    /** The coverage evidence this tool collects into and answers from: the engine hands in the one over the host's folder. */
+    private final org.jawata.mcp.coverage.CoverageService coverage;
 
     /** What a forked run of the loaded project needs, asked for at each use (contract §4.5, E10); the language provider's port. */
     private final Supplier<TestRuntime> testRuntime;
 
-    /**
-     * The tool with no language bound: it answers every verb that needs a forked run with "still loading", which is what the engine
-     * says until a language provider arrives. A caller that has a provider hands in its test runtime.
-     */
-    public RunTestsTool(Supplier<IJdtService> serviceSupplier) {
-        this(serviceSupplier, () -> null);
-    }
-
     /** The tool over the given test runtime: the producer hands in the one its provider builds (E12, ledger 28k-C3-8). */
     public RunTestsTool(Supplier<IJdtService> serviceSupplier, Supplier<TestRuntime> testRuntime) {
+        this(serviceSupplier, testRuntime, new org.jawata.mcp.coverage.CoverageService(
+            new org.jawata.mcp.coverage.CoverageStore(org.jawata.mcp.engine.EngineEnvironment.directories().coverageDir())));
+    }
+
+    /** The tool over the given test runtime and coverage evidence: the engine hands in the evidence over the host's own folder. */
+    public RunTestsTool(Supplier<IJdtService> serviceSupplier, Supplier<TestRuntime> testRuntime,
+            org.jawata.mcp.coverage.CoverageService coverage) {
         super(serviceSupplier);
         this.testRuntime = testRuntime;
+        this.coverage = coverage;
     }
 
     @Override

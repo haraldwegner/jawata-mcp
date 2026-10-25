@@ -227,6 +227,12 @@ public class JawataApplication implements IApplication {
     }
 
     private void autoLoadProjects() {
+        // The same question the workspace verbs ask: loading projects from workspace.json and watching it for changes is changing
+        // the workspace, which a host that owns its own does not let the engine do.
+        if (!jawataEngine.host().workspace().ownsWorkspace()) {
+            log.info("The host owns the workspace; the engine does not load projects or watch workspace.json");
+            return;
+        }
         Path dataDir = directories.resolveDataDir();
         if (dataDir != null) {
             Path workspaceJson = ResidentDirectories.findWorkspaceJson(dataDir);

@@ -45,7 +45,7 @@ class ForkedRunnerSafetyTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("runner-pathological");
-        tool = new RunTestsTool(() -> service);
+        tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         objectMapper = new ObjectMapper();
     }
 

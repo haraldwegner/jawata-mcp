@@ -12,7 +12,6 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
-import org.jawata.mcp.engine.EngineEnvironment;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,10 +48,9 @@ public final class RuntimeArtifactStore {
 
     private final Path root;
 
-    public RuntimeArtifactStore() {
-        this(EngineEnvironment.directories().runtimeDir());
-    }
-
+    /**
+     * @param root the folder the host keeps debug and profile artifacts in ({@code EngineDirectories#runtimeDir})
+     */
     public RuntimeArtifactStore(Path root) {
         this.root = root;
     }

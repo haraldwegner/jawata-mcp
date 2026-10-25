@@ -1,8 +1,10 @@
 package org.jawata.mcp.knowledge;
 
-import org.h2.jdbcx.JdbcDataSource;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -10,11 +12,10 @@ import java.sql.Connection;
 import java.sql.Statement;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.h2.jdbcx.JdbcDataSource;
+import org.jawata.mcp.engine.ResidentDirectories;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Sprint 21a Stage 1 (items A+H) — store location + continuity: the user-shared store
@@ -35,7 +36,7 @@ class ExperienceStoreLocationTest {
         // Case 1: legacy goja dir present, jawata absent -> whole dir moves.
         Files.createDirectories(base.resolve("goja"));
         Files.writeString(base.resolve("goja").resolve("experience.mv.db"), "store-bytes");
-        Path resolved = H2ExperienceStore.migrateLegacySharedDir(base);
+        Path resolved = ResidentDirectories.migrateLegacySharedDir(base);
         assertEquals(base.resolve("jawata"), resolved);
         assertEquals("store-bytes",
             Files.readString(base.resolve("jawata").resolve("experience.mv.db")),
@@ -45,7 +46,7 @@ class ExperienceStoreLocationTest {
         // Case 2: jawata already exists -> never clobber; legacy left alone.
         Files.createDirectories(base.resolve("goja"));
         Files.writeString(base.resolve("goja").resolve("stale.txt"), "old");
-        Path again = H2ExperienceStore.migrateLegacySharedDir(base);
+        Path again = ResidentDirectories.migrateLegacySharedDir(base);
         assertEquals(base.resolve("jawata"), again);
         assertEquals("store-bytes",
             Files.readString(base.resolve("jawata").resolve("experience.mv.db")),
@@ -100,20 +101,19 @@ class ExperienceStoreLocationTest {
 
     @Test
     void shared_store_honors_dir_override_and_persists(@TempDir Path dir) {
-        System.setProperty("jawata.experience.shared.dir", dir.toString());
-        try {
-            String id;
-            try (H2ExperienceStore store = H2ExperienceStore.openShared()) {
-                id = store.put(SymbolFact.of("lesson", "user-level knowledge", Confidence.HIGH).build());
-            }
-            assertTrue(Files.isRegularFile(dir.resolve("experience.mv.db")),
-                "shared store file lives directly at the shared dir");
-            try (H2ExperienceStore store = H2ExperienceStore.openShared()) {
-                assertEquals(1L, store.count(), "shared store persists across reopen");
-                assertTrue(store.get(id).isPresent());
-            }
-        } finally {
-            System.clearProperty("jawata.experience.shared.dir");
+        // The folder is the host's answer, so the override is a setting the host reads, not a property the store reads.
+        Path shared = new ResidentDirectories(key -> "jawata.experience.shared.dir".equals(key)
+            ? java.util.Optional.of(dir.toString()) : java.util.Optional.empty()).sharedStoreDir();
+        assertEquals(dir, shared, "a named shared folder is used exactly as given");
+        String id;
+        try (H2ExperienceStore store = H2ExperienceStore.openShared(shared)) {
+            id = store.put(SymbolFact.of("lesson", "user-level knowledge", Confidence.HIGH).build());
+        }
+        assertTrue(Files.isRegularFile(dir.resolve("experience.mv.db")),
+            "shared store file lives directly at the shared dir");
+        try (H2ExperienceStore store = H2ExperienceStore.openShared(shared)) {
+            assertEquals(1L, store.count(), "shared store persists across reopen");
+            assertTrue(store.get(id).isPresent());
         }
     }
 

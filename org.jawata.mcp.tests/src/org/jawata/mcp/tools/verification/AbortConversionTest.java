@@ -42,7 +42,7 @@ class AbortConversionTest {
         System.setProperty("jawata.coverage.dir",
             Files.createTempDirectory("jawata-cov-store-").toString());
         JdtServiceImpl service = helper.loadProjectCopy("abort-target");
-        tool = new RunTestsTool(() -> service);
+        tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         om = new ObjectMapper();
     }
 

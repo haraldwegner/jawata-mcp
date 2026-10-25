@@ -51,7 +51,7 @@ class LegacyGojaWorkspaceRootIgnoredTest {
     @DisplayName("goja.workspace.root is ignored — resolution falls through, never the legacy value")
     void legacyWorkspaceRootPropertyIsIgnored() {
         System.setProperty(GOJA_ROOT, "/tmp/legacy-goja-root");
-        assertNull(ResidentDirectories.resolveWorkspaceRoot(null),
+        assertNull(new ResidentDirectories(key -> java.util.Optional.ofNullable(System.getProperty(key))).stableWorkspaceRoot(null),
             "with no jawata.workspace.root and no data dir, resolution must yield null — "
                 + "never the legacy goja value");
     }
@@ -62,7 +62,7 @@ class LegacyGojaWorkspaceRootIgnoredTest {
         System.setProperty(JAWATA_ROOT, "/tmp/jawata-root");
         System.setProperty(GOJA_ROOT, "/tmp/legacy-goja-root");
         assertEquals(Path.of("/tmp/jawata-root"),
-            ResidentDirectories.resolveWorkspaceRoot(null),
+            new ResidentDirectories(key -> java.util.Optional.ofNullable(System.getProperty(key))).stableWorkspaceRoot(null),
             "the jawata name is the only accepted property");
     }
 }

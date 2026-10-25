@@ -95,7 +95,7 @@ class PdeExternalPoolTest {
         }
 
         // Run the PDE suite through the forked runner on the resolved classpath.
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         ObjectNode args = objectMapper.createObjectNode();
         ObjectNode scope = args.putObject("scope");
         scope.put("kind", "class");

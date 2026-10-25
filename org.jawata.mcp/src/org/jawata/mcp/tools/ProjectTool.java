@@ -24,7 +24,6 @@ public class ProjectTool extends AbstractTool {
     private final ListProjectsTool list;
     private final AddProjectTool add;
     private final RemoveProjectTool remove;
-    private final HostWorkspace workspace;
 
     /**
      * @param serviceSupplier the workspace service, read at call time
@@ -32,10 +31,9 @@ public class ProjectTool extends AbstractTool {
      */
     public ProjectTool(Supplier<IJdtService> serviceSupplier, HostWorkspace workspace) {
         super(serviceSupplier);
-        this.workspace = workspace;
         this.list = new ListProjectsTool(serviceSupplier);
-        this.add = new AddProjectTool(serviceSupplier);
-        this.remove = new RemoveProjectTool(serviceSupplier);
+        this.add = new AddProjectTool(serviceSupplier, workspace);
+        this.remove = new RemoveProjectTool(serviceSupplier, workspace);
     }
 
     @Override
@@ -84,10 +82,7 @@ public class ProjectTool extends AbstractTool {
         if (action == null || action.isBlank()) {
             return ToolResponse.invalidParameter("action", "action is required; one of " + ACTIONS);
         }
-        // Reading the workspace is always allowed; changing it belongs to whoever owns it.
-        if (!workspace.ownsWorkspace() && ("add".equals(action) || "remove".equals(action))) {
-            return ToolResponse.hostOwnsWorkspace("project " + action);
-        }
+        // Reading the workspace is always allowed; add and remove each ask the host whether they may change it.
         return switch (action) {
             case "list"   -> list.execute(arguments);
             case "add"    -> add.execute(arguments);

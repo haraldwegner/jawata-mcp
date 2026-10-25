@@ -248,7 +248,7 @@ class DebugClosureTest {
         // is wired (JawataApplication). It knows nothing of the seed except through recall.
         RuntimeSessionRegistry freshSessions = new RuntimeSessionRegistry();
         DebugTool recallingTool = new DebugTool(() -> service, freshSessions,
-            new org.jawata.mcp.runtime.RuntimeArtifactStore(),
+            new org.jawata.mcp.runtime.RuntimeArtifactStore(org.jawata.mcp.engine.EngineEnvironment.directories().runtimeDir()),
             new org.jawata.mcp.knowledge.ExperienceRetrieval(store,
                 new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors()));
         try {

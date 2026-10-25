@@ -148,7 +148,8 @@ public class ProfileTool extends AbstractTool {
     }
 
     public ProfileTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions) {
-        this(serviceSupplier, sessions, new RuntimeArtifactStore());
+        this(serviceSupplier, sessions,
+            new RuntimeArtifactStore(org.jawata.mcp.engine.EngineEnvironment.directories().runtimeDir()));
     }
 
     public ProfileTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions,

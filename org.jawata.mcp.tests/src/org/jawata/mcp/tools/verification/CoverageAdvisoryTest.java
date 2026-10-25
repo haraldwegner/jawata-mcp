@@ -55,7 +55,7 @@ class CoverageAdvisoryTest {
             Files.createTempDirectory("jawata-cov-store-").toString());
         MechanicalChangeJournal.clear();
         service = helper.loadProjectCopy("coverage-target");
-        tool = new RunTestsTool(() -> service);
+        tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         om = new ObjectMapper();
         root = service.getProjectRoot();
         git("init", "-q");

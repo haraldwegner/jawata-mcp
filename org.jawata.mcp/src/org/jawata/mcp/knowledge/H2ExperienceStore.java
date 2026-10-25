@@ -555,49 +555,10 @@ public final class H2ExperienceStore implements ExperienceStore {
      * scope-containment keeps repo-specific recall self-scoped, while methodology/domain
      * entries deliberately cross workspaces.
      */
-    public static H2ExperienceStore openShared() {
-        Path dir = sharedStoreDir();
+    public static H2ExperienceStore openShared(Path dir) {
         log.info("Experience store mode: user-shared ({})", dir);
         return openAt(dir, true);          // mcp#48: the fleet's store, declared at the one
                                            // place that knows it is
-    }
-
-    /** {@code jawata.experience.shared.dir} property › {@code $XDG_DATA_HOME/jawata} › {@code ~/.local/share/jawata}. */
-    static Path sharedStoreDir() {
-        String override = System.getProperty("jawata.experience.shared.dir");
-        if (override != null && !override.isBlank()) {
-            return Path.of(override);
-        }
-        String xdg = System.getenv("XDG_DATA_HOME");
-        Path base = xdg != null && !xdg.isBlank()
-            ? Path.of(xdg)
-            : Path.of(System.getProperty("user.home"), ".local", "share");
-        return migrateLegacySharedDir(base);
-    }
-
-    /**
-     * Sprint 22b (the jawata rebrand): one-time move of the pre-rebrand user-shared
-     * store dir {@code <base>/goja} to {@code <base>/jawata} — the whole directory
-     * (store file, backups, exports) moves as-is, content untouched; the v4 schema
-     * migration then rewrites the anchors on first open. Never clobbers: if
-     * {@code <base>/jawata} already exists, the legacy dir is left alone. Only the
-     * DEFAULT XDG-derived path migrates — an explicit {@code *.experience.shared.dir}
-     * override is used as-is. The {@code "goja"} literal is migration code
-     * (grep-contract exception class 3).
-     */
-    static Path migrateLegacySharedDir(Path base) {
-        Path dir = base.resolve("jawata");
-        Path legacy = base.resolve("goja");
-        if (java.nio.file.Files.isDirectory(legacy) && !java.nio.file.Files.exists(dir)) {
-            try {
-                java.nio.file.Files.move(legacy, dir);
-                log.info("Experience store: migrated legacy shared dir {} -> {}", legacy, dir);
-            } catch (java.io.IOException e) {
-                log.warn("Experience store: could not migrate legacy shared dir {} -> {}: {} "
-                    + "(continuing with {})", legacy, dir, e.getMessage(), dir);
-            }
-        }
-        return dir;
     }
 
     private static H2ExperienceStore openUrl(String url, Path storeDir, Path storeFile,

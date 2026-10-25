@@ -78,6 +78,46 @@ public final class ResidentDirectories implements EngineDirectories {
 		return settings.get(key.name()).filter(value -> !value.isBlank());
 	}
 
+	/**
+	 * The named folder, used as given; else {@code jawata} in {@code $XDG_DATA_HOME}, else in {@code ~/.local/share}. Only the default
+	 * location carries the one-time move of the pre-rebrand folder.
+	 */
+	@Override
+	public Path sharedStoreDir() {
+		Optional<String> explicit = present(SettingKeys.EXPERIENCE_SHARED_DIR);
+		if (explicit.isPresent()) {
+			return Path.of(explicit.get());
+		}
+		String xdg = System.getenv("XDG_DATA_HOME");
+		Path base = xdg != null && !xdg.isBlank() ? Path.of(xdg)
+				: Path.of(System.getProperty("user.home"), ".local", "share");
+		return migrateLegacySharedDir(base);
+	}
+
+	/**
+	 * Sprint 22b (the jawata rebrand): one-time move of the pre-rebrand user-shared store dir {@code <base>/goja} to
+	 * {@code <base>/jawata} — the whole directory (store file, backups, exports) moves as-is, content untouched; the v4 schema
+	 * migration then rewrites the anchors on first open. Never clobbers: if {@code <base>/jawata} already exists, the legacy dir is
+	 * left alone. The {@code "goja"} literal is migration code (grep-contract exception class 3).
+	 *
+	 * @param base the folder the shared store's folder lives in
+	 * @return {@code <base>/jawata}
+	 */
+	public static Path migrateLegacySharedDir(Path base) {
+		Path dir = base.resolve("jawata");
+		Path legacy = base.resolve("goja");
+		if (Files.isDirectory(legacy) && !Files.exists(dir)) {
+			try {
+				Files.move(legacy, dir);
+				log.info("Experience store: migrated legacy shared dir {} -> {}", legacy, dir);
+			} catch (java.io.IOException e) {
+				log.warn("Experience store: could not migrate legacy shared dir {} -> {}: {} (continuing with {})", legacy, dir,
+						e.getMessage(), dir);
+			}
+		}
+		return dir;
+	}
+
 	@Override
 	public Optional<Path> dataDir() {
 		return Optional.ofNullable(resolveDataDir());
@@ -85,7 +125,7 @@ public final class ResidentDirectories implements EngineDirectories {
 
 	@Override
 	public Optional<Path> workspaceRoot() {
-		return Optional.ofNullable(resolveWorkspaceRoot(resolveDataDir()));
+		return Optional.ofNullable(stableWorkspaceRoot(resolveDataDir()));
 	}
 
 	public Path resolveDataDir() {
@@ -107,7 +147,7 @@ public final class ResidentDirectories implements EngineDirectories {
 
 	public List<Path> workspaceProjectDirs() {
 		Path dataDir = resolveDataDir();
-		Path root = ResidentDirectories.resolveWorkspaceRoot(dataDir);
+		Path root = stableWorkspaceRoot(dataDir);
 		Path workspaceJson = root != null && Files.isRegularFile(root.resolve("workspace.json"))
 				? root.resolve("workspace.json")
 				: ResidentDirectories.findWorkspaceJson(dataDir);
@@ -123,7 +163,7 @@ public final class ResidentDirectories implements EngineDirectories {
 	 */
 	@Override
 	public Path fieldDir() {
-		return ResidentDirectories.resolveWorkspaceRoot(resolveDataDir()).resolve("field");
+		return stableWorkspaceRoot(resolveDataDir()).resolve("field");
 	}
 
 	/**
@@ -217,15 +257,23 @@ public final class ResidentDirectories implements EngineDirectories {
 
 	/**
 	 * The STABLE workspace root: the launcher-published original {@code -data}
-	 * ({@code jawata.workspace.root}) wins; else walk up from the OSGi data dir to
-	 * where {@code workspace.json} lives; else the data dir itself. Never the
-	 * session subdir when the launcher is in play.
+	 * ({@code jawata.workspace.root}, read through the host's settings) wins; else
+	 * the layout rule of {@link #resolveWorkspaceRoot}. Never the session subdir
+	 * when the launcher is in play.
+	 *
+	 * @param dataDir the OSGi data folder, or null
+	 * @return the root, or null when the launcher published none and there is no data folder
+	 */
+	public Path stableWorkspaceRoot(Path dataDir) {
+		Optional<String> published = present(SettingKeys.WORKSPACE_ROOT);
+		return published.isPresent() ? Path.of(published.get()) : resolveWorkspaceRoot(dataDir);
+	}
+
+	/**
+	 * The workspace root by layout alone: walk up from the OSGi data dir to where
+	 * {@code workspace.json} lives; else the data dir itself.
 	 */
 	public static Path resolveWorkspaceRoot(Path dataDir) {
-		String prop = System.getProperty("jawata.workspace.root");
-		if (prop != null && !prop.isBlank()) {
-			return Path.of(prop);
-		}
 		if (dataDir == null) {
 			return null;
 		}

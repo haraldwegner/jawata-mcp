@@ -33,7 +33,7 @@ class RunTestsOutputTailTest {
     @DisplayName("run_tests: the stdoutTail shows the INFO line and not the DEBUG and TRACE lines around it")
     void theTailShowsTheLineThatMatters() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("runner-module-relative-file");
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
 
         ObjectNode args = new ObjectMapper().createObjectNode();
         ObjectNode scope = args.putObject("scope");

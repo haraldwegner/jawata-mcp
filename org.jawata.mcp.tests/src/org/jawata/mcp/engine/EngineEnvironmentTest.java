@@ -115,13 +115,18 @@ class EngineEnvironmentTest {
             }
 
             @Override
+            public Path sharedStoreDir() {
+                return NO_FOLDERS.sharedStoreDir();
+            }
+
+            @Override
             public java.util.List<Path> memoryRoots() {
                 return java.util.List.of();
             }
         });
 
-        assertEquals(Path.of("/host/runtime"), new RuntimeArtifactStore().root());
-        assertEquals(Path.of("/host/coverage"), new CoverageStore().root());
+        assertEquals(Path.of("/host/runtime"), new RuntimeArtifactStore(EngineEnvironment.directories().runtimeDir()).root());
+        assertEquals(Path.of("/host/coverage"), new CoverageStore(EngineEnvironment.directories().coverageDir()).root());
     }
 
     @Test
@@ -162,6 +167,11 @@ class EngineEnvironmentTest {
                 }
 
                 @Override
+                public Path sharedStoreDir() {
+                    return NO_FOLDERS.sharedStoreDir();
+                }
+
+                @Override
                 public java.util.List<Path> memoryRoots() {
                     return NO_FOLDERS.memoryRoots();
                 }
@@ -188,8 +198,8 @@ class EngineEnvironmentTest {
         SeatRules.limit();
         StoryWriter.directory();
         TranscriptStore.enabled();
-        new RuntimeArtifactStore();
-        new CoverageStore();
+        new RuntimeArtifactStore(EngineEnvironment.directories().runtimeDir());
+        new CoverageStore(EngineEnvironment.directories().coverageDir());
 
         Set<String> registered = new LinkedHashSet<>();
         SettingKeys.all().forEach(key -> registered.add(key.name()));

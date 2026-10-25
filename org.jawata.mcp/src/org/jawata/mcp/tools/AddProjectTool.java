@@ -5,6 +5,7 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.engine.EngineState;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.host.HostWorkspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,8 +36,15 @@ public class AddProjectTool implements Tool {
 
     private final Supplier<IJdtService> serviceSupplier;
 
-    public AddProjectTool(Supplier<IJdtService> serviceSupplier) {
+    private final HostWorkspace workspace;
+
+    /**
+     * @param serviceSupplier the workspace service, read at call time
+     * @param workspace       whether the engine may change the workspace; when it may not, the tool answers HOST_OWNS_WORKSPACE
+     */
+    public AddProjectTool(Supplier<IJdtService> serviceSupplier, HostWorkspace workspace) {
         this.serviceSupplier = serviceSupplier;
+        this.workspace = workspace;
     }
 
     @Override
@@ -83,6 +91,9 @@ public class AddProjectTool implements Tool {
 
     @Override
     public ToolResponse execute(JsonNode arguments) {
+        if (!workspace.ownsWorkspace()) {
+            return ToolResponse.hostOwnsWorkspace("project add");
+        }
         if (arguments == null || !arguments.has("projectPath")) {
             return ToolResponse.invalidParameter("projectPath", "Required parameter missing");
         }

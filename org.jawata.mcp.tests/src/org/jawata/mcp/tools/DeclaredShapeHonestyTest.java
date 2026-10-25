@@ -459,7 +459,7 @@ class DeclaredShapeHonestyTest {
     @Test
     @DisplayName("run_tests routes every action it declares")
     void everyDeclaredRunTestsActionIsRouted() {
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         List<String> declared = actionEnum(tool);
         assertEquals(RunTestsTool.ACTIONS, declared,
             "the schema publishes the one list, never a hand-kept copy of it");
@@ -491,7 +491,7 @@ class DeclaredShapeHonestyTest {
     @Test
     @DisplayName("run_tests names every action when it refuses one")
     void theRefusalNamesTheActionsItOnceHid() {
-        RunTestsTool tool = new RunTestsTool(() -> service);
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
         ObjectNode args = mapper.createObjectNode();
         args.put("action", "coverage_nonsense");
         ToolResponse r = tool.execute(args);

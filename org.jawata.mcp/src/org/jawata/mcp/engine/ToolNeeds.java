@@ -25,5 +25,5 @@ public record ToolNeeds(
         Supplier<ExperienceStore> storeSupplier,
         ExperienceStore experienceStore,
         RuntimeSessionRegistry runtimeSessions,
-        Function<JsonNode, ToolResponse> impactedTests) {
+        Function<JsonNode, ToolResponse> impactedTests, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts) {
 }

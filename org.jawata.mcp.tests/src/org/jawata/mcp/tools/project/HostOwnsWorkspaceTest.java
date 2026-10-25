@@ -84,6 +84,20 @@ class HostOwnsWorkspaceTest {
     }
 
     @Test
+    @DisplayName("every tool that changes the workspace asks the host and is refused when the host owns its own workspace")
+    void everyDoorThatChangesTheWorkspaceIsRefusedWhenTheHostOwnsIt() {
+        HostWorkspace theHostsOwn = host(false);
+        ObjectNode aPath = OM.createObjectNode().put("projectPath", System.getProperty("java.io.tmpdir"));
+        ObjectNode aKey = OM.createObjectNode().put("projectKey", "anything");
+
+        assertEquals("HOST_OWNS_WORKSPACE", new LoadProjectTool(new RecordingModel(), theHostsOwn).execute(aPath).getError().getCode());
+        assertEquals("HOST_OWNS_WORKSPACE",
+            new org.jawata.mcp.tools.AddProjectTool(() -> null, theHostsOwn).execute(aPath).getError().getCode());
+        assertEquals("HOST_OWNS_WORKSPACE",
+            new org.jawata.mcp.tools.RemoveProjectTool(() -> null, theHostsOwn).execute(aKey).getError().getCode());
+    }
+
+    @Test
     @DisplayName("project list is not refused: reading the workspace is always allowed")
     void listIsNotRefused() {
         ProjectTool tool = new ProjectTool(() -> null, host(false));

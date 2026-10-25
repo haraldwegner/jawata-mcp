@@ -25,6 +25,9 @@ public interface EngineDirectories {
      */
     Path toolsDir();
 
+    /** Where the knowledge store shared by every resident of the user is kept; the host's own answer, whatever its settings say. */
+    Path sharedStoreDir();
+
     /** The folder the host gave the engine to work in (for the standalone engine, the OSGi {@code -data} area), when it gave one. */
     Optional<Path> dataDir();
 
