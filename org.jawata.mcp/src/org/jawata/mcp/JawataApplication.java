@@ -12,8 +12,8 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
 import org.jawata.core.workspace.WorkspaceFileWatcher;
 import org.jawata.mcp.change.RefactoringChangeCache;
-import org.jawata.mcp.engine.EngineEnvironment;
 import org.jawata.mcp.engine.EngineState;
+import org.jawata.mcp.engine.JawataEngine;
 import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.engine.ResidentDirectories;
 import org.jawata.mcp.engine.ResidentEndpointPolicy;
@@ -76,15 +76,6 @@ public class JawataApplication implements IApplication {
     public Object start(IApplicationContext context) throws Exception {
         log.info("JAWATA MCP Server starting...");
         EngineState.current().booted();
-
-        // Sprint 23 (Stage 5): headless JDT-manipulation config (preference
-        // node id + JDT-UI-style defaults + code-template store) — the IDE
-        // gets this from JDT-UI activation, a headless embedder must do it.
-        // E15: the config stands down when the host has done the setup; the engine that runs alone says so.
-        // E17: and the host of the engine's settings and folders is this process: its system properties, and the folders worked out from them.
-        EngineEnvironment.hostedBy(settings, directories);
-        org.jawata.mcp.tools.shared.HeadlessJdtConfig.hostedBy(javaBinding);
-        org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
 
         // Sprint 14a Stage 2: parse transport CLI flags from the application
         // argv. HTTP is the default; -transport stdio opts back to the

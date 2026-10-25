@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.function.BooleanSupplier;
 
-import org.jawata.mcp.JawataEngine;
+import org.jawata.mcp.engine.JawataEngine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;

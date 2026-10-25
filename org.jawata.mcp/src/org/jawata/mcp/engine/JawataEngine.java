@@ -1,16 +1,12 @@
-package org.jawata.mcp;
+package org.jawata.mcp.engine;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.util.function.BooleanSupplier;
 
+import org.jawata.mcp.ShippedTools;
 import org.jawata.mcp.ShippedTools.Built;
 import org.jawata.mcp.ShippedTools.Wiring;
 import org.jawata.mcp.change.RefactoringChangeCache;
-import org.jawata.mcp.engine.EngineState;
-import org.jawata.mcp.engine.ResidentDirectories;
-import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.knowledge.CatalogueOrigin;
 import org.jawata.mcp.knowledge.CatalogueSeeder;
@@ -29,6 +25,8 @@ import org.jawata.mcp.transport.Transport;
 import org.jawata.spi.host.EngineHost;
 
 public class JawataEngine {
+	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JawataEngine.class);
+
 	private RefactoringChangeCache refactoringChangeCache;
 	/**
 	 * Sprint 24 (D5): the live debug sessions. One registry for the server, so a
@@ -223,10 +221,9 @@ public class JawataEngine {
 	 * the guarded call.
 	 * </p>
 	 */
-	void refreshExperienceAfterProjectLoad() {
+	public void refreshExperienceAfterProjectLoad() {
 		if (getExperienceTool() != null) {
-			JawataApplication.log.info("Experience auto-refresh after project load: {}",
-					getExperienceTool().autoRefresh());
+			log.info("Experience auto-refresh after project load: {}", getExperienceTool().autoRefresh());
 		}
 	}
 
@@ -276,8 +273,7 @@ public class JawataEngine {
 			try {
 				CatalogueSeeder.seed(store, origin);
 			} catch (RuntimeException e) {
-				JawataApplication.log.warn(
-						"Catalogue namespace '{}' NOT seeded: {} — design recall will " + "answer without it",
+				log.warn("Catalogue namespace '{}' NOT seeded: {} — design recall will " + "answer without it",
 						origin.namespace(), e.toString());
 			}
 		}
@@ -345,7 +341,7 @@ public class JawataEngine {
 			// the DB). Now the fallback announces itself on every answer,
 			// retries the real open in the background, and replays the
 			// degraded window on recovery.
-			JawataApplication.log.error("Experience store unavailable ({}); continuing with a NON-PERSISTENT "
+			log.error("Experience store unavailable ({}); continuing with a NON-PERSISTENT "
 					+ "in-memory store — recovery retries in the background", e.getMessage());
 			return new org.jawata.mcp.knowledge.RecoveringExperienceStore(String.valueOf(e.getMessage()),
 					() -> openRealStore(mode, dataDir, workspaceRoot), 30_000);
@@ -387,12 +383,11 @@ public class JawataEngine {
 				try {
 					java.nio.file.Path copy = backups.takeIfDue(java.time.Instant.now());
 					if (copy != null) {
-						JawataApplication.log.info("Scheduled experience-store backup taken: {}", copy.getFileName());
+						log.info("Scheduled experience-store backup taken: {}", copy.getFileName());
 					}
 				} catch (RuntimeException e) {
 					// Never fatal, and never silent: the next hourly check tries again.
-					JawataApplication.log.warn(
-							"Scheduled experience-store backup failed ({}); retrying at the next" + " hourly check",
+					log.warn("Scheduled experience-store backup failed ({}); retrying at the next" + " hourly check",
 							e.toString());
 				}
 				try {
@@ -415,8 +410,7 @@ public class JawataEngine {
 				org.jawata.mcp.knowledge.EmbeddingIndex index = new org.jawata.mcp.knowledge.EmbeddingIndex(h2,
 						org.jawata.mcp.knowledge.EmbeddingService.shared());
 				if (!index.available()) {
-					JawataApplication.log.info(
-							"Embedding backfill skipped — no embedder; recall stays" + " keyword-only for this run");
+					log.info("Embedding backfill skipped — no embedder; recall stays" + " keyword-only for this run");
 					return;
 				}
 				long start = System.currentTimeMillis();
@@ -432,14 +426,14 @@ public class JawataEngine {
 				// failure — so CONVERGED is claimed only on a measured zero.
 				long remaining = index.remainingUnembedded();
 				if (Thread.currentThread().isInterrupted()) {
-					JawataApplication.log.info("Embedding backfill interrupted at shutdown after {} row(s);"
+					log.info("Embedding backfill interrupted at shutdown after {} row(s);"
 							+ " {} remaining, resumed from the smaller delta next start", total, remaining);
 				} else if (remaining == 0) {
 					// Stage 6: completion states COVERAGE (total/total), not
 					// just this run's row count. The -1 "could not look"
 					// sentinel renders as "unknown", matching the stats block
 					// (C6 F3).
-					JawataApplication.log.info(
+					log.info(
 							"Embedding backfill CONVERGED: {} row(s) in {} ms; 0 remaining"
 									+ " — coverage {}/{} entries, {}/{} tool rows",
 							total, System.currentTimeMillis() - start,
@@ -448,20 +442,20 @@ public class JawataEngine {
 							JawataEngine.coverageFigure(index.embeddedCount("tool_experience")),
 							JawataEngine.coverageFigure(index.totalCount("tool_experience")));
 				} else if (remaining < 0) {
-					JawataApplication.log.warn("Embedding backfill: {} row(s) embedded, but the remaining"
+					log.warn("Embedding backfill: {} row(s) embedded, but the remaining"
 							+ " count could not be read — NOT asserting convergence", total);
 				} else if (total > 0) {
-					JawataApplication.log.info(
+					log.info(
 							"Embedding backfill: {} row(s) in {} ms; {} still unembedded"
 									+ " (their text embeds to null — not retried by looping)",
 							total, System.currentTimeMillis() - start, remaining);
 				} else {
-					JawataApplication.log.info("Embedding backfill: nothing embeddable — every row either has"
+					log.info("Embedding backfill: nothing embeddable — every row either has"
 							+ " a current vector or embeds to null");
 				}
 			} catch (Exception e) {
 				// Never fatal: a store without vectors still answers by keyword.
-				JawataApplication.log.warn("Embedding backfill FAILED ({}); stored entries keep their"
+				log.warn("Embedding backfill FAILED ({}); stored entries keep their"
 						+ " keyword reachability and the next start retries", e.toString());
 			}
 		}, "jawata-embedding-backfill");
@@ -525,7 +519,17 @@ public class JawataEngine {
 		}
 	}
 
-	void assemble() {
+	public void assemble() {
+		// E18: the engine's readers ask the host, and this is the one place that tells
+		// them which host that is.
+		org.jawata.mcp.engine.EngineEnvironment.hostedBy(host().settings(), host().directories());
+		// Sprint 23 (Stage 5): the headless JDT-manipulation config (preference node
+		// id, JDT-UI-style defaults, code-template
+		// store) which an IDE gets from JDT-UI activation. E15: it stands down when the
+		// host has done the setup itself.
+		org.jawata.mcp.tools.shared.HeadlessJdtConfig
+				.hostedBy(host().binding(org.jawata.core.JavaBinding.class).orElseThrow());
+		org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
 		setToolRegistry(new ToolRegistry());
 		// Sprint 21 (v2.0): open the workspace-scoped experience store before
 		// registering
@@ -547,7 +551,7 @@ public class JawataEngine {
 		// the Token whitelist. Studio reads the same file and folds it itself.
 		org.jawata.mcp.field.ClientDirectory clientDirectory = new org.jawata.mcp.field.ClientDirectory();
 		String bundleVersion = null;
-		org.osgi.framework.Bundle bundle = org.osgi.framework.FrameworkUtil.getBundle(JawataApplication.class);
+		org.osgi.framework.Bundle bundle = org.osgi.framework.FrameworkUtil.getBundle(JawataEngine.class);
 		if (bundle != null) {
 			bundleVersion = bundle.getVersion().toString();
 		}
@@ -619,7 +623,7 @@ public class JawataEngine {
 				// a reordering ever makes it happen, the symptom would be a quality
 				// block that stays empty and reads like "nothing has happened yet".
 				// Say it instead.
-				JawataApplication.log.error("Quality ledger NOT wired to the experience tool — the recall"
+				log.error("Quality ledger NOT wired to the experience tool — the recall"
 						+ " surfaces will not be counted and stats will show no quality block");
 			}
 			// Sprint 27 D3: the seam swap this interface was built for — the
@@ -664,8 +668,8 @@ public class JawataEngine {
 									.of("defect", summary + " — " + details, org.jawata.mcp.knowledge.Confidence.HIGH)
 									.build());
 						} catch (Exception e) {
-							JawataApplication.log.error(
-									"DEFECT FILING FAILED — the relax label is now" + " unaccompanied: {}", summary, e);
+							log.error("DEFECT FILING FAILED — the relax label is now" + " unaccompanied: {}", summary,
+									e);
 						}
 					});
 			getToolRegistry().setServerChecks(serverChecks);
@@ -684,7 +688,7 @@ public class JawataEngine {
 				args.put("filePath", filePath);
 				return this.getFindQualityIssueTool().execute(args);
 			}, getLearnerEvents()));
-			JawataApplication.log.info("Learner event tap + watch engine wired");
+			log.info("Learner event tap + watch engine wired");
 		} else {
 			org.jawata.mcp.learn.EventTap degradedTap = new org.jawata.mcp.learn.EventTap(
 					new org.jawata.mcp.learn.SessionLedger(), null);
@@ -692,7 +696,7 @@ public class JawataEngine {
 			// degraded store — the utilization signal must not vanish with H2.
 			degradedTap.setFieldRecorder(fieldRecorder);
 			getToolRegistry().setEventTap(degradedTap);
-			JawataApplication.log.warn("Learner event tap running LEDGER-ONLY — no persistent store"
+			log.warn("Learner event tap running LEDGER-ONLY — no persistent store"
 					+ " (degraded experience store); the label stream is not persisted");
 		}
 
@@ -701,7 +705,7 @@ public class JawataEngine {
 		// Sprint 28b D1: session → client attribution for the field recording.
 		getProtocolHandler().setClientDirectory(clientDirectory);
 
-		JawataApplication.log.info("Registered {} tools", getToolRegistry().getToolCount());
+		log.info("Registered {} tools", getToolRegistry().getToolCount());
 
 		// Sprint 28d-rescue (P1). Every tool has now fed its operations into the
 		// registry, so this is the first moment the question "does anything back this
@@ -733,7 +737,7 @@ public class JawataEngine {
 		// index,
 		// which is owed; see JavaEngineCoverage and OperationRegistry.
 		int coveredRows = org.jawata.mcp.catalogue.JavaEngineCoverage.verifyAgainstShippedDoors();
-		JawataApplication.log.info("This engine performs {} of {} catalogue refactorings", coveredRows,
+		log.info("This engine performs {} of {} catalogue refactorings", coveredRows,
 				org.jawata.catalogue.Refactorings.all().size());
 	}
 

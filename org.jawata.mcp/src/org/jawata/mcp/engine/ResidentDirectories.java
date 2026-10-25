@@ -5,7 +5,6 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
-import org.jawata.mcp.JawataApplication;
 import org.jawata.spi.host.EngineDirectories;
 import org.jawata.spi.host.EngineSettings;
 
@@ -19,6 +18,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * this out for themselves, with the same order and different words.
  */
 public final class ResidentDirectories implements EngineDirectories {
+
+	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ResidentDirectories.class);
 
 	private final EngineSettings settings;
 
@@ -99,7 +100,7 @@ public final class ResidentDirectories implements EngineDirectories {
 				return null;
 			return Path.of(java.net.URI.create(area));
 		} catch (Exception e) {
-			JawataApplication.log.warn("Failed to resolve Eclipse instance area: {}", e.getMessage());
+			log.warn("Failed to resolve Eclipse instance area: {}", e.getMessage());
 			return null;
 		}
 	}
@@ -208,7 +209,7 @@ public final class ResidentDirectories implements EngineDirectories {
 			try (var dirs = Files.list(claudeProjects)) {
 				dirs.sorted().forEach(p -> addIfExists(roots, p.resolve("memory")));
 			} catch (java.io.IOException e) {
-				JawataApplication.log.warn("Cannot list {}: {}", claudeProjects, e.getMessage());
+				log.warn("Cannot list {}: {}", claudeProjects, e.getMessage());
 			}
 		}
 		return java.util.List.copyOf(roots);
@@ -253,7 +254,7 @@ public final class ResidentDirectories implements EngineDirectories {
 			}
 			return new String[] { name, project };
 		} catch (Exception e) {
-			JawataApplication.log.warn("Cannot read provenance from {}: {}", workspaceJson, e.getMessage());
+			log.warn("Cannot read provenance from {}: {}", workspaceJson, e.getMessage());
 			return new String[] { null, null };
 		}
 	}
@@ -276,7 +277,7 @@ public final class ResidentDirectories implements EngineDirectories {
 			}
 			return out;
 		} catch (Exception e) {
-			JawataApplication.log.warn("Cannot read projects from {}: {}", workspaceJson, e.getMessage());
+			log.warn("Cannot read projects from {}: {}", workspaceJson, e.getMessage());
 			return java.util.List.of();
 		}
 	}
@@ -302,7 +303,7 @@ public final class ResidentDirectories implements EngineDirectories {
 		if (parent != null) {
 			candidate = parent.resolve("workspace.json");
 			if (Files.isRegularFile(candidate)) {
-				JawataApplication.log.info(
+				log.info(
 						"Found workspace.json in parent of OSGi data dir ({}), "
 								+ "treating that as the workspace root (JawataLauncher session-isolation path)",
 						parent);
