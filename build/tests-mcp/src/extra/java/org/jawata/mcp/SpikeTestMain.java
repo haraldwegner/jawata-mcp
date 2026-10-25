@@ -49,7 +49,7 @@ public final class SpikeTestMain {
         for (String cn : classNames) {
             try {
                 currentClass[0] = "(loading) " + cn;
-                selectors.add(DiscoverySelectors.selectClass(Class.forName(cn, false, loader)));
+                selectors.add(DiscoverySelectors.selectClass(load(cn, loader)));
                 lastEvent[0] = System.currentTimeMillis();
                 if (++loaded % 10 == 0 || loaded == 1) {
                     System.out.printf("loaded %d/%d test classes (%ds)%n", loaded,
@@ -178,6 +178,36 @@ public final class SpikeTestMain {
         // reads these summaries rather than this code.
         return (int) Math.min(
             s.getTestsFailedCount() + unloadable.size() + s.getContainersFailedCount(), 250);
+    }
+
+    /**
+     * Loads a test class through the bundle that holds it, without running its static initializers.
+     *
+     * <p>This runner lives in the engine's test fragment, so its own loader sees the packages the engine
+     * imports and exports. A test that sits in another bundle's test fragment (the resident's) is not in that
+     * set unless its package is exported, and a package is exported for production, never for a test. So the
+     * runner asks its own loader first and then every resolved bundle's, and takes the first that has the
+     * class.</p>
+     */
+    private static Class<?> load(String className, ClassLoader own) throws ClassNotFoundException {
+        try {
+            return Class.forName(className, false, own);
+        } catch (ClassNotFoundException notHere) {
+            org.osgi.framework.Bundle self = org.osgi.framework.FrameworkUtil.getBundle(SpikeTestMain.class);
+            if (self != null && self.getBundleContext() != null) {
+                for (org.osgi.framework.Bundle other : self.getBundleContext().getBundles()) {
+                    if (other.getState() < org.osgi.framework.Bundle.RESOLVED) {
+                        continue;
+                    }
+                    try {
+                        return other.loadClass(className);
+                    } catch (ClassNotFoundException next) {
+                        // not this bundle's: try the next
+                    }
+                }
+            }
+            throw notHere;
+        }
     }
 
     /**

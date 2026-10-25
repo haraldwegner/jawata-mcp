@@ -176,7 +176,7 @@ public class WorkspaceFileWatcher implements AutoCloseable {
 
     /** How a watch service is opened (a seam: the default asks the file system). */
     @FunctionalInterface
-    public interface WatchServiceOpener {
+    interface WatchServiceOpener {
         WatchService open() throws IOException;
     }
 
