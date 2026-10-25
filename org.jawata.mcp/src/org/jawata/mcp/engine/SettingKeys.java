@@ -55,7 +55,7 @@ public final class SettingKeys {
         "The folder of the knowledge store shared by every resident on the machine; used exactly as given.");
 
     /** The user's data folder the shared knowledge store lives under. */
-    public static final SettingKey DATA_HOME = register("xdg.data.home", "~/.local/share",
+    public static final SettingKey DATA_HOME = register("jawata.data.home", "~/.local/share",
         "The user's data folder, under which the shared knowledge store keeps a folder called jawata when no folder is named for it; "
             + "the environment variable XDG_DATA_HOME is read when this is not set.");
 
