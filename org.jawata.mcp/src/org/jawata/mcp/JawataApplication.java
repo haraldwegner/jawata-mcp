@@ -1167,7 +1167,7 @@ public class JawataApplication implements IApplication {
         if (activeTransport instanceof org.jawata.mcp.transport.HttpTransport http) {
             String url = http.localMcpUrl();
             return url == null ? null
-                : new org.jawata.mcp.execution.SelfEndpoint(url, http.bearerToken());
+                : http.bearerToken().map(token -> new org.jawata.mcp.execution.SelfEndpoint(url, token)).orElse(null);
         }
         return null;
     }

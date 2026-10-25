@@ -1,5 +1,7 @@
 package org.jawata.mcp.engine;
 
+import java.util.Optional;
+
 import org.jawata.mcp.transport.ResolvedToken;
 import org.jawata.mcp.transport.TransportConfig;
 import org.jawata.spi.host.EndpointPolicy;
@@ -38,8 +40,8 @@ public final class ResidentEndpointPolicy implements EndpointPolicy {
     }
 
     @Override
-    public String key() {
-        return token.token();
+    public Optional<String> key() {
+        return Optional.of(token.token());
     }
 
     @Override

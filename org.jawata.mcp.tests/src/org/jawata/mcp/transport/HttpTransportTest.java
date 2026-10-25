@@ -264,7 +264,7 @@ class HttpTransportTest {
             TransportFixtures.runInBackground(transport);
             int p = transport.getActualPort();
 
-            assertEquals("READY url=http://127.0.0.1:" + p + " token=" + endpoint.key(),
+            assertEquals("READY url=http://127.0.0.1:" + p + " token=" + endpoint.key().orElseThrow(),
                 capture.toString(StandardCharsets.UTF_8).strip());
         } finally {
             System.setOut(original);
@@ -296,8 +296,8 @@ class HttpTransportTest {
         TransportFixtures.RecordingLifecycle lifecycle = new TransportFixtures.RecordingLifecycle();
         assertThrows(IllegalArgumentException.class,
             () -> new HttpTransport(TransportFixtures.plainEndpoint(0, null, "tok"), lifecycle));
-        assertThrows(IllegalArgumentException.class,
-            () -> new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", null), lifecycle));
+        // A missing key is no longer a mistake: the engine inside an IDE offers none (HttpTransportKeylessTest). A key that is
+        // there and blank still is.
         assertThrows(IllegalArgumentException.class,
             () -> new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", ""), lifecycle));
     }

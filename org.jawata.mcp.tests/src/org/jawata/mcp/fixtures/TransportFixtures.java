@@ -1,5 +1,6 @@
 package org.jawata.mcp.fixtures;
 
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 
 import org.jawata.mcp.engine.ResidentEndpointPolicy;
@@ -39,14 +40,19 @@ public final class TransportFixtures {
             }
 
             @Override
-            public String key() {
-                return key;
+            public Optional<String> key() {
+                return Optional.ofNullable(key);
             }
 
             @Override
             public void listening(McpEndpoint at) {
             }
         };
+    }
+
+    /** A policy that offers no key, as the engine inside an IDE does (his ruling A3-1). */
+    public static EndpointPolicy keylessEndpoint(int port, String bindAddress) {
+        return plainEndpoint(port, bindAddress, null);
     }
 
     /** Runs {@code transport} on a daemon thread, the way the application runs it; the run loop ending is what a test looks at. */

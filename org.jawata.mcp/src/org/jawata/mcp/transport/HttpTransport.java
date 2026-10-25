@@ -2,10 +2,13 @@ package org.jawata.mcp.transport;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -139,8 +142,12 @@ public class HttpTransport implements Transport {
         if (endpoint.bindAddress() == null || endpoint.bindAddress().isBlank()) {
             throw new IllegalArgumentException("bindAddress required");
         }
-        if (endpoint.key() == null || endpoint.key().isBlank()) {
-            throw new IllegalArgumentException("token required (use TokenGenerator.generate() if not provided)");
+        if (endpoint.key().isPresent() && endpoint.key().get().isBlank()) {
+            throw new IllegalArgumentException("a key, when there is one, must not be blank (use TokenGenerator.generate() if not provided)");
+        }
+        if (endpoint.key().isEmpty() && !isLoopback(endpoint.bindAddress())) {
+            throw new IllegalArgumentException("a keyless endpoint is served without authentication and may only listen on loopback, not on "
+                + endpoint.bindAddress());
         }
         if (heartbeatInterval == null || heartbeatInterval.isNegative() || heartbeatInterval.isZero()) {
             throw new IllegalArgumentException("heartbeatInterval must be positive");
@@ -149,7 +156,7 @@ public class HttpTransport implements Transport {
         this.lifecycle = lifecycle;
         this.requestedPort = endpoint.port();
         this.bindAddress = endpoint.bindAddress();
-        this.token = endpoint.key();
+        this.token = endpoint.key().orElse(null);
         this.heartbeatInterval = heartbeatInterval;
         this.watchdogInterval = watchdogInterval;
         this.watchdogFailures = watchdogFailures;
@@ -194,7 +201,7 @@ public class HttpTransport implements Transport {
         actualPort = server.getAddress().getPort();
         // The host announces the listener its own way: the standalone engine prints the single READY line its supervisor waits for
         // (the token field there is the token's own disclosure decision, studio#14).
-        endpoint.listening(new McpEndpoint(java.net.URI.create(localMcpUrl()), token));
+        endpoint.listening(new McpEndpoint(java.net.URI.create(localMcpUrl()), Optional.ofNullable(token)));
         readyLatch.countDown();
 
         log.info("HTTP transport listening on {}:{}", bindAddress, actualPort);
@@ -237,9 +244,18 @@ public class HttpTransport implements Transport {
         return "http://" + (host.contains(":") ? "[" + host + "]" : host) + ":" + port + "/mcp";
     }
 
-    /** The bearer token every request to this transport must carry. */
-    public String bearerToken() {
-        return token;
+    /** The bearer token every request to this transport must carry; empty when the endpoint is keyless. */
+    public Optional<String> bearerToken() {
+        return Optional.ofNullable(token);
+    }
+
+    /** Whether {@code address} can only be reached from this machine; an address that does not resolve is not loopback. */
+    private static boolean isLoopback(String address) {
+        try {
+            return InetAddress.getByName(address).isLoopbackAddress();
+        } catch (UnknownHostException e) {
+            return false;
+        }
     }
 
     /**
@@ -329,7 +345,7 @@ public class HttpTransport implements Transport {
 
         McpHandler(MessageHandler handler, String token, ObjectMapper objectMapper) {
             this.handler = handler;
-            this.expectedAuthHeader = "Bearer " + token;
+            this.expectedAuthHeader = token == null ? null : "Bearer " + token;
             this.objectMapper = objectMapper;
         }
 
@@ -342,7 +358,7 @@ public class HttpTransport implements Transport {
                 }
 
                 String auth = exchange.getRequestHeaders().getFirst("Authorization");
-                if (auth == null || !auth.equals(expectedAuthHeader)) {
+                if (expectedAuthHeader != null && (auth == null || !auth.equals(expectedAuthHeader))) {
                     sendEmpty(exchange, 401);
                     return;
                 }
@@ -449,7 +465,7 @@ public class HttpTransport implements Transport {
         private final List<SseSubscriber> subscribers;
 
         EventsHandler(String token, Duration heartbeatInterval, List<SseSubscriber> subscribers) {
-            this.expectedAuthHeader = "Bearer " + token;
+            this.expectedAuthHeader = token == null ? null : "Bearer " + token;
             this.heartbeatInterval = heartbeatInterval;
             this.subscribers = subscribers;
         }
@@ -462,7 +478,7 @@ public class HttpTransport implements Transport {
                 return;
             }
             String auth = exchange.getRequestHeaders().getFirst("Authorization");
-            if (auth == null || !auth.equals(expectedAuthHeader)) {
+            if (expectedAuthHeader != null && (auth == null || !auth.equals(expectedAuthHeader))) {
                 sendEmpty(exchange, 401);
                 exchange.close();
                 return;

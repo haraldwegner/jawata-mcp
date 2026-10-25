@@ -1,6 +1,7 @@
 package org.jawata.spi.host;
 
 import java.net.URI;
+import java.util.Optional;
 
 /**
  * Where a second process reaches this engine's MCP face (Sprint 28k, E16; contract §4.2): the address, and the key that must
@@ -8,7 +9,7 @@ import java.net.URI;
  * engine prints the start line, an IDE writes a note for the tools that look for engines.
  *
  * @param url the {@code /mcp} URL a process on this machine reaches the listener at
- * @param key the bearer token every request must carry
+ * @param key the bearer token every request must carry; empty when the host offers no key (the engine inside an IDE)
  */
-public record McpEndpoint(URI url, String key) {
+public record McpEndpoint(URI url, Optional<String> key) {
 }
