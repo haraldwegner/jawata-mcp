@@ -130,7 +130,7 @@ public class WorkspaceFileWatcher implements AutoCloseable {
      * Test-only constructor: lets a test set a shorter fallback-poll interval
      * to verify the mtime safety-net path within bounded wait time.
      */
-    public WorkspaceFileWatcher(Path jdtDataDir, JdtServiceImpl service, long fallbackPollSeconds) {
+    WorkspaceFileWatcher(Path jdtDataDir, JdtServiceImpl service, long fallbackPollSeconds) {
         this(jdtDataDir, service, fallbackPollSeconds, FileSystems.getDefault()::newWatchService);
     }
 
@@ -138,7 +138,7 @@ public class WorkspaceFileWatcher implements AutoCloseable {
      * Test seam: how the watch service is opened, so a test can make the operating system refuse one the way it does when
      * the user's inotify instances are used up.
      */
-    public WorkspaceFileWatcher(Path jdtDataDir, JdtServiceImpl service, long fallbackPollSeconds, WatchServiceOpener opener) {
+    WorkspaceFileWatcher(Path jdtDataDir, JdtServiceImpl service, long fallbackPollSeconds, WatchServiceOpener opener) {
         this(jdtDataDir, service, fallbackPollSeconds, opener, THE_ENGINE_OWNS_IT);
     }
 

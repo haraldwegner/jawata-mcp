@@ -243,7 +243,7 @@ public final class ExternalBundlePool {
     }
 
     /** OSGi-ish version compare: numeric segments numerically, rest lexically. */
-    public static int compareVersions(String a, String b) {
+    static int compareVersions(String a, String b) {
         String[] as = a.split("\\.", 4);
         String[] bs = b.split("\\.", 4);
         for (int i = 0; i < Math.max(as.length, bs.length); i++) {

@@ -11,8 +11,6 @@ Bundle-ClassPath: .,
 Require-Bundle: org.eclipse.equinox.app,
  org.eclipse.jdt.launching
 Export-Package: org.jawata.resident,
- org.jawata.resident.project,
- org.jawata.resident.resolve,
  org.jawata.resident.workspace
 Import-Package: org.jawata.spi.host;version="[1.0,2.0)",
  org.jawata.spi.lang;version="[1.0,2.0)",

@@ -229,7 +229,7 @@ public class ProjectImporter {
      * project keeps the default — the same outcome as declaring nothing, but
      * never the same silence.</p>
      */
-    public static Optional<String> readComplianceLevel(java.nio.file.Path projectPath) {
+    static Optional<String> readComplianceLevel(java.nio.file.Path projectPath) {
         // Each source in precedence order. An UNUSABLE declaration does not stop
         // the search (C1 audit round 3): a pom saying ${java.version} used to
         // suppress a perfectly good BREE or javacopts below it, so a project
@@ -547,7 +547,7 @@ public class ProjectImporter {
      * registered types for the implementing class, so an upstream id rename
      * degrades to a slower lookup rather than to a silently unbound JRE.
      */
-    public static IVMInstallType standardVmType() {
+    static IVMInstallType standardVmType() {
         IVMInstallType byId = JavaRuntime.getVMInstallType(STANDARD_VM_TYPE_ID);
         if (byId != null) {
             return byId;
@@ -632,7 +632,7 @@ public class ProjectImporter {
      * @return the level applied, or empty when the workspace already had it or the JVM's
      *         version is not a level JDT can be set to
      */
-    public static Optional<String> raiseWorkspaceLevelToRunningJvm() {
+    static Optional<String> raiseWorkspaceLevelToRunningJvm() {
         String level = System.getProperty("java.specification.version", "");
         if (!COMPLIANCE_LEVEL.matcher(level).matches()) {
             log.warn("jawata-mcp#69: the running JVM reports java.specification.version \"{}\","
@@ -1275,7 +1275,7 @@ public class ProjectImporter {
      * Order: project wrapper (mvnw) > PATH > caller-supplied known locations.
      * Package-visible seam for tests; production callers use the 1-arg overload.
      */
-    public static java.nio.file.Path resolveMavenCommand(java.nio.file.Path projectPath, java.lang.String pathEnv, java.util.List<java.nio.file.Path> knownLocations, org.jawata.core.host.HostProcesses host) {
+    static java.nio.file.Path resolveMavenCommand(java.nio.file.Path projectPath, java.lang.String pathEnv, java.util.List<java.nio.file.Path> knownLocations, org.jawata.core.host.HostProcesses host) {
         // The ORDER below is a past-bug fix and must not change: project wrapper,
         // then PATH, then known install locations. What DID change is where the
         // per-OS spellings come from — the host, rather than a ternary repeated
@@ -1364,7 +1364,7 @@ public class ProjectImporter {
         }
     }
 
-    public List<String> getMavenDependencies(java.nio.file.Path projectPath) {
+    List<String> getMavenDependencies(java.nio.file.Path projectPath) {
         // v2.9.1 (dogfood D1): the output file is RELATIVE — it resolves against each
         // module's basedir, so a multi-module reactor writes one file per module.
         // (An absolute path made every module OVERWRITE the same file and the last,
@@ -1532,7 +1532,7 @@ public class ProjectImporter {
      * (with {@code -Dmdep.appendOutput=true}), entries newline- and
      * pathSeparator-delimited, deduped preserving order. Package-visible for tests.
      */
-    public static List<String> parseClasspathOutput(String content) {
+    static List<String> parseClasspathOutput(String content) {
         java.util.LinkedHashSet<String> jars = new java.util.LinkedHashSet<>();
         for (String line : content.split("\\R")) {
             for (String piece : line.split(File.pathSeparator)) {
@@ -2138,7 +2138,7 @@ public class ProjectImporter {
     // ============================================================
 
     /** pom.xml &lt;sourceDirectory&gt; / &lt;testSourceDirectory&gt; overrides. */
-    public record SourceDirs(Optional<java.nio.file.Path> srcMain, Optional<java.nio.file.Path> srcTest) {
+    record SourceDirs(Optional<java.nio.file.Path> srcMain, Optional<java.nio.file.Path> srcTest) {
         static SourceDirs empty() {
             return new SourceDirs(Optional.empty(), Optional.empty());
         }
@@ -2173,7 +2173,7 @@ public class ProjectImporter {
      * Returns {@code Optional.empty()} when the pom is missing, malformed,
      * or has no &lt;packaging&gt; element (which Maven treats as "jar").
      */
-    public static Optional<String> readPomPackaging(java.nio.file.Path pomXml) {
+    static Optional<String> readPomPackaging(java.nio.file.Path pomXml) {
         if (!Files.isRegularFile(pomXml)) {
             return Optional.empty();
         }
@@ -2216,7 +2216,7 @@ public class ProjectImporter {
      * True if {@code projectPath/pom.xml} declares a Tycho packaging type.
      * Used to gate the {@code mvn dependency:build-classpath} shell-out.
      */
-    public static boolean isTychoProject(java.nio.file.Path projectPath) {
+    static boolean isTychoProject(java.nio.file.Path projectPath) {
         return readPomPackaging(projectPath.resolve("pom.xml"))
             .map(ProjectImporter::isTychoPackaging)
             .orElse(false);
@@ -2227,7 +2227,7 @@ public class ProjectImporter {
      * Resolves declared paths against the pom's directory.
      * Returns SourceDirs.empty() if pom.xml is absent, malformed, or has no overrides.
      */
-    public static SourceDirs readPomSourceDirs(java.nio.file.Path pomXml) {
+    static SourceDirs readPomSourceDirs(java.nio.file.Path pomXml) {
         if (!Files.isRegularFile(pomXml)) {
             return SourceDirs.empty();
         }

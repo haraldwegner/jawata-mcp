@@ -1,0 +1,16 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: JAWATA Resident Tests (fragment)
+Bundle-SymbolicName: org.jawata.resident.tests
+Bundle-Version: 3.0.1
+Fragment-Host: org.jawata.resident
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Import-Package: org.junit.jupiter.api,
+ org.junit.jupiter.api.condition;resolution:=optional,
+ org.junit.jupiter.api.extension,
+ org.junit.jupiter.api.function,
+ org.junit.jupiter.api.io;resolution:=optional,
+ org.junit.jupiter.params;resolution:=optional,
+ org.junit.jupiter.params.provider;resolution:=optional,
+ org.opentest4j
+DynamicImport-Package: *

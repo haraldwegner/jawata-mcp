@@ -55,7 +55,7 @@ import org.slf4j.LoggerFactory;
  * information. It is deliberately not the experience store's data directory —
  * that holds things nothing can rebuild.</p>
  */
-public final class ClasspathCache {
+final class ClasspathCache {
 
     private static final Logger log = LoggerFactory.getLogger(ClasspathCache.class);
 
@@ -87,7 +87,7 @@ public final class ClasspathCache {
      *            hashed — a null key can never hit, and never throws
      * @return the remembered jar paths, or null for a miss
      */
-    static public List<String> get(String key) {
+    static List<String> get(String key) {
         if (key == null) {
             return null;
         }
@@ -135,7 +135,7 @@ public final class ClasspathCache {
      * @param jars the resolved absolute jar paths; an EMPTY list is a legitimate
      *             answer (a pom with no dependencies) and is cached as one
      */
-    static public void put(String key, List<String> jars) {
+    static void put(String key, List<String> jars) {
         if (key == null || jars == null) {
             return;
         }
@@ -201,7 +201,7 @@ public final class ClasspathCache {
     }
 
     /** Drop the in-memory tier. Tests only — the disk tier is addressed by its directory. */
-    public static void clearMemory() {
+    static void clearMemory() {
         MEMORY.clear();
     }
 }

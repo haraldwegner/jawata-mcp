@@ -261,7 +261,7 @@ public class JdtServiceImpl implements IJdtService {
      * sees it as expired on the next call. Lets the dedicated TTL test run
      * without sleeping for {@link #DROP_TTL_MILLIS}.
      */
-    public void expireDroppedKeyForTest(String projectKey) {
+    void expireDroppedKeyForTest(String projectKey) {
         droppedKeyTimestamps.computeIfPresent(projectKey,
             (k, v) -> System.currentTimeMillis() - DROP_TTL_MILLIS - 1);
     }

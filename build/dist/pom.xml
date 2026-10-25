@@ -34,8 +34,10 @@
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.resident</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
-        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core.tests</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
-        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp.tests</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
+        <!-- The test fragments are NOT listed here: a project dependency puts the installed fragment jar on the classpath of the
+             model jawata builds of this repository, and a class moved between the fragments' sources is then refused by the move
+             tool for "binary references" held in that stale jar (jawata-mcp#89). Their ordering edge is a PLUGIN dependency of the
+             copy plugin below, which the reactor sorts by but no classpath contains. -->
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.testrunner</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.pitplugin</artifactId><version>${project.version}</version><scope>provided</scope></dependency>
     </dependencies>
@@ -72,6 +74,12 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
+                <dependencies>
+                    <!-- ordering edges only: see the comment on the project dependencies above -->
+                    <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core.tests</artifactId><version>${project.version}</version></dependency>
+                    <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp.tests</artifactId><version>${project.version}</version></dependency>
+                    <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.resident.tests</artifactId><version>${project.version}</version></dependency>
+                </dependencies>
                 <executions>
                     <execution>
                         <id>boot-classpath</id>
@@ -109,6 +117,7 @@
                             <artifactItems>
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.core.tests</artifactId><version>${project.version}</version></artifactItem>
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.mcp.tests</artifactId><version>${project.version}</version></artifactItem>
+                                <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.resident.tests</artifactId><version>${project.version}</version></artifactItem>
                                 <artifactItem><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-api</artifactId><version>5.11.4</version></artifactItem>
                                 <artifactItem><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-engine</artifactId><version>5.11.4</version></artifactItem>
                                 <artifactItem><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-params</artifactId><version>5.11.4</version></artifactItem>

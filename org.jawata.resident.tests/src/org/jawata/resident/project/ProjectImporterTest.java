@@ -1,0 +1,786 @@
+package org.jawata.resident.project;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
+
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.jdt.core.IClasspathEntry;
+import org.eclipse.jdt.core.IJavaProject;
+import org.jawata.core.project.BuildSystem;
+import org.jawata.resident.fixtures.TestProjectHelper;
+import org.jawata.resident.workspace.WorkspaceManager;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * Integration tests for ProjectImporter.
+ * Tests build system detection, source file counting, and classpath configuration.
+ */
+class ProjectImporterTest {
+
+    @RegisterExtension
+    TestProjectHelper helper = new TestProjectHelper();
+
+    private ProjectImporter importer;
+    private WorkspaceManager workspaceManager;
+    private Path mavenFixturePath;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        importer = new ProjectImporter();
+        workspaceManager = new WorkspaceManager();
+        workspaceManager.initialize();
+        mavenFixturePath = helper.copyFixture("simple-maven");   // a copy: importing writes beside it
+    }
+
+    // ========== Build System Detection Tests ==========
+
+    @Test
+    @DisplayName("detectBuildSystem should detect Maven project")
+    void detectBuildSystem_detectsMaven() {
+        BuildSystem buildSystem = importer.detectBuildSystem(mavenFixturePath);
+
+        assertEquals(BuildSystem.MAVEN, buildSystem,
+            "Should detect Maven project from pom.xml");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem should detect Gradle project with build.gradle")
+    void detectBuildSystem_detectsGradle(@TempDir Path tempDir) throws IOException {
+        // Create a fake Gradle project
+        Files.writeString(tempDir.resolve("build.gradle"), "// Gradle build file");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.GRADLE, buildSystem,
+            "Should detect Gradle project from build.gradle");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem should detect Gradle project with build.gradle.kts")
+    void detectBuildSystem_detectsGradleKts(@TempDir Path tempDir) throws IOException {
+        // Create a fake Kotlin Gradle project
+        Files.writeString(tempDir.resolve("build.gradle.kts"), "// Kotlin Gradle build file");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.GRADLE, buildSystem,
+            "Should detect Gradle project from build.gradle.kts");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem should return UNKNOWN for plain project")
+    void detectBuildSystem_returnsUnknownForPlainProject(@TempDir Path tempDir) throws IOException {
+        // Create a plain Java project with no build file
+        Path srcDir = tempDir.resolve("src");
+        Files.createDirectories(srcDir);
+        Files.writeString(srcDir.resolve("Main.java"), "public class Main {}");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.UNKNOWN, buildSystem,
+            "Should return UNKNOWN for project without build file");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem should prefer Maven over Gradle when both exist")
+    void detectBuildSystem_prefersMavenOverGradle(@TempDir Path tempDir) throws IOException {
+        // Create both build files
+        Files.writeString(tempDir.resolve("pom.xml"), "<project></project>");
+        Files.writeString(tempDir.resolve("build.gradle"), "// Gradle");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.MAVEN, buildSystem,
+            "Should prefer Maven when both pom.xml and build.gradle exist");
+    }
+
+    // ========== Bazel Build System Tests ==========
+
+    @Test
+    @DisplayName("detectBuildSystem should detect Bazel project with WORKSPACE")
+    void detectBuildSystem_detectsBazelWorkspace(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("WORKSPACE"), "# Bazel workspace");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.BAZEL, buildSystem,
+            "Should detect Bazel project from WORKSPACE");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem should detect Bazel project with WORKSPACE.bazel")
+    void detectBuildSystem_detectsBazelWorkspaceDotBazel(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("WORKSPACE.bazel"), "# Bazel workspace");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.BAZEL, buildSystem,
+            "Should detect Bazel project from WORKSPACE.bazel");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem should detect Bazel project with MODULE.bazel")
+    void detectBuildSystem_detectsBazelModule(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("MODULE.bazel"), "module(name = \"test\")");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.BAZEL, buildSystem,
+            "Should detect Bazel project from MODULE.bazel");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem should prefer Maven over Bazel when both exist")
+    void detectBuildSystem_prefersMavenOverBazel(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("pom.xml"), "<project></project>");
+        Files.writeString(tempDir.resolve("WORKSPACE"), "# Bazel workspace");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.MAVEN, buildSystem,
+            "Should prefer Maven when both pom.xml and WORKSPACE exist");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem should prefer Gradle over Bazel when both exist")
+    void detectBuildSystem_prefersGradleOverBazel(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("build.gradle"), "// Gradle");
+        Files.writeString(tempDir.resolve("WORKSPACE"), "# Bazel workspace");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.GRADLE, buildSystem,
+            "Should prefer Gradle when both build.gradle and WORKSPACE exist");
+    }
+
+    // ========== Eclipse PDE / Eclipse Detection (v1.7.1 / bug #4) ==========
+
+    @Test
+    @DisplayName("detectBuildSystem returns ECLIPSE_PDE for project with MANIFEST.MF (Bundle-SymbolicName) + .classpath")
+    void detectBuildSystem_eclipsePde_returnsEclipsePde(@TempDir Path tempDir) throws IOException {
+        Path metaInf = tempDir.resolve("META-INF");
+        Files.createDirectories(metaInf);
+        Files.writeString(metaInf.resolve("MANIFEST.MF"),
+            "Manifest-Version: 1.0\n"
+          + "Bundle-ManifestVersion: 2\n"
+          + "Bundle-SymbolicName: com.example.test;singleton:=true\n"
+          + "Bundle-Version: 1.0.0.qualifier\n");
+        Files.writeString(tempDir.resolve(".classpath"),
+            "<?xml version=\"1.0\"?><classpath><classpathentry kind=\"src\" path=\"src\"/></classpath>");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.ECLIPSE_PDE, buildSystem,
+            "MANIFEST.MF + Bundle-SymbolicName should classify as Eclipse PDE");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem returns ECLIPSE for project with .classpath only (no PDE manifest)")
+    void detectBuildSystem_eclipseOnly_returnsEclipse(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve(".classpath"),
+            "<?xml version=\"1.0\"?><classpath><classpathentry kind=\"src\" path=\"src\"/></classpath>");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.ECLIPSE, buildSystem,
+            ".classpath without PDE manifest should classify as plain Eclipse");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem prefers Maven over Eclipse when both pom.xml and .classpath exist (hybrid project)")
+    void detectBuildSystem_pomAndClasspath_prefersMaven(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("pom.xml"), "<project></project>");
+        Files.writeString(tempDir.resolve(".classpath"),
+            "<?xml version=\"1.0\"?><classpath/>");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.MAVEN, buildSystem,
+            "Maven wins over Eclipse for hybrid projects to keep Maven dependency resolution");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem prefers Maven over ECLIPSE_PDE when MANIFEST.MF + pom both exist (Tycho-style)")
+    void detectBuildSystem_pdeAndPom_prefersMaven(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("pom.xml"), "<project></project>");
+        Path metaInf = tempDir.resolve("META-INF");
+        Files.createDirectories(metaInf);
+        Files.writeString(metaInf.resolve("MANIFEST.MF"),
+            "Manifest-Version: 1.0\n"
+          + "Bundle-SymbolicName: com.example.tycho\n");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.MAVEN, buildSystem,
+            "Tycho-style PDE+Maven hybrid must classify as MAVEN so dep resolution uses the Maven path");
+    }
+
+    @Test
+    @DisplayName("detectBuildSystem returns UNKNOWN when MANIFEST.MF exists but has no Bundle-SymbolicName line")
+    void detectBuildSystem_manifestWithoutSymbolicName_returnsUnknown(@TempDir Path tempDir) throws IOException {
+        Path metaInf = tempDir.resolve("META-INF");
+        Files.createDirectories(metaInf);
+        // A bare manifest (e.g. from a fat JAR) without Bundle-SymbolicName is NOT a PDE bundle.
+        Files.writeString(metaInf.resolve("MANIFEST.MF"),
+            "Manifest-Version: 1.0\nMain-Class: com.example.App\n");
+
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+
+        assertEquals(BuildSystem.UNKNOWN, buildSystem,
+            "MANIFEST.MF without Bundle-SymbolicName is not a PDE bundle");
+    }
+
+    @Test
+    @DisplayName("countSourceFiles should count Java files in Bazel project with standard layout")
+    void countSourceFiles_countsBazelStandardLayout(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("WORKSPACE"), "");
+        Path srcDir = tempDir.resolve("src/main/java/com/example");
+        Files.createDirectories(srcDir);
+        Files.writeString(srcDir.resolve("App.java"), "package com.example; public class App {}");
+        Files.writeString(srcDir.resolve("Lib.java"), "package com.example; public class Lib {}");
+
+        int count = importer.countSourceFiles(tempDir);
+
+        assertEquals(2, count, "Should find 2 Java files in Bazel standard layout");
+    }
+
+    // ========== Source File Counting Tests ==========
+
+    @Test
+    @DisplayName("countSourceFiles should count Java files in Maven layout")
+    void countSourceFiles_countsJavaFiles() {
+        int count = importer.countSourceFiles(mavenFixturePath);
+
+        assertTrue(count >= 3,
+            "Should find at least 3 Java files (Calculator, HelloWorld, UserService): " + count);
+    }
+
+    @Test
+    @DisplayName("countSourceFiles should return 0 for empty project")
+    void countSourceFiles_returnsZeroForEmpty(@TempDir Path tempDir) {
+        int count = importer.countSourceFiles(tempDir);
+
+        assertEquals(0, count, "Should return 0 for project with no Java files");
+    }
+
+    @Test
+    @DisplayName("countSourceFiles should count files in src layout")
+    void countSourceFiles_countsSrcLayout(@TempDir Path tempDir) throws IOException {
+        // Create simple src layout
+        Path srcDir = tempDir.resolve("src");
+        Files.createDirectories(srcDir);
+        Files.writeString(srcDir.resolve("Main.java"), "public class Main {}");
+        Files.writeString(srcDir.resolve("Helper.java"), "public class Helper {}");
+
+        int count = importer.countSourceFiles(tempDir);
+
+        assertEquals(2, count, "Should find 2 Java files in src directory");
+    }
+
+    // ========== Package Finding Tests ==========
+
+    @Test
+    @DisplayName("findPackages should find all packages in project")
+    void findPackages_findsAllPackages() {
+        List<String> packages = importer.findPackages(mavenFixturePath);
+
+        assertFalse(packages.isEmpty(), "Should find at least one package");
+        assertTrue(packages.stream().anyMatch(p -> p.contains("com.example")),
+            "Should find com.example package");
+    }
+
+    @Test
+    @DisplayName("findPackages should find nested packages")
+    void findPackages_findsNestedPackages() {
+        List<String> packages = importer.findPackages(mavenFixturePath);
+
+        // Should find both com.example and com.example.service
+        assertTrue(packages.stream().anyMatch(p -> p.contains("service")),
+            "Should find service subpackage");
+    }
+
+    @Test
+    @DisplayName("findPackages should return empty for no packages")
+    void findPackages_returnsEmptyForNoPackages(@TempDir Path tempDir) {
+        List<String> packages = importer.findPackages(tempDir);
+
+        assertTrue(packages.isEmpty(), "Should return empty list for empty project");
+    }
+
+    // ========== Java Project Configuration Tests ==========
+
+    @Test
+    @DisplayName("configureJavaProject should add JRE container to classpath")
+    void configureJavaProject_addsJreContainer() throws CoreException {
+        IProject project = workspaceManager.createLinkedProject("jre-test", mavenFixturePath);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
+
+        IClasspathEntry[] classpath = javaProject.getRawClasspath();
+        boolean hasJre = Arrays.stream(classpath)
+            .anyMatch(entry -> entry.getEntryKind() == IClasspathEntry.CPE_CONTAINER
+                && entry.getPath().toString().contains("JRE"));
+
+        assertTrue(hasJre, "Classpath should contain JRE container");
+    }
+
+    /**
+     * jawata-mcp#3: after configuration a default VM MUST exist and the JRE
+     * container MUST bind — otherwise no java.* type resolves anywhere (the
+     * macOS "Unbound classpath container" cascade). Here a default VM already
+     * exists, so this pins the invariant; the register-when-absent branch is
+     * verified at the macOS dogfood.
+     */
+    @Test
+    @DisplayName("configureJavaProject binds a default VM so the JRE container resolves")
+    void configureJavaProject_bindsDefaultVmSoJreResolves() throws CoreException {
+        IProject project = workspaceManager.createLinkedProject("vm-test", mavenFixturePath);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
+
+        assertNotNull(org.eclipse.jdt.launching.JavaRuntime.getDefaultVMInstall(),
+            "a default VM must be registered so JRE_CONTAINER is not unbound");
+
+        IClasspathEntry[] resolved = javaProject.getResolvedClasspath(true);
+        boolean jreLibrariesPresent = Arrays.stream(resolved)
+            .anyMatch(e -> e.getEntryKind() == IClasspathEntry.CPE_LIBRARY);
+        assertTrue(jreLibrariesPresent,
+            "the bound JRE container must contribute library entries (java.* resolves)");
+    }
+
+    @Test
+    @DisplayName("configureJavaProject should add source folders")
+    void configureJavaProject_addsSourceFolders() throws CoreException {
+        IProject project = workspaceManager.createLinkedProject("src-test", mavenFixturePath);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
+
+        IClasspathEntry[] classpath = javaProject.getRawClasspath();
+        boolean hasSource = Arrays.stream(classpath)
+            .anyMatch(entry -> entry.getEntryKind() == IClasspathEntry.CPE_SOURCE);
+
+        assertTrue(hasSource, "Classpath should contain source entries");
+    }
+
+    @Test
+    @DisplayName("configureJavaProject should set output location")
+    void configureJavaProject_setsOutputLocation() throws CoreException {
+        IProject project = workspaceManager.createLinkedProject("output-test", mavenFixturePath);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
+
+        assertNotNull(javaProject.getOutputLocation(), "Output location should be set");
+        assertTrue(javaProject.getOutputLocation().toString().contains("bin"),
+            "Output location should be bin folder");
+    }
+
+    @Test
+    @DisplayName("configureJavaProject should return valid Java project")
+    void configureJavaProject_returnsValidProject() throws CoreException {
+        IProject project = workspaceManager.createLinkedProject("valid-test", mavenFixturePath);
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
+
+        assertNotNull(javaProject, "Should return a Java project");
+        assertTrue(javaProject.exists(), "Java project should exist");
+        assertEquals(project, javaProject.getProject(), "Should wrap the same IProject");
+    }
+
+    // ========== ADR 0001: pom.xml <sourceDirectory> + .classpath precedence ==========
+
+    @Test
+    @DisplayName("readPomSourceDirs returns <sourceDirectory> override resolved against pom dir")
+    void readPomSourceDirs_returnsOverride(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+            <?xml version="1.0"?>
+            <project>
+                <modelVersion>4.0.0</modelVersion>
+                <groupId>g</groupId><artifactId>a</artifactId><version>1</version>
+                <build>
+                    <sourceDirectory>strategies/src</sourceDirectory>
+                    <testSourceDirectory>src/test/java</testSourceDirectory>
+                </build>
+            </project>
+            """);
+
+        ProjectImporter.SourceDirs dirs = ProjectImporter.readPomSourceDirs(tempDir.resolve("pom.xml"));
+
+        assertTrue(dirs.srcMain().isPresent(), "<sourceDirectory> should be detected");
+        assertEquals(tempDir.resolve("strategies/src").normalize(), dirs.srcMain().get(),
+            "Source override should resolve relative to pom directory");
+        assertTrue(dirs.srcTest().isPresent(), "<testSourceDirectory> should be detected");
+        assertEquals(tempDir.resolve("src/test/java").normalize(), dirs.srcTest().get());
+    }
+
+    @Test
+    @DisplayName("readPomSourceDirs returns empty when pom has no <build> section")
+    void readPomSourceDirs_absentReturnsEmpty(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve("pom.xml"), """
+            <?xml version="1.0"?>
+            <project>
+                <modelVersion>4.0.0</modelVersion>
+                <groupId>g</groupId><artifactId>a</artifactId><version>1</version>
+            </project>
+            """);
+
+        ProjectImporter.SourceDirs dirs = ProjectImporter.readPomSourceDirs(tempDir.resolve("pom.xml"));
+
+        assertTrue(dirs.srcMain().isEmpty(), "No override should yield empty srcMain");
+        assertTrue(dirs.srcTest().isEmpty(), "No override should yield empty srcTest");
+    }
+
+    @Test
+    @DisplayName("readPomSourceDirs returns empty when pom.xml is missing")
+    void readPomSourceDirs_missingPomReturnsEmpty(@TempDir Path tempDir) {
+        ProjectImporter.SourceDirs dirs = ProjectImporter.readPomSourceDirs(tempDir.resolve("pom.xml"));
+
+        assertTrue(dirs.srcMain().isEmpty());
+        assertTrue(dirs.srcTest().isEmpty());
+    }
+
+    @Test
+    @DisplayName("readEclipseClasspath returns src, lib, output entries")
+    void readEclipseClasspath_returnsAllKinds(@TempDir Path tempDir) throws IOException {
+        Files.writeString(tempDir.resolve(".classpath"), """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <classpath>
+                <classpathentry kind="src" path="src"/>
+                <classpathentry kind="lib" path="lib/foo.jar"/>
+                <classpathentry kind="output" path="bin"/>
+                <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+            </classpath>
+            """);
+
+        ProjectImporter.ClasspathInfo info = ProjectImporter.readEclipseClasspath(tempDir);
+
+        assertEquals(1, info.srcPaths().size());
+        assertEquals(tempDir.resolve("src").normalize(), info.srcPaths().get(0));
+        assertEquals(1, info.libPaths().size());
+        assertEquals(tempDir.resolve("lib/foo.jar").normalize(), info.libPaths().get(0));
+        assertTrue(info.outputPath().isPresent());
+        assertEquals(tempDir.resolve("bin").normalize(), info.outputPath().get());
+    }
+
+    @Test
+    @DisplayName("readEclipseClasspath resolves '..' refs against project parent")
+    void readEclipseClasspath_resolvesParentRefs(@TempDir Path tempDir) throws IOException {
+        // Mirrors a layout with lib jars in a sibling dir.
+        Path projectRoot = tempDir.resolve("project");
+        Files.createDirectories(projectRoot);
+        Files.createDirectories(tempDir.resolve("lib"));
+        Files.writeString(projectRoot.resolve(".classpath"), """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <classpath>
+                <classpathentry kind="src" path="src"/>
+                <classpathentry kind="lib" path="../lib/com.example.model_1.0.0.jar"/>
+            </classpath>
+            """);
+
+        ProjectImporter.ClasspathInfo info = ProjectImporter.readEclipseClasspath(projectRoot);
+
+        assertEquals(1, info.libPaths().size());
+        assertEquals(tempDir.resolve("lib/com.example.model_1.0.0.jar").normalize(),
+            info.libPaths().get(0),
+            "'..' should be resolved against the project parent directory");
+    }
+
+    @Test
+    @DisplayName("readEclipseClasspath returns empty when .classpath absent")
+    void readEclipseClasspath_missingReturnsEmpty(@TempDir Path tempDir) {
+        ProjectImporter.ClasspathInfo info = ProjectImporter.readEclipseClasspath(tempDir);
+
+        assertTrue(info.srcPaths().isEmpty());
+        assertTrue(info.libPaths().isEmpty());
+        assertTrue(info.outputPath().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Maven <sourceDirectory> override is honored in countSourceFiles")
+    void countSourceFiles_honorsPomSourceDirectoryOverride(@TempDir Path tempDir) throws IOException {
+        // Hybrid layout: pom.xml at root declares <sourceDirectory>strategies/src</sourceDirectory>,
+        // production code lives there. src/test/java exists but should NOT be the only source seen.
+        Files.writeString(tempDir.resolve("pom.xml"), """
+            <?xml version="1.0"?>
+            <project>
+                <modelVersion>4.0.0</modelVersion>
+                <groupId>g</groupId><artifactId>a</artifactId><version>1</version>
+                <build>
+                    <sourceDirectory>strategies/src</sourceDirectory>
+                    <testSourceDirectory>src/test/java</testSourceDirectory>
+                </build>
+            </project>
+            """);
+        Path prodSrc = tempDir.resolve("strategies/src/com/example");
+        Files.createDirectories(prodSrc);
+        Files.writeString(prodSrc.resolve("Production.java"), "package com.example; class Production {}");
+        Path testSrc = tempDir.resolve("src/test/java/com/example");
+        Files.createDirectories(testSrc);
+        Files.writeString(testSrc.resolve("Tests.java"), "package com.example; class Tests {}");
+
+        int count = importer.countSourceFiles(tempDir);
+
+        assertEquals(2, count,
+            "Both <sourceDirectory> production code and <testSourceDirectory> tests should be counted");
+    }
+
+    @Test
+    @DisplayName(".classpath src entries are honored when no pom override")
+    void countSourceFiles_honorsClasspathSrcEntries(@TempDir Path tempDir) throws IOException {
+        // No pom; .classpath declares non-conventional source root.
+        Files.writeString(tempDir.resolve(".classpath"), """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <classpath>
+                <classpathentry kind="src" path="custom-src"/>
+            </classpath>
+            """);
+        Path src = tempDir.resolve("custom-src/com/example");
+        Files.createDirectories(src);
+        Files.writeString(src.resolve("A.java"), "package com.example; class A {}");
+        Files.writeString(src.resolve("B.java"), "package com.example; class B {}");
+
+        int count = importer.countSourceFiles(tempDir);
+
+        assertEquals(2, count, ".classpath src=custom-src should be the source root");
+    }
+
+    // ========== v2.9.1 (dogfood D1): nested aggregators + source-dir interpolation ==========
+
+    @Test
+    @DisplayName("countSourceFiles follows nested aggregators and ${project.basedir} source overrides")
+    void countSourceFiles_nestedAggregator() {
+        Path fixture = helper.getFixturePath("nested-aggregator");
+        assertEquals(1, importer.countSourceFiles(fixture),
+            "root -> mid -> leaf module recursion must reach the ${project.basedir}/../.. source override");
+    }
+
+    @Test
+    @DisplayName("findPackages sees packages behind nested module recursion")
+    void findPackages_nestedAggregator() {
+        Path fixture = helper.getFixturePath("nested-aggregator");
+        assertTrue(importer.findPackages(fixture).contains("com.example.nested"),
+            "package behind the nested source override must be discovered");
+    }
+
+    @Test
+    @DisplayName("parseClasspathOutput handles per-module appended lines and dedupes")
+    void parseClasspathOutput_multiModuleAppend() {
+        String sep = java.io.File.pathSeparator;
+        String content = "/repo/a.jar" + sep + "/repo/b.jar\n/repo/b.jar" + sep + "/repo/c.jar\n";
+        assertEquals(List.of("/repo/a.jar", "/repo/b.jar", "/repo/c.jar"),
+            ProjectImporter.parseClasspathOutput(content));
+    }
+
+    // ========== C13-c: no failure path may load a dependency-less project ==========
+    //
+    // The contract under test: a Maven dependency resolution that FAILS — or that
+    // "succeeds" without producing its output file (historically: a concurrent
+    // sibling process consumed the shared fixed-name file) — must REFUSE the load
+    // (DependencyResolutionException), never answer "no dependencies", and never
+    // cache anything. Deterministic via a fake project-local mvnw, which
+    // resolveMavenCommand prefers over PATH.
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase().contains("win");
+    }
+
+    /**
+     * Sprint 28a: the fake wrapper is written in the dialect THIS host can
+     * execute, under the name the product actually resolves here. The old
+     * fixture always wrote a POSIX {@code mvnw}; on Windows
+     * {@code resolveMavenCommand} correctly prefers {@code mvnw.cmd}, so the
+     * fake was never selected — and the runner's REAL Maven ran against the
+     * dummy pom. Three tests then failed on the fixture, not the product.
+     */
+    private static Path fakeWrapper(Path dir, String shBody, String cmdBody) throws IOException {
+        Path wrapper = dir.resolve(isWindows() ? "mvnw.cmd" : "mvnw");
+        Files.writeString(wrapper, isWindows() ? cmdBody : "#!/bin/sh\n" + shBody);
+        assertTrue(wrapper.toFile().setExecutable(true));
+        return wrapper;
+    }
+
+    private static Path fakeMavenProject(Path dir, String shBody, String cmdBody)
+            throws IOException {
+        // Unique pom content per test so the static pom-hash classpath cache
+        // can never leak results between these tests (or into others).
+        Files.writeString(dir.resolve("pom.xml"),
+            "<project><!-- " + java.util.UUID.randomUUID() + " -->\n"
+                + "<modelVersion>4.0.0</modelVersion>"
+                + "<groupId>t</groupId><artifactId>t</artifactId><version>1</version>"
+                + "</project>\n");
+        fakeWrapper(dir, shBody, cmdBody);
+        return dir;
+    }
+
+    @Test
+    @DisplayName("Maven exit 0 without an output file (the stolen-scratch-file shape) REFUSES the load — never 'no dependencies'")
+    void mavenResolution_noOutputFile_refuses(@TempDir Path dir) throws IOException {
+        fakeMavenProject(dir, "exit 0\n", "@exit /b 0\r\n");
+        ProjectImporter importer = new ProjectImporter();
+        org.jawata.resident.project.DependencyResolutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
+            org.jawata.resident.project.DependencyResolutionException.class,
+            () -> importer.getMavenDependencies(dir));
+        assertTrue(ex.getMessage().contains("no classpath output file"),
+            "the refusal must NAME the anomaly: " + ex.getMessage());
+    }
+
+    @Test
+    @DisplayName("Maven exit != 0 REFUSES the load after one retry, carrying Maven's own output")
+    void mavenResolution_failure_refusesWithCause(@TempDir Path dir) throws IOException {
+        Path marker = dir.resolve("attempts.log");
+        fakeMavenProject(dir,
+            "echo BOOM-a-dependency-broke\necho x >> attempts.log\nexit 1\n",
+            // Prefix redirection, so cmd writes exactly "x" with no trailing space.
+            "@echo BOOM-a-dependency-broke\r\n@>> attempts.log echo x\r\n@exit /b 1\r\n");
+        ProjectImporter importer = new ProjectImporter();
+        org.jawata.resident.project.DependencyResolutionException ex = org.junit.jupiter.api.Assertions.assertThrows(
+            org.jawata.resident.project.DependencyResolutionException.class,
+            () -> importer.getMavenDependencies(dir));
+        assertTrue(ex.getMessage().contains("exit 1"), "exit code named: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("BOOM-a-dependency-broke"),
+            "Maven's own words carried: " + ex.getMessage());
+        assertEquals(2, Files.readAllLines(marker).size(),
+            "a transient failure gets exactly ONE retry before refusing");
+    }
+
+    @Test
+    @DisplayName("a successful resolution parses the per-invocation nonce file, leaves no scratch residue, and caches")
+    void mavenResolution_success_isCleanAndCached(@TempDir Path dir) throws IOException {
+        // Sprint 28a: UNPROVEN on Windows, with the evidence attached. This test
+        // needs a fake wrapper that READS ITS ARGV (to find the per-invocation
+        // -Dmdep.outputFile), and the .cmd stand-in demonstrably does not
+        // receive it: the batch scans its whole argv for the prefix and exits 3
+        // on a miss — run 31804158929 shows exactly that exit, so the arguments
+        // do not arrive intact under ProcessBuilder's cmd.exe wrapping. The
+        // sibling tests that need NO argv (exit-1 with words carried, exit-0
+        // with no output file refused) PASS on Windows, so the invocation path
+        // is proven there; the nonce/cache/residue logic proven here is
+        // platform-independent Java, proven on POSIX. Counted by the abort
+        // budget; the argv-capable Windows fake is recorded 1b work.
+        org.junit.jupiter.api.Assumptions.assumeTrue(!isWindows(),
+            "the .cmd fake does not receive argv under cmd.exe wrapping (exit-3 evidence, "
+                + "run 31804158929) — UNPROVEN here, not passing");
+        Path marker = dir.resolve("attempts.log");
+        // The fake writes the classpath file to the exact per-invocation name
+        // it is given (argument 2 = -Dmdep.outputFile=target/<nonce>.txt).
+        // The batch twin strips the fixed 18-char "-Dmdep.outputFile=" prefix by
+        // substring (the prefix contains '=', which cmd's search/replace cannot
+        // express), and writes the classpath newline-free via <nul set /p.
+        fakeMavenProject(dir,
+            "out=$(printf '%s' \"$2\" | sed 's/^-Dmdep.outputFile=//')\n"
+                + "mkdir -p target\n"
+                + "printf '/repo/fake-a.jar" + java.io.File.pathSeparator
+                + "/repo/fake-b.jar' > \"$out\"\n"
+                + "echo x >> attempts.log\nexit 0\n",
+            // SCAN argv for the -Dmdep.outputFile= argument instead of pinning
+            // position %2 — a .cmd launched through ProcessBuilder goes via
+            // cmd.exe, and the argument numbering the POSIX $2 relies on is not
+            // guaranteed to survive that wrapping. A shift loop, never
+            // `for %%a in (%*)` (cmd's for-in splits on '=', shredding exactly
+            // the -Dkey=value argument being sought).
+            "@echo off\r\n"
+                + "setlocal enabledelayedexpansion\r\n"
+                + "set \"OUT=\"\r\n"
+                + ":scan\r\n"
+                + "if \"%~1\"==\"\" goto write\r\n"
+                + "set \"A=%~1\"\r\n"
+                + "if \"!A:~0,18!\"==\"-Dmdep.outputFile=\" set \"OUT=!A:~18!\"\r\n"
+                + "shift\r\n"
+                + "goto scan\r\n"
+                + ":write\r\n"
+                + "if \"!OUT!\"==\"\" exit /b 3\r\n"
+                + "mkdir target 2>nul\r\n"
+                + "<nul set /p x=\"/repo/fake-a.jar" + java.io.File.pathSeparator
+                + "/repo/fake-b.jar\" > \"!OUT!\"\r\n"
+                + ">> attempts.log echo x\r\n"
+                + "exit /b 0\r\n");
+        ProjectImporter importer = new ProjectImporter();
+        assertEquals(List.of("/repo/fake-a.jar", "/repo/fake-b.jar"),
+            importer.getMavenDependencies(dir));
+        try (var walk = Files.walk(dir)) {
+            assertTrue(walk.noneMatch(p -> p.getFileName().toString().startsWith("jawata-classpath")),
+                "no scratch residue may remain in the project tree");
+        }
+        // Second resolution of the same pom tree: served from the cache — the
+        // wrapper must NOT run again.
+        assertEquals(List.of("/repo/fake-a.jar", "/repo/fake-b.jar"),
+            importer.getMavenDependencies(dir));
+        assertEquals(1, Files.readAllLines(marker).size(),
+            "success is cached; failures (previous tests) never are");
+    }
+
+    // ========== v2.9.2 (dogfood D4): Maven executable resolution ==========
+
+    @Test
+    @DisplayName("resolveMavenCommand prefers the project's own wrapper")
+    void resolveMavenCommand_prefersWrapper(@TempDir Path dir) throws IOException {
+        Path wrapper = fakeWrapper(dir, "", "@exit /b 0\r\n");
+        assertEquals(wrapper,
+            ProjectImporter.resolveMavenCommand(dir, "/nonexistent", List.of(), org.jawata.core.host.HostProcesses.system()));
+    }
+
+    @Test
+    @DisplayName("resolveMavenCommand finds mvn on PATH")
+    void resolveMavenCommand_findsOnPath(@TempDir Path dir) throws IOException {
+        Path bin = Files.createDirectories(dir.resolve("bin"));
+        Path mvn = bin.resolve("mvn");
+        Files.writeString(mvn, "#!/bin/sh\n");
+        assertTrue(mvn.toFile().setExecutable(true));
+        Path project = Files.createDirectories(dir.resolve("proj"));
+        // A POSIX host, named rather than inherited: the fixture writes a POSIX
+        // "mvn", so the resolution must be asked for POSIX spellings. Passing
+        // the RUNNER's host here would make the test's subject the machine.
+        assertEquals(mvn, ProjectImporter.resolveMavenCommand(project, bin.toString(), List.of(),
+            org.jawata.core.host.HostProcesses.forOs(org.jawata.core.host.HostOS.LINUX)));
+    }
+
+    @Test
+    @DisplayName("resolveMavenCommand finds mvn.cmd on PATH for a WINDOWS host — asserted from any runner")
+    void resolveMavenCommand_findsWindowsSpellingOnPath(@TempDir Path dir) throws IOException {
+        // The branch no test could reach before the boundary. Three of the four
+        // resolution tests passed a hardcoded `false`, so the Windows spellings
+        // were unexercised even when the suite ran ON Windows. Naming is pure
+        // logic; asking the port for a named host makes it checkable everywhere.
+        Path bin = Files.createDirectories(dir.resolve("bin"));
+        Path mvnCmd = bin.resolve("mvn.cmd");
+        Files.writeString(mvnCmd, "@echo off\r\n");
+        assertTrue(mvnCmd.toFile().setExecutable(true));
+        Path project = Files.createDirectories(dir.resolve("proj"));
+
+        assertEquals(mvnCmd, ProjectImporter.resolveMavenCommand(project, bin.toString(), List.of(),
+            org.jawata.core.host.HostProcesses.forOs(org.jawata.core.host.HostOS.WINDOWS)));
+
+        // ...and the POSIX host must NOT accept it: "mvn.cmd" is not "mvn".
+        assertNull(ProjectImporter.resolveMavenCommand(project, bin.toString(), List.of(),
+            org.jawata.core.host.HostProcesses.forOs(org.jawata.core.host.HostOS.LINUX)),
+            "a POSIX host must not resolve a .cmd — that is the mix-up error=193 reports");
+    }
+
+    @Test
+    @DisplayName("resolveMavenCommand falls back to known install locations when PATH lacks mvn (the Studio-resident case)")
+    void resolveMavenCommand_knownLocationFallback(@TempDir Path dir) throws IOException {
+        Path installBin = Files.createDirectories(dir.resolve("opt-maven-bin"));
+        Path mvn = installBin.resolve("mvn");
+        Files.writeString(mvn, "#!/bin/sh\n");
+        assertTrue(mvn.toFile().setExecutable(true));
+        Path project = Files.createDirectories(dir.resolve("proj"));
+        assertEquals(mvn,
+            ProjectImporter.resolveMavenCommand(project, "/usr/nonexistent", List.of(installBin),
+            org.jawata.core.host.HostProcesses.forOs(org.jawata.core.host.HostOS.LINUX)));
+    }
+
+    @Test
+    @DisplayName("resolveMavenCommand returns null when nothing is found (loader must warn, not die silently)")
+    void resolveMavenCommand_nothingFound(@TempDir Path dir) {
+        assertNull(ProjectImporter.resolveMavenCommand(dir, "/usr/nonexistent", List.of(),
+            org.jawata.core.host.HostProcesses.forOs(org.jawata.core.host.HostOS.LINUX)));
+    }
+}
