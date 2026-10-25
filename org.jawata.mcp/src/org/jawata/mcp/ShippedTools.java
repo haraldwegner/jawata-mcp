@@ -135,17 +135,6 @@ public final class ShippedTools {
     }
 
     /**
-     * Build the shipped tools from the wiring and the languages bound now. Registers nothing.
-     *
-     * @param w       what the application supplies
-     * @param ports   the languages' ports the neutral tools hold
-     * @param sources the language providers that have tools of their own, in the order they arrived
-     */
-    public static Built build(Wiring w, ProviderPorts ports, List<ToolSource> sources) {
-        return withContributions(neutral(w, ports), sources);
-    }
-
-    /**
      * The tools that name no language, over the ports the languages offer. Built once, when the engine assembles: the engine keeps
      * the advisor and the experience tool, which it wires further, so these objects must not be built again when a language arrives.
      */
@@ -163,18 +152,6 @@ public final class ShippedTools {
             w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests,
             w.runtimeArtifacts());
         return new Built(List.copyOf(neutralTools(w, runTests, advisor, experience)), null, advisor, experience, needs);
-    }
-
-    /**
-     * The neutral tools plus what the given languages add, in the order the product publishes. Asked again each time the set of
-     * languages changes; the neutral objects are the ones {@code neutral} built.
-     */
-    public static Built withContributions(Built neutral, List<ToolSource> sources) {
-        List<Tool> tools = new ArrayList<>(neutral.tools());
-        for (ToolSource source : sources) {
-            tools.addAll(source.tools(neutral.needs()));
-        }
-        return published(neutral, tools);
     }
 
     public static Built published(Built neutral, List<Tool> tools) {

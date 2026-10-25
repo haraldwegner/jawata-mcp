@@ -56,23 +56,7 @@ public final class StoryWriter {
 
     private static final Logger log = LoggerFactory.getLogger(StoryWriter.class);
 
-    /**
-     * Where accepted stories are written. ABSENT means the store's OWN story folder — the
-     * one its stories were loaded from — and the value {@value #OFF} means no file is
-     * written at all.
-     *
-     * <p><b>Corrected 2026-09-14.</b> Absent used to mean OFF, "which is what every
-     * installation is until somebody points it somewhere". Nobody did: no engine studio
-     * deploys sets it, so no acceptance on any installation wrote the file
-     * {@code /memorize} promises, and nothing said so. The store already knows its folder;
-     * off is now the choice someone makes rather than the state everyone is in.</p>
-     *
-     * <p>Read per call so a change does not need a restart — the same choice
-     * {@code StoreBackups.DEPTH_PROPERTY} makes, and for the same reason.</p>
-     */
-    public static final String DIRECTORY_PROPERTY = SettingKeys.STORIES_DIR.name();
-
-    /** The {@link #DIRECTORY_PROPERTY} value that turns the export off. */
+    /** The {@link SettingKeys#STORIES_DIR} value that turns the export off. */
     public static final String OFF = "off";
 
     /** The stamp's format, which is the one the parser's own fixtures carry. */

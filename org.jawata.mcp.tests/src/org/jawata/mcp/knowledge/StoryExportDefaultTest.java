@@ -36,7 +36,7 @@ class StoryExportDefaultTest {
 
     @BeforeEach
     void setUp() {
-        System.clearProperty(StoryWriter.DIRECTORY_PROPERTY);
+        System.clearProperty(org.jawata.mcp.engine.SettingKeys.STORIES_DIR.name());
         mapper = new ObjectMapper();
         store = H2ExperienceStore.open(null);
         tool = new ExperienceTool(() -> null, store);
@@ -44,7 +44,7 @@ class StoryExportDefaultTest {
 
     @AfterEach
     void tearDown() {
-        System.clearProperty(StoryWriter.DIRECTORY_PROPERTY);
+        System.clearProperty(org.jawata.mcp.engine.SettingKeys.STORIES_DIR.name());
         store.close();
     }
 
@@ -160,7 +160,7 @@ class StoryExportDefaultTest {
     @Test
     void offWritesNothing(@TempDir Path dir) throws Exception {
         loadAStoryFrom(dir);
-        System.setProperty(StoryWriter.DIRECTORY_PROPERTY, StoryWriter.OFF);
+        System.setProperty(org.jawata.mcp.engine.SettingKeys.STORIES_DIR.name(), StoryWriter.OFF);
         Map<String, Object> data = accept(recordLesson());
 
         assertFalse(data.containsKey("story"), () -> "off means no file: " + data);

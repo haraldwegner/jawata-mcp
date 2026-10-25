@@ -49,7 +49,7 @@ class StoryRoundTripTest {
 
     @BeforeEach
     void setUp() {
-        System.setProperty(StoryWriter.DIRECTORY_PROPERTY, stories.toString());
+        System.setProperty(org.jawata.mcp.engine.SettingKeys.STORIES_DIR.name(), stories.toString());
         mapper = new ObjectMapper();
         store = H2ExperienceStore.open(null);
         tool = new ExperienceTool(() -> null, store);
@@ -57,7 +57,7 @@ class StoryRoundTripTest {
 
     @AfterEach
     void tearDown() {
-        System.clearProperty(StoryWriter.DIRECTORY_PROPERTY);
+        System.clearProperty(org.jawata.mcp.engine.SettingKeys.STORIES_DIR.name());
         store.close();
     }
 

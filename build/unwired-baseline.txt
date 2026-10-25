@@ -132,6 +132,11 @@ org.jawata.mcp.refactoring.PurityCheck#check(MethodDeclaration,MethodDeclaration
 org.jawata.mcp.runtime.RuntimeSessionRegistry#size()
 org.jawata.mcp.tools.AbstractApplyingRefactoringTool.Preparation#of(Change,String)
 org.jawata.mcp.tools.SearchSymbolsTool#teachTheAddress(String,List<Map<String,Object>>)
+# Sprint 28k E19: ToolRegistry implements ToolCalls, the one entry the faces use. McpProtocolHandler and ToolGateRunner call
+# these through the ToolCalls type (ToolGateRunner and McpProtocolHandler), which this detector does not follow to the implementer,
+# so only the tests that hold the registry itself show up as callers. The production callers are real: see ToolCalls.
+org.jawata.mcp.tools.ToolRegistry#callTool(String,JsonNode)
+org.jawata.mcp.tools.ToolRegistry#getToolDefinitions()
 org.jawata.mcp.tools.ToolRegistry#registerAll(Tool[])
 # v4.1.0: exposes the retired-name redirects so a guard can check every one answers.
 org.jawata.mcp.tools.ToolRegistry#retiredNames()
