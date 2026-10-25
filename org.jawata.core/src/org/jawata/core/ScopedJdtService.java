@@ -83,7 +83,7 @@ public class ScopedJdtService implements IJdtService {
      * {@inheritDoc}
      *
      * <p>Sprint 28 (v3.6.2): delegates to the ONE implementation in
-     * {@link JdtServiceImpl#lookupCompilationUnit}, restricted to this scope's
+     * {@link ModelLookup#lookupCompilationUnit}, restricted to this scope's
      * project. This method used to hold a second copy of that logic, and when
      * v3.6.1 taught the original to read a project's DECLARED source folders
      * instead of guessing Maven layouts, the copy was left behind — so a tool
@@ -97,7 +97,7 @@ public class ScopedJdtService implements IJdtService {
     public ICompilationUnit getCompilationUnit(Path filePath) {
         IJavaProject jp = scope.javaProject();
         if (jp == null) return null;
-        return JdtServiceImpl.lookupCompilationUnit(jp, filePath);
+        return ModelLookup.lookupCompilationUnit(jp, filePath);
     }
 
     @Override
