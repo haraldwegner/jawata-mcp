@@ -1,17 +1,19 @@
 package org.jawata.mcp.protocol;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jawata.mcp.tools.ToolRegistry;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import org.jawata.mcp.engine.ToolCalls;
+import org.jawata.mcp.engine.ToolNotFoundException;
+import org.jawata.mcp.models.CallerIdentity;
 import org.osgi.framework.Bundle;
 import org.osgi.framework.FrameworkUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
-import org.jawata.mcp.models.CallerIdentity;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Handles MCP protocol messages over JSON-RPC 2.0.
@@ -22,7 +24,7 @@ public class McpProtocolHandler {
     private static final Logger log = LoggerFactory.getLogger(McpProtocolHandler.class);
 
     private final ObjectMapper objectMapper;
-    private final ToolRegistry toolRegistry;
+    private final ToolCalls tools;
     private boolean initialized = false;
     private String clientName;
     private String clientVersion;
@@ -31,9 +33,9 @@ public class McpProtocolHandler {
      *  null until the application wires it. */
     private org.jawata.mcp.field.ClientDirectory clientDirectory;
 
-    public McpProtocolHandler(ToolRegistry toolRegistry) {
+    public McpProtocolHandler(ToolCalls toolRegistry) {
         this.objectMapper = new ObjectMapper();
-        this.toolRegistry = toolRegistry;
+        this.tools = toolRegistry;
     }
 
     /** Sprint 28b D1: install the client directory (application wiring). */
@@ -304,7 +306,7 @@ public class McpProtocolHandler {
      */
     private Object handleToolsList() {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("tools", toolRegistry.getToolDefinitions());
+        result.put("tools", tools.getToolDefinitions());
         return result;
     }
 
@@ -328,7 +330,7 @@ public class McpProtocolHandler {
         log.debug("Calling tool: {} with arguments: {}", toolName, arguments);
 
         try {
-            Object toolResult = toolRegistry.callTool(toolName, arguments, caller);
+            Object toolResult = tools.callTool(toolName, arguments, caller);
 
             // MCP expects content array format for tool results
             Map<String, Object> result = new LinkedHashMap<>();
@@ -340,7 +342,7 @@ public class McpProtocolHandler {
             });
 
             return result;
-        } catch (ToolRegistry.ToolNotFoundException e) {
+        } catch (ToolNotFoundException e) {
             // The registry's own text, not a rebuilt one: it carries the "Did you mean" pointer
             // for a retired name, and rebuilding the bare form here is what kept it from every
             // client (REL44-35).

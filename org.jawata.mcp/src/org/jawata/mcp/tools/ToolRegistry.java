@@ -1,22 +1,29 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 
+import org.jawata.mcp.ResidentDegradation;
+import org.jawata.mcp.engine.ToolNotFoundException;
+import org.jawata.mcp.models.CallerIdentity;
+import org.jawata.mcp.models.ToolResponse;
 import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.SyncReport;
-import org.jawata.mcp.ResidentDegradation;
-import org.jawata.mcp.models.ToolResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
-import org.jawata.mcp.models.CallerIdentity;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Registry for all JAWATA tools.
  * Handles tool registration, listing, and dispatching calls.
  */
-public class ToolRegistry {
+public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
 
     private static final Logger log = LoggerFactory.getLogger(ToolRegistry.class);
 
@@ -1260,14 +1267,5 @@ public class ToolRegistry {
     /** Sprint 26: install the learner event tap (application wiring). */
     public void setEventTap(org.jawata.mcp.learn.EventTap tap) {
         this.eventTap = tap;
-    }
-
-    /**
-     * Exception thrown when a tool is not found.
-     */
-    public static class ToolNotFoundException extends Exception {
-        public ToolNotFoundException(String message) {
-            super(message);
-        }
     }
 }

@@ -1,17 +1,19 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import org.jawata.mcp.engine.ToolNotFoundException;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * A RETIRED TOOL NAME IS A BROKEN CONTRACT UNLESS IT ANSWERS.
@@ -59,8 +61,8 @@ class EveryRetiredNameStillAnswersTest {
         ObjectMapper mapper = new ObjectMapper();
 
         theSix().forEach((retired, pointer) -> {
-            ToolRegistry.ToolNotFoundException thrown =
-                assertThrows(ToolRegistry.ToolNotFoundException.class,
+            ToolNotFoundException thrown =
+                assertThrows(ToolNotFoundException.class,
                     () -> registry.callTool(retired, mapper.createObjectNode()),
                     retired + " is retired and must not resolve to a tool");
             String message = thrown.getMessage();
@@ -81,8 +83,8 @@ class EveryRetiredNameStillAnswersTest {
 
         for (String folded : new String[] {"move_method", "replace_duplicates",
                 "convert_anonymous_to_lambda"}) {
-            ToolRegistry.ToolNotFoundException thrown =
-                assertThrows(ToolRegistry.ToolNotFoundException.class,
+            ToolNotFoundException thrown =
+                assertThrows(ToolNotFoundException.class,
                     () -> registry.callTool(folded, mapper.createObjectNode()));
             assertTrue(thrown.getMessage().contains("kind="),
                 folded + " folded into ONE KIND of a front door with several. Pointing at"
@@ -104,8 +106,8 @@ class EveryRetiredNameStillAnswersTest {
         // at a second name that is also not found. A hand-written list of six could not
         // see it, because `pull_up` is not one of the six.
         for (String retired : ToolRegistry.retiredNames()) {
-            ToolRegistry.ToolNotFoundException thrown =
-                assertThrows(ToolRegistry.ToolNotFoundException.class,
+            ToolNotFoundException thrown =
+                assertThrows(ToolNotFoundException.class,
                     () -> registry.callTool(retired, mapper.createObjectNode()),
                     retired + " is in the rename map, so it must not resolve to a tool");
             String pointer = ToolRegistry.pointerFor(retired);
@@ -126,8 +128,8 @@ class EveryRetiredNameStillAnswersTest {
     void anUnknownNameGetsNoPointer() {
         ToolRegistry registry = new ToolRegistry();
         ObjectMapper mapper = new ObjectMapper();
-        ToolRegistry.ToolNotFoundException thrown =
-            assertThrows(ToolRegistry.ToolNotFoundException.class,
+        ToolNotFoundException thrown =
+            assertThrows(ToolNotFoundException.class,
                 () -> registry.callTool("refactor_the_whole_thing", mapper.createObjectNode()));
         assertFalse(thrown.getMessage().contains("Did you mean"),
             "the map answers for names that WERE published; guessing for anything else"

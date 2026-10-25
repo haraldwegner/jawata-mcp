@@ -3,6 +3,8 @@ package org.jawata.mcp.execution;
 import java.util.OptionalLong;
 import java.util.logging.Logger;
 
+import org.jawata.mcp.engine.ToolCalls;
+import org.jawata.mcp.engine.ToolNotFoundException;
 import org.jawata.mcp.learn.GateOutcome;
 import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.ResponseFacts;
@@ -60,9 +62,9 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
 
     private static final Logger log = Logger.getLogger(ToolGateRunner.class.getName());
 
-    private final ToolRegistry tools;
+    private final ToolCalls tools;
 
-    public ToolGateRunner(ToolRegistry tools) {
+    public ToolGateRunner(ToolCalls tools) {
         if (tools == null) {
             throw new IllegalArgumentException("a gate runner with no tool registry can run no"
                 + " gate, and would report every step as unanswered — which is honest and useless");
@@ -78,7 +80,7 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
         ToolResponse response;
         try {
             response = tools.callTool(step.tool(), step.gateArguments());
-        } catch (ToolRegistry.ToolNotFoundException e) {
+        } catch (ToolNotFoundException e) {
             // Case 1, and this is the ONLY place it can be caught — a misspelled gate is the
             // quietest way to gate nothing at all, and so is a tool that was present when the
             // plan was read and gone when the gate ran.

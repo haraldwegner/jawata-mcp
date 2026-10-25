@@ -1,19 +1,26 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jawata.mcp.models.ToolResponse;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.jawata.mcp.engine.ToolNotFoundException;
 import org.jawata.mcp.models.CallerIdentity;
+import org.jawata.mcp.models.ToolResponse;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Unit tests for ToolRegistry.
@@ -266,7 +273,7 @@ class ToolRegistryTest {
     void callTool_throwsForMissing() {
         JsonNode args = objectMapper.createObjectNode();
 
-        assertThrows(ToolRegistry.ToolNotFoundException.class,
+        assertThrows(ToolNotFoundException.class,
             () -> registry.callTool("missing_tool", args));
     }
 

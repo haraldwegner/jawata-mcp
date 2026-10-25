@@ -1,23 +1,24 @@
 package org.jawata.mcp.tools.navigation;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.jawata.core.JdtServiceImpl;
-import org.jawata.mcp.fixtures.TestProjectHelper;
-import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.tools.SearchSymbolsTool;
-import org.jawata.mcp.tools.ToolRegistry;
-import org.jawata.mcp.tools.ToolRegistry.ToolNotFoundException;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.RegisterExtension;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.jawata.core.JdtServiceImpl;
+import org.jawata.mcp.engine.ToolNotFoundException;
+import org.jawata.mcp.fixtures.TestProjectHelper;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.SearchSymbolsTool;
+import org.jawata.mcp.tools.ToolRegistry;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Sprint 22a P2 riders: (a) search_symbols retries a bare no-wildcard query as a

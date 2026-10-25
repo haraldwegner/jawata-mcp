@@ -19,6 +19,7 @@ import java.util.TreeSet;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.jawata.mcp.engine.ToolNotFoundException;
 import org.jawata.mcp.fixtures.InertShippedTools;
 import org.jawata.mcp.protocol.McpProtocolHandler;
 import org.jawata.mcp.tools.Tool;
@@ -100,7 +101,7 @@ class PublishedToolNamesTest {
     private static String pointerAnsweredFor(String retired) {
         try {
             new ToolRegistry().callTool(retired, new ObjectMapper().createObjectNode());
-        } catch (ToolRegistry.ToolNotFoundException e) {
+        } catch (ToolNotFoundException e) {
             Matcher m = POINTER.matcher(e.getMessage());
             return m.find() ? m.group(1) : null;
         }
