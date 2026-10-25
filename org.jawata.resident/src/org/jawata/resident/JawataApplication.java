@@ -52,24 +52,7 @@ public class JawataApplication implements IApplication {
     private volatile WorkspaceFileWatcher workspaceWatcher;
     private JawataEngine jawataEngine;
 
-	/**
-     * Test hook — stand in a workspace-load state without booting Equinox.
-     *
-     * <p>The tool gate's answer depends on this application-wide state
-     * (mcp#28), and no unit test can start a real application to produce a
-     * failed load. Package-private on purpose: a public test-only member is
-     * exactly what the hollow-wiring gate refuses.
-     */
-    public static void setLoadingStateForTest(ProjectLoadingState state, String error) {
-        EngineState.current().set(state, error);
-    }
-
-    /** Test hook — a state left behind poisons every later test. */
-    public static void clearLoadingStateForTest() {
-        EngineState.current().reset();
-    }
-
-    @Override
+	@Override
     public Object start(IApplicationContext context) throws Exception {
         log.info("JAWATA MCP Server starting...");
         EngineState.current().booted();

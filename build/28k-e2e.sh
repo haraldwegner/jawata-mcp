@@ -471,8 +471,13 @@ checks = [
      and b'class="org.jawata.resident.JawataApplication"' in resident.read("plugin.xml")),
     ("the engine jar holds no application class and no extension", "org/jawata/mcp/JawataApplication.class" not in names(engine)
      and "plugin.xml" not in names(engine)),
-    ("the core jar holds no workspace-building class", not any(n.startswith(("org/jawata/core/workspace/WorkspaceManager",
-     "org/jawata/core/JdtServiceImpl", "org/jawata/core/project/ProjectImporter", "org/jawata/core/resolve/")) for n in names(core))),
+    ("the core jar holds no workspace-building class", not any(n.startswith((
+     "org/jawata/core/workspace/WorkspaceManager", "org/jawata/core/workspace/WorkspaceFileWatcher",
+     "org/jawata/core/workspace/WorkspaceSettings", "org/jawata/core/workspace/StrictDiskSync", "org/jawata/core/workspace/OwnedReconciler",
+     "org/jawata/core/JdtServiceImpl", "org/jawata/core/HeadlessModelSource",
+     "org/jawata/core/project/ProjectImporter", "org/jawata/core/project/ClasspathApplier", "org/jawata/core/project/ClasspathCache",
+     "org/jawata/core/project/ExternalBundlePool", "org/jawata/core/project/ImportResult",
+     "org/jawata/core/project/DependencyResolutionException", "org/jawata/core/resolve/")) for n in names(core))),
     ("the Gradle tooling jar travels with the resident, not with core",
      "lib/gradle-tooling-api-8.10.jar" in names(resident) and "lib/gradle-tooling-api-8.10.jar" not in names(core)),
 ]

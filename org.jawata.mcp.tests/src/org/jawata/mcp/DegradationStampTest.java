@@ -51,7 +51,7 @@ class DegradationStampTest {
 
     @AfterEach
     void clearState() {
-        JawataApplication.clearLoadingStateForTest();
+        EngineState.current().reset();
         ResidentDegradation.clearForTest();
     }
 
@@ -152,7 +152,7 @@ class DegradationStampTest {
     void aHealthyResidentIsSilent() throws Exception {
         // Without this, every assertion above would pass against a stamp that is
         // permanently on — which is a noise line, not a signal.
-        JawataApplication.setLoadingStateForTest(ProjectLoadingState.LOADED, null);
+        EngineState.current().set(ProjectLoadingState.LOADED, null);
 
         ToolResponse ok = registryWith(new ProbeTool(false))
             .callTool("probe_ok", OM.createObjectNode());
@@ -179,7 +179,7 @@ class DegradationStampTest {
         // The measured shape: project(action=list) answered {"success":true,"projects":[]}
         // while health_check knew the workspace was still loading. health_check knew;
         // the answer the agent actually read did not.
-        JawataApplication.setLoadingStateForTest(ProjectLoadingState.LOADING, null);
+        EngineState.current().set(ProjectLoadingState.LOADING, null);
 
         ToolResponse ok = registryWith(new ProbeTool(false))
             .callTool("probe_ok", OM.createObjectNode());
@@ -204,8 +204,7 @@ class DegradationStampTest {
         JdtServiceImpl copy = projects.loadProjectCopy("simple-maven");
         java.nio.file.Path root = copy.getProjectRoot();
 
-        JawataApplication.setLoadingStateForTest(ProjectLoadingState.FAILED,
-            "all 1 workspace project(s) FAILED to load — first: Maven resolution failed");
+        EngineState.current().set(ProjectLoadingState.FAILED, "all 1 workspace project(s) FAILED to load — first: Maven resolution failed");
 
         Map<?, ?> before = (Map<?, ?>) health().getData();
         assertEquals("Project load failed", before.get("status"), "the alarm is standing");
@@ -240,8 +239,7 @@ class DegradationStampTest {
         JdtServiceImpl service = projects.loadProjectCopy("simple-maven");
         java.nio.file.Path root = service.getProjectRoot();
 
-        JawataApplication.setLoadingStateForTest(ProjectLoadingState.FAILED,
-            "all 1 workspace project(s) FAILED to load — first: Maven resolution failed");
+        EngineState.current().set(ProjectLoadingState.FAILED, "all 1 workspace project(s) FAILED to load — first: Maven resolution failed");
         assertNotNull(((Map<?, ?>) health().getData()).get("degraded"), "the alarm is standing");
 
         ToolResponse added = new org.jawata.mcp.tools.AddProjectTool(() -> service, new org.jawata.resident.ResidentHostWorkspace(new org.jawata.resident.workspace.HeadlessModelSource())).execute(

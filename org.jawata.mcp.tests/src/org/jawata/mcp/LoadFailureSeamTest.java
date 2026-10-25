@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jawata.core.IJdtService;
 import org.jawata.resident.workspace.JdtServiceImpl;
+import org.jawata.mcp.engine.EngineState;
 import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.AbstractTool;
@@ -117,14 +118,13 @@ class LoadFailureSeamTest {
 
     @AfterEach
     void clearState() {
-        JawataApplication.clearLoadingStateForTest();
+        EngineState.current().reset();
     }
 
     @Test
     @DisplayName("a load-failed workspace answers PROJECT_LOAD_FAILED with the reason — never an NPE")
     void aLoadFailedWorkspaceIsRefusedWithItsReason() {
-        JawataApplication.setLoadingStateForTest(ProjectLoadingState.FAILED,
-            "all 1 workspace project(s) FAILED to load — first: jawata-mcp: Maven resolution failed");
+        EngineState.current().set(ProjectLoadingState.FAILED, "all 1 workspace project(s) FAILED to load — first: jawata-mcp: Maven resolution failed");
         ProbeTool tool = new ProbeTool(emptyService(), true);
 
         ToolResponse response = tool.execute(OM.createObjectNode());
@@ -154,7 +154,7 @@ class LoadFailureSeamTest {
     @Test
     @DisplayName("the RUNTIME tools still answer on a failed workspace — debug needs a JVM, not a model")
     void runtimeToolsAreNotGatedOnProjects() {
-        JawataApplication.setLoadingStateForTest(ProjectLoadingState.FAILED, "Maven resolution failed");
+        EngineState.current().set(ProjectLoadingState.FAILED, "Maven resolution failed");
         ProbeTool runtimeTool = new ProbeTool(emptyService(), false);
 
         ToolResponse response = runtimeTool.execute(OM.createObjectNode());
@@ -171,7 +171,7 @@ class LoadFailureSeamTest {
         // The enum is written only on the boot paths — a later successful
         // load_project never clears it. Gating on FAILED would therefore refuse
         // every tool on a workspace that has since recovered.
-        JawataApplication.setLoadingStateForTest(ProjectLoadingState.FAILED, "the old failure");
+        EngineState.current().set(ProjectLoadingState.FAILED, "the old failure");
         IJdtService loaded = projects.loadProjectCopy("simple-maven");
         ProbeTool tool = new ProbeTool(loaded, true);
 

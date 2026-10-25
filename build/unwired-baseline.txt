@@ -165,7 +165,5 @@ org.jawata.mcp.transport.HttpTransport#getActualPort()
 org.jawata.mcp.transport.HttpTransport#sendEvent(String,String)
 # 28k Stage 7: test seams of the classes that moved into org.jawata.resident. Their tests stay in the core and mcp test fragments, which
 # now reach the resident across a bundle boundary, so the seams are public. The product never calls a test seam.
-org.jawata.resident.JawataApplication#clearLoadingStateForTest()
-org.jawata.resident.JawataApplication#setLoadingStateForTest(ProjectLoadingState,String)
 org.jawata.resident.project.ClasspathCache#clearMemory()
 org.jawata.resident.workspace.JdtServiceImpl#expireDroppedKeyForTest(String)
