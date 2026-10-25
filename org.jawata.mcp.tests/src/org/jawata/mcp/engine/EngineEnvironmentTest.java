@@ -98,6 +98,26 @@ class EngineEnvironmentTest {
             public Path toolsDir() {
                 return Path.of("/host/tools");
             }
+
+            @Override
+            public Optional<Path> dataDir() {
+                return NO_FOLDERS.dataDir();
+            }
+
+            @Override
+            public Optional<Path> workspaceRoot() {
+                return NO_FOLDERS.workspaceRoot();
+            }
+
+            @Override
+            public Path fieldDir() {
+                return Path.of("/host/field");
+            }
+
+            @Override
+            public java.util.List<Path> memoryRoots() {
+                return java.util.List.of();
+            }
         });
 
         assertEquals(Path.of("/host/runtime"), new RuntimeArtifactStore().root());
@@ -124,6 +144,26 @@ class EngineEnvironmentTest {
                 @Override
                 public Path toolsDir() {
                     return tools;
+                }
+
+                @Override
+                public Optional<Path> dataDir() {
+                    return NO_FOLDERS.dataDir();
+                }
+
+                @Override
+                public Optional<Path> workspaceRoot() {
+                    return NO_FOLDERS.workspaceRoot();
+                }
+
+                @Override
+                public Path fieldDir() {
+                    return NO_FOLDERS.fieldDir();
+                }
+
+                @Override
+                public java.util.List<Path> memoryRoots() {
+                    return NO_FOLDERS.memoryRoots();
                 }
             });
 

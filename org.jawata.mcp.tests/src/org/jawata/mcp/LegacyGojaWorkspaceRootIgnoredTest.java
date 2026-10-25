@@ -1,5 +1,6 @@
 package org.jawata.mcp;
 
+import org.jawata.mcp.engine.ResidentDirectories;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * Sprint 22d Stage A (carried obligation D6), workspace-root half: the
  * {@code goja.workspace.root} property fallback is GONE — a root supplied
  * only under the legacy name is ignored by
- * {@link JawataApplication#resolveWorkspaceRoot}.
+ * {@link ResidentDirectories#resolveWorkspaceRoot}.
  */
 class LegacyGojaWorkspaceRootIgnoredTest {
 
@@ -50,7 +51,7 @@ class LegacyGojaWorkspaceRootIgnoredTest {
     @DisplayName("goja.workspace.root is ignored — resolution falls through, never the legacy value")
     void legacyWorkspaceRootPropertyIsIgnored() {
         System.setProperty(GOJA_ROOT, "/tmp/legacy-goja-root");
-        assertNull(JawataApplication.resolveWorkspaceRoot(null),
+        assertNull(ResidentDirectories.resolveWorkspaceRoot(null),
             "with no jawata.workspace.root and no data dir, resolution must yield null — "
                 + "never the legacy goja value");
     }
@@ -61,7 +62,7 @@ class LegacyGojaWorkspaceRootIgnoredTest {
         System.setProperty(JAWATA_ROOT, "/tmp/jawata-root");
         System.setProperty(GOJA_ROOT, "/tmp/legacy-goja-root");
         assertEquals(Path.of("/tmp/jawata-root"),
-            JawataApplication.resolveWorkspaceRoot(null),
+            ResidentDirectories.resolveWorkspaceRoot(null),
             "the jawata name is the only accepted property");
     }
 }

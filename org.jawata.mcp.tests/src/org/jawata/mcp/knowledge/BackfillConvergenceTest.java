@@ -5,12 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.function.BooleanSupplier;
 
+import org.jawata.mcp.JawataEngine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import org.jawata.mcp.JawataApplication;
 
 /**
  * Sprint 27a Stage 3b — the backfill is a STARTUP RECONCILIATION: it embeds
@@ -19,7 +18,7 @@ import org.jawata.mcp.JawataApplication;
  * <p>The defect it fixes: the old code embedded one batch of 1,000 per start and
  * stopped, so a store larger than that stayed permanently part-embedded (the
  * live store sat at 1,037 of 2,080). This drives the extracted loop
- * ({@link JawataApplication#reconcileEmbeddings}) directly — the actual
+ * ({@link JawataEngine#reconcileEmbeddings}) directly — the actual
  * deliverable, not a proxy — on a store LARGER than one batch, and proves it
  * reaches zero, stops there without spinning, and exits cleanly (and resumably)
  * on an interrupt.</p>
@@ -68,7 +67,7 @@ class BackfillConvergenceTest {
         // 150 rows permanently without a vector.
         seedUnembedded(250);
 
-        int embedded = JawataApplication.reconcileEmbeddings(index, 100, () -> false);
+        int embedded = JawataEngine.reconcileEmbeddings(index, 100, () -> false);
 
         assertEquals(250, embedded, "every unembedded row must get a vector in one lifetime");
         assertEquals(0, index.totalCount("experience_entry")
@@ -92,7 +91,7 @@ class BackfillConvergenceTest {
         assertTrue(index.remainingUnembedded() >= 120,
             "before reconciling, the store-wide remaining count sees the unembedded rows");
 
-        JawataApplication.reconcileEmbeddings(index, 100, () -> false);
+        JawataEngine.reconcileEmbeddings(index, 100, () -> false);
 
         assertEquals(0, index.remainingUnembedded(),
             "after convergence the store-wide count is zero — the value the "
@@ -102,12 +101,12 @@ class BackfillConvergenceTest {
     @Test
     void it_stops_at_delta_zero_and_does_not_spin() throws Exception {
         seedUnembedded(120);
-        JawataApplication.reconcileEmbeddings(index, 100, () -> false);   // converge
+        JawataEngine.reconcileEmbeddings(index, 100, () -> false);   // converge
 
         // A second run has nothing to do. It must return 0 and TERMINATE — the
         // loop's exit is backfill returning 0, not a condition it re-polls, so a
         // closed delta cannot spin.
-        int again = JawataApplication.reconcileEmbeddings(index, 100, () -> false);
+        int again = JawataEngine.reconcileEmbeddings(index, 100, () -> false);
         assertEquals(0, again, "a closed delta embeds nothing and the loop ends");
     }
 
@@ -127,7 +126,7 @@ class BackfillConvergenceTest {
         seedUnembedded(250);
         Thread.currentThread().interrupt();          // the shutdown signal
         try {
-            int embedded = JawataApplication.reconcileEmbeddings(index, 100,
+            int embedded = JawataEngine.reconcileEmbeddings(index, 100,
                 () -> Thread.currentThread().isInterrupted());   // production's own supplier
             assertEquals(0, embedded,
                 "an already-interrupted thread must embed nothing — the loop checks "
@@ -151,7 +150,7 @@ class BackfillConvergenceTest {
                 return checks++ >= 1;
             }
         };
-        int embedded = JawataApplication.reconcileEmbeddings(index, 100, afterOnePass);
+        int embedded = JawataEngine.reconcileEmbeddings(index, 100, afterOnePass);
 
         assertEquals(100, embedded, "exactly one batch ran before the interrupt");
         long remaining = index.totalCount("experience_entry")

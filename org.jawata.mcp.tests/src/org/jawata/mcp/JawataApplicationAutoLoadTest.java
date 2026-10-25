@@ -1,5 +1,6 @@
 package org.jawata.mcp;
 
+import org.jawata.mcp.engine.ResidentDirectories;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -27,7 +28,7 @@ class JawataApplicationAutoLoadTest {
         Path workspaceJson = dataDir.resolve("workspace.json");
         Files.writeString(workspaceJson, "{\"name\":\"T\",\"projects\":[],\"version\":1}");
 
-        Path found = JawataApplication.findWorkspaceJson(dataDir);
+        Path found = ResidentDirectories.findWorkspaceJson(dataDir);
 
         assertNotNull(found, "should find workspace.json directly in the data dir");
         assertEquals(workspaceJson.toRealPath(), found.toRealPath());
@@ -42,7 +43,7 @@ class JawataApplicationAutoLoadTest {
         Files.writeString(workspaceJson, "{\"name\":\"T\",\"projects\":[],\"version\":1}");
         Path sessionDir = Files.createDirectory(workspaceRoot.resolve("abc12345"));
 
-        Path found = JawataApplication.findWorkspaceJson(sessionDir);
+        Path found = ResidentDirectories.findWorkspaceJson(sessionDir);
 
         assertNotNull(found, "should walk up one level and find workspace.json at workspace root");
         assertEquals(workspaceJson.toRealPath(), found.toRealPath());
@@ -57,7 +58,7 @@ class JawataApplicationAutoLoadTest {
         Path immediateJson = sessionDir.resolve("workspace.json");
         Files.writeString(immediateJson, "{\"name\":\"IMMEDIATE\",\"projects\":[],\"version\":1}");
 
-        Path found = JawataApplication.findWorkspaceJson(sessionDir);
+        Path found = ResidentDirectories.findWorkspaceJson(sessionDir);
 
         assertNotNull(found);
         assertEquals(immediateJson.toRealPath(), found.toRealPath(),
@@ -69,7 +70,7 @@ class JawataApplicationAutoLoadTest {
     void findWorkspaceJson_neitherLevelHasFile_returnsNull(@TempDir Path workspaceRoot) throws Exception {
         Path sessionDir = Files.createDirectory(workspaceRoot.resolve("abc12345"));
 
-        Path found = JawataApplication.findWorkspaceJson(sessionDir);
+        Path found = ResidentDirectories.findWorkspaceJson(sessionDir);
 
         assertNull(found);
     }
@@ -77,7 +78,7 @@ class JawataApplicationAutoLoadTest {
     @Test
     @DisplayName("findWorkspaceJson returns null on null dataDir input")
     void findWorkspaceJson_nullInput_returnsNull() {
-        assertNull(JawataApplication.findWorkspaceJson(null));
+        assertNull(ResidentDirectories.findWorkspaceJson(null));
     }
 
     @Test
@@ -88,7 +89,7 @@ class JawataApplicationAutoLoadTest {
         Path sessionDir = Files.createDirectory(workspaceRoot.resolve("abc12345"));
         Files.createDirectory(sessionDir.resolve("workspace.json"));
 
-        Path found = JawataApplication.findWorkspaceJson(sessionDir);
+        Path found = ResidentDirectories.findWorkspaceJson(sessionDir);
 
         assertNull(found, "directory should not match isRegularFile probe");
     }
@@ -100,7 +101,7 @@ class JawataApplicationAutoLoadTest {
     void resolveWorkspaceRoot_prefersLauncherProperty(@TempDir Path real, @TempDir Path other) {
         System.setProperty("jawata.workspace.root", real.toString());
         try {
-            assertEquals(real, JawataApplication.resolveWorkspaceRoot(other));
+            assertEquals(real, ResidentDirectories.resolveWorkspaceRoot(other));
         } finally {
             System.clearProperty("jawata.workspace.root");
         }
@@ -113,15 +114,15 @@ class JawataApplicationAutoLoadTest {
         Files.writeString(root.resolve("workspace.json"), "{\"name\":\"T\",\"projects\":[],\"version\":1}");
         Path sessionDir = Files.createDirectory(root.resolve("abc12345"));
         assertEquals(root.toRealPath(),
-            JawataApplication.resolveWorkspaceRoot(sessionDir).toRealPath(),
+            ResidentDirectories.resolveWorkspaceRoot(sessionDir).toRealPath(),
             "session dir resolves to its workspace.json parent");
 
         // A root with no workspace.json anywhere (own @TempDir — the parent must not have one).
         Path bare = Files.createDirectory(bareRoot.resolve("bare"));
-        assertEquals(bare, JawataApplication.resolveWorkspaceRoot(bare),
+        assertEquals(bare, ResidentDirectories.resolveWorkspaceRoot(bare),
             "no workspace.json anywhere → the data dir itself");
 
-        assertNull(JawataApplication.resolveWorkspaceRoot(null));
+        assertNull(ResidentDirectories.resolveWorkspaceRoot(null));
     }
 
     // --- Sprint 21a (item C): default memory roots -----------------------------------------
@@ -140,7 +141,7 @@ class JawataApplicationAutoLoadTest {
         Files.createDirectories(home.resolve(".claude"));
         Files.writeString(home.resolve(".claude").resolve("CLAUDE.md"), "global rules");
         Files.createDirectories(home.resolve(".claude").resolve("projects")
-            .resolve(JawataApplication.sanitizeProjectDir(proj)).resolve("memory"));
+            .resolve(ResidentDirectories.sanitizeProjectDir(proj)).resolve("memory"));
         return proj;
     }
 
@@ -149,12 +150,12 @@ class JawataApplicationAutoLoadTest {
     void defaultMemoryRoots_layering(@TempDir Path home) throws Exception {
         Path proj = layeredCorpus(home);
         Path memDir = home.resolve(".claude").resolve("projects")
-            .resolve(JawataApplication.sanitizeProjectDir(proj)).resolve("memory");
+            .resolve(ResidentDirectories.sanitizeProjectDir(proj)).resolve("memory");
 
         // Sprint 28e (mcp#58): this test used to pass an extra root here and expect SIX —
         // the extra PLUS the five below. Discovery is now the unconfigured mode, so the
         // extra root moved to its own test and this one keeps its real subject: layering.
-        var roots = JawataApplication.defaultMemoryRoots(home, java.util.List.of(proj), null);
+        var roots = ResidentDirectories.defaultMemoryRoots(home, java.util.List.of(proj), null);
 
         assertAll(
             () -> assertTrue(roots.contains(home.resolve(".claude").resolve("CLAUDE.md")),
@@ -173,7 +174,7 @@ class JawataApplicationAutoLoadTest {
         Path proj = layeredCorpus(home);
         Path substrate = Files.createDirectories(home.resolve("enterprise").resolve("knowledge"));
 
-        var roots = JawataApplication.defaultMemoryRoots(home, java.util.List.of(proj),
+        var roots = ResidentDirectories.defaultMemoryRoots(home, java.util.List.of(proj),
             substrate.toString());
 
         assertAll(
@@ -188,7 +189,7 @@ class JawataApplicationAutoLoadTest {
             () -> assertFalse(roots.contains(proj.resolve("CLAUDE.md")),
                 "nor the project CLAUDE.md"),
             () -> assertFalse(roots.contains(home.resolve(".claude").resolve("projects")
-                    .resolve(JawataApplication.sanitizeProjectDir(proj)).resolve("memory")),
+                    .resolve(ResidentDirectories.sanitizeProjectDir(proj)).resolve("memory")),
                 "nor the per-project memory dir — studio#34's auto-seed-on-deploy is the"
                     + " caller this one is about"));
     }
@@ -198,7 +199,7 @@ class JawataApplicationAutoLoadTest {
     void defaultMemoryRoots_configuredButMissingDoesNotFallBack(@TempDir Path home) throws Exception {
         Path proj = layeredCorpus(home);
 
-        var roots = JawataApplication.defaultMemoryRoots(home, java.util.List.of(proj),
+        var roots = ResidentDirectories.defaultMemoryRoots(home, java.util.List.of(proj),
             home.resolve("no-such-substrate").toString());
 
         // The branch is on "was a substrate CONFIGURED", never on "did it resolve". Falling
@@ -232,7 +233,7 @@ class JawataApplicationAutoLoadTest {
         Files.writeString(copilot, "copilot rules");
         Path windsurf = Files.writeString(proj.resolve(".windsurfrules"), "windsurf rules");
 
-        var roots = JawataApplication.defaultMemoryRoots(home, java.util.List.of(proj), null);
+        var roots = ResidentDirectories.defaultMemoryRoots(home, java.util.List.of(proj), null);
 
         assertTrue(roots.contains(otherMem), "every ~/.claude/projects/*/memory dir, not just this workspace's");
         assertTrue(roots.contains(cursorRules), "Cursor project rules dir");
@@ -250,8 +251,8 @@ class JawataApplicationAutoLoadTest {
         Path json = dir.resolve("workspace.json");
         Files.writeString(json, "{\"name\":\"w\",\"projects\":[\"/a/one\",\"/b/two\"],\"version\":1}");
         assertEquals(java.util.List.of(Path.of("/a/one"), Path.of("/b/two")),
-            JawataApplication.readProjects(json));
-        assertTrue(JawataApplication.readProjects(dir.resolve("nope.json")).isEmpty());
+            ResidentDirectories.readProjects(json));
+        assertTrue(ResidentDirectories.readProjects(dir.resolve("nope.json")).isEmpty());
     }
 
     // --- Sprint 21a (item B): provenance facets from workspace.json -----------------------
@@ -263,7 +264,7 @@ class JawataApplicationAutoLoadTest {
         Files.writeString(json,
             "{\"name\":\"jawata\",\"projects\":[\"/home/x/CursorProjects/jawata-mcp\"],\"version\":1}");
 
-        String[] prov = JawataApplication.readProvenance(json);
+        String[] prov = ResidentDirectories.readProvenance(json);
 
         assertEquals("jawata", prov[0]);
         assertEquals("/home/x/CursorProjects/jawata-mcp", prov[1]);
@@ -276,11 +277,11 @@ class JawataApplicationAutoLoadTest {
         Path json = wsDir.resolve("workspace.json");
         Files.writeString(json, "{\"projects\":[],\"version\":1}");
 
-        String[] prov = JawataApplication.readProvenance(json);
+        String[] prov = ResidentDirectories.readProvenance(json);
         assertEquals("my-workspace", prov[0], "dir name stands in for a missing 'name'");
         assertNull(prov[1], "no projects → null projectId");
 
-        String[] missing = JawataApplication.readProvenance(root.resolve("no-such.json"));
+        String[] missing = ResidentDirectories.readProvenance(root.resolve("no-such.json"));
         assertNull(missing[0]);
         assertNull(missing[1]);
     }

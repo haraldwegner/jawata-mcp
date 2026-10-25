@@ -17,31 +17,20 @@ import org.jawata.mcp.engine.EngineState;
 import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.engine.ResidentDirectories;
 import org.jawata.mcp.engine.ResidentEndpointPolicy;
+import org.jawata.mcp.engine.ResidentHost;
 import org.jawata.mcp.engine.ResidentHostWorkspace;
 import org.jawata.mcp.engine.ResidentJavaBinding;
 import org.jawata.mcp.engine.ResidentLifecycle;
 import org.jawata.mcp.engine.ResidentSettings;
-import org.jawata.mcp.engine.SettingKeys;
-import org.jawata.mcp.knowledge.CatalogueOrigin;
-import org.jawata.mcp.knowledge.CatalogueSeeder;
-import org.jawata.mcp.knowledge.CatalogueSources;
-import org.jawata.mcp.knowledge.ExperienceAdvisor;
 import org.jawata.mcp.knowledge.ExperienceStore;
-import org.jawata.mcp.knowledge.H2ExperienceStore;
-import org.jawata.mcp.protocol.McpProtocolHandler;
-import org.jawata.mcp.tools.ExperienceTool;
-import org.jawata.mcp.tools.FindQualityIssueTool;
-import org.jawata.mcp.tools.ToolRegistry;
 import org.jawata.mcp.transport.HttpTransport;
 import org.jawata.mcp.transport.ResolvedToken;
 import org.jawata.mcp.transport.StdioTransport;
 import org.jawata.mcp.transport.Transport;
 import org.jawata.mcp.transport.TransportConfig;
+import org.jawata.spi.host.EndpointPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * OSGi application entry point for JAWATA MCP server.
@@ -52,7 +41,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  */
 public class JawataApplication implements IApplication {
 
-    private static final Logger log = LoggerFactory.getLogger(JawataApplication.class);
+    public static final Logger log = LoggerFactory.getLogger(JawataApplication.class);
 
     // E14: the workspace service is the Java binding's model; the binding and the host workspace are what the tools are given.
     private final HeadlessModelSource model = new HeadlessModelSource();
@@ -60,47 +49,13 @@ public class JawataApplication implements IApplication {
     private final ResidentHostWorkspace hostWorkspace = new ResidentHostWorkspace(model);
     // E16: what a listener failure means for this process (status 13 or 70); the engine's transport only reports it.
     private final ResidentLifecycle lifecycle = new ResidentLifecycle(this::closeActiveTransport);
-    // Sprint 14b: session-scoped cache backing the refactoring apply/undo
-    // contract (staged Changes + undo handles, TTL + LRU bounded).
-    private final RefactoringChangeCache refactoringChangeCache = new RefactoringChangeCache();
-
-    /**
-     * Sprint 24 (D5): the live debug sessions. One registry for the server, so a
-     * session outlives the tool call that made it but never the server itself —
-     * a launched JVM with nobody left to reap it is an orphan.
-     */
-    private final org.jawata.mcp.runtime.RuntimeSessionRegistry runtimeSessions =
-        new org.jawata.mcp.runtime.RuntimeSessionRegistry();
-    private ToolRegistry toolRegistry;
-    // Sprint 21 (v2.0): the local experience/knowledge store — workspace-scoped H2,
-    // opened at start()/closed at stop(). Backs the ExperienceAdvisor + store tools.
-    private ExperienceStore experienceStore;
-
-    /**
-     * The learner-event journal, or NULL on the degraded path (Sprint 28g S16).
-     *
-     * <p>It rides the experience store's H2 file, so a non-H2 store has none — which is a state
-     * this class already branches on and already logs. It is a field because {@code hire} needs
-     * the same journal a hired run's record lands in and is registered in another method; a second
-     * instance over the same database would write the same rows and would be a second answer to
-     * "where does a record go".</p>
-     */
-    private org.jawata.mcp.knowledge.LearnerEventStore learnerEvents;
-    /** Sprint 26: kept for the watch engine's detector binding. */
-    private FindQualityIssueTool findQualityIssueTool;
-    /** Sprint 21b (item D): held for the automatic post-project-load refresh. */
-    private ExperienceTool experienceTool;
-    /** Sprint 27a D2: held so the quality ledger reaches the pre-advice surface. */
-    private ExperienceAdvisor experienceAdvisor;
-    private McpProtocolHandler protocolHandler;
+    // E17/E18: this process is the host of the engine's settings and folders: its system properties, and the folders worked out from them.
+    private final ResidentSettings settings = new ResidentSettings();
+    private final ResidentDirectories directories = new ResidentDirectories(settings);
     private volatile WorkspaceFileWatcher workspaceWatcher;
-    private volatile Transport activeTransport;
-    /** Sprint 27a Stage 3b: interrupted at shutdown so the reconciliation loop exits. */
-    private volatile Thread embeddingBackfillThread;
-    /** Sprint 28g S13-9: the daily store copy's schedule; interrupted at shutdown. */
-    private volatile Thread scheduledBackupThread;
+    private JawataEngine jawataEngine;
 
-    /**
+	/**
      * Test hook — stand in a workspace-load state without booting Equinox.
      *
      * <p>The tool gate's answer depends on this application-wide state
@@ -127,8 +82,7 @@ public class JawataApplication implements IApplication {
         // gets this from JDT-UI activation, a headless embedder must do it.
         // E15: the config stands down when the host has done the setup; the engine that runs alone says so.
         // E17: and the host of the engine's settings and folders is this process: its system properties, and the folders worked out from them.
-        ResidentSettings settings = new ResidentSettings();
-        EngineEnvironment.hostedBy(settings, new ResidentDirectories(settings));
+        EngineEnvironment.hostedBy(settings, directories);
         org.jawata.mcp.tools.shared.HeadlessJdtConfig.hostedBy(javaBinding);
         org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
 
@@ -140,211 +94,13 @@ public class JawataApplication implements IApplication {
         TransportConfig transportConfig = TransportConfig.fromArgs(cliArgs);
         log.info("Transport selection: {}", transportConfig);
 
+        // E18: everything only this process knows goes into one host, and the engine is built from it.
+        jawataEngine = new JawataEngine(
+            new ResidentHost(hostWorkspace, lifecycle, endpointPolicy(transportConfig), settings, directories, javaBinding),
+            new RefactoringChangeCache(), new org.jawata.mcp.runtime.RuntimeSessionRegistry());
+
         // Initialize tool registry and register tools
-        toolRegistry = new ToolRegistry();
-        // Sprint 21 (v2.0): open the workspace-scoped experience store before registering
-        // tools, so store-backed tools + the ExperienceAdvisor can be wired with it.
-        // Sprint 21a (item B): a store that cannot open read-write (e.g. written by a NEWER
-        // resident) must not kill the server — degrade to in-memory and say so.
-        experienceStore = openExperienceStore();
-        registerTools();
-
-        // v3.2.1 (dogfood #1): while the store is degraded, EVERY answer says so.
-        if (experienceStore instanceof org.jawata.mcp.knowledge.RecoveringExperienceStore r) {
-            toolRegistry.setStoreNotice(r::degradedNotice);
-        }
-
-        // Sprint 28b D1: the sanitized field recording — file-based (append-only
-        // JSONL under <workspace>/field/), independent of the store, so it works
-        // in the degraded branch too. Shapes, never content: every value crosses
-        // the Token whitelist. Studio reads the same file and folds it itself.
-        org.jawata.mcp.field.ClientDirectory clientDirectory =
-            new org.jawata.mcp.field.ClientDirectory();
-        String bundleVersion = null;
-        org.osgi.framework.Bundle bundle =
-            org.osgi.framework.FrameworkUtil.getBundle(JawataApplication.class);
-        if (bundle != null) {
-            bundleVersion = bundle.getVersion().toString();
-        }
-        org.jawata.mcp.field.FieldRecorder fieldRecorder =
-            new org.jawata.mcp.field.FieldRecorder(
-                new org.jawata.mcp.field.FieldPile(fieldDir()),
-                clientDirectory, bundleVersion);
-
-        // Sprint 26: the event tap — every tool outcome becomes a learner
-        // label as a side effect of the call (D7: training is a side effect
-        // of use). Rides the store's H2 file; a non-H2 (degraded) store means
-        // ledger-only tapping, stated in the log.
-        if (experienceStore instanceof org.jawata.mcp.knowledge.H2ExperienceStore h2) {
-            // Sprint 28g S16: a FIELD rather than a local, because `hire` needs the same journal
-            // and is registered in another method. It stays NULL on the degraded path, which is
-            // the condition this `if` already expresses — and `hire` reports that absence rather
-            // than disappearing from the published tool list, where no client could see it.
-            learnerEvents = new org.jawata.mcp.knowledge.LearnerEventStore(h2);
-            org.jawata.mcp.learn.SessionLedger sessionLedger =
-                new org.jawata.mcp.learn.SessionLedger();
-            org.jawata.mcp.learn.EventTap eventTap = new org.jawata.mcp.learn.EventTap(
-                sessionLedger, learnerEvents);
-            // Sprint 26a D2: the experience loop's selective capture lane —
-            // outcome-bearing events (a mutate's compile result, a tool error) →
-            // tool_experience, read back by the baseline retriever (Stage 2).
-            org.jawata.mcp.knowledge.ToolExperienceStore toolExperienceStore =
-                new org.jawata.mcp.knowledge.ToolExperienceStore(h2);
-            org.jawata.mcp.learn.ToolExperienceRecorder toolExperienceRecorder =
-                new org.jawata.mcp.learn.ToolExperienceRecorder(toolExperienceStore);
-            eventTap.setToolExperienceRecorder(toolExperienceRecorder);
-            // Sprint 28b D1: the field recording rides the same tap.
-            eventTap.setFieldRecorder(fieldRecorder);
-            // Sprint 28c D14 (v13): the origin stamp rides it too — the tap is
-            // the one place that has the session id, and the directory is the
-            // one place that knows what client that session declared. The store
-            // receives the closed-vocabulary token's value, never a raw name.
-            final org.jawata.mcp.knowledge.ExperienceStore stampTarget = experienceStore;
-            eventTap.setOriginStamper((sessionId, entryId) ->
-                stampTarget.setOriginClient(entryId,
-                    clientDirectory.clientOf(sessionId).value()));
-            // Sprint 27 D6: the quality ledger — every counter advances as a side
-            // effect of normal use, which is the only way Sprint 33 gets evidence
-            // nobody had to remember to collect. Installed on all four producers
-            // here, in one place, so no surface can be shipped uncounted.
-            org.jawata.mcp.knowledge.QualityLedger qualityLedger =
-                new org.jawata.mcp.knowledge.QualityLedger(h2);
-            toolRegistry.setQualityLedger(qualityLedger);
-            toolExperienceRecorder.setQualityLedger(qualityLedger,
-                toolRegistry.precedentLedger());
-            if (experienceAdvisor != null) {
-                // Sprint 27a D2: the fourth producer. Without this the pre-advice
-                // surface reaches the agent uncounted — built, wired, and
-                // invisible to the honesty surface, which is the shape this
-                // ledger exists to prevent.
-                experienceAdvisor.setQualityLedger(qualityLedger);
-            }
-            if (experienceTool != null) {
-                experienceTool.setQualityLedger(qualityLedger);
-                // Sprint 28c D9: the lane a declared shell-fallback goes to. Wired
-                // in the SAME block as the ledger and for the same reason — an
-                // unwired collaborator here would make the fallback verb refuse
-                // every declaration, which the hook would see as an outage.
-                experienceTool.setToolExperienceStore(toolExperienceStore);
-                // Sprint 28g S21: the transcript lane, installed here for the same reason as the
-                // tool lane above. A resident without it answers every call that names the lane
-                // with "not installed" and refuses to store a turn: said, never silent.
-                experienceTool.setTranscriptStore(new org.jawata.mcp.knowledge.TranscriptStore(h2));
-            } else {
-                // registerTools() runs above, so this cannot happen today — and if
-                // a reordering ever makes it happen, the symptom would be a quality
-                // block that stays empty and reads like "nothing has happened yet".
-                // Say it instead.
-                log.error("Quality ledger NOT wired to the experience tool — the recall"
-                    + " surfaces will not be counted and stats will show no quality block");
-            }
-            // Sprint 27 D3: the seam swap this interface was built for — the
-            // semantic retriever gathers keyword ∪ meaning-near captures. The
-            // identity/advisory split lives at the choke (IdentityMatch); a
-            // broken embedder degrades this to exactly the keyword baseline.
-            toolRegistry.setPrecedentRetriever(
-                new org.jawata.mcp.learn.EmbeddingPrecedentRetriever(toolExperienceStore,
-                    new org.jawata.mcp.knowledge.EmbeddingIndex(h2,
-                        org.jawata.mcp.knowledge.EmbeddingService.shared())));
-            // v3.4.1: EMBED WHAT IS ALREADY THERE. Entries written from now on are
-            // embedded as they are stored, but a store that predates this build —
-            // which is every real one — holds thousands of rows with no vector, and
-            // meaning-based recall simply cannot see them. v3.4.0 shipped with this
-            // call existing, tested, and made by nobody: recall by meaning was
-            // therefore inert on every corpus that mattered.
-            //
-            // Bounded and on a daemon thread: embedding ~2000 entries takes minutes,
-            // and start-up must not wait for it. Each pass takes a batch and the
-            // next start takes the next, so a large store converges over a few
-            // restarts while staying keyword-reachable throughout.
-            startEmbeddingBackfill(h2);
-            // REL44-8 (cold start): the first recall after a restart built the corpus, read the
-            // vectors and loaded the embedder while the hook waited — ~710 ms on a 10,189-row
-            // store, against a 200 ms budget. Build them here, off the serving path.
-            startRecallWarmUp();
-            // Sprint 28g S13-9: the daily copy. Harald, 2026-10-14: "it should make backups
-            // every day" — on that day the newest copy was a month old, because copies were
-            // only ever taken before a destructive verb.
-            startScheduledBackups(h2);
-            // Sprint 26a D3b: the deterministic architect-involvement gate — the
-            // rule that replaces the retired edit-switch model.
-            toolRegistry.setArchitectGate(new org.jawata.mcp.learn.ArchitectGate(
-                org.jawata.mcp.learn.ArchitectGate.DEFAULT_LOC_THRESHOLD));
-            toolRegistry.setEventTap(eventTap);
-            // D4/D5/D3: the server-side lane — defects file into the store.
-            org.jawata.mcp.learn.ServerChecks serverChecks =
-                new org.jawata.mcp.learn.ServerChecks(learnerEvents,
-                    (summary, details) -> {
-                        try {
-                            experienceStore.put(org.jawata.mcp.knowledge.SymbolFact
-                                .of("defect", summary + " — " + details,
-                                    org.jawata.mcp.knowledge.Confidence.HIGH).build());
-                        } catch (Exception e) {
-                            log.error("DEFECT FILING FAILED — the relax label is now"
-                                + " unaccompanied: {}", summary, e);
-                        }
-                    });
-            toolRegistry.setServerChecks(serverChecks);
-            sessionLedger.setEvictionListener(serverChecks::onSessionEvicted);
-            // Sprint 26a D4 / v3.3.1: the edit-switch model is RETIRED and its
-            // reporting kinds (train|learner_status|observe_edit) are GONE with the
-            // /train command, so the experience tool no longer needs the capture
-            // lane. The deterministic architect gate + the experience loop replace
-            // the model; the loop's own capture wiring is below, unaffected.
-            // D1: the automatic architect — detectors bound to the quality
-            // tool's own single-file path (no second detector surface).
-            toolRegistry.setWatchEngine(new org.jawata.mcp.learn.WatchEngine(
-                (kind, filePath) -> {
-                    com.fasterxml.jackson.databind.node.ObjectNode args =
-                        new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
-                    args.put("kind", kind);
-                    args.put("filePath", filePath);
-                    return findQualityIssueTool.execute(args);
-                }, learnerEvents));
-            log.info("Learner event tap + watch engine wired");
-        } else {
-            org.jawata.mcp.learn.EventTap degradedTap = new org.jawata.mcp.learn.EventTap(
-                new org.jawata.mcp.learn.SessionLedger(), null);
-            // Sprint 28b D1: the field recording is file-based and survives a
-            // degraded store — the utilization signal must not vanish with H2.
-            degradedTap.setFieldRecorder(fieldRecorder);
-            toolRegistry.setEventTap(degradedTap);
-            log.warn("Learner event tap running LEDGER-ONLY — no persistent store"
-                + " (degraded experience store); the label stream is not persisted");
-        }
-
-        // Initialize protocol handler
-        protocolHandler = new McpProtocolHandler(toolRegistry);
-        // Sprint 28b D1: session → client attribution for the field recording.
-        protocolHandler.setClientDirectory(clientDirectory);
-
-        log.info("Registered {} tools", toolRegistry.getToolCount());
-
-        // Sprint 28d-rescue (P1). Every tool has now fed its operations into the
-        // registry, so this is the first moment the question "does anything back this
-        // cure step?" has a true answer. It THROWS on a table naming a step nothing
-        // publishes — boot fails loudly rather than serving a cure that would refuse at
-        // the front door. It used to run in CureCatalog's static initializer, which can
-        // no longer work: the registry is populated by registration, and a class-load
-        // before that would refuse every step for a reason about ordering.
-        org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(
-            org.jawata.mcp.change.OperationRegistry.theRegistry());
-
-        // Sprint 28g D39 / the architecture's P2 step 3. The same moment, and the same reason:
-        // every tool has registered, so this is the first point at which the engine's coverage
-        // declaration can be checked against what it actually publishes. It THROWS on a
-        // declaration that disagrees with the shipped surface, exactly as the cure table above
-        // does.
-        //
-        // THIS COMMENT ALSO CLAIMED "the first point at which a catalogue row key can be
-        // answered from production", and that was false: the index it referred to had no
-        // reader and is withdrawn. What this call buys is that the declaration is READ by
-        // production at all — the catalogue stops being code only its own tests touch — and
-        // that the product can STATE what it performs. Answering a row key is §4-B's index,
-        // which is owed; see JavaEngineCoverage and OperationRegistry.
-        int coveredRows = org.jawata.mcp.catalogue.JavaEngineCoverage.verifyAgainstShippedDoors();
-        log.info("This engine performs {} of {} catalogue refactorings", coveredRows,
-            org.jawata.catalogue.Refactorings.all().size());
+        jawataEngine.assemble();
 
         // Sprint 28a (D11): install this server's workspace identity BEFORE the
         // message loop, from the same workspace.json the async load will read —
@@ -364,198 +120,6 @@ public class JawataApplication implements IApplication {
 
         log.info("JAWATA MCP Server stopped");
         return exit;
-    }
-
-    /**
-     * The embedding index over the experience store, or {@code null} when the
-     * store is not an H2 one (the meaning path needs the H2 vector column).
-     *
-     * <p>One place that builds it, so every surface that runs meaning recall —
-     * the front door, the pre-advice, dispatch — is wired the same way and none
-     * silently gets the keyword-only retriever.</p>
-     */
-    private org.jawata.mcp.knowledge.EmbeddingIndex experienceEmbeddingIndex() {
-        if (experienceStore instanceof org.jawata.mcp.knowledge.H2ExperienceStore h2) {
-            return new org.jawata.mcp.knowledge.EmbeddingIndex(h2,
-                org.jawata.mcp.knowledge.EmbeddingService.shared());
-        }
-        return null;
-    }
-
-    /**
-     * Sprint 27a D5 (Stage 3b) — the STARTUP RECONCILIATION.
-     *
-     * <p>It embeds a batch, then the next, then the next, until the delta is
-     * ZERO — every row that lacks a current-identity vector has one. It does not
-     * embed one batch and stop: that left a store larger than the batch
-     * permanently part-embedded (the live store sat at 1,037 of 2,080 all day,
-     * with three frozen calibration entries in the unreachable half), and it is
-     * a prerequisite for Stage 4, where bumping the embedder identity
-     * invalidates every vector — a one-batch cap would leave the store WORSE
-     * than before the bump.</p>
-     *
-     * <p>Resumable by construction: each row is written as it is embedded
-     * (Harald's design), so an interrupted run leaves a smaller delta for the
-     * next start rather than losing work. Scale was never the constraint — one
-     * user's store — so the batch is a unit of work, not a stopping condition.</p>
-     *
-     * <p>Two ways it ends, both clean: {@code backfill} returns 0 (the delta is
-     * closed — it does NOT then spin re-checking an empty delta), or the thread
-     * is interrupted at shutdown. It stays a MIN_PRIORITY daemon off the
-     * start-up path, so the resident answers {@code initialize} immediately
-     * while this runs.</p>
-     */
-    /**
-     * The reconciliation loop itself, extracted so it can be DRIVEN by a test
-     * rather than only reasoned about inside a daemon thread.
-     *
-     * <p>Embeds batch after batch until {@code backfill} returns 0 — the delta
-     * is closed — or {@code interrupted} becomes true. It never spins on an
-     * empty delta: {@code backfill} returning 0 IS the loop's exit, not a
-     * condition it re-polls. Returns the total embedded.</p>
-     *
-     * @param interrupted checked before each pass; {@code true} ends the loop
-     *                    with a clean partial (shutdown), by construction
-     *                    resumable since each row was persisted as it embedded
-     */
-    public static int reconcileEmbeddings(org.jawata.mcp.knowledge.EmbeddingIndex index,
-                                   int batch, java.util.function.BooleanSupplier interrupted) {
-        // Sprint 28f Stage 3: the loop MOVED to EmbeddingIndex.drain and this forwards.
-        // It is not a tidy-up. The stage has to drain at four WRITE paths inside the
-        // knowledge layer, and they cannot reach a static on the application without
-        // depending upward — so the choice was one loop on the index, or a second copy
-        // beside this one. The second copy is the shape that has already cost this
-        // repository five duplicate type lookups and six duplicate nested-type searches,
-        // each fixed only where somebody happened to look.
-        //
-        // This signature is kept because tests drive it by name; what changes is that
-        // there is now one implementation under it. drain() ALSO checks
-        // remainingUnembedded(), so it can tell "converged" from "the backfill is
-        // skipping rows it cannot embed" — a distinction this loop could not make,
-        // because both looked like backfill returning 0.
-        return index.drain(batch, interrupted);
-    }
-
-    /** Stage 6 (C6 F3): the -1 "could not look" sentinel renders as
-     *  "unknown" in the coverage log, matching the stats block. */
-    private static String coverageFigure(long count) {
-        return count < 0 ? "unknown" : String.valueOf(count);
-    }
-
-    /** How often the schedule looks at the clock. The copy itself is due once a day. */
-    private static final java.time.Duration BACKUP_CHECK_EVERY = java.time.Duration.ofHours(1);
-
-    /**
-     * Take the daily store copy when it is due: once at start, then on every hourly check.
-     *
-     * <p>Every resident runs this against the one shared file, and each starts by asking whether the
-     * newest scheduled copy is already less than a day old, so three engines starting together
-     * produce one copy, not three, bar a start inside the same second. A low-priority daemon thread,
-     * for the reason the embedding backfill is one: start-up must not wait for a 90 MB copy.</p>
-     */
-    private void startScheduledBackups(org.jawata.mcp.knowledge.H2ExperienceStore h2) {
-        Thread t = new Thread(() -> {
-            org.jawata.mcp.knowledge.StoreBackups backups =
-                new org.jawata.mcp.knowledge.StoreBackups(() -> h2);
-            while (!Thread.currentThread().isInterrupted()) {
-                try {
-                    java.nio.file.Path copy = backups.takeIfDue(java.time.Instant.now());
-                    if (copy != null) {
-                        log.info("Scheduled experience-store backup taken: {}", copy.getFileName());
-                    }
-                } catch (RuntimeException e) {
-                    // Never fatal, and never silent: the next hourly check tries again.
-                    log.warn("Scheduled experience-store backup failed ({}); retrying at the next"
-                        + " hourly check", e.toString());
-                }
-                try {
-                    Thread.sleep(BACKUP_CHECK_EVERY.toMillis());
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                }
-            }
-        }, "jawata-store-backup");
-        t.setDaemon(true);
-        t.setPriority(Thread.MIN_PRIORITY);
-        scheduledBackupThread = t;
-        t.start();
-    }
-
-    /**
-     * Warms recall on a daemon thread. It keys on the SAME store object recall is handed
-     * ({@code experienceStore}, the recovering wrapper in production): the corpus snapshot is held
-     * per store instance, so warming the concrete store behind it would warm a cache nobody asks.
-     */
-    private void startRecallWarmUp() {
-        final org.jawata.mcp.knowledge.ExperienceStore warmed = experienceStore;
-        Thread t = new Thread(() -> org.jawata.mcp.knowledge.RecallWarmUp.run(warmed),
-            "jawata-recall-warmup");
-        t.setDaemon(true);
-        t.setPriority(Thread.MIN_PRIORITY);
-        t.start();
-    }
-
-    private void startEmbeddingBackfill(org.jawata.mcp.knowledge.H2ExperienceStore h2) {
-        final int batch = 1000;
-        Thread t = new Thread(() -> {
-            try {
-                org.jawata.mcp.knowledge.EmbeddingIndex index =
-                    new org.jawata.mcp.knowledge.EmbeddingIndex(h2,
-                        org.jawata.mcp.knowledge.EmbeddingService.shared());
-                if (!index.available()) {
-                    log.info("Embedding backfill skipped — no embedder; recall stays"
-                        + " keyword-only for this run");
-                    return;
-                }
-                long start = System.currentTimeMillis();
-                int total = reconcileEmbeddings(index, batch,
-                    () -> Thread.currentThread().isInterrupted());
-                // MEASURED, not assumed, and across BOTH reconciled tables. The
-                // loop exits when a pass embeds nothing — which means no WRITABLE
-                // row remains, NOT that zero rows remain: a row whose text embeds
-                // to null (blank, or an embedder failure already logged) stays
-                // selected and is skipped every pass. remainingUnembedded()
-                // reads experience_entry AND tool_experience, and returns -1
-                // ("could not look") rather than a misleading 0 on a read
-                // failure — so CONVERGED is claimed only on a measured zero.
-                long remaining = index.remainingUnembedded();
-                if (Thread.currentThread().isInterrupted()) {
-                    log.info("Embedding backfill interrupted at shutdown after {} row(s);"
-                        + " {} remaining, resumed from the smaller delta next start",
-                        total, remaining);
-                } else if (remaining == 0) {
-                    // Stage 6: completion states COVERAGE (total/total), not
-                    // just this run's row count. The -1 "could not look"
-                    // sentinel renders as "unknown", matching the stats block
-                    // (C6 F3).
-                    log.info("Embedding backfill CONVERGED: {} row(s) in {} ms; 0 remaining"
-                        + " — coverage {}/{} entries, {}/{} tool rows",
-                        total, System.currentTimeMillis() - start,
-                        coverageFigure(index.embeddedCount("experience_entry")),
-                        coverageFigure(index.totalCount("experience_entry")),
-                        coverageFigure(index.embeddedCount("tool_experience")),
-                        coverageFigure(index.totalCount("tool_experience")));
-                } else if (remaining < 0) {
-                    log.warn("Embedding backfill: {} row(s) embedded, but the remaining"
-                        + " count could not be read — NOT asserting convergence", total);
-                } else if (total > 0) {
-                    log.info("Embedding backfill: {} row(s) in {} ms; {} still unembedded"
-                        + " (their text embeds to null — not retried by looping)",
-                        total, System.currentTimeMillis() - start, remaining);
-                } else {
-                    log.info("Embedding backfill: nothing embeddable — every row either has"
-                        + " a current vector or embeds to null");
-                }
-            } catch (Exception e) {
-                // Never fatal: a store without vectors still answers by keyword.
-                log.warn("Embedding backfill FAILED ({}); stored entries keep their"
-                    + " keyword reachability and the next start retries", e.toString());
-            }
-        }, "jawata-embedding-backfill");
-        t.setDaemon(true);
-        t.setPriority(Thread.MIN_PRIORITY);
-        embeddingBackfillThread = t;
-        t.start();
     }
 
     /**
@@ -582,11 +146,11 @@ public class JawataApplication implements IApplication {
      */
     private void installWorkspaceIdentity() {
         try {
-            Path dataDir = resolveDataDir();
-            Path workspaceJson = dataDir == null ? null : findWorkspaceJson(dataDir);
+            Path dataDir = directories.resolveDataDir();
+            Path workspaceJson = dataDir == null ? null : ResidentDirectories.findWorkspaceJson(dataDir);
             if (workspaceJson != null) {
                 org.jawata.mcp.models.WorkspaceIdentity.install(
-                    readProvenance(workspaceJson)[0], readProjects(workspaceJson));
+                    ResidentDirectories.readProvenance(workspaceJson)[0], ResidentDirectories.readProjects(workspaceJson));
             } else {
                 String envRoot = System.getenv("JAVA_PROJECT_PATH");
                 if (envRoot != null && !envRoot.isBlank()) {
@@ -653,339 +217,29 @@ public class JawataApplication implements IApplication {
     }
 
     private void autoLoadProjects() {
-        Path dataDir = resolveDataDir();
+        Path dataDir = directories.resolveDataDir();
         if (dataDir != null) {
-            Path workspaceJson = findWorkspaceJson(dataDir);
+            Path workspaceJson = ResidentDirectories.findWorkspaceJson(dataDir);
             if (workspaceJson != null) {
                 loadFromWorkspaceJson(workspaceJson.getParent());
-                refreshExperienceAfterProjectLoad();
+                jawataEngine.refreshExperienceAfterProjectLoad();
                 return;
             }
         }
         // Fall back to single-project env-var path.
         autoLoadProjectFromEnv();
-        refreshExperienceAfterProjectLoad();
+        jawataEngine.refreshExperienceAfterProjectLoad();
     }
 
-    /**
-     * Sprint 21b (item D): the store-open refresh would be useless — projects load
-     * asynchronously AFTER the store opens, so every pointer would judge as "unknown".
-     * Run the automatic staleness pass here instead, once projects are in. Already on
-     * the async auto-load thread (zero startup cost); autoRefresh never throws.
-     *
-     * <p>Sprint 21d (item C, declared boundary): this path runs OUTSIDE the dispatch
-     * disk-sync guard on purpose — it fires immediately after project load, when the
-     * JDT model was just read from this same disk state (fresh by construction). Every
-     * OTHER refresh/recall runs under {@code ToolRegistry.callTool}'s guard.</p>
-     *
-     * <p>Sprint 21e (item A): the same pass now also BACKFILLS symbol auto-anchors
-     * (memory loads before projects — resolution needs the loaded model), and it fires
-     * on BOTH post-load paths: this startup auto-load AND, via
-     * {@code ToolRegistry.setProjectsMutatedHook}, every successful tool-initiated
-     * {@code load_project} / {@code project(action=add|remove)} — add makes new types
-     * anchorable, remove lets refresh CLEAR their auto-anchors. Same
-     * fresh-by-construction footing: it runs immediately after the mutation, inside
-     * the guarded call.</p>
-     */
-    private void refreshExperienceAfterProjectLoad() {
-        if (experienceTool != null) {
-            log.info("Experience auto-refresh after project load: {}", experienceTool.autoRefresh());
-        }
-    }
+    
 
-    /**
-     * Look for {@code workspace.json} starting at the OSGi data dir, then
-     * walking up one level to handle the JawataLauncher session-isolation
-     * subdir. Returns the path of the file if found, else {@code null}.
-     *
-     * <p>Public + static so unit tests in the {@code org.jawata.mcp.tests}
-     * bundle can exercise the walk-up logic without booting OSGi.
-     */
-    public static Path findWorkspaceJson(Path dataDir) {
-        if (dataDir == null) {
-            return null;
-        }
-        Path candidate = dataDir.resolve("workspace.json");
-        if (Files.isRegularFile(candidate)) {
-            return candidate;
-        }
-        Path parent = dataDir.getParent();
-        if (parent != null) {
-            candidate = parent.resolve("workspace.json");
-            if (Files.isRegularFile(candidate)) {
-                log.info("Found workspace.json in parent of OSGi data dir ({}), " +
-                    "treating that as the workspace root (JawataLauncher session-isolation path)",
-                    parent);
-                return candidate;
-            }
-        }
-        return null;
-    }
+    
 
-    private Path resolveDataDir() {
-        // Use the OSGi-defined system property rather than Platform.getInstanceLocation().getURL()
-        // — the latter is a Tycho-restricted API. osgi.instance.area is set by the framework to
-        // the URL of the -data dir and is the public way to read it.
-        try {
-            String area = System.getProperty("osgi.instance.area");
-            if (area == null || area.isBlank()) return null;
-            return Path.of(java.net.URI.create(area));
-        } catch (Exception e) {
-            log.warn("Failed to resolve Eclipse instance area: {}", e.getMessage());
-            return null;
-        }
-    }
+    
 
-    /**
-     * Sprint 21a (items A+B+H): open the experience store, stamp provenance, recover
-     * orphaned session stores, and degrade instead of dying — a store that refuses to
-     * open (e.g. schema written by a NEWER resident) falls back to in-memory with a loud
-     * log, so the server still starts and recall answers with absence rather than errors.
-     *
-     * <p>Mode ({@code -Djawata.experience.store}): {@code shared} (DEFAULT — the user-level
-     * store, knowledge spans workspaces) · {@code workspace} (per-workspace file at the
-     * STABLE workspace root — never the launcher's session dir, which is deleted on clean
-     * shutdown) · {@code memory} · any other value = an explicit store directory.</p>
-     */
-    private ExperienceStore openExperienceStore() {
-        Path dataDir = resolveDataDir();
-        Path workspaceRoot = resolveWorkspaceRoot(dataDir);
-        String mode = EngineEnvironment.settings().get(SettingKeys.EXPERIENCE_STORE.name()).orElse("shared").trim();
-        try {
-            return openRealStore(mode, dataDir, workspaceRoot);
-        } catch (Exception e) {
-            // v3.2.1 (dogfood #1): the old path handed back a BARE in-memory
-            // store — a silent, sticky degrade the user had to NOTICE (the
-            // 2026-07-19 fleet flip served 367 seed entries as if they were
-            // the DB). Now the fallback announces itself on every answer,
-            // retries the real open in the background, and replays the
-            // degraded window on recovery.
-            log.error("Experience store unavailable ({}); continuing with a NON-PERSISTENT "
-                + "in-memory store — recovery retries in the background", e.getMessage());
-            return new org.jawata.mcp.knowledge.RecoveringExperienceStore(
-                String.valueOf(e.getMessage()),
-                () -> openRealStore(mode, dataDir, workspaceRoot),
-                30_000);
-        }
-    }
-
-    /** The real (persistent) open — shared by first attempt and background recovery. */
-    private H2ExperienceStore openRealStore(String mode, Path dataDir, Path workspaceRoot) {
-        H2ExperienceStore store = switch (mode) {
-            case "memory" -> H2ExperienceStore.openMemory();
-            case "workspace" -> H2ExperienceStore.open(workspaceRoot);
-            case "", "shared" -> H2ExperienceStore.openShared();
-            default -> H2ExperienceStore.openAt(Path.of(mode));
-        };
-        Path workspaceJson = workspaceRoot != null
-                && Files.isRegularFile(workspaceRoot.resolve("workspace.json"))
-            ? workspaceRoot.resolve("workspace.json")
-            : findWorkspaceJson(dataDir);
-        if (workspaceJson != null) {
-            String[] prov = readProvenance(workspaceJson);
-            store.setProvenance(prov[0], prov[1]);
-        }
-        // One-time sweep: pre-21a stores stranded in session-isolation dirs (item A).
-        store.recoverOrphans(workspaceRoot);
-        seedCatalogue(store);
-        return store;
-    }
-
-    /**
-     * Sprint 28c D5 — put the pattern catalogue into the store this start opened.
-     *
-     * <p>Deliberately inside {@code openRealStore}, after the store is known
-     * good. A failed open falls back to a recovering store, and seeding that
-     * would write 187 rows into a temporary in-memory store that is discarded
-     * when the real one reconnects — work thrown away, and a row count that
-     * jumps and then drops for no reason a reader could explain.</p>
-     *
-     * <p>A seeding failure must not take the resident down with it: the store
-     * is open and every other tool works, so refusing to start would trade a
-     * missing convenience for a dead knowledge layer. It is logged as a
-     * WARNING rather than swallowed, because a catalogue that silently never
-     * arrives is exactly the failure this sprint exists to stop.</p>
-     */
-    private void seedCatalogue(H2ExperienceStore store) {
-        // ONE LIST, iterated — not one hardcoded loader (Sprint 28d). A source
-        // that fails is named and SKIPPED rather than taking the others down
-        // with it: one unreadable snapshot must not cost a healthy namespace.
-        for (CatalogueOrigin origin : CatalogueSources.all()) {
-            try {
-                CatalogueSeeder.seed(store, origin);
-            } catch (RuntimeException e) {
-                log.warn("Catalogue namespace '{}' NOT seeded: {} — design recall will "
-                    + "answer without it", origin.namespace(), e.toString());
-            }
-        }
-    }
-
-    /**
-     * The STABLE workspace root: the launcher-published original {@code -data}
-     * ({@code jawata.workspace.root}) wins; else walk up from the OSGi data dir to where
-     * {@code workspace.json} lives; else the data dir itself. Never the session subdir
-     * when the launcher is in play.
-     */
-    static Path resolveWorkspaceRoot(Path dataDir) {
-        String prop = System.getProperty("jawata.workspace.root");
-        if (prop != null && !prop.isBlank()) {
-            return Path.of(prop);
-        }
-        if (dataDir == null) {
-            return null;
-        }
-        Path workspaceJson = findWorkspaceJson(dataDir);
-        return workspaceJson != null ? workspaceJson.getParent() : dataDir;
-    }
+    
 
     // --- Sprint 21a (item C): default memory roots for load/reseed ------------------------
-
-    /**
-     * The default roots the no-path {@code experience(kind=load|reseed)} seeds from, in
-     * one of TWO mutually exclusive modes (Sprint 28e, mcp#58).
-     *
-     * <p><b>Configured:</b> {@code -Djawata.memory.roots} (path-separator list — the
-     * studio config channel) names the substrate, and those roots are the WHOLE answer.
-     * Nothing is discovered beside them.</p>
-     *
-     * <p><b>Unconfigured:</b> discovery — the layered {@code CLAUDE.md} set (global
-     * {@code ~/.claude} + each workspace project dir and its ancestors up to
-     * {@code $HOME}), the Claude per-project memory dirs
-     * ({@code ~/.claude/projects/<sanitized-path>/memory}), and the other agents'
-     * per-project conventions.</p>
-     *
-     * <p>The two were ADDITIVE until 28e, which is why a deployment that had cut over to
-     * a curated substrate went on re-importing the corpus it had retired.</p>
-     */
-    private java.util.List<Path> defaultMemoryRoots() {
-        return defaultMemoryRoots(
-            Path.of(System.getProperty("user.home")),
-            workspaceProjectDirs(),
-            EngineEnvironment.settings().get(SettingKeys.MEMORY_ROOTS.name()).orElse(null));
-    }
-
-    /** Package-private + static for tests (no OSGi). Only existing paths are returned. */
-    static java.util.List<Path> defaultMemoryRoots(Path home, java.util.List<Path> projectDirs,
-            String extraRoots) {
-        java.util.LinkedHashSet<Path> roots = new java.util.LinkedHashSet<>();
-        if (extraRoots != null && !extraRoots.isBlank()) {
-            for (String s : extraRoots.split(java.io.File.pathSeparator)) {
-                if (!s.isBlank()) {
-                    addIfExists(roots, Path.of(s.strip()));
-                }
-            }
-            // Sprint 28e (mcp#58): a CONFIGURED substrate is AUTHORITATIVE, not additive.
-            // Sprint 28c made a curated directory the substrate the store is rebuilt from,
-            // but this channel stayed an ADDITION to the layered CLAUDE.md discovery below —
-            // so every no-path load re-imported the legacy corpus the cutover retired, the
-            // studio's auto-seed-on-deploy (studio#34) above all.
-            //
-            // The branch is on "was a substrate CONFIGURED", never on "did it resolve".
-            // A configured root that does not exist yields NO roots, so load and reseed
-            // refuse with the message they already publish ("needs configured default
-            // memory roots (-Djawata.memory.roots) — none found"). Falling through to
-            // discovery there would seed the legacy corpus while the operator believed
-            // they had named a substrate: that is the defect this closes, not a safety net.
-            return java.util.List.copyOf(roots);
-        }
-        addIfExists(roots, home.resolve(".claude").resolve("CLAUDE.md"));
-        for (Path proj : projectDirs) {
-            Path d = proj.toAbsolutePath().normalize();
-            while (d != null) {
-                addIfExists(roots, d.resolve("CLAUDE.md"));
-                if (d.equals(home) || !d.startsWith(home)) {
-                    break;                     // layered up to $HOME; foreign roots: dir only
-                }
-                d = d.getParent();
-            }
-            addIfExists(roots, home.resolve(".claude").resolve("projects")
-                .resolve(sanitizeProjectDir(proj)).resolve("memory"));
-            // Sprint 21b (item C2): the other agents' per-project conventions.
-            addIfExists(roots, proj.resolve(".cursor").resolve("rules"));
-            addIfExists(roots, proj.resolve(".cursorrules"));
-            addIfExists(roots, proj.resolve("AGENTS.md"));
-            addIfExists(roots, proj.resolve(".github").resolve("copilot-instructions.md"));
-            addIfExists(roots, proj.resolve(".windsurfrules"));
-        }
-        // Sprint 21b (item C2): the store is user-level, so discovery is too — EVERY
-        // Claude memory dir, not just this workspace's projects ("autofind").
-        Path claudeProjects = home.resolve(".claude").resolve("projects");
-        if (Files.isDirectory(claudeProjects)) {
-            try (var dirs = Files.list(claudeProjects)) {
-                dirs.sorted().forEach(p -> addIfExists(roots, p.resolve("memory")));
-            } catch (java.io.IOException e) {
-                log.warn("Cannot list {}: {}", claudeProjects, e.getMessage());
-            }
-        }
-        return java.util.List.copyOf(roots);
-    }
-
-    /** The Claude Code project-dir convention: the absolute path with separators as dashes. */
-    static String sanitizeProjectDir(Path proj) {
-        return proj.toAbsolutePath().normalize().toString()
-            .replace(java.io.File.separatorChar, '-').replace('/', '-');
-    }
-
-    private static void addIfExists(java.util.Set<Path> set, Path p) {
-        if (Files.exists(p)) {
-            set.add(p);
-        }
-    }
-
-    private java.util.List<Path> workspaceProjectDirs() {
-        Path dataDir = resolveDataDir();
-        Path root = resolveWorkspaceRoot(dataDir);
-        Path workspaceJson = root != null && Files.isRegularFile(root.resolve("workspace.json"))
-            ? root.resolve("workspace.json")
-            : findWorkspaceJson(dataDir);
-        return workspaceJson == null ? java.util.List.of() : readProjects(workspaceJson);
-    }
-
-    /** All project paths from {@code workspace.json} (empty on any parse problem). */
-    static java.util.List<Path> readProjects(Path workspaceJson) {
-        try {
-            JsonNode root = new ObjectMapper().readTree(Files.readString(workspaceJson));
-            java.util.List<Path> out = new java.util.ArrayList<>();
-            JsonNode projects = root.path("projects");
-            if (projects.isArray()) {
-                for (JsonNode p : projects) {
-                    String s = p.asText(null);
-                    if (s != null && !s.isBlank()) {
-                        out.add(Path.of(s));
-                    }
-                }
-            }
-            return out;
-        } catch (Exception e) {
-            log.warn("Cannot read projects from {}: {}", workspaceJson, e.getMessage());
-            return java.util.List.of();
-        }
-    }
-
-    /**
-     * Parse {@code workspace.json} into provenance facets: {@code [workspaceId, projectId]}
-     * (the manager's workspace {@code name} + first project path; either may be null).
-     * Package-private + static so the tests bundle can exercise it without booting OSGi.
-     */
-    static String[] readProvenance(Path workspaceJson) {
-        try {
-            JsonNode root = new ObjectMapper().readTree(Files.readString(workspaceJson));
-            String name = root.path("name").asText(null);
-            if (name == null || name.isBlank()) {
-                Path parent = workspaceJson.getParent();
-                name = parent == null ? null : parent.getFileName().toString();
-            }
-            String project = null;
-            JsonNode projects = root.path("projects");
-            if (projects.isArray() && projects.size() > 0) {
-                project = projects.get(0).asText(null);
-            }
-            return new String[] {name, project};
-        } catch (Exception e) {
-            log.warn("Cannot read provenance from {}: {}", workspaceJson, e.getMessage());
-            return new String[] {null, null};
-        }
-    }
 
     private void loadFromWorkspaceJson(Path dataDir) {
         log.info("Loading workspace from {}", dataDir.resolve("workspace.json"));
@@ -1066,71 +320,6 @@ public class JawataApplication implements IApplication {
         }
     }
 
-    /**
-     * Sprint 28b (D1/D3): where the field lane's pile and state live — under
-     * the WORKSPACE ROOT, the same resolution studio reads (C1 audit F3: a
-     * second convention for the same concept would have studio reading a
-     * location the pile is never written to). One seam, three users: the
-     * recorder writes the pile, {@code FieldTool} reads both, and studio's
-     * field view folds the same files.
-     */
-    private java.nio.file.Path fieldDir() {
-        return resolveWorkspaceRoot(resolveDataDir()).resolve("field");
-    }
-
-    private void registerTools() {
-        // Sprint 21d: strict disk sync — every tool call reconciles external edits
-        // before executing; the unchanged-tree fast path is the only skip.
-        org.jawata.core.workspace.StrictDiskSync reconciler = new org.jawata.core.workspace.StrictDiskSync(model::current);
-        toolRegistry.setReconciler(
-            reconciler);
-
-        // Sprint 21e (item A): tool-initiated project mutations refresh + backfill the
-        // store's symbol anchors too (the startup auto-load path calls this directly).
-        toolRegistry.setProjectsMutatedHook(this::refreshExperienceAfterProjectLoad);
-
-        // C9a-1: THE SHIPPED SET IS BUILT BY ONE PRODUCER, not written out here. This method used to
-        // construct every tool inline (230 lines, 46 callees), so nothing could ask which tools
-        // ship and every answer was a hand-kept copy that drifted. What the tools take from this
-        // application is the wiring below; everything else about them lives in ShippedTools.
-        //
-        // The suppliers are read at call time wherever this application's state changes after boot
-        // (the workspace service, and the store, which is assigned before this runs but replaced on
-        // a degraded reopen).
-        ShippedTools.Built shipped = ShippedTools.build(new ShippedTools.Wiring(
-            javaBinding,
-            hostWorkspace,
-            () -> model.current() != null,
-            () -> toolRegistry.getToolCount(),
-            () -> EngineState.current().loading(),
-            () -> EngineState.current().loadingError(),
-            this::fieldDir,
-            toolRegistry::inFlight,
-            refactoringChangeCache,
-            experienceStore,
-            () -> experienceStore,
-            this::experienceEmbeddingIndex,
-            runtimeSessions,
-            () -> learnerEvents,
-            () -> toolRegistry,
-            this::selfEndpoint,
-            this::defaultMemoryRoots, () -> reconciler));
-
-        // Kept for what reads them later: the watch engine's detector binding, the quality ledger's
-        // reach to the pre-advice surface (wired in start()), and the automatic refresh after a
-        // project load.
-        this.findQualityIssueTool = shipped.quality();
-        this.experienceAdvisor = shipped.advisor();
-        this.experienceTool = shipped.experience();
-        // Sprint 28g (D42): the SAME advisor is also asked on every tool response rather than by one
-        // tool of forty-odd. Nothing new is constructed here, which is what keeps D-SIX satisfied.
-        toolRegistry.setExperienceAdvisor(shipped.advisor());
-
-        for (org.jawata.mcp.tools.Tool tool : shipped.tools()) {
-            toolRegistry.register(tool);
-        }
-    }
-
     private Object runMessageLoop(TransportConfig config) {
         // Sprint 14a Stage 3: transport.run(handler) drives the I/O loop
         // internally. Stdio loops on its read/write pair; HTTP runs the
@@ -1138,13 +327,13 @@ public class JawataApplication implements IApplication {
         // exposes the running transport so JawataApplication.stop() can
         // unblock it on OSGi shutdown.
         try (Transport transport = openTransport(config)) {
-            this.activeTransport = transport;
-            transport.run(protocolHandler::processMessage);
+            this.jawataEngine.setActiveTransport(transport);
+            transport.run(jawataEngine.getProtocolHandler()::processMessage);
         } catch (Exception e) {
             // A port that is taken is reported by the transport to the lifecycle (status 13, jawata-mcp#2); this is every other failure.
             log.error("Error in message loop", e);
         } finally {
-            this.activeTransport = null;
+            this.jawataEngine.setActiveTransport(null);
         }
         // 0 unless the listener failed: 13 for a port that is taken, 70 for a listener that went deaf (REL44-32).
         return lifecycle.exitCode();
@@ -1152,24 +341,10 @@ public class JawataApplication implements IApplication {
 
     /** Ends the message loop of the running transport, if there is one. */
     private void closeActiveTransport() {
-        Transport t = activeTransport;
+        Transport t = jawataEngine.getActiveTransport();
         if (t != null) {
             t.close();
         }
-    }
-
-    /**
-     * This resident's own endpoint, for a hired brain to be given as its one MCP server — or null
-     * when there is none a second process could reach: a stdio resident, or an HTTP one whose
-     * listener is not bound yet.
-     */
-    private org.jawata.mcp.execution.SelfEndpoint selfEndpoint() {
-        if (activeTransport instanceof org.jawata.mcp.transport.HttpTransport http) {
-            String url = http.localMcpUrl();
-            return url == null ? null
-                : http.bearerToken().map(token -> new org.jawata.mcp.execution.SelfEndpoint(url, token)).orElse(null);
-        }
-        return null;
     }
 
     /**
@@ -1183,6 +358,14 @@ public class JawataApplication implements IApplication {
             log.info("Transport: stdio (opt-in via -transport stdio)");
             return new StdioTransport(System.in, System.out);
         }
+        return new HttpTransport(jawataEngine.host().endpoint(), lifecycle);
+    }
+
+    /** Where this process listens, or nothing when it talks on stdio. */
+    private static EndpointPolicy endpointPolicy(TransportConfig config) {
+        if (config.getKind() == TransportConfig.Kind.STDIO) {
+            return null;
+        }
         // studio#14: the token is resolved through its file when one is named,
         // so the secret need never appear in argv (world-readable via
         // /proc/<pid>/cmdline) nor in the READY line the manager logs.
@@ -1191,7 +374,7 @@ public class JawataApplication implements IApplication {
             config.getPort(), config.getBindAddress(),
             resolved.tokenFile() != null ? "from " + resolved.tokenFile()
                 : resolved.supplied() ? "supplied" : "generated");
-        return new HttpTransport(new ResidentEndpointPolicy(config, resolved), lifecycle);
+        return new ResidentEndpointPolicy(config, resolved);
     }
 
     @Override
@@ -1207,7 +390,7 @@ public class JawataApplication implements IApplication {
         // every row committed before the close persists (H2 autocommit), so the
         // next start resumes from a smaller delta and loses nothing. The loop
         // itself always exits — on the interrupt at the next pass boundary.
-        Thread backfill = embeddingBackfillThread;
+        Thread backfill = jawataEngine.getEmbeddingBackfillThread();
         if (backfill != null) {
             backfill.interrupt();
             try {
@@ -1215,17 +398,17 @@ public class JawataApplication implements IApplication {
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
             }
-            embeddingBackfillThread = null;
+            jawataEngine.setEmbeddingBackfillThread(null);
         }
         // The schedule is interrupted, not joined: a copy in progress is the store's own
         // BACKUP TO, which finishes or fails on its own; the daemon thread never holds the
         // process open, and a partial zip fails its read-back at the next start and is removed.
-        Thread backupSchedule = scheduledBackupThread;
+        Thread backupSchedule = jawataEngine.getScheduledBackupThread();
         if (backupSchedule != null) {
             backupSchedule.interrupt();
-            scheduledBackupThread = null;
+            jawataEngine.setScheduledBackupThread(null);
         }
-        Transport t = activeTransport;
+        Transport t = jawataEngine.getActiveTransport();
         if (t != null) {
             t.close();
         }
@@ -1234,10 +417,10 @@ public class JawataApplication implements IApplication {
             watcher.close();
             workspaceWatcher = null;
         }
-        ExperienceStore store = experienceStore;
+        ExperienceStore store = jawataEngine.getExperienceStore();
         if (store != null) {
             store.close();
-            experienceStore = null;
+            jawataEngine.setExperienceStore(null);
         }
     }
 }
