@@ -47,9 +47,9 @@ class ProjectImporterTest {
     @Test
     @DisplayName("detectBuildSystem should detect Maven project")
     void detectBuildSystem_detectsMaven() {
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(mavenFixturePath);
+        BuildSystem buildSystem = importer.detectBuildSystem(mavenFixturePath);
 
-        assertEquals(ProjectImporter.BuildSystem.MAVEN, buildSystem,
+        assertEquals(BuildSystem.MAVEN, buildSystem,
             "Should detect Maven project from pom.xml");
     }
 
@@ -59,9 +59,9 @@ class ProjectImporterTest {
         // Create a fake Gradle project
         Files.writeString(tempDir.resolve("build.gradle"), "// Gradle build file");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.GRADLE, buildSystem,
+        assertEquals(BuildSystem.GRADLE, buildSystem,
             "Should detect Gradle project from build.gradle");
     }
 
@@ -71,9 +71,9 @@ class ProjectImporterTest {
         // Create a fake Kotlin Gradle project
         Files.writeString(tempDir.resolve("build.gradle.kts"), "// Kotlin Gradle build file");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.GRADLE, buildSystem,
+        assertEquals(BuildSystem.GRADLE, buildSystem,
             "Should detect Gradle project from build.gradle.kts");
     }
 
@@ -85,9 +85,9 @@ class ProjectImporterTest {
         Files.createDirectories(srcDir);
         Files.writeString(srcDir.resolve("Main.java"), "public class Main {}");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.UNKNOWN, buildSystem,
+        assertEquals(BuildSystem.UNKNOWN, buildSystem,
             "Should return UNKNOWN for project without build file");
     }
 
@@ -98,9 +98,9 @@ class ProjectImporterTest {
         Files.writeString(tempDir.resolve("pom.xml"), "<project></project>");
         Files.writeString(tempDir.resolve("build.gradle"), "// Gradle");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.MAVEN, buildSystem,
+        assertEquals(BuildSystem.MAVEN, buildSystem,
             "Should prefer Maven when both pom.xml and build.gradle exist");
     }
 
@@ -111,9 +111,9 @@ class ProjectImporterTest {
     void detectBuildSystem_detectsBazelWorkspace(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("WORKSPACE"), "# Bazel workspace");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.BAZEL, buildSystem,
+        assertEquals(BuildSystem.BAZEL, buildSystem,
             "Should detect Bazel project from WORKSPACE");
     }
 
@@ -122,9 +122,9 @@ class ProjectImporterTest {
     void detectBuildSystem_detectsBazelWorkspaceDotBazel(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("WORKSPACE.bazel"), "# Bazel workspace");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.BAZEL, buildSystem,
+        assertEquals(BuildSystem.BAZEL, buildSystem,
             "Should detect Bazel project from WORKSPACE.bazel");
     }
 
@@ -133,9 +133,9 @@ class ProjectImporterTest {
     void detectBuildSystem_detectsBazelModule(@TempDir Path tempDir) throws IOException {
         Files.writeString(tempDir.resolve("MODULE.bazel"), "module(name = \"test\")");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.BAZEL, buildSystem,
+        assertEquals(BuildSystem.BAZEL, buildSystem,
             "Should detect Bazel project from MODULE.bazel");
     }
 
@@ -145,9 +145,9 @@ class ProjectImporterTest {
         Files.writeString(tempDir.resolve("pom.xml"), "<project></project>");
         Files.writeString(tempDir.resolve("WORKSPACE"), "# Bazel workspace");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.MAVEN, buildSystem,
+        assertEquals(BuildSystem.MAVEN, buildSystem,
             "Should prefer Maven when both pom.xml and WORKSPACE exist");
     }
 
@@ -157,9 +157,9 @@ class ProjectImporterTest {
         Files.writeString(tempDir.resolve("build.gradle"), "// Gradle");
         Files.writeString(tempDir.resolve("WORKSPACE"), "# Bazel workspace");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.GRADLE, buildSystem,
+        assertEquals(BuildSystem.GRADLE, buildSystem,
             "Should prefer Gradle when both build.gradle and WORKSPACE exist");
     }
 
@@ -178,9 +178,9 @@ class ProjectImporterTest {
         Files.writeString(tempDir.resolve(".classpath"),
             "<?xml version=\"1.0\"?><classpath><classpathentry kind=\"src\" path=\"src\"/></classpath>");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.ECLIPSE_PDE, buildSystem,
+        assertEquals(BuildSystem.ECLIPSE_PDE, buildSystem,
             "MANIFEST.MF + Bundle-SymbolicName should classify as Eclipse PDE");
     }
 
@@ -190,9 +190,9 @@ class ProjectImporterTest {
         Files.writeString(tempDir.resolve(".classpath"),
             "<?xml version=\"1.0\"?><classpath><classpathentry kind=\"src\" path=\"src\"/></classpath>");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.ECLIPSE, buildSystem,
+        assertEquals(BuildSystem.ECLIPSE, buildSystem,
             ".classpath without PDE manifest should classify as plain Eclipse");
     }
 
@@ -203,9 +203,9 @@ class ProjectImporterTest {
         Files.writeString(tempDir.resolve(".classpath"),
             "<?xml version=\"1.0\"?><classpath/>");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.MAVEN, buildSystem,
+        assertEquals(BuildSystem.MAVEN, buildSystem,
             "Maven wins over Eclipse for hybrid projects to keep Maven dependency resolution");
     }
 
@@ -219,9 +219,9 @@ class ProjectImporterTest {
             "Manifest-Version: 1.0\n"
           + "Bundle-SymbolicName: com.example.tycho\n");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.MAVEN, buildSystem,
+        assertEquals(BuildSystem.MAVEN, buildSystem,
             "Tycho-style PDE+Maven hybrid must classify as MAVEN so dep resolution uses the Maven path");
     }
 
@@ -234,9 +234,9 @@ class ProjectImporterTest {
         Files.writeString(metaInf.resolve("MANIFEST.MF"),
             "Manifest-Version: 1.0\nMain-Class: com.example.App\n");
 
-        ProjectImporter.BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
+        BuildSystem buildSystem = importer.detectBuildSystem(tempDir);
 
-        assertEquals(ProjectImporter.BuildSystem.UNKNOWN, buildSystem,
+        assertEquals(BuildSystem.UNKNOWN, buildSystem,
             "MANIFEST.MF without Bundle-SymbolicName is not a PDE bundle");
     }
 

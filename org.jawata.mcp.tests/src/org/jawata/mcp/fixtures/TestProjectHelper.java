@@ -213,8 +213,9 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
             }
             loadedService = null;
         }
-        latest = new JdtServiceImpl();
-        return latest;
+        loadedService = new JdtServiceImpl();
+        latest = loadedService;
+        return loadedService;
     }
 
     /**

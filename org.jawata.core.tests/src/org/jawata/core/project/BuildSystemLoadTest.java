@@ -412,7 +412,7 @@ class BuildSystemLoadTest {
         // detection must say UNKNOWN, and the project must still mount what it has
         // rather than loading empty and reporting success.
         Path fixture = helper.getFixturePath("unknown-layout");
-        assertEquals(ProjectImporter.BuildSystem.UNKNOWN, importer.detectBuildSystem(fixture),
+        assertEquals(BuildSystem.UNKNOWN, importer.detectBuildSystem(fixture),
             "an unmarked project was not classified UNKNOWN");
         IJavaProject jp = load("unknown-layout");
         assertFalse(sourceRootPaths(jp).isEmpty(),
@@ -458,7 +458,7 @@ class BuildSystemLoadTest {
         // The fixture's Bundle-Vendor carries a raw Latin-1 byte and sits
         // BEFORE Bundle-SymbolicName, so the scan must decode it to get there.
         Path fixture = helper.getFixturePath("pde-latin1-manifest");
-        assertEquals(ProjectImporter.BuildSystem.ECLIPSE_PDE, importer.detectBuildSystem(fixture),
+        assertEquals(BuildSystem.ECLIPSE_PDE, importer.detectBuildSystem(fixture),
             "a bundle with a legacy-encoded manifest was not detected as PDE");
         assertNotNull(load("pde-latin1-manifest").findType("com.example.latin.Vendor"),
             "the project did not load past its own manifest");

@@ -28,7 +28,7 @@ import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
-import org.jawata.core.project.ProjectImporter;
+import org.jawata.core.project.BuildSystem;
 import org.jawata.core.project.SourceRootClassifier;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
@@ -183,7 +183,7 @@ public final class JavaBuildVerdict implements BuildVerdict {
                 return new Rebuild(inBuildOrder(owned().projects()), BuildKind.FULL);
             }
             affected.addAll(owners);
-            configuration |= ProjectImporter.BUILD_CONFIGURATION_FILES.contains(Path.of(file).getFileName().toString());
+            configuration |= BuildSystem.BUILD_CONFIGURATION_FILES.contains(Path.of(file).getFileName().toString());
         }
         if (affected.isEmpty()) {
             return new Rebuild(inBuildOrder(owned().projects()), BuildKind.FULL);

@@ -36,6 +36,7 @@ import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.host.HostPaths;
 import org.jawata.core.host.HostPathsImpl;
+import org.jawata.core.project.BuildSystem;
 import org.jawata.core.project.ProjectImporter;
 import org.jawata.core.search.SearchService;
 import org.jawata.core.workspace.WorkspaceManager;
@@ -64,7 +65,7 @@ public class JdtServiceImpl implements IJdtService {
     private int sourceFileCount;
     private int packageCount;
     private List<String> packages;
-    private ProjectImporter.BuildSystem buildSystem;
+    private BuildSystem buildSystem;
 
     // Sprint 10 multi-project state. Mirrors the legacy single-project fields
     // above for the default project, so single-project getters continue to
@@ -533,7 +534,7 @@ public class JdtServiceImpl implements IJdtService {
 
         workspaceManager.initialize();
 
-        ProjectImporter.BuildSystem detected = projectImporter.detectBuildSystem(absRoot);
+        BuildSystem detected = projectImporter.detectBuildSystem(absRoot);
         int fileCount = projectImporter.countSourceFiles(absRoot);
         List<String> pkgList = projectImporter.findPackages(absRoot);
 
@@ -765,7 +766,7 @@ public class JdtServiceImpl implements IJdtService {
         return packageCount;
     }
 
-    public ProjectImporter.BuildSystem getBuildSystem() {
+    public BuildSystem getBuildSystem() {
         return buildSystem;
     }
 

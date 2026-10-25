@@ -2,7 +2,7 @@ package org.jawata.core;
 
 import org.eclipse.jdt.core.IJavaProject;
 import org.jawata.core.host.HostPaths;
-import org.jawata.core.project.ProjectImporter;
+import org.jawata.core.project.BuildSystem;
 import org.jawata.core.search.SearchService;
 
 import java.nio.file.Path;
@@ -47,7 +47,7 @@ public record LoadedProject(
     int sourceFileCount,
     int packageCount,
     List<String> packages,
-    ProjectImporter.BuildSystem buildSystem,
+    BuildSystem buildSystem,
     List<org.jawata.core.project.UnresolvedRequirement> unresolved
 ) {
     /**

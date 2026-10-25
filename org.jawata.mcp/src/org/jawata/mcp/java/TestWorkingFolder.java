@@ -67,7 +67,7 @@ public final class TestWorkingFolder {
         Path root = projectRoot.toAbsolutePath().normalize();
         Set<Path> modules = new LinkedHashSet<>();
         for (Path testRoot : testRoots) {
-            Path module = ProjectImporter.owningModuleDir(
+            Path module = SourceRootClassifier.owningModuleDir(
                 testRoot.toAbsolutePath().normalize(), root, MODULE_FILES);
             if (module == null) {
                 return root;
