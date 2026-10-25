@@ -70,6 +70,7 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
     /** The component runtime hands in the host the engine was built from; the provider is published once it has it. */
     void bindHost(EngineHost host) {
         this.host = host;
+        JavaChange.hostedBy(host.reconciler(), host.writes());
     }
 
     @Override

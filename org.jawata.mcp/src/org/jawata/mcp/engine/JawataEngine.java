@@ -466,8 +466,7 @@ public class JawataEngine {
 		// Sprint 21d: strict disk sync — every tool call reconciles external edits
 		// before executing; the unchanged-tree fast path is the only skip.
 		org.jawata.core.JavaBinding javaBinding = this.host().binding(org.jawata.core.JavaBinding.class).orElseThrow();
-		org.jawata.core.workspace.StrictDiskSync reconciler = new org.jawata.core.workspace.StrictDiskSync(
-				javaBinding.model()::current);
+		org.jawata.spi.host.Reconciler reconciler = this.host().reconciler();
 		this.getToolRegistry().setReconciler(reconciler);
 
 		// Sprint 21e (item A): tool-initiated project mutations refresh + backfill the
@@ -498,7 +497,7 @@ public class JawataEngine {
 
 			@Override
 			public org.jawata.spi.host.WorkspaceWrites writes() {
-				return org.jawata.spi.host.WorkspaceWrites.DIRECT;
+				return host().writes();
 			}
 		};
 		Built neutral = ShippedTools.neutral(new Wiring(javaBinding, this.host().workspace(),

@@ -9,6 +9,8 @@ import org.jawata.spi.host.EngineLifecycle;
 import org.jawata.spi.host.EngineSettings;
 import org.jawata.spi.host.HostWorkspace;
 import org.jawata.spi.host.LanguageBinding;
+import org.jawata.spi.host.Reconciler;
+import org.jawata.spi.host.WorkspaceWrites;
 
 /**
  * The host of an engine that runs alone (Sprint 28k, E18; contract §5): its system properties, the folders worked out from them, the
@@ -22,6 +24,8 @@ public final class ResidentHost implements EngineHost {
     private final EngineSettings settings;
     private final EngineDirectories directories;
     private final LanguageBinding javaBinding;
+    private final Reconciler reconciler;
+    private final WorkspaceWrites writes;
 
     /**
      * @param workspace   the projects the Java model holds, which the engine may change
@@ -30,15 +34,29 @@ public final class ResidentHost implements EngineHost {
      * @param settings    the system properties
      * @param directories the folders worked out from them
      * @param javaBinding what the host supplies to the Java provider
+     * @param reconciler  how the workspace's files are brought up to date with the disk and built
+     * @param writes      how a change's text edits land in the workspace
      */
     public ResidentHost(HostWorkspace workspace, EngineLifecycle lifecycle, EndpointPolicy endpoint, EngineSettings settings,
-                        EngineDirectories directories, LanguageBinding javaBinding) {
+                        EngineDirectories directories, LanguageBinding javaBinding, Reconciler reconciler, WorkspaceWrites writes) {
         this.workspace = workspace;
         this.lifecycle = lifecycle;
         this.endpoint = endpoint;
         this.settings = settings;
         this.directories = directories;
         this.javaBinding = javaBinding;
+        this.reconciler = reconciler;
+        this.writes = writes;
+    }
+
+    @Override
+    public Reconciler reconciler() {
+        return reconciler;
+    }
+
+    @Override
+    public WorkspaceWrites writes() {
+        return writes;
     }
 
     @Override

@@ -88,7 +88,8 @@ public class JawataApplication implements IApplication {
 
         // E18: everything only this process knows goes into one host, and the engine is built from it.
         jawataEngine = new JawataEngine(
-            new ResidentHost(hostWorkspace, lifecycle, endpointPolicy(transportConfig), settings, directories, javaBinding),
+            new ResidentHost(hostWorkspace, lifecycle, endpointPolicy(transportConfig), settings, directories, javaBinding,
+                new org.jawata.core.workspace.StrictDiskSync(model::current), org.jawata.spi.host.WorkspaceWrites.DIRECT),
             new RefactoringChangeCache(), new org.jawata.mcp.runtime.RuntimeSessionRegistry());
 
         // Initialize tool registry and register tools

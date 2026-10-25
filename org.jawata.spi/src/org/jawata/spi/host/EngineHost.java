@@ -28,6 +28,12 @@ public interface EngineHost {
     /** The folders the host puts the engine's files in. */
     EngineDirectories directories();
 
+    /** How this host brings the workspace's files up to date with the disk and builds them, before a call and around a change. */
+    Reconciler reconciler();
+
+    /** How this host lands a change's text edits in its workspace. */
+    WorkspaceWrites writes();
+
     /**
      * What this host supplies to one language provider.
      *

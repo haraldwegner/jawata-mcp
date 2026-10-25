@@ -34,6 +34,16 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
 
     private static final String FIXTURES_PROPERTY = "jawata.test.fixtures";
 
+    /** The service most recently loaded or handed over, which the host half of a change reconciles against. */
+    private static volatile JdtServiceImpl latest;
+
+    static {
+        // The host half of every change context is the host's. These tests have no host, so the one they stand in for supplies a
+        // reconciler over the service this helper loaded last and the direct writes (28k-C2-3).
+        org.jawata.mcp.java.JavaChange.hostedBy(new org.jawata.core.workspace.StrictDiskSync(() -> latest),
+            org.jawata.spi.host.WorkspaceWrites.DIRECT);
+    }
+
     private Path tempDirectory;
     private JdtServiceImpl loadedService;
     /** Services a test built for itself and handed here to be disposed (REL44-29). */
@@ -58,6 +68,7 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
      */
     public JdtServiceImpl disposeAfter(JdtServiceImpl service) {
         disposeAfter.add(service);
+        latest = service;
         return service;
     }
 
@@ -202,7 +213,8 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
             }
             loadedService = null;
         }
-        return new JdtServiceImpl();
+        latest = new JdtServiceImpl();
+        return latest;
     }
 
     /**
