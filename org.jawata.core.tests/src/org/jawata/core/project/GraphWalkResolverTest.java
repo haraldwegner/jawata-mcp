@@ -1,4 +1,4 @@
-package org.jawata.core.resolve;
+package org.jawata.core.project;
 
 import org.jawata.resident.resolve.BundleFacts;
 import org.jawata.resident.resolve.GraphWalkResolver;
