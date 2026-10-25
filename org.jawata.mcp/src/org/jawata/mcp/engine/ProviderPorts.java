@@ -31,9 +31,4 @@ public record ProviderPorts(Supplier<SymbolAnchors> anchors, Supplier<TestRuntim
                 .flatMap(Optional::stream)
                 .findFirst().orElse(null));
     }
-
-    /** Ports with no language behind them: every ask answers null, which is what the engine says until a language arrives. */
-    public static ProviderPorts none() {
-        return new ProviderPorts(() -> null, () -> null);
-    }
 }

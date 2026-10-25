@@ -265,7 +265,7 @@ public class JawataApplication implements IApplication {
         EngineState.current().loadStarted();
         try {
             JdtServiceImpl service = new JdtServiceImpl();
-            WorkspaceFileWatcher watcher = new WorkspaceFileWatcher(dataDir, service);
+            WorkspaceFileWatcher watcher = new WorkspaceFileWatcher(dataDir, service, jawataEngine.host().workspace());
             watcher.start();  // synchronous initial load + arm watcher thread
             this.model.install(service);
             this.workspaceWatcher = watcher;

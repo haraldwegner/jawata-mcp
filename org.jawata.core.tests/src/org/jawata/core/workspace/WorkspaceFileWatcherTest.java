@@ -68,6 +68,27 @@ class WorkspaceFileWatcherTest {
     }
 
     @Test
+    @DisplayName("a host that owns its own workspace is never changed by workspace.json: start() loads nothing")
+    void startLoadsNothingWhenTheHostOwnsTheWorkspace() throws Exception {
+        writeWorkspaceJson(helper.getFixturePath("simple-maven"));
+
+        watcher = new WorkspaceFileWatcher(dataDir, service, new org.jawata.spi.host.HostWorkspace() {
+            @Override
+            public java.util.List<ProjectFolder> folders() {
+                return java.util.List.of();
+            }
+
+            @Override
+            public boolean ownsWorkspace() {
+                return false;
+            }
+        });
+        watcher.start();
+
+        assertEquals(0, service.allProjects().size(), "the host's workspace is the host's: the watcher added nothing");
+    }
+
+    @Test
     @DisplayName("appending a project to workspace.json adds it to the workspace within 30s")
     void addProjectOnFileChange() throws Exception {
         Path simpleMaven = helper.getFixturePath("simple-maven");

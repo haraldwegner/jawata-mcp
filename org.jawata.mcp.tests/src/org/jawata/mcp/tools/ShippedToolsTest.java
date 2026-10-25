@@ -47,7 +47,7 @@ class ShippedToolsTest {
     void buildingTheSetRegistersNothing() {
         ToolRegistry registry = new ToolRegistry();
 
-        ShippedTools.build(InertShippedTools.wiring(registry), ProviderPorts.none(), List.of());
+        ShippedTools.build(InertShippedTools.wiring(registry), new ProviderPorts(() -> null, () -> null), List.of());
 
         assertEquals(0, registry.getToolCount(),
             "the producer builds; only the application registers what it returns");

@@ -58,7 +58,7 @@ class StrictDiskSyncStoreTest {
         H2ExperienceStore store = H2ExperienceStore.open(null);
         try {
             ToolRegistry registry = new ToolRegistry();
-            registry.register(new ExperienceTool(() -> service, store));
+            registry.register(ExperienceTool.withAnchors(() -> service, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors()));
             registry.setReconciler(new StrictDiskSync(() -> service));
 
             // Prime the guard: the first call reconciles the new root once.

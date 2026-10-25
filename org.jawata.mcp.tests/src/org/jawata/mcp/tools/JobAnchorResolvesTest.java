@@ -1,28 +1,29 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.lang.reflect.Proxy;
+import java.util.Map;
+
 import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
 import org.jawata.core.JdtServiceImpl;
+import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
-import java.lang.reflect.Proxy;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Sprint 28f D7, closed at C9 — A JOB'S ANCHOR IS RESOLVED, NOT TAKEN ON TRUST.
@@ -76,7 +77,7 @@ class JobAnchorResolvesTest {
     @Test
     @DisplayName("a job anchored at a member that does not exist is refused by name")
     void an_unresolvable_anchor_is_refused() {
-        ExperienceTool tool = new ExperienceTool(() -> service, store);
+        ExperienceTool tool = ExperienceTool.withAnchors(() -> service, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
 
         ToolResponse r = recordJob(tool, "com.example.AlphaTool#noSuchMemberAnywhere");
 
@@ -97,7 +98,7 @@ class JobAnchorResolvesTest {
     @DisplayName("a job anchored at a member that DOES exist is accepted")
     @SuppressWarnings("unchecked")
     void a_resolvable_anchor_is_accepted() {
-        ExperienceTool tool = new ExperienceTool(() -> service, store);
+        ExperienceTool tool = ExperienceTool.withAnchors(() -> service, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
 
         ToolResponse r = recordJob(tool, "com.example.AlphaTool#parse");
 
@@ -120,7 +121,7 @@ class JobAnchorResolvesTest {
     @DisplayName("with no project loaded the row is admitted and says it was not checked")
     @SuppressWarnings("unchecked")
     void an_unverifiable_anchor_is_admitted_and_said() {
-        ExperienceTool tool = new ExperienceTool(() -> null, store);
+        ExperienceTool tool = ExperienceTool.withAnchors(() -> null, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> null).memoryAnchors());
 
         ToolResponse r = recordJob(tool, "com.example.AlphaTool#noSuchMemberAnywhere");
 
@@ -164,7 +165,7 @@ class JobAnchorResolvesTest {
                 }
                 return method.getReturnType().isPrimitive() ? false : null;
             });
-        ExperienceTool tool = new ExperienceTool(() -> throwing, store);
+        ExperienceTool tool = ExperienceTool.withAnchors(() -> throwing, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> throwing).memoryAnchors());
 
         ToolResponse r = recordJob(tool, "com.example.AlphaTool#parse");
 
@@ -228,7 +229,7 @@ class JobAnchorResolvesTest {
             IJdtService.class.getClassLoader(), new Class<?>[] {IJdtService.class},
             (proxy, method, methodArgs) -> "findType".equals(method.getName()) ? unreadable
                 : (method.getReturnType().isPrimitive() ? false : null));
-        ExperienceTool tool = new ExperienceTool(() -> service, store);
+        ExperienceTool tool = ExperienceTool.withAnchors(() -> service, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
 
         ToolResponse r = recordJob(tool, "com.example.AlphaTool#parse");
 

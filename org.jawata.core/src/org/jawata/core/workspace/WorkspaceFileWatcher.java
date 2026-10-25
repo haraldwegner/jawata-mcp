@@ -1,13 +1,5 @@
 package org.jawata.core.workspace;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.jawata.core.IJdtService;
-import org.jawata.core.JdtServiceImpl;
-import org.jawata.core.LoadedProject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.nio.file.ClosedWatchServiceException;
 import java.nio.file.FileSystems;
@@ -24,6 +16,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+
+import org.jawata.core.IJdtService;
+import org.jawata.core.JdtServiceImpl;
+import org.jawata.core.LoadedProject;
+import org.jawata.spi.host.HostWorkspace;
+import org.jawata.spi.host.HostWorkspace.ProjectFolder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Watches a {@code workspace.json} file in the Eclipse JDT data directory and
@@ -93,6 +96,20 @@ public class WorkspaceFileWatcher implements AutoCloseable {
     private final ObjectMapper mapper = new ObjectMapper();
     private final long fallbackPollSeconds;
     private final WatchServiceOpener opener;
+    private final HostWorkspace workspace;
+
+    /** A watcher built without a host: the engine runs alone and owns the workspace. */
+    private static final HostWorkspace THE_ENGINE_OWNS_IT = new HostWorkspace() {
+        @Override
+        public List<ProjectFolder> folders() {
+            return List.of();
+        }
+
+        @Override
+        public boolean ownsWorkspace() {
+            return true;
+        }
+    };
 
     private volatile WatchService watchService;
     private volatile Thread watcherThread;
@@ -124,6 +141,24 @@ public class WorkspaceFileWatcher implements AutoCloseable {
      * the user's inotify instances are used up.
      */
     WorkspaceFileWatcher(Path jdtDataDir, JdtServiceImpl service, long fallbackPollSeconds, WatchServiceOpener opener) {
+        this(jdtDataDir, service, fallbackPollSeconds, opener, THE_ENGINE_OWNS_IT);
+    }
+
+    /**
+     * The watcher of a host that may or may not own its workspace: it follows {@code workspace.json} only when
+     * {@link HostWorkspace#ownsWorkspace()} says the engine may change the workspace, the question every door that loads, adds
+     * or removes a project asks.
+     *
+     * @param jdtDataDir the folder that holds {@code workspace.json}
+     * @param service    the service projects are added to and removed from
+     * @param workspace  whether the engine may change the workspace
+     */
+    public WorkspaceFileWatcher(Path jdtDataDir, JdtServiceImpl service, HostWorkspace workspace) {
+        this(jdtDataDir, service, DEFAULT_FALLBACK_POLL_SECONDS, FileSystems.getDefault()::newWatchService, workspace);
+    }
+
+    private WorkspaceFileWatcher(Path jdtDataDir, JdtServiceImpl service, long fallbackPollSeconds, WatchServiceOpener opener,
+            HostWorkspace workspace) {
         if (jdtDataDir == null) {
             throw new IllegalArgumentException("jdtDataDir must not be null");
         }
@@ -138,6 +173,7 @@ public class WorkspaceFileWatcher implements AutoCloseable {
         this.service = service;
         this.fallbackPollSeconds = fallbackPollSeconds;
         this.opener = opener;
+        this.workspace = workspace;
     }
 
     /** How a watch service is opened (a seam: the default asks the file system). */
@@ -159,6 +195,10 @@ public class WorkspaceFileWatcher implements AutoCloseable {
     public synchronized void start() throws IOException {
         if (running) {
             log.debug("WorkspaceFileWatcher already running");
+            return;
+        }
+        if (!workspace.ownsWorkspace()) {
+            log.info("The host owns the workspace; workspace.json at {} is not followed", workspaceJson);
             return;
         }
 

@@ -93,16 +93,8 @@ public class JawataEngine {
 		return refactoringChangeCache;
 	}
 
-	public void setRefactoringChangeCache(RefactoringChangeCache refactoringChangeCache) {
-		this.refactoringChangeCache = refactoringChangeCache;
-	}
-
 	public RuntimeSessionRegistry getRuntimeSessions() {
 		return runtimeSessions;
-	}
-
-	public void setRuntimeSessions(RuntimeSessionRegistry runtimeSessions) {
-		this.runtimeSessions = runtimeSessions;
 	}
 
 	public ToolRegistry getToolRegistry() {

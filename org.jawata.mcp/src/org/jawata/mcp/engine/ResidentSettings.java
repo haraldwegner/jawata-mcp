@@ -14,6 +14,7 @@ public final class ResidentSettings implements EngineSettings {
     /** The settings that may also come from an environment variable, which applies when no system property says otherwise. */
     private static final Map<String, String> ENVIRONMENT = Map.of(
         "jawata.transcript.enabled", "JAWATA_TRANSCRIPT",
+        "xdg.data.home", "XDG_DATA_HOME",
         "jawata.project.path", "JAVA_PROJECT_PATH",
         "jawata.timeout.seconds", "JAWATA_TIMEOUT_SECONDS",
         "jawata.absolute.paths", "JAWATA_ABSOLUTE_PATHS");

@@ -88,9 +88,8 @@ public final class ResidentDirectories implements EngineDirectories {
 		if (explicit.isPresent()) {
 			return Path.of(explicit.get());
 		}
-		String xdg = System.getenv("XDG_DATA_HOME");
-		Path base = xdg != null && !xdg.isBlank() ? Path.of(xdg)
-				: Path.of(System.getProperty("user.home"), ".local", "share");
+		Optional<String> xdg = present(SettingKeys.DATA_HOME);
+		Path base = xdg.isPresent() ? Path.of(xdg.get()) : Path.of(System.getProperty("user.home"), ".local", "share");
 		return migrateLegacySharedDir(base);
 	}
 

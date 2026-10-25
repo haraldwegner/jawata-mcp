@@ -95,7 +95,8 @@ class OneAnchorAnswerForBothGatesTest {
     void theGateRefusesItAndTheSweepQueuesIt() throws Exception {
         JdtServiceImpl service = helper.loadProject("simple-maven");
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
-            ExperienceTool tool = new ExperienceTool(() -> service, store, List::of);
+            ExperienceTool tool = ExperienceTool.withAnchors(() -> service, store, List::of,
+                new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
 
             // PROOF OF LIFE FIRST. If the fixture's own anchor does not resolve, every
             // assertion below is about a broken lookup rather than about a missing member,
