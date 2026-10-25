@@ -6,6 +6,7 @@ Bundle-Version: 4.4.15
 Bundle-Vendor: JAWATA
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
+Service-Component: OSGI-INF/org.jawata.mcp.java.JavaProvider.xml
 Export-Package: org.jawata.mcp,
  org.jawata.mcp.domain,
  org.jawata.mcp.models,
@@ -54,5 +55,6 @@ Import-Package: org.jawata.spi.host;version="[1.0,2.0)",
  org.h2,
  org.h2.jdbcx,
  org.osgi.framework;version="1.10.0",
+ org.osgi.util.tracker;version="1.5.0",
  org.osgi.service.prefs,
  org.slf4j;version="2.0.0"

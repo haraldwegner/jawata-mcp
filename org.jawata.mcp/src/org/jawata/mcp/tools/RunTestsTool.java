@@ -16,7 +16,6 @@ import org.eclipse.jdt.core.IType;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.execution.ForkedTestRunner;
-import org.jawata.mcp.java.JavaProvider;
 import org.jawata.mcp.java.TestWorkingFolder;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
@@ -93,9 +92,12 @@ public class RunTestsTool extends AbstractTool {
     /** What a forked run of the loaded project needs, asked for at each use (contract §4.5, E10); the language provider's port. */
     private final Supplier<TestRuntime> testRuntime;
 
-    /** The tool over the Java provider's test runtime, for a caller that has no provider of its own to hand in. */
+    /**
+     * The tool with no language bound: it answers every verb that needs a forked run with "still loading", which is what the engine
+     * says until a language provider arrives. A caller that has a provider hands in its test runtime.
+     */
     public RunTestsTool(Supplier<IJdtService> serviceSupplier) {
-        this(serviceSupplier, new JavaProvider(serviceSupplier)::testRuntime);
+        this(serviceSupplier, () -> null);
     }
 
     /** The tool over the given test runtime: the producer hands in the one its provider builds (E12, ledger 28k-C3-8). */
@@ -496,6 +498,9 @@ public class RunTestsTool extends AbstractTool {
             // compile errors instead of running tests against stale bytes.
             // The language is asked (contract §4.5, E10): what the forked run needs, and whether the project builds.
             TestRuntime tests = testRuntime.get();
+            if (tests == null) {
+                return ToolResponse.projectLoading();
+            }
             String projectName = javaProject.getProject().getName();
             String buildProblem = tests.buildAndCheck(projectName, new NullProgressMonitor()).orElse(null);
             if (buildProblem != null) {
@@ -1837,7 +1842,11 @@ public class RunTestsTool extends AbstractTool {
 
             LoadedProject project = service.allProjects().stream().findFirst().orElse(null);
             if (project == null) return ToolResponse.projectNotLoaded();
-            String buildProblem = testRuntime.get()
+            TestRuntime tests = testRuntime.get();
+            if (tests == null) {
+                return ToolResponse.projectLoading();
+            }
+            String buildProblem = tests
                 .buildAndCheck(project.javaProject().getProject().getName(), new NullProgressMonitor()).orElse(null);
             if (buildProblem != null) {
                 return ToolResponse.preconditionNotMet(buildProblem, PROJECT_DOES_NOT_COMPILE);

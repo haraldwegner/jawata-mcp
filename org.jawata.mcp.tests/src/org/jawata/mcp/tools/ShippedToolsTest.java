@@ -11,6 +11,7 @@ import java.util.Set;
 import java.util.TreeSet;
 
 import org.jawata.mcp.ShippedTools;
+import org.jawata.mcp.engine.ProviderPorts;
 import org.jawata.mcp.fixtures.InertShippedTools;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -46,7 +47,7 @@ class ShippedToolsTest {
     void buildingTheSetRegistersNothing() {
         ToolRegistry registry = new ToolRegistry();
 
-        ShippedTools.build(InertShippedTools.wiring(registry));
+        ShippedTools.build(InertShippedTools.wiring(registry), ProviderPorts.none(), List.of());
 
         assertEquals(0, registry.getToolCount(),
             "the producer builds; only the application registers what it returns");

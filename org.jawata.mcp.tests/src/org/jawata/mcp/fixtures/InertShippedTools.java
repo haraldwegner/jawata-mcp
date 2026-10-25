@@ -9,8 +9,10 @@ import org.jawata.core.HeadlessModelSource;
 import org.jawata.mcp.ShippedTools;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.engine.ProjectLoadingState;
+import org.jawata.mcp.engine.ProviderPorts;
 import org.jawata.mcp.engine.ResidentHostWorkspace;
 import org.jawata.mcp.engine.ResidentJavaBinding;
+import org.jawata.mcp.java.JavaProvider;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.Tool;
 import org.jawata.mcp.tools.ToolRegistry;
@@ -53,7 +55,9 @@ public final class InertShippedTools {
 
     /** Every tool the product ships, unregistered. */
     public static List<Tool> tools() {
-        return ShippedTools.build(wiring(new ToolRegistry())).tools();
+        ShippedTools.Wiring wiring = wiring(new ToolRegistry());
+        JavaProvider java = new JavaProvider(wiring.jdt());
+        return ShippedTools.build(wiring, new ProviderPorts(java.memoryAnchors(), java::testRuntime), List.of(java)).tools();
     }
 
     /** The names of every tool the product ships. */

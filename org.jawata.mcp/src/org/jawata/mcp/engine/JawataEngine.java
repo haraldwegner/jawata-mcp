@@ -23,6 +23,7 @@ import org.jawata.mcp.tools.FindQualityIssueTool;
 import org.jawata.mcp.tools.ToolRegistry;
 import org.jawata.mcp.transport.Transport;
 import org.jawata.spi.host.EngineHost;
+import org.jawata.spi.lang.ProviderContext;
 
 public class JawataEngine {
 	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(JawataEngine.class);
@@ -72,6 +73,10 @@ public class JawataEngine {
 	 * language bindings it supplies.
 	 */
 	private final EngineHost host;
+
+	/** The faces and the language providers that plug into this engine (E19). */
+	private final EngineWhiteboard whiteboard = new EngineWhiteboard();
+
 	/**
 	 * How often the schedule looks at the clock. The copy itself is due once a day.
 	 */
@@ -468,9 +473,9 @@ public class JawataEngine {
 	void registerTools() {
 		// Sprint 21d: strict disk sync — every tool call reconciles external edits
 		// before executing; the unchanged-tree fast path is the only skip.
-		org.jawata.core.JavaBinding java = this.host().binding(org.jawata.core.JavaBinding.class).orElseThrow();
+		org.jawata.core.JavaBinding javaBinding = this.host().binding(org.jawata.core.JavaBinding.class).orElseThrow();
 		org.jawata.core.workspace.StrictDiskSync reconciler = new org.jawata.core.workspace.StrictDiskSync(
-				java.model()::current);
+				javaBinding.model()::current);
 		this.getToolRegistry().setReconciler(reconciler);
 
 		// Sprint 21e (item A): tool-initiated project mutations refresh + backfill the
@@ -491,32 +496,96 @@ public class JawataEngine {
 		// (the workspace service, and the store, which is assigned before this runs but
 		// replaced on
 		// a degraded reopen).
-		Built shipped = ShippedTools.build(new Wiring(java, this.host().workspace(),
-				() -> java.model().current() != null, () -> this.getToolRegistry().getToolCount(),
+		// E19: the languages arrive through the whiteboard. What the tools that name no language hold of a language is a port read
+		// at call time, and what a language adds is published when it binds, so the engine is built before any language exists.
+		ProviderContext languageContext = new ProviderContext() {
+			@Override
+			public org.jawata.spi.host.Reconciler reconciler() {
+				return reconciler;
+			}
+
+			@Override
+			public org.jawata.spi.host.WorkspaceWrites writes() {
+				return org.jawata.spi.host.WorkspaceWrites.DIRECT;
+			}
+		};
+		Built neutral = ShippedTools.neutral(new Wiring(javaBinding, this.host().workspace(),
+				() -> javaBinding.model().current() != null, () -> this.getToolRegistry().getToolCount(),
 				() -> EngineState.current().loading(), () -> EngineState.current().loadingError(),
 				() -> this.host().directories().fieldDir(), () -> this.getToolRegistry().inFlight(),
 				this.getRefactoringChangeCache(), this.getExperienceStore(), () -> this.getExperienceStore(),
 				() -> this.experienceEmbeddingIndex(), this.getRuntimeSessions(), () -> this.getLearnerEvents(),
 				() -> this.getToolRegistry(), () -> this.selfEndpoint(), () -> this.host().directories().memoryRoots(),
-				() -> reconciler));
+				() -> reconciler), ProviderPorts.over(whiteboard, languageContext));
 
-		// Kept for what reads them later: the watch engine's detector binding, the
-		// quality ledger's
-		// reach to the pre-advice surface (wired in start()), and the automatic refresh
-		// after a
-		// project load.
-		this.setFindQualityIssueTool(shipped.quality());
-		this.setExperienceAdvisor(shipped.advisor());
-		this.setExperienceTool(shipped.experience());
-		// Sprint 28g (D42): the SAME advisor is also asked on every tool response
-		// rather than by one
-		// tool of forty-odd. Nothing new is constructed here, which is what keeps D-SIX
-		// satisfied.
-		this.getToolRegistry().setExperienceAdvisor(shipped.advisor());
+		// Kept for what reads them later: the quality ledger's reach to the pre-advice surface (wired in assemble()), and the
+		// automatic refresh after a project load. The watch engine's detector binding is kept when a language contributes it.
+		this.setExperienceAdvisor(neutral.advisor());
+		this.setExperienceTool(neutral.experience());
+		// Sprint 28g (D42): the SAME advisor is also asked on every tool response rather than by one tool of forty-odd. Nothing new
+		// is constructed here, which is what keeps D-SIX satisfied.
+		this.getToolRegistry().setExperienceAdvisor(neutral.advisor());
 
-		for (org.jawata.mcp.tools.Tool tool : shipped.tools()) {
-			this.getToolRegistry().register(tool);
+		// The host serves Java, so the engine is loading until the Java provider binds; the neutral set is published now, and each
+		// language's tools when it arrives.
+		new LanguagePublisher(whiteboard, neutral, published -> {
+			getToolRegistry().publish(published.tools());
+			setFindQualityIssueTool(published.quality());
+		}, java.util.Optional.of("java"), EngineState.current(), this::verifyPublishedSurface);
+	}
+
+	/**
+	 * Sprint 28d-rescue (P1). Every tool has now fed its operations into the registry, so this is the first moment the question
+	 * "does anything back this cure step?" has a true answer. It used to run at the end of assemble, before any language could bind
+	 * (E19 moved it here, to the moment the awaited language has published its tools). A disagreement fails the load, and health_check
+	 * says so, rather than serving a cure that would refuse at the front door.
+	 *
+	 * <p>Sprint 28g D39 / the architecture's P2 step 3, the same moment and the same reason: the engine's coverage declaration is
+	 * checked against what it actually publishes.</p>
+	 */
+	private void verifyPublishedSurface() {
+		try {
+			org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(org.jawata.mcp.change.OperationRegistry.theRegistry());
+			int coveredRows = org.jawata.mcp.catalogue.JavaEngineCoverage.verifyAgainstShippedDoors();
+			log.info("This engine performs {} of {} catalogue refactorings", coveredRows,
+					org.jawata.catalogue.Refactorings.all().size());
+		} catch (RuntimeException e) {
+			log.error("The published tool surface disagrees with what the engine declares", e);
+			EngineState.current().loadFailed("the published tool surface is inconsistent: " + e.getMessage());
 		}
+	}
+
+	/** The one place the engine learns of the faces and the language providers that plug into it. */
+	public EngineWhiteboard whiteboard() {
+		return whiteboard;
+	}
+
+	/** What a face may hold of this engine: the one entry into the tools, its state and settings, and where its MCP face listens. */
+	public EngineApi api() {
+		return new EngineApi() {
+			@Override
+			public ToolCalls tools() {
+				return getToolRegistry();
+			}
+
+			@Override
+			public EngineState state() {
+				return EngineState.current();
+			}
+
+			@Override
+			public org.jawata.spi.host.EngineSettings settings() {
+				return host().settings();
+			}
+
+			@Override
+			public java.util.Optional<org.jawata.spi.host.McpEndpoint> mcp() {
+				org.jawata.mcp.execution.SelfEndpoint self = selfEndpoint();
+				return self == null ? java.util.Optional.empty()
+						: java.util.Optional.of(new org.jawata.spi.host.McpEndpoint(java.net.URI.create(self.url()),
+								java.util.Optional.ofNullable(self.token())));
+			}
+		};
 	}
 
 	public void assemble() {
@@ -705,40 +774,10 @@ public class JawataEngine {
 		// Sprint 28b D1: session → client attribution for the field recording.
 		getProtocolHandler().setClientDirectory(clientDirectory);
 
-		log.info("Registered {} tools", getToolRegistry().getToolCount());
+		log.info("Registered {} tools; the rest arrive with the languages", getToolRegistry().getToolCount());
 
-		// Sprint 28d-rescue (P1). Every tool has now fed its operations into the
-		// registry, so this is the first moment the question "does anything back this
-		// cure step?" has a true answer. It THROWS on a table naming a step nothing
-		// publishes — boot fails loudly rather than serving a cure that would refuse at
-		// the front door. It used to run in CureCatalog's static initializer, which can
-		// no longer work: the registry is populated by registration, and a class-load
-		// before that would refuse every step for a reason about ordering.
-		org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(org.jawata.mcp.change.OperationRegistry.theRegistry());
-
-		// Sprint 28g D39 / the architecture's P2 step 3. The same moment, and the same
-		// reason:
-		// every tool has registered, so this is the first point at which the engine's
-		// coverage
-		// declaration can be checked against what it actually publishes. It THROWS on a
-		// declaration that disagrees with the shipped surface, exactly as the cure
-		// table above
-		// does.
-		//
-		// THIS COMMENT ALSO CLAIMED "the first point at which a catalogue row key can
-		// be
-		// answered from production", and that was false: the index it referred to had
-		// no
-		// reader and is withdrawn. What this call buys is that the declaration is READ
-		// by
-		// production at all — the catalogue stops being code only its own tests touch —
-		// and
-		// that the product can STATE what it performs. Answering a row key is §4-B's
-		// index,
-		// which is owed; see JavaEngineCoverage and OperationRegistry.
-		int coveredRows = org.jawata.mcp.catalogue.JavaEngineCoverage.verifyAgainstShippedDoors();
-		log.info("This engine performs {} of {} catalogue refactorings", coveredRows,
-				org.jawata.catalogue.Refactorings.all().size());
+		// The check that every tool has fed its operations into the registry (the cure table, the coverage declaration) runs when the
+		// language the host serves has bound and published its tools: verifyPublishedSurface().
 	}
 
 	/**

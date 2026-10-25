@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28k E19: the Java language provider is a declarative service. The engine does not build it: the host registers the EngineHost
+     it built the engine from, this component binds that host, and the provider appears in the framework as a LanguageProvider that the
+     engine's whiteboard tracker picks up. Until it does, the engine reports "loading" and publishes only the tools that name no language. -->
+<scr:component xmlns:scr="http://www.osgi.org/xmlns/scr/v1.3.0" name="org.jawata.mcp.java.JavaProvider" immediate="true">
+  <implementation class="org.jawata.mcp.java.JavaProvider"/>
+  <service>
+    <provide interface="org.jawata.spi.lang.LanguageProvider"/>
+  </service>
+  <reference name="host" interface="org.jawata.spi.host.EngineHost" bind="bindHost" cardinality="1..1" policy="static"/>
+</scr:component>

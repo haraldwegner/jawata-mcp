@@ -3,17 +3,15 @@ package org.jawata.mcp.java;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.jawata.core.IJdtService;
+import org.jawata.core.JavaBinding;
 import org.jawata.mcp.change.ChangeContext;
-import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.engine.ToolNeeds;
+import org.jawata.mcp.engine.ToolSource;
 import org.jawata.mcp.knowledge.ExperienceRetrieval;
-import org.jawata.mcp.knowledge.ExperienceStore;
-import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.runtime.RuntimeArtifactStore;
-import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.AnalyzeTool;
 import org.jawata.mcp.tools.ApplyNullAnnotationsTool;
 import org.jawata.mcp.tools.DebugTool;
@@ -37,6 +35,7 @@ import org.jawata.mcp.tools.Tool;
 import org.jawata.mcp.tools.ValidateSyntaxTool;
 import org.jawata.mcp.tools.build.DependencyTool;
 import org.jawata.mcp.tools.workflow.FormatTool;
+import org.jawata.spi.host.EngineHost;
 import org.jawata.spi.lang.BuildVerdict;
 import org.jawata.spi.lang.ChangePaths;
 import org.jawata.spi.lang.LanguageProvider;
@@ -44,20 +43,34 @@ import org.jawata.spi.lang.ProviderContext;
 import org.jawata.spi.lang.SymbolAnchors;
 import org.jawata.spi.lang.TestRuntime;
 
-import com.fasterxml.jackson.databind.JsonNode;
-
 /**
  * The Java language provider (contract §4.5, E8): the one object that hands the engine Java's compile check, its way of naming
  * changed files, its symbol anchors and its test runtime, all over the model the headless host loaded, and (E12) the tools that
  * only make sense over a Java model. {@code JawataApplication} assembles it directly until E19 registers it as a service. The model
  * is asked for at each call, not held, because a workspace may load or replace it after the provider exists.
  */
-public final class JavaProvider implements LanguageProvider {
+public final class JavaProvider implements LanguageProvider, ToolSource {
 
     private final Supplier<IJdtService> model;
 
+    /** The host the component runtime hands this provider before it is published as a service; null for a provider built directly. */
+    private volatile EngineHost host;
+
     public JavaProvider(Supplier<IJdtService> model) {
         this.model = model;
+    }
+
+    /**
+     * The constructor the component runtime uses (declarative service, {@code OSGI-INF/org.jawata.mcp.java.JavaProvider.xml}): the
+     * model is whatever the host's Java binding holds at the moment of each ask, so the provider can exist before any project loads.
+     */
+    public JavaProvider() {
+        this.model = () -> host.binding(JavaBinding.class).orElseThrow().model().current();
+    }
+
+    /** The component runtime hands in the host the engine was built from; the provider is published once it has it. */
+    void bindHost(EngineHost host) {
+        this.host = host;
     }
 
     @Override
@@ -111,39 +124,13 @@ public final class JavaProvider implements LanguageProvider {
     }
 
     /**
-     * What the Java tools take from the engine beyond the model, which they ask this provider for.
-     *
-     * @param changeCache     the staged refactoring changes and their undo handles
-     * @param storeSupplier   the knowledge store, read at call time
-     * @param experienceStore the knowledge store as it is now (the debugger recalls from it)
-     * @param runtimeSessions the live debug and profile sessions
-     * @param impactedTests   how {@code inspect} asks {@code run_tests} for the tests a change reaches
-     */
-    public record ToolNeeds(
-            RefactoringChangeCache changeCache,
-            Supplier<ExperienceStore> storeSupplier,
-            ExperienceStore experienceStore,
-            RuntimeSessionRegistry runtimeSessions,
-            Function<JsonNode, ToolResponse> impactedTests) {
-    }
-
-    /**
-     * The tools this provider adds, and the one of them the application keeps hold of.
-     *
-     * @param tools   the Java tools, unregistered, in no promised order (the producer fixes the published order)
-     * @param quality kept for the watch engine's detector binding
-     */
-    public record Contribution(List<Tool> tools, FindQualityIssueTool quality) {
-    }
-
-    /**
      * The tools that exist only over a Java model (contract §3, E12): navigation, search, analysis, the refactoring doors, the
      * quality and modernization sweeps, the debugger and profiler, the build-file and formatting tools. Built here, not by the
-     * producer, so the engine's producer constructs none of them; it names only {@link FindQualityIssueTool}, as the type of the
-     * quality tool it keeps for the watch engine. Registers nothing. The contract's {@code ProviderContext}
-     * joins this signature with the SPI member, at E19, when the engine hands providers their context.
+     * producer, so the engine's producer constructs none of them. Registers nothing. This is the engine's {@link ToolSource} slot
+     * (E19): the engine asks every bound provider that has one.
      */
-    public Contribution tools(ToolNeeds needs) {
+    @Override
+    public List<Tool> tools(ToolNeeds needs) {
         Supplier<IJdtService> jdt = model;
         List<Tool> tools = new ArrayList<>();
 
@@ -172,8 +159,7 @@ public final class JavaProvider implements LanguageProvider {
         tools.add(new FindPatternUsagesTool(jdt));
         // The detectors whose cure is a catalogue entry resolve their addresses from the store at scan time, so this does not depend
         // on whether the store is assigned yet.
-        FindQualityIssueTool quality = new FindQualityIssueTool(jdt, needs.storeSupplier());
-        tools.add(quality);
+        tools.add(new FindQualityIssueTool(jdt, needs.storeSupplier()));
         tools.add(new FindStringLiteralsTool(jdt));
 
         // The interactive debugger is given the store: a breakpoint hit RECALLS what is recorded about its symbol. The profiler
@@ -189,6 +175,6 @@ public final class JavaProvider implements LanguageProvider {
         tools.add(new FormatTool(jdt));
         tools.add(new QuickFixTool(jdt));
 
-        return new Contribution(List.copyOf(tools), quality);
+        return List.copyOf(tools);
     }
 }

@@ -69,7 +69,11 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         // match no detect prefix.
         "analyze", "inspect");
 
-    private final Map<String, Tool> tools = new LinkedHashMap<>();
+    /**
+     * The registered tools in publishing order. Replaced, never changed in place, so a call being served while a language arrives or
+     * leaves reads one whole set: the old one or the new one, never half of either.
+     */
+    private volatile Map<String, Tool> tools = new LinkedHashMap<>();
 
     /** Sprint 21d: the strict-disk-sync guard, run once per call before any tool executes. */
     private Reconciler reconciler;
@@ -186,17 +190,38 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
      * tool's constructor because this method already sees every tool exactly once, so
      * the operation list cannot drift from the tool list.</p>
      */
-    public void register(Tool tool) {
+    public synchronized void register(Tool tool) {
         String name = tool.getName();
         if (tools.containsKey(name)) {
             log.warn("Overwriting existing tool: {}", name);
         }
-        tools.put(name, tool);
+        Map<String, Tool> next = new LinkedHashMap<>(tools);
+        next.put(name, tool);
+        tools = next;
         // Stage 6a (M8): the publishing half moved to OperationSurface. Registering a tool
         // and deciding which of its kinds are OPERATIONS are two jobs that shared a method,
         // and a test that wanted the second had to build a whole registry to reach it.
         OperationSurface.publish(tool);
         log.debug("Registered tool: {}", name);
+    }
+
+    /**
+     * Makes the registered tools exactly {@code arranged}, in that order (Sprint 28k, E19): the engine calls this each time a
+     * language arrives or leaves, with the neutral tools and every bound language's tools in the order the product publishes. A tool
+     * not seen before enters the operation registry; a tool no longer listed is withdrawn from the registry (the operation registry
+     * keeps what it was given, since a language does not leave during a run). Calls being served read the old set or the new, whole.
+     */
+    public synchronized void publish(List<Tool> arranged) {
+        Map<String, Tool> next = new LinkedHashMap<>();
+        for (Tool tool : arranged) {
+            next.put(tool.getName(), tool);
+        }
+        for (Tool tool : next.values()) {
+            if (tools.get(tool.getName()) != tool) {
+                OperationSurface.publish(tool);
+            }
+        }
+        tools = next;
     }
 
     /**

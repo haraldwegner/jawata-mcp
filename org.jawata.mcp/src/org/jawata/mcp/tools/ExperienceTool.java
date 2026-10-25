@@ -11,7 +11,6 @@ import java.util.function.Supplier;
 
 import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.java.JavaProvider;
 import org.jawata.mcp.knowledge.Confidence;
 import org.jawata.mcp.knowledge.DescribedUnits;
 import org.jawata.mcp.knowledge.EntryForm;
@@ -272,8 +271,7 @@ public final class ExperienceTool implements Tool {
             Supplier<List<java.nio.file.Path>> defaultRoots,
             ExperienceMaintenance.PointerResolver resolverOverride,
             org.jawata.mcp.knowledge.StoreBackups backupsOverride) {
-        this(serviceSupplier, store, defaultRoots, resolverOverride, backupsOverride,
-            new JavaProvider(serviceSupplier).memoryAnchors());
+        this(serviceSupplier, store, defaultRoots, resolverOverride, backupsOverride, () -> null);
     }
 
     /**

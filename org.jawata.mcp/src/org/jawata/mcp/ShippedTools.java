@@ -10,6 +10,9 @@ import org.jawata.core.JavaBinding;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.engine.ProjectLoadingState;
+import org.jawata.mcp.engine.ProviderPorts;
+import org.jawata.mcp.engine.ToolNeeds;
+import org.jawata.mcp.engine.ToolSource;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.field.InFlightCalls;
 import org.jawata.mcp.java.JavaProvider;
@@ -35,7 +38,6 @@ import org.jawata.mcp.tools.RunTestsTool;
 import org.jawata.mcp.tools.Tool;
 import org.jawata.mcp.tools.ToolRegistry;
 import org.jawata.spi.host.HostWorkspace;
-import org.jawata.spi.lang.SymbolAnchors;
 
 /**
  * THE ONE PRODUCER OF THE TOOLS THIS PRODUCT SHIPS (Sprint 28g C9a-1).
@@ -52,12 +54,13 @@ import org.jawata.spi.lang.SymbolAnchors;
  * process-wide operation registry, so a caller that only wants the names must not register; the
  * application registers what this returns, in the order it returns it.</p>
  *
- * <p>Since Sprint 28k (E12) the list has two sources. The tools that name no language, and the verbs
- * whose language answer comes through a provider port, are built here. The tools that exist only
- * over a Java model, and the ports themselves (memory's anchors, the test runtime), come from
- * {@link JavaProvider}; this producer builds no port, and the one Java tool class it still names is
- * {@code FindQualityIssueTool}, the type of {@code Built.quality}, which the application keeps for the watch engine's detector
- * binding. {@link PublishedOrder} puts the two sources in the order the product publishes.</p>
+ * <p>Since Sprint 28k (E12, E19) the list has two sources. The tools that name no language, and the verbs
+ * whose language answer comes through a provider port, are built here over {@link ProviderPorts}. The tools that exist only
+ * over one language's model come from the {@link ToolSource}s the engine hands in, and the ports themselves (memory's anchors, the
+ * test runtime) from the language providers behind {@link ProviderPorts}; this producer names no provider and builds no port, and
+ * the one language-specific tool class it still names is {@code FindQualityIssueTool}, the type of {@code Built.quality}, which
+ * the application keeps for the watch engine's detector binding. {@link PublishedOrder} puts the two sources in the order the
+ * product publishes.</p>
  *
  * <p>What the tools need from the running application is {@link Wiring}: suppliers read at call time
  * wherever the application's state changes after boot (the workspace service, the store), and the
@@ -119,39 +122,66 @@ public final class ShippedTools {
     /**
      * The tools, in registration order, and the three the application keeps hold of.
      *
-     * @param tools      every shipped tool, unregistered
-     * @param quality    kept for the watch engine's detector binding
+     * @param tools      every tool built so far, unregistered
+     * @param quality    kept for the watch engine's detector binding; null until a language contributes it
      * @param advisor    kept so the quality ledger reaches the pre-advice surface
      * @param experience kept for the automatic refresh after a project load
+     * @param needs      what the languages' tools are handed beyond their own model
      */
     public record Built(
             List<Tool> tools,
             FindQualityIssueTool quality,
             ExperienceAdvisor advisor,
-            ExperienceTool experience) {
+            ExperienceTool experience,
+            ToolNeeds needs) {
     }
 
-    /** Build the shipped tools from the wiring. Registers nothing. */
-    public static Built build(Wiring w) {
-        // Until E19 registers the provider as a service it is assembled here, over the same model supplier the tools use.
-        JavaProvider java = new JavaProvider(w.jdt());
-        Supplier<SymbolAnchors> anchors = java.memoryAnchors();
+    /**
+     * Build the shipped tools from the wiring and the languages bound now. Registers nothing.
+     *
+     * @param w       what the application supplies
+     * @param ports   the languages' ports the neutral tools hold
+     * @param sources the language providers that have tools of their own, in the order they arrived
+     */
+    public static Built build(Wiring w, ProviderPorts ports, List<ToolSource> sources) {
+        return withContributions(neutral(w, ports), sources);
+    }
 
-        RunTestsTool runTests = new RunTestsTool(w.jdt(), java::testRuntime);
+    /**
+     * The tools that name no language, over the ports the languages offer. Built once, when the engine assembles: the engine keeps
+     * the advisor and the experience tool, which it wires further, so these objects must not be built again when a language arrives.
+     */
+    public static Built neutral(Wiring w, ProviderPorts ports) {
+        RunTestsTool runTests = new RunTestsTool(w.jdt(), ports.tests());
 
         // The plan lifecycle consults and records against the knowledge store through the SAME advisor the pre-advice surface uses,
         // so it is given the embedding index, not left keyword-only.
-        ExperienceAdvisor advisor = new ExperienceAdvisor(w.experienceStore(), anchors, w.embeddingIndex().get());
+        ExperienceAdvisor advisor = new ExperienceAdvisor(w.experienceStore(), ports.anchors(), w.embeddingIndex().get());
 
         // The local experience/knowledge store's front door.
-        ExperienceTool experience = ExperienceTool.withAnchors(w.jdt(), w.experienceStore(), w.defaultMemoryRoots(), anchors);
+        ExperienceTool experience = ExperienceTool.withAnchors(w.jdt(), w.experienceStore(), w.defaultMemoryRoots(), ports.anchors());
 
-        List<Tool> tools = new ArrayList<>(neutralTools(w, runTests, advisor, experience));
-        JavaProvider.Contribution contribution = java.tools(new JavaProvider.ToolNeeds(
-            w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests));
-        tools.addAll(contribution.tools());
+        ToolNeeds needs = new ToolNeeds(
+            w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests);
+        return new Built(List.copyOf(neutralTools(w, runTests, advisor, experience)), null, advisor, experience, needs);
+    }
 
-        return new Built(List.copyOf(PublishedOrder.arrange(tools)), contribution.quality(), advisor, experience);
+    /**
+     * The neutral tools plus what the given languages add, in the order the product publishes. Asked again each time the set of
+     * languages changes; the neutral objects are the ones {@code neutral} built.
+     */
+    public static Built withContributions(Built neutral, List<ToolSource> sources) {
+        List<Tool> tools = new ArrayList<>(neutral.tools());
+        for (ToolSource source : sources) {
+            tools.addAll(source.tools(neutral.needs()));
+        }
+        return published(neutral, tools);
+    }
+
+    public static Built published(Built neutral, List<Tool> tools) {
+        FindQualityIssueTool quality = tools.stream()
+            .filter(FindQualityIssueTool.class::isInstance).map(FindQualityIssueTool.class::cast).findFirst().orElse(null);
+        return new Built(List.copyOf(PublishedOrder.arrange(tools)), quality, neutral.advisor(), neutral.experience(), neutral.needs());
     }
 
     /**

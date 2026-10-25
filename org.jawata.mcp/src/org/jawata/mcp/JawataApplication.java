@@ -93,6 +93,16 @@ public class JawataApplication implements IApplication {
         // Initialize tool registry and register tools
         jawataEngine.assemble();
 
+        // E19: the host the engine was built from is a service, so the Java provider component can bind to it, and the engine finds
+        // what plugs into it (languages, faces) through its whiteboard. The engine reports "loading" until the Java provider arrives.
+        org.osgi.framework.BundleContext framework =
+            org.osgi.framework.FrameworkUtil.getBundle(JawataApplication.class).getBundleContext();
+        org.osgi.framework.ServiceRegistration<org.jawata.spi.host.EngineHost> hostRegistration = framework.registerService(
+            org.jawata.spi.host.EngineHost.class, jawataEngine.host(), null);
+        org.jawata.mcp.engine.WhiteboardTracker whiteboardTracker =
+            new org.jawata.mcp.engine.WhiteboardTracker(framework, jawataEngine.whiteboard());
+        whiteboardTracker.open();
+
         // Sprint 28a (D11): install this server's workspace identity BEFORE the
         // message loop, from the same workspace.json the async load will read —
         // the initialize handshake must never race the project load. The live
@@ -106,8 +116,17 @@ public class JawataApplication implements IApplication {
         // launches without the manager).
         CompletableFuture.runAsync(this::autoLoadProjects);
 
-        // Run the main message loop (starts immediately, doesn't wait for project load)
-        Object exit = runMessageLoop(transportConfig);
+        // Run the main message loop (starts immediately, doesn't wait for project load). Faces attach once the engine runs and detach
+        // before it stops (E19); what was plugged in is let go whether the loop ends by itself or by an error.
+        jawataEngine.whiteboard().started(jawataEngine.api());
+        Object exit;
+        try {
+            exit = runMessageLoop(transportConfig);
+        } finally {
+            jawataEngine.whiteboard().stopping();
+            whiteboardTracker.close();
+            hostRegistration.unregister();
+        }
 
         log.info("JAWATA MCP Server stopped");
         return exit;

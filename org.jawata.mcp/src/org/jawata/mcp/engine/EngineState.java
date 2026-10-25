@@ -17,6 +17,7 @@ public final class EngineState {
     private static final EngineState CURRENT = new EngineState();
 
     private volatile boolean booted;
+    private volatile boolean awaitingLanguage;
     private volatile ProjectLoadingState loading = ProjectLoadingState.NOT_LOADED;
     private volatile String loadingError;
 
@@ -33,9 +34,21 @@ public final class EngineState {
         booted = true;
     }
 
-    /** Where the workspace load stands; NOT_LOADED while the engine has not booted. */
+    /**
+     * Whether the language the host serves has not bound yet (Sprint 28k, E19). Until it does the engine answers LOADING, whatever
+     * the workspace load says, because a tool that needs a language cannot be answered before one is there; the set of tools it
+     * publishes is also incomplete. Cleared when the language provider arrives.
+     */
+    public void awaitingLanguage(boolean awaiting) {
+        awaitingLanguage = awaiting;
+    }
+
+    /** Where the workspace load stands; LOADING while a language is awaited; NOT_LOADED while the engine has not booted. */
     public ProjectLoadingState loading() {
-        return booted ? loading : ProjectLoadingState.NOT_LOADED;
+        if (!booted) {
+            return ProjectLoadingState.NOT_LOADED;
+        }
+        return awaitingLanguage ? ProjectLoadingState.LOADING : loading;
     }
 
     /** Why the load failed, or null; null while the engine has not booted. */
@@ -87,6 +100,7 @@ public final class EngineState {
     /** Back to a JVM with no engine: NOT_LOADED, no error, not booted. The application's test hook is the one caller. */
     public void reset() {
         booted = false;
+        awaitingLanguage = false;
         loading = ProjectLoadingState.NOT_LOADED;
         loadingError = null;
     }
