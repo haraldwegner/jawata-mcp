@@ -42,6 +42,11 @@
 #      the process as the application's result; and a setting passed at start (-Djawata.backups.depth=3, default 10) takes effect, visible
 #      in the answer of experience(kind=restore), because the engine's readers ask the host's settings. Front door to the built dist.
 #
+#   P6 (Stage 6, the one entry and the plug-in slot): the Java provider is bound by the component runtime. A copy of the dist whose engine
+#      bundle lacks the provider's descriptor boots, says it is loading through health_check, and publishes only the tools that name no language
+#      (no search_symbols); the dist as shipped (P0) publishes all 44 once the provider has bound. The engine is "loading" until the
+#      Java provider arrives, front door to the built dist.
+#
 # Usage:  build/28k-e2e.sh [--capture] [dist-dir]
 #         --capture writes the goldens (build/28k-golden-ready.txt, build/28k-golden-tools.json)
 #         from the given dist; only Stage 0 uses it.
@@ -351,5 +356,83 @@ fi
 # A deaf listener ends the process with 70 (about 90 seconds: three silent probes, thirty seconds apart).
 bash "$ROOT/build/28k-e2e-deaf.sh" "$DIST" || P5_FAILED=1
 
-[ "$PY_STATUS" -eq 0 ] && [ "$P5_FAILED" -eq 0 ]
+# --- P6 (Stage 6, E19): the engine is "loading" until the Java provider binds, and publishes everything once it has --------------
+# The Java provider is a declarative service (OSGI-INF/org.jawata.mcp.java.JavaProvider.xml in the engine bundle), so the component
+# runtime binds it. A dist copy whose engine bundle has that descriptor removed is an engine whose language never arrives: it must say
+# it is loading and publish only the tools that name no language (health_check, the project tools, memory, the hire path ...), and must
+# not publish a Java tool. The dist as shipped (P0, above) is the other half: all 44, once the provider has bound.
+# (Removing the component runtime itself would prove nothing: the application's own bundles need it and the process would not start.)
+P6_FAILED=0
+P6_PORT=$((PORT + 1))
+P6_DIST="$(mktemp -d)"
+P6_STORE="$(mktemp -d)"
+P6_LOG="$WS/resident-p6.log"
+mkdir -p "$P6_DIST/bundles"
+for entry in "$DIST"/*; do
+    [ "$(basename "$entry")" = "bundles" ] || ln -s "$entry" "$P6_DIST/$(basename "$entry")"
+done
+for bundle in "$DIST"/bundles/*; do
+    case "$(basename "$bundle")" in
+        org.jawata.mcp-[0-9]*.jar)
+            python3 - "$bundle" "$P6_DIST/bundles/$(basename "$bundle")" << 'ZIP'
+import sys, zipfile
+src, dst = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as zout:
+    for item in zin.infolist():
+        if item.filename == "OSGI-INF/org.jawata.mcp.java.JavaProvider.xml":
+            continue
+        zout.writestr(item, zin.read(item.filename))
+ZIP
+            ;;
+        *) ln -s "$bundle" "$P6_DIST/bundles/$(basename "$bundle")" ;;
+    esac
+done
+# shellcheck disable=SC2086
+java $VECTOR -Djawata.boot.home="$P6_DIST" -Djawata.experience.shared.dir="$P6_STORE" \
+     -jar "$JAR" -data "$WS/ws-p6" -port "$P6_PORT" -token "$TOKEN" > "$P6_LOG" 2>&1 &
+P6_PID=$!
+P6_READY=0
+for _ in $(seq 1 120); do
+    grep -q "READY" "$P6_LOG" 2>/dev/null && { P6_READY=1; break; }
+    kill -0 "$P6_PID" 2>/dev/null || break
+    sleep 1
+done
+if [ "$P6_READY" -ne 1 ]; then
+    echo "  FAIL  P6 the resident whose engine bundle has no Java provider descriptor never printed READY: $(tail -3 "$P6_LOG")" >&2
+    P6_FAILED=1
+else
+    PROBE_PORT="$P6_PORT" PROBE_TOKEN="$TOKEN" PROBE_ROOT="$ROOT" python3 - << 'PY' || P6_FAILED=1
+import json, os, re, urllib.request
+
+PORT, TOKEN, ROOT = os.environ["PROBE_PORT"], os.environ["PROBE_TOKEN"], os.environ["PROBE_ROOT"]
+
+def rpc(method, params):
+    req = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    r = urllib.request.Request("http://127.0.0.1:%s/mcp" % PORT, data=json.dumps(req).encode(),
+        headers={"Authorization": "Bearer " + TOKEN, "Mcp-Session-Id": "e2e-28k-p6", "Content-Type": "application/json"})
+    return json.loads(urllib.request.urlopen(r, timeout=60).read().decode())
+
+with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as readme:
+    block = re.search(r"<!-- TOOLS:BEGIN.*?<!-- TOOLS:END", readme.read(), re.S)
+expected = len(set(re.findall(r"`([a-z_]+)`", block.group(0)))) if block else 0
+
+names = [t["name"] for t in rpc("tools/list", {})["result"]["tools"]]
+data = json.loads(rpc("tools/call", {"name": "health_check", "arguments": {}})["result"]["content"][0]["text"])["data"]
+failed = False
+if "Loading" in str(data.get("status")):
+    print("  ok    P6 with no language bound the engine says it is loading: status %r" % data.get("status"))
+else:
+    print("  FAIL  P6 with no language bound health_check answers status %r, not loading" % data.get("status")); failed = True
+if "health_check" in names and "search_symbols" not in names and 0 < len(names) < expected and data.get("toolCount") == len(names):
+    print("  ok    P6 only the tools that name no language are published: %d of %d, no search_symbols" % (len(names), expected))
+else:
+    print("  FAIL  P6 published %d tools (%d expected with a language), toolCount %s, search_symbols present: %s"
+          % (len(names), expected, data.get("toolCount"), "search_symbols" in names)); failed = True
+raise SystemExit(1 if failed else 0)
+PY
+fi
+kill "$P6_PID" 2>/dev/null; wait "$P6_PID" 2>/dev/null
+rm -rf "$P6_DIST" "$P6_STORE"
+
+[ "$PY_STATUS" -eq 0 ] && [ "$P5_FAILED" -eq 0 ] && [ "$P6_FAILED" -eq 0 ]
 exit $?
