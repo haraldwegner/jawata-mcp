@@ -1,4 +1,4 @@
-package org.jawata.mcp;
+package org.jawata.mcp.engine;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -10,15 +10,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.Map;
 
 import org.jawata.core.IJdtService;
-import org.jawata.resident.workspace.JdtServiceImpl;
-import org.jawata.mcp.engine.EngineState;
-import org.jawata.mcp.engine.ProjectLoadingState;
+import org.jawata.mcp.ResidentDegradation;
+import org.jawata.mcp.ResidentDegradationTestHooks;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.AbstractTool;
 import org.jawata.mcp.tools.HealthCheckTool;
 import org.jawata.mcp.tools.LoadProjectTool;
 import org.jawata.mcp.tools.ToolRegistry;
-import org.jawata.resident.JawataApplication;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,7 +51,7 @@ class DegradationStampTest {
     @AfterEach
     void clearState() {
         EngineState.current().reset();
-        ResidentDegradation.clearForTest();
+        ResidentDegradationTestHooks.clear();
     }
 
     /** A tool that answers, or refuses, on demand — the STAMP is the subject, not the tool. */

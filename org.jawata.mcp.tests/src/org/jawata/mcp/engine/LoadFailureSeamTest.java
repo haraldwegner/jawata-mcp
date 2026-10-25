@@ -1,21 +1,23 @@
-package org.jawata.mcp;
+package org.jawata.mcp.engine;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Map;
+
 import org.jawata.core.IJdtService;
-import org.jawata.resident.workspace.JdtServiceImpl;
-import org.jawata.mcp.engine.EngineState;
-import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.AbstractTool;
-import org.jawata.resident.JawataApplication;
+import org.jawata.resident.workspace.JdtServiceImpl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * mcp#28 / #29 / #32 — <b>"a project that failed to load" is a state, not an

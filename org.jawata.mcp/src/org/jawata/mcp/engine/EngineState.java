@@ -91,14 +91,14 @@ public final class EngineState {
     }
 
     /** Stand in a state without booting an engine; the application's package-private test hook is the one caller. */
-    public void set(ProjectLoadingState state, String error) {
+    void set(ProjectLoadingState state, String error) {
         loadingError = error;
         loading = state;
         booted = true;
     }
 
     /** Back to a JVM with no engine: NOT_LOADED, no error, not booted. The application's test hook is the one caller. */
-    public void reset() {
+    void reset() {
         booted = false;
         awaitingLanguage = false;
         loading = ProjectLoadingState.NOT_LOADED;
