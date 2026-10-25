@@ -9,7 +9,6 @@ import org.jawata.mcp.learn.GateOutcome;
 import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.ResponseFacts;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.tools.ToolRegistry;
 
 /**
  * Runs a hired plan's declared gate by calling the real jawata tool it names (Sprint 28g S16).
@@ -29,7 +28,7 @@ import org.jawata.mcp.tools.ToolRegistry;
  *       must not pass; it has been gated by nothing.</li>
  *   <li><b>The tool threw</b> — and it does NOT arrive here as an exception, which is worth saying
  *       because this class first claimed it did. Measured by a mutation that stayed green:
- *       {@link ToolRegistry#callTool} catches {@code Exception} AND {@code Error} around its own
+ *       {@link ToolCalls#callTool} (the registry behind it) catches {@code Exception} AND {@code Error} around its own
  *       dispatch, taps the failure, and returns {@code internalError}. So a crashing gate reaches
  *       this runner as case 3, a refusal. There is no {@code RuntimeException} catch for the rest of
  *       the registry's machinery either: each part of it fails open on its own, which is pinned where
@@ -53,7 +52,7 @@ import org.jawata.mcp.tools.ToolRegistry;
  *
  * <h2>Why it calls through the registry rather than the tool object</h2>
  *
- * <p>{@link ToolRegistry#callTool} is the same path a client's request takes, so a gate run is
+ * <p>{@link ToolCalls#callTool} is the same path a client's request takes, so a gate run is
  * recorded, steered and tapped exactly as the equivalent hand-call would be. Reaching past it to
  * {@code Tool#execute} would make an unattended run the one caller whose gates leave no trace,
  * which is the opposite of what a hired run is for.</p>
