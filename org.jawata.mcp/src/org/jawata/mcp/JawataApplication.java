@@ -22,6 +22,7 @@ import org.jawata.mcp.engine.ResidentHostWorkspace;
 import org.jawata.mcp.engine.ResidentJavaBinding;
 import org.jawata.mcp.engine.ResidentLifecycle;
 import org.jawata.mcp.engine.ResidentSettings;
+import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.transport.HttpTransport;
 import org.jawata.mcp.transport.ResolvedToken;
@@ -103,24 +104,26 @@ public class JawataApplication implements IApplication {
             new org.jawata.mcp.engine.WhiteboardTracker(framework, jawataEngine.whiteboard());
         whiteboardTracker.open();
 
-        // Sprint 28a (D11): install this server's workspace identity BEFORE the
-        // message loop, from the same workspace.json the async load will read —
-        // the initialize handshake must never race the project load. The live
-        // supplier takes over once projects are actually in.
-        installWorkspaceIdentity();
-
-        // Sprint 10 v1.4.0: prefer workspace.json in the JDT data dir as the
-        // source of truth for what to load. The manager (jawata-studio)
-        // writes this file. Fall back to the legacy JAVA_PROJECT_PATH env
-        // var when workspace.json is absent (back-compat for direct manual
-        // launches without the manager).
-        CompletableFuture.runAsync(this::autoLoadProjects);
-
-        // Run the main message loop (starts immediately, doesn't wait for project load). Faces attach once the engine runs and detach
-        // before it stops (E19); what was plugged in is let go whether the loop ends by itself or by an error.
-        jawataEngine.whiteboard().started(jawataEngine.api());
+        // What was plugged in is let go whether the loop ends by itself or by an error, so everything after the tracker opens is
+        // inside the try (E19).
         Object exit;
         try {
+            // Sprint 28a (D11): install this server's workspace identity BEFORE the
+            // message loop, from the same workspace.json the async load will read —
+            // the initialize handshake must never race the project load. The live
+            // supplier takes over once projects are actually in.
+            installWorkspaceIdentity();
+
+            // Sprint 10 v1.4.0: prefer workspace.json in the JDT data dir as the
+            // source of truth for what to load. The manager (jawata-studio)
+            // writes this file. Fall back to the legacy JAVA_PROJECT_PATH env
+            // var when workspace.json is absent (back-compat for direct manual
+            // launches without the manager).
+            CompletableFuture.runAsync(this::autoLoadProjects);
+
+            // Run the main message loop (starts immediately, doesn't wait for project load). Faces attach once the engine runs and
+            // detach before it stops (E19).
+            jawataEngine.whiteboard().started(jawataEngine.api());
             exit = runMessageLoop(transportConfig);
         } finally {
             jawataEngine.whiteboard().stopping();
@@ -162,7 +165,7 @@ public class JawataApplication implements IApplication {
                 org.jawata.mcp.models.WorkspaceIdentity.install(
                     ResidentDirectories.readProvenance(workspaceJson)[0], ResidentDirectories.readProjects(workspaceJson));
             } else {
-                String envRoot = System.getenv("JAVA_PROJECT_PATH");
+                String envRoot = SettingKeys.PROJECT_PATH.value().orElse(null);
                 if (envRoot != null && !envRoot.isBlank()) {
                     Path root = Path.of(envRoot).toAbsolutePath().normalize();
                     org.jawata.mcp.models.WorkspaceIdentity.install(null, java.util.List.of(root));
@@ -300,7 +303,7 @@ public class JawataApplication implements IApplication {
      * The loading state is tracked and can be queried via health_check.
      */
     private void autoLoadProjectFromEnv() {
-        String projectPath = System.getenv("JAVA_PROJECT_PATH");
+        String projectPath = SettingKeys.PROJECT_PATH.value().orElse(null);
         if (projectPath == null || projectPath.isBlank()) {
             log.debug("JAVA_PROJECT_PATH not set, waiting for load_project call");
             // State remains NOT_LOADED

@@ -54,6 +54,21 @@ public final class SettingKeys {
         "jawata in $XDG_DATA_HOME, or in ~/.local/share",
         "The folder of the knowledge store shared by every resident on the machine; used exactly as given.");
 
+    /** The project the engine loads when no workspace file names any. */
+    public static final SettingKey PROJECT_PATH = register("jawata.project.path", "none",
+        "The folder of the one project the engine loads when the workspace has no workspace.json; the environment variable "
+            + "JAVA_PROJECT_PATH is read when this is not set.");
+
+    /** How long health_check calls wait on the workspace. */
+    public static final SettingKey TIMEOUT_SECONDS = register("jawata.timeout.seconds", "30",
+        "How many seconds health_check allows the workspace to answer, kept between 5 and 300; the environment variable "
+            + "JAWATA_TIMEOUT_SECONDS is read when this is not set.");
+
+    /** Whether paths in answers are absolute. */
+    public static final SettingKey ABSOLUTE_PATHS = register("jawata.absolute.paths", "false",
+        "When true the paths in health_check answers are absolute instead of relative to the project; the environment variable "
+            + "JAWATA_ABSOLUTE_PATHS is read when this is not set.");
+
     /** The folders and files memory is loaded from. */
     public static final SettingKey MEMORY_ROOTS = register("jawata.memory.roots", "discovered from the project folders",
         "The folders and files memory is loaded from when no path is given, separated by the path separator; when set they are the "

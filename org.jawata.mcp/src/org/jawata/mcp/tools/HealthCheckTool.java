@@ -1,13 +1,5 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.core.LoadedProject;
-import org.jawata.core.host.HostOS;
-import org.jawata.mcp.engine.ProjectLoadingState;
-import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.tools.shared.WorkspaceHealth;
-
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -15,6 +7,16 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+
+import org.jawata.core.IJdtService;
+import org.jawata.core.LoadedProject;
+import org.jawata.core.host.HostOS;
+import org.jawata.mcp.engine.ProjectLoadingState;
+import org.jawata.mcp.engine.SettingKeys;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.WorkspaceHealth;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Health check tool for verifying server status.
@@ -318,19 +320,10 @@ public class HealthCheckTool implements Tool {
     }
 
     private int getTimeoutSeconds() {
-        String timeout = System.getenv("JAWATA_TIMEOUT_SECONDS");
-        if (timeout == null) {
-            return 30;
-        }
-        try {
-            int value = Integer.parseInt(timeout);
-            return Math.min(Math.max(value, 5), 300);  // Clamp 5-300
-        } catch (NumberFormatException e) {
-            return 30;
-        }
+        return Math.min(Math.max(SettingKeys.TIMEOUT_SECONDS.intValue(30), 5), 300);  // Clamp 5-300
     }
 
     private boolean useAbsolutePaths() {
-        return "true".equalsIgnoreCase(System.getenv("JAWATA_ABSOLUTE_PATHS"));
+        return SettingKeys.ABSOLUTE_PATHS.flag();
     }
 }
