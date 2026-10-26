@@ -118,13 +118,7 @@ public final class JavaSymbolAnchors implements SymbolAnchors {
         return p;
     }
 
-    /** A Java anchor reads as a qualified name: dotted identifiers, optionally followed by {@code #member}. */
-    @Override
-    public boolean answersFor(String symbol) {
-        return symbol != null && symbol.matches("[A-Za-z_$][\\w$]*(\\.[A-Za-z_$][\\w$]*)*(#[A-Za-z_$][\\w$]*(\\(.*\\))?)?");
-    }
-
-	/**
+    /**
 	     * Put {@code file} and the 1-based {@code line} of {@code member} into {@code p}.
 	     *
 	     * <p>A location is an AID and never the claim, so an unreadable source range leaves the

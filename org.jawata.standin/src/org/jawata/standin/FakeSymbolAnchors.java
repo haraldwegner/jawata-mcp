@@ -20,9 +20,4 @@ public final class FakeSymbolAnchors implements SymbolAnchors {
     public Map<String, Object> pointer(String symbol) {
         return Map.of("symbol", symbol, "resolved", false);
     }
-
-    @Override
-    public boolean answersFor(String symbol) {
-        return false;
-    }
 }

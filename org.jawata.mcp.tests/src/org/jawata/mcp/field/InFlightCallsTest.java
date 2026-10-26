@@ -51,8 +51,7 @@ class InFlightCallsTest {
         assertAll(
             () -> assertEquals(1, out.size(), "only the one still running: " + out),
             () -> assertEquals("inspect/landmarks/NEVER_RETURNED", out.get(0).shape(),
-                "the shape ranks in the same tool/kind/code vocabulary as a returned failure"),
-            () -> assertEquals(1, calls.liveCount(), "and it is still live"));
+                "the shape ranks in the same tool/kind/code vocabulary as a returned failure"));
 
         calls.finished(stuck);
         assertTrue(calls.outstanding(0).isEmpty(), "once it comes back, it is not a hang");
@@ -69,7 +68,7 @@ class InFlightCallsTest {
 
         assertTrue(calls.outstanding(InFlightCalls.DEFAULT_STUCK_MS).isEmpty(),
             "a call that started a moment ago is not a hang");
-        assertEquals(1, calls.liveCount(),
+        assertEquals(1, calls.outstanding(0).size(),
             "but it IS live — the two questions are different and both are answerable");
     }
 

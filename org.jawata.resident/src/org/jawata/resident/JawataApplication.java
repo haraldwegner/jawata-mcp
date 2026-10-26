@@ -248,7 +248,7 @@ public class JawataApplication implements IApplication {
             log.info("Transport: stdio (opt-in via -transport stdio)");
             return new StdioTransport(System.in, System.out);
         }
-        return new HttpTransport(jawataEngine.host().endpoint(), lifecycle);
+        return new HttpTransport(jawataEngine.host().endpoint(), jawataEngine.host().lifecycle());
     }
 
     /** Where this process listens, or nothing when it talks on stdio. */

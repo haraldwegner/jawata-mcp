@@ -134,9 +134,4 @@ public final class InFlightCalls {
         stuck.sort(Comparator.comparingLong(Call::startedMs));
         return List.copyOf(stuck);
     }
-
-    /** How many calls are in flight right now, stuck or not — for a status surface. */
-    public int liveCount() {
-        return live.size();
-    }
 }

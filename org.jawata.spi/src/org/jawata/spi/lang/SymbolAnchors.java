@@ -17,17 +17,4 @@ public interface SymbolAnchors {
      * absence (28k ledger C3-1).
      */
     Map<String, Object> pointer(String symbol);
-
-    /** Where the symbol lives now; empty when it no longer exists or could not be looked up — {@link #pointer} tells which. */
-    default Optional<Location> locate(String symbol) {
-        Map<String, Object> pointer = pointer(symbol);
-        Object file = pointer.get("file");
-        if (!Boolean.TRUE.equals(pointer.get("resolved")) || file == null) {
-            return Optional.empty();
-        }
-        return Optional.of(new Location(file.toString(), pointer.get("line") instanceof Integer line ? line : -1));
-    }
-
-    /** Whether this language owns symbols spelled like this one (a Java fully-qualified name today). */
-    boolean answersFor(String symbol);
 }

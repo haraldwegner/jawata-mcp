@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.Map;
 import java.util.Optional;
 
-import org.jawata.spi.lang.Location;
 import org.jawata.spi.lang.SymbolAnchors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,7 +40,6 @@ public abstract class SymbolAnchorsContract {
 
         assertNotNull(pointer, "an unresolved pointer is a map that says so, not an absent one");
         assertFalse(Boolean.TRUE.equals(pointer.get("resolved")), "got: " + pointer);
-        assertTrue(anchors.locate("no.such.Symbol#nothing").isEmpty());
     }
 
     @Test
@@ -61,11 +59,8 @@ public abstract class SymbolAnchorsContract {
         }
 
         Map<String, Object> pointer = anchors.pointer(symbol.get());
-        Optional<Location> location = anchors.locate(symbol.get());
 
         assertEquals(Boolean.TRUE, pointer.get("resolved"), "got: " + pointer);
-        assertTrue(location.isPresent(), "a resolved pointer has a place: " + pointer);
-        assertFalse(location.get().filePath().isBlank());
-        assertTrue(anchors.answersFor(symbol.get()));
+        assertFalse(String.valueOf(pointer.get("file")).isBlank(), "a resolved pointer has a place: " + pointer);
     }
 }
