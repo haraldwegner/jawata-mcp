@@ -5,8 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-import org.jawata.core.IJdtService;
-import org.jawata.core.JavaBinding;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.engine.ProjectLoadingState;
@@ -28,7 +26,6 @@ import org.jawata.mcp.tools.FindQualityIssueTool;
 import org.jawata.mcp.tools.GetDiagnosticsTool;
 import org.jawata.mcp.tools.HealthCheckTool;
 import org.jawata.mcp.tools.HireTool;
-import org.jawata.mcp.tools.LoadProjectTool;
 import org.jawata.mcp.tools.ProjectTool;
 import org.jawata.mcp.tools.RefactoringTool;
 import org.jawata.mcp.tools.RefreshWorkspaceTool;
@@ -73,9 +70,7 @@ public final class ShippedTools {
     /**
      * Everything the tools take from the application.
      *
-     * @param java               what the host supplies for Java: the workspace service (read at call time, since a load replaces
-     *                           it) and how {@code load_project} brings a project into it
-     * @param workspace          whether the engine owns the workspace, which {@code load_project} and {@code project} ask
+     * @param workspace          whether the engine owns the workspace, which {@code project} asks
      * @param projectLoaded     whether a workspace is loaded
      * @param toolCount          how many tools are registered, for {@code health_check}
      * @param loadingState       the workspace's load state
@@ -93,7 +88,6 @@ public final class ShippedTools {
      * @param defaultMemoryRoots where the experience tool loads memory files from by default
      */
     public record Wiring(
-            JavaBinding java,
             HostWorkspace workspace,
             Supplier<Boolean> projectLoaded,
             Supplier<Integer> toolCount,
@@ -110,12 +104,6 @@ public final class ShippedTools {
             Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> selfEndpoint,
             Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn) {
-
-        /** The workspace service as the tools take it: asked at call time, because a load replaces it. */
-        public Supplier<IJdtService> jdt() {
-            // A host that serves no Java has no model: every tool that asks sees none, which is what 'no project loaded' already means.
-            return java == null ? () -> null : java.model()::current;
-        }
     }
 
     /**
@@ -170,22 +158,14 @@ public final class ShippedTools {
      * @param ports what the tools hold of the languages: {@code health_check} lists the bound ones through it
      */
     private static List<Tool> neutralTools(Wiring w, RunTestsTool runTests, ExperienceTool experience, ProviderPorts ports, org.jawata.mcp.change.PlanSlot plans) {
-        Supplier<IJdtService> jdt = w.jdt();
         List<Tool> tools = new ArrayList<>();
 
         // health_check answers with the registry's own count and the application's load state.
         tools.add(new HealthCheckTool(w.projectLoaded(), w.toolCount(), w.loadingState(),
             w.loadingError(), ports.workspace(), ports.languages()));
 
-        // load_project supplies the existing service so it can reuse it (clear-and-load on top) and
-        // installs a fresh one on first call, which is what lets add_project / remove_project operate
-        // on the same workspace.
-        if (w.java() != null) {
-            tools.add(new LoadProjectTool(w.java().model(), w.workspace()));
-        }
-
         // project(action) collapses list/add/remove_project; load_project stays separate because it
-        // installs the workspace service.
+        // installs the workspace service, and it is Java's: the Java provider builds it with its tools.
         tools.add(new ProjectTool(ports.workspace(), w.workspace()));
 
         // The field lane's one front door. Needs no loaded project: it answers about jawata's own

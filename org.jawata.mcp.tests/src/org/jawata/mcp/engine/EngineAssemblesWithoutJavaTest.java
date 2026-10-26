@@ -63,6 +63,8 @@ class EngineAssemblesWithoutJavaTest {
         EngineEnvironment.hostedBy(null, null);
         EngineState.current().reset();
         ResidentDegradationTestHooks.clear();
+        // Left cached and switched off, it would make every later test in this JVM that needs the model abort.
+        org.jawata.mcp.knowledge.EmbeddingServiceTestHooks.forgetTheSharedService();
     }
 
     private List<String> publishedTools() {

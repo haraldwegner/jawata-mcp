@@ -7,6 +7,7 @@ import java.util.function.Supplier;
 
 import org.jawata.core.IJdtService;
 import org.jawata.core.JavaBinding;
+import org.jawata.core.ModelSource;
 import org.jawata.mcp.change.ChangeContext;
 import org.jawata.mcp.engine.ToolNeeds;
 import org.jawata.mcp.engine.ToolSource;
@@ -26,6 +27,7 @@ import org.jawata.mcp.tools.GetAtPositionTool;
 import org.jawata.mcp.tools.GetCallHierarchyTool;
 import org.jawata.mcp.tools.GoToDefinitionTool;
 import org.jawata.mcp.tools.InspectTool;
+import org.jawata.mcp.tools.LoadProjectTool;
 import org.jawata.mcp.tools.ProfileTool;
 import org.jawata.mcp.tools.QuickFixTool;
 import org.jawata.mcp.tools.RefactoringDoors;
@@ -35,6 +37,7 @@ import org.jawata.mcp.tools.ValidateSyntaxTool;
 import org.jawata.mcp.tools.build.DependencyTool;
 import org.jawata.mcp.tools.workflow.FormatTool;
 import org.jawata.spi.host.EngineHost;
+import org.jawata.spi.host.HostWorkspace;
 import org.jawata.spi.lang.BuildVerdict;
 import org.jawata.spi.lang.ChangePaths;
 import org.jawata.spi.lang.LanguageProvider;
@@ -53,11 +56,32 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
 
     private final Supplier<IJdtService> model;
 
+    /** Where a project comes into the model, for a provider built directly; null when the host supplies it. */
+    private final ModelSource source;
+
+    /** Whether the engine owns the workspace, for a provider built directly; null when the host supplies it. */
+    private final HostWorkspace owner;
+
     /** The host the component runtime hands this provider before it is published as a service; null for a provider built directly. */
     private volatile EngineHost host;
 
     public JavaProvider(Supplier<IJdtService> model) {
         this.model = model;
+        this.source = null;
+        this.owner = null;
+    }
+
+    /**
+     * A provider built directly over the model source and workspace ownership a host would supply, so it publishes {@code load_project}
+     * as the component-built one does.
+     *
+     * @param source where the Java model comes from and how a project comes into it
+     * @param owner  whether the engine owns the workspace, which {@code load_project} asks
+     */
+    public JavaProvider(ModelSource source, HostWorkspace owner) {
+        this.model = source::current;
+        this.source = source;
+        this.owner = owner;
     }
 
     /**
@@ -66,6 +90,8 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
      */
     public JavaProvider() {
         this.model = () -> host.binding(JavaBinding.class).orElseThrow().model().current();
+        this.source = null;
+        this.owner = null;
     }
 
     /** The component runtime hands in the host the engine was built from; the provider is published once it has it. */
@@ -163,6 +189,15 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
         // language binds and reads the slot at each call.
         needs.plans().offer(new org.jawata.mcp.tools.PlanRefactoringTool(jdt, needs.changeCache(),
             new org.jawata.mcp.change.PlanStore(), needs.advisor()));
+
+        // load_project brings a Java project into the model: the verb is Java's, and the host supplies where the model comes from and
+        // whether the engine owns the workspace (a provider built directly brings its own).
+        ModelSource loadFrom = source != null ? source
+            : host == null ? null : host.binding(JavaBinding.class).map(JavaBinding::model).orElse(null);
+        HostWorkspace owns = owner != null ? owner : host == null ? null : host.workspace();
+        if (loadFrom != null && owns != null) {
+            tools.add(new LoadProjectTool(loadFrom, owns));
+        }
 
         // Core navigation, diagnostics-free analysis and call hierarchy.
         tools.add(new SearchSymbolsTool(jdt));

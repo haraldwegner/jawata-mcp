@@ -3,7 +3,6 @@ package org.jawata.mcp.contract;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -50,12 +49,9 @@ public abstract class DebugTurnContract {
         AtomicInteger told = new AtomicInteger();
         turn.onPersonStartsDebugging(told::incrementAndGet);
 
-        if (!personStartsDebugging()) {
-            assertEquals(0, told.get(), "a host that cannot see the person never tells the engine");
-            return;
-        }
+        boolean seen = personStartsDebugging();
 
-        assertEquals(1, told.get(), "told once");
-        assertTrue(turn.personIsDebugging());
+        assertEquals(seen ? 1 : 0, told.get(), "told once when the host sees the person, never when it cannot");
+        assertEquals(seen, turn.personIsDebugging(), "the agent's turn is over exactly when the host saw the person start");
     }
 }

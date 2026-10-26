@@ -465,10 +465,6 @@ public class JawataEngine {
 	void registerTools() {
 		// Sprint 21d: strict disk sync — every tool call reconciles external edits
 		// before executing; the unchanged-tree fast path is the only skip.
-		// A host that serves no Java has no binding: the engine then assembles with the tools that name no language alone, and waits for
-		// no language to bind.
-		java.util.Optional<org.jawata.core.JavaBinding> javaHost = this.host().binding(org.jawata.core.JavaBinding.class);
-		org.jawata.core.JavaBinding javaBinding = javaHost.orElse(null);
 		org.jawata.spi.host.Reconciler reconciler = this.host().reconciler();
 		this.getToolRegistry().setReconciler(reconciler);
 
@@ -503,8 +499,10 @@ public class JawataEngine {
 				return host().writes();
 			}
 		};
-		Built neutral = ShippedTools.neutral(new Wiring(javaBinding, this.host().workspace(),
-				() -> javaBinding != null && javaBinding.model().current() != null, () -> this.getToolRegistry().getToolCount(),
+		// What the tools that name no language hold of the languages, read at call time from whichever has bound.
+		ProviderPorts ports = ProviderPorts.over(whiteboard, languageContext);
+		Built neutral = ShippedTools.neutral(new Wiring(this.host().workspace(),
+				() -> ports.workspace().get() != org.jawata.spi.lang.LoadedWorkspace.NONE, () -> this.getToolRegistry().getToolCount(),
 				() -> EngineState.current().loading(), () -> EngineState.current().loadingError(),
 				() -> this.host().directories().fieldDir(), () -> this.getToolRegistry().inFlight(),
 				this.getRefactoringChangeCache(), this.getExperienceStore(), () -> this.getExperienceStore(),
@@ -514,7 +512,7 @@ public class JawataEngine {
 				new org.jawata.mcp.coverage.CoverageService(
 						new org.jawata.mcp.coverage.CoverageStore(this.host().directories().coverageDir())),
 						this.host().instruments().debugTurn()),
-				ProviderPorts.over(whiteboard, languageContext));
+				ports);
 
 		// Kept for what reads them later: the quality ledger's reach to the pre-advice surface (wired in assemble()), and the
 		// automatic refresh after a project load. The watch engine's detector binding is kept when a language contributes it.

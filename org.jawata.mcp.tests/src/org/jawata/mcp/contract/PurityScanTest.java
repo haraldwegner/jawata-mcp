@@ -74,13 +74,7 @@ class PurityScanTest {
      * still reaches, with the reason it stands. The list may only shrink: an entry that no longer occurs fails the test, so a fix cannot
      * leave its excuse behind. Ledger row C8-1.
      */
-    private static final List<String> KNOWN_DEVIATIONS = List.of(
-        // The assembly asks the host for the Java binding, once, to hand it to the Java provider.
-        "/org/jawata/mcp/engine/JawataEngine.class -> org/jawata/core/IJdtService",
-        "/org/jawata/mcp/engine/JawataEngine.class -> org/jawata/core/JavaBinding",
-        "/org/jawata/mcp/engine/JawataEngine.class -> org/jawata/core/JavaBinding.model",
-        "/org/jawata/mcp/engine/JawataEngine.class -> org/jawata/core/ModelSource",
-        "/org/jawata/mcp/engine/JawataEngine.class -> org/jawata/core/ModelSource.current");
+    private static final List<String> KNOWN_DEVIATIONS = List.of();
 
     @Test
     @DisplayName("the engine's neutral packages reference no JDT, only the JDT-free leaf of the core, no UI, no launcher, and never end the process, beyond the named deviations")

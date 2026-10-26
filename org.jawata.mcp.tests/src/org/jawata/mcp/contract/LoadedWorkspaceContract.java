@@ -65,11 +65,11 @@ public abstract class LoadedWorkspaceContract {
     void theDefaultIsOneOfTheListed() throws Exception {
         LoadedWorkspace workspace = workspace();
 
-        if (workspace.projects().isEmpty()) {
-            assertTrue(workspace.defaultProjectKey().isEmpty());
-            return;
-        }
-        assertTrue(expectedKeys().contains(workspace.defaultProjectKey().orElseThrow()));
+        Set<String> expected = expectedKeys();
+        java.util.Optional<String> key = workspace.defaultProjectKey();
+
+        assertEquals(expected.isEmpty(), key.isEmpty(), "there is a default exactly when a project is loaded: " + key);
+        assertTrue(key.isEmpty() || expected.contains(key.get()), "the default is one of the listed: " + key);
     }
 
     @Test

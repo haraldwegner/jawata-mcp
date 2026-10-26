@@ -34,6 +34,8 @@ class EngineSpeaksToThePersonTest {
     private JawataEngine engine;
 
     private void assemble(Map<String, String> settings, String... servedLanguages) {
+        // The engine boots the process-wide embedding service; start from none, so this test's own settings decide it.
+        org.jawata.mcp.knowledge.EmbeddingServiceTestHooks.forgetTheSharedService();
         host = new FakeHost(scratch.resolve("engine"), settings);
         host.serves(servedLanguages);
         engine = JawataEngine.assemble(host);
@@ -47,6 +49,8 @@ class EngineSpeaksToThePersonTest {
         EngineEnvironment.hostedBy(null, null);
         EngineState.current().reset();
         ResidentDegradationTestHooks.clear();
+        // Left cached and switched off, it would make every later test in this JVM that needs the model abort.
+        org.jawata.mcp.knowledge.EmbeddingServiceTestHooks.forgetTheSharedService();
     }
 
     @Test

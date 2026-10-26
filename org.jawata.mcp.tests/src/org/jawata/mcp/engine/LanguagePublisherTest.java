@@ -166,7 +166,7 @@ class LanguagePublisherTest {
         assertTrue(names(latest()).size() < 44, "the Java tools are not there yet: " + names(latest()).size());
         assertEquals(0, surfaceChecks.get(), "the published surface is not checked before the language it needs is there");
 
-        JavaProvider java = new JavaProvider(InertShippedTools.wiring(new ToolRegistry()).jdt());
+        JavaProvider java = InertShippedTools.javaProvider();
         board.bindProvider(java);
 
         assertEquals(InertShippedTools.names(), names(latest()), "the same 44 tools the product ships");

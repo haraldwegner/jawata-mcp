@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
-import org.jawata.resident.workspace.HeadlessModelSource;
 import org.jawata.mcp.ShippedTools;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.engine.ProjectLoadingState;
@@ -15,7 +14,7 @@ import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.Tool;
 import org.jawata.mcp.tools.ToolRegistry;
 import org.jawata.resident.ResidentHostWorkspace;
-import org.jawata.resident.ResidentJavaBinding;
+import org.jawata.resident.workspace.HeadlessModelSource;
 
 /**
  * The shipped tools, built the way the application builds them but with nothing behind the wiring
@@ -34,7 +33,6 @@ public final class InertShippedTools {
     public static ShippedTools.Wiring wiring(ToolRegistry registry) {
         HeadlessModelSource model = new HeadlessModelSource();
         return new ShippedTools.Wiring(
-            new ResidentJavaBinding(model),
             new ResidentHostWorkspace(model),
             () -> false,
             () -> 0,
@@ -56,10 +54,16 @@ public final class InertShippedTools {
                 new org.jawata.mcp.coverage.CoverageStore(Path.of(System.getProperty("java.io.tmpdir"), "jawata-coverage"))), org.jawata.spi.host.DebugTurn.FREE);
     }
 
+    /** A Java provider built directly over an empty model and a workspace the engine owns, as an application with nothing loaded has. */
+    public static JavaProvider javaProvider() {
+        HeadlessModelSource model = new HeadlessModelSource();
+        return new JavaProvider(model, new ResidentHostWorkspace(model));
+    }
+
     /** Every tool the product ships, unregistered. */
     public static List<Tool> tools() {
         ShippedTools.Wiring wiring = wiring(new ToolRegistry());
-        JavaProvider javaProvider = new JavaProvider(wiring.jdt());
+        JavaProvider javaProvider = javaProvider();
         ShippedTools.Built neutral = ShippedTools.neutral(wiring, new ProviderPorts(javaProvider.memoryAnchors(), javaProvider::testRuntime, java.util.List::of, () -> org.jawata.spi.lang.LoadedWorkspace.NONE, () -> null, () -> null, () -> null, () -> null));
         // The composition LanguagePublisher does when the Java provider binds: the neutral tools, then the language's own.
         List<Tool> all = new java.util.ArrayList<>(neutral.tools());
