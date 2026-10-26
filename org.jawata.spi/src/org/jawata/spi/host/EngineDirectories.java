@@ -34,6 +34,15 @@ public interface EngineDirectories {
     /** The folder the workspace's own files live in, which holds {@code workspace.json}, when the host has one. */
     Optional<Path> workspaceRoot();
 
+    /**
+     * What the host says about its workspace before anything loads: its name and the project folders it was started with (Stage 8; the
+     * engine stamps the name and the first folder on the knowledge it records and introduces itself to the other residents by the name).
+     * Empty when the host declares none, which is the answer of a host whose workspace is whatever is open at the moment.
+     */
+    default Optional<DeclaredWorkspace> declared() {
+        return Optional.empty();
+    }
+
     /** Where the field recording's pile and state files live. */
     Path fieldDir();
 

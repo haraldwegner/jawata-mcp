@@ -8,14 +8,11 @@ Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
 Service-Component: OSGI-INF/org.jawata.mcp.java.JavaProvider.xml
 Export-Package: org.jawata.mcp,
- org.jawata.mcp.change,
  org.jawata.mcp.domain,
  org.jawata.mcp.engine;version="1.0.0",
- org.jawata.mcp.knowledge,
  org.jawata.mcp.models,
  org.jawata.mcp.protocol,
  org.jawata.mcp.refactoring,
- org.jawata.mcp.runtime,
  org.jawata.mcp.tools,
  org.jawata.mcp.tools.build,
  org.jawata.mcp.tools.codegen,

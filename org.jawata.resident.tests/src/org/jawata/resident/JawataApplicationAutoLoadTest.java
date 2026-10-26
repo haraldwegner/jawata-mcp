@@ -1,4 +1,4 @@
-package org.jawata.mcp;
+package org.jawata.resident;
 
 import org.jawata.mcp.engine.DefaultEngineDirectories;
 import org.junit.jupiter.api.DisplayName;
@@ -248,8 +248,8 @@ class JawataApplicationAutoLoadTest {
         Path json = dir.resolve("workspace.json");
         Files.writeString(json, "{\"name\":\"w\",\"projects\":[\"/a/one\",\"/b/two\"],\"version\":1}");
         assertEquals(java.util.List.of(Path.of("/a/one"), Path.of("/b/two")),
-            DefaultEngineDirectories.readProjects(json));
-        assertTrue(DefaultEngineDirectories.readProjects(dir.resolve("nope.json")).isEmpty());
+            WorkspaceJson.readProjects(json));
+        assertTrue(WorkspaceJson.readProjects(dir.resolve("nope.json")).isEmpty());
     }
 
     // --- Sprint 21a (item B): provenance facets from workspace.json -----------------------
@@ -261,7 +261,7 @@ class JawataApplicationAutoLoadTest {
         Files.writeString(json,
             "{\"name\":\"jawata\",\"projects\":[\"/home/x/CursorProjects/jawata-mcp\"],\"version\":1}");
 
-        String[] prov = DefaultEngineDirectories.readProvenance(json);
+        String[] prov = WorkspaceJson.readProvenance(json);
 
         assertEquals("jawata", prov[0]);
         assertEquals("/home/x/CursorProjects/jawata-mcp", prov[1]);
@@ -274,11 +274,11 @@ class JawataApplicationAutoLoadTest {
         Path json = wsDir.resolve("workspace.json");
         Files.writeString(json, "{\"projects\":[],\"version\":1}");
 
-        String[] prov = DefaultEngineDirectories.readProvenance(json);
+        String[] prov = WorkspaceJson.readProvenance(json);
         assertEquals("my-workspace", prov[0], "dir name stands in for a missing 'name'");
         assertNull(prov[1], "no projects → null projectId");
 
-        String[] missing = DefaultEngineDirectories.readProvenance(root.resolve("no-such.json"));
+        String[] missing = WorkspaceJson.readProvenance(root.resolve("no-such.json"));
         assertNull(missing[0]);
         assertNull(missing[1]);
     }

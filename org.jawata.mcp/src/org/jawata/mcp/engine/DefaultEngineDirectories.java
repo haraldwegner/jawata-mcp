@@ -8,16 +8,13 @@ import java.util.Optional;
 import org.jawata.spi.host.EngineDirectories;
 import org.jawata.spi.host.EngineSettings;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 /**
  * The folders of the engine that runs alone (Sprint 28k, E17; contract §5): a
  * folder named in the settings, else one under the workspace the launcher
  * published, else one in the temporary folder. The three stores each worked
  * this out for themselves, with the same order and different words.
  */
-public final class DefaultEngineDirectories implements EngineDirectories {
+public class DefaultEngineDirectories implements EngineDirectories {
 
 	private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DefaultEngineDirectories.class);
 
@@ -144,13 +141,14 @@ public final class DefaultEngineDirectories implements EngineDirectories {
 		}
 	}
 
-	public List<Path> workspaceProjectDirs() {
-		Path dataDir = resolveDataDir();
-		Path root = stableWorkspaceRoot(dataDir);
-		Path workspaceJson = root != null && Files.isRegularFile(root.resolve("workspace.json"))
-				? root.resolve("workspace.json")
-				: DefaultEngineDirectories.findWorkspaceJson(dataDir);
-		return workspaceJson == null ? java.util.List.of() : DefaultEngineDirectories.readProjects(workspaceJson);
+	/**
+	 * The project folders the memory the person keeps is looked for beside. The engine alone has none: which projects a workspace holds
+	 * is a fact of the host, and a host that reads them from a file of its own says so by overriding this.
+	 *
+	 * @return the project folders, empty when the host names none
+	 */
+	protected List<Path> projectDirs() {
+		return List.of();
 	}
 
 	/**
@@ -190,7 +188,7 @@ public final class DefaultEngineDirectories implements EngineDirectories {
 	 */
 	@Override
 	public List<Path> memoryRoots() {
-		return DefaultEngineDirectories.defaultMemoryRoots(Path.of(System.getProperty("user.home")), workspaceProjectDirs(),
+		return DefaultEngineDirectories.defaultMemoryRoots(Path.of(System.getProperty("user.home")), projectDirs(),
 				settings.get(SettingKeys.MEMORY_ROOTS.name()).orElse(null));
 	}
 
@@ -278,55 +276,6 @@ public final class DefaultEngineDirectories implements EngineDirectories {
 		}
 		Path workspaceJson = findWorkspaceJson(dataDir);
 		return workspaceJson != null ? workspaceJson.getParent() : dataDir;
-	}
-
-	/**
-	 * Parse {@code workspace.json} into provenance facets:
-	 * {@code [workspaceId, projectId]} (the manager's workspace {@code name} +
-	 * first project path; either may be null). Package-private + static so the
-	 * tests bundle can exercise it without booting OSGi.
-	 */
-	public static String[] readProvenance(Path workspaceJson) {
-		try {
-			JsonNode root = new ObjectMapper().readTree(Files.readString(workspaceJson));
-			String name = root.path("name").asText(null);
-			if (name == null || name.isBlank()) {
-				Path parent = workspaceJson.getParent();
-				name = parent == null ? null : parent.getFileName().toString();
-			}
-			String project = null;
-			JsonNode projects = root.path("projects");
-			if (projects.isArray() && projects.size() > 0) {
-				project = projects.get(0).asText(null);
-			}
-			return new String[] { name, project };
-		} catch (Exception e) {
-			log.warn("Cannot read provenance from {}: {}", workspaceJson, e.getMessage());
-			return new String[] { null, null };
-		}
-	}
-
-	/**
-	 * All project paths from {@code workspace.json} (empty on any parse problem).
-	 */
-	public static java.util.List<Path> readProjects(Path workspaceJson) {
-		try {
-			JsonNode root = new ObjectMapper().readTree(Files.readString(workspaceJson));
-			java.util.List<Path> out = new java.util.ArrayList<>();
-			JsonNode projects = root.path("projects");
-			if (projects.isArray()) {
-				for (JsonNode p : projects) {
-					String s = p.asText(null);
-					if (s != null && !s.isBlank()) {
-						out.add(Path.of(s));
-					}
-				}
-			}
-			return out;
-		} catch (Exception e) {
-			log.warn("Cannot read projects from {}: {}", workspaceJson, e.getMessage());
-			return java.util.List.of();
-		}
 	}
 
 	/**

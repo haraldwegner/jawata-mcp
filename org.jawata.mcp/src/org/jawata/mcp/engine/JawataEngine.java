@@ -293,13 +293,9 @@ public class JawataEngine {
 		case "", "shared" -> H2ExperienceStore.openShared(host().directories().sharedStoreDir());
 		default -> H2ExperienceStore.openAt(Path.of(mode));
 		};
-		Path workspaceJson = workspaceRoot != null && Files.isRegularFile(workspaceRoot.resolve("workspace.json"))
-				? workspaceRoot.resolve("workspace.json")
-				: DefaultEngineDirectories.findWorkspaceJson(dataDir);
-		if (workspaceJson != null) {
-			String[] prov = DefaultEngineDirectories.readProvenance(workspaceJson);
-			store.setProvenance(prov[0], prov[1]);
-		}
+		// Stage 8: who the workspace is comes from what the host declares, not from a file this engine knows how to find.
+		host().directories().declared().ifPresent(declared -> store.setProvenance(declared.name(),
+				declared.firstProject().map(Path::toString).orElse(null)));
 		// One-time sweep: pre-21a stores stranded in session-isolation dirs (item A).
 		store.recoverOrphans(workspaceRoot);
 		seedCatalogue(store);
@@ -580,6 +576,121 @@ public class JawataEngine {
 								java.util.Optional.ofNullable(self.token())));
 			}
 		};
+	}
+
+	/**
+	 * Builds the engine for a host and assembles it: the one door a host needs (Sprint 28k, Stage 8; ledger 28k-C7-4). The engine
+	 * makes its own change cache and its own registry of debug sessions, which no host has a say in.
+	 *
+	 * @param host everything only the host knows
+	 * @return the assembled engine, not yet started
+	 */
+	public static JawataEngine assemble(EngineHost host) {
+		JawataEngine engine = new JawataEngine(host, new RefactoringChangeCache(), new RuntimeSessionRegistry());
+		engine.assemble();
+		return engine;
+	}
+
+	/**
+	 * Starts the engine: it says who it is to the other residents on the machine, then tells the faces that plugged into it that it
+	 * runs. The identity goes first, because the first message a client sends must not race the workspace load it describes.
+	 */
+	public void start() {
+		installWorkspaceIdentity();
+		whiteboard.started(api());
+	}
+
+	/**
+	 * Serves the engine's protocol on a transport until the transport is closed, and keeps the transport as the engine's active one
+	 * meanwhile so {@link #stop()} can end it. The host opens and closes the transport; the engine owns what is said over it, which is
+	 * why no host needs the protocol package.
+	 *
+	 * @param transport the listener to run
+	 * @throws Exception when the transport fails to run
+	 */
+	public void serve(Transport transport) throws Exception {
+		setActiveTransport(transport);
+		try {
+			transport.run(getProtocolHandler()::processMessage);
+		} finally {
+			setActiveTransport(null);
+		}
+	}
+
+	/**
+	 * Ends what the engine started and no host holds: the reconciliation of embeddings, the daily copy of the store, the listener and
+	 * the store itself. What the host started (its workspace watcher, the services it registered) is the host's to end.
+	 *
+	 * <p>The reconciliation loop observes its interrupt between passes, so a bounded join gives a pass in flight a moment to
+	 * notice; if it does not, the store closes under it and that pass's last write fails with a caught exception. That is safe
+	 * rather than clean: every row committed before the close persists, so the next start resumes from a smaller delta. The
+	 * schedule is interrupted and not joined: a copy in progress is the store's own, which finishes or fails on its own, and a
+	 * partial copy fails its read-back at the next start and is removed.</p>
+	 */
+	public void stop() {
+		Thread backfill = getEmbeddingBackfillThread();
+		if (backfill != null) {
+			backfill.interrupt();
+			try {
+				backfill.join(2000); // a moment, not the whole pass
+			} catch (InterruptedException ie) {
+				Thread.currentThread().interrupt();
+			}
+			setEmbeddingBackfillThread(null);
+		}
+		Thread backupSchedule = getScheduledBackupThread();
+		if (backupSchedule != null) {
+			backupSchedule.interrupt();
+			setScheduledBackupThread(null);
+		}
+		Transport transport = getActiveTransport();
+		if (transport != null) {
+			transport.close();
+		}
+		ExperienceStore store = getExperienceStore();
+		if (store != null) {
+			store.close();
+			setExperienceStore(null);
+		}
+	}
+
+	/**
+	 * Sprint 28a (D11): who this server is, readable before anything loads. What the host declares about its workspace names the
+	 * server and the roots it was configured with; the live supplier reads the host's open projects once there are any, and while the
+	 * load runs it returns empty so the declared list keeps answering. A failure here never stops the engine: identity is a courtesy
+	 * layer.
+	 */
+	private void installWorkspaceIdentity() {
+		try {
+			org.jawata.spi.host.EngineDirectories directories = host.directories();
+			directories.declared().ifPresent(declared -> org.jawata.mcp.models.WorkspaceIdentity.install(declared.name(),
+					declared.projects()));
+			// mcp#27 stage 1: the other residents on this machine, read from the registry studio publishes beside the workspace
+			// directories. A SUPPLIER rather than a snapshot, because residents start and stop while this one runs.
+			final Path identityDataDir = directories.dataDir().orElse(null);
+			org.jawata.mcp.models.WorkspaceIdentity.installSiblings(() -> org.jawata.mcp.models.SiblingRegistry
+					.around(identityDataDir, org.jawata.mcp.models.WorkspaceIdentity.name()));
+			// mcp#27 stage 1: and ASK them. One HttpClient for the process: building one per miss would create a connection pool and
+			// two threads each time, on the path that is already the slow one.
+			final java.net.http.HttpClient peekClient = java.net.http.HttpClient.newBuilder()
+					.connectTimeout(java.time.Duration.ofMillis(500)).build();
+			org.jawata.mcp.models.WorkspaceIdentity.installPeek(fqn -> org.jawata.mcp.models.SiblingPeek.sweep(fqn,
+					org.jawata.mcp.models.SiblingRegistry.around(identityDataDir,
+							org.jawata.mcp.models.WorkspaceIdentity.name()),
+					peekClient));
+			org.jawata.mcp.models.WorkspaceIdentity.installLiveKeys(() -> host.workspace().folders().stream()
+					.map(org.jawata.spi.host.HostWorkspace.ProjectFolder::name).toList());
+			// mcp#32: the declared list covers the LOADING window only. Once the load has terminally failed, the identity says so
+			// instead of naming projects this server does not have.
+			org.jawata.mcp.models.WorkspaceIdentity.installLoadFailure(() -> EngineState.current()
+					.loading() == ProjectLoadingState.FAILED ? EngineState.current().loadingError() : null);
+			// mcp#65: and the other end of the same window. The question is "has the load FINISHED", not "is it running": the
+			// handshake window, the first message every client sends, runs with the state still NOT_LOADED.
+			org.jawata.mcp.models.WorkspaceIdentity
+					.installLoadPending(() -> EngineState.current().loading().loadPending());
+		} catch (RuntimeException e) {
+			log.warn("Workspace identity not installed: {}", e.getMessage());
+		}
 	}
 
 	public void assemble() {

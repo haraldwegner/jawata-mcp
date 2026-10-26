@@ -7,24 +7,19 @@ import java.util.concurrent.CompletableFuture;
 
 import org.eclipse.equinox.app.IApplication;
 import org.eclipse.equinox.app.IApplicationContext;
-import org.jawata.resident.workspace.HeadlessModelSource;
-import org.jawata.core.IJdtService;
-import org.jawata.resident.workspace.JdtServiceImpl;
-import org.jawata.resident.workspace.WorkspaceFileWatcher;
-import org.jawata.mcp.change.RefactoringChangeCache;
-import org.jawata.mcp.engine.EngineState;
-import org.jawata.mcp.engine.JawataEngine;
-import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.engine.DefaultEngineDirectories;
 import org.jawata.mcp.engine.DefaultEngineSettings;
+import org.jawata.mcp.engine.EngineState;
+import org.jawata.mcp.engine.JawataEngine;
 import org.jawata.mcp.engine.SettingKeys;
-import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.transport.HttpTransport;
 import org.jawata.mcp.transport.ResolvedToken;
 import org.jawata.mcp.transport.StdioTransport;
 import org.jawata.mcp.transport.Transport;
 import org.jawata.mcp.transport.TransportConfig;
-import org.jawata.resident.ResidentLifecycle;
+import org.jawata.resident.workspace.HeadlessModelSource;
+import org.jawata.resident.workspace.JdtServiceImpl;
+import org.jawata.resident.workspace.WorkspaceFileWatcher;
 import org.jawata.spi.host.EndpointPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,7 +43,7 @@ public class JawataApplication implements IApplication {
     private final ResidentLifecycle lifecycle = new ResidentLifecycle(this::closeActiveTransport);
     // E17/E18: this process is the host of the engine's settings and folders: its system properties, and the folders worked out from them.
     private final DefaultEngineSettings settings = new DefaultEngineSettings();
-    private final DefaultEngineDirectories directories = new DefaultEngineDirectories(settings);
+    private final ResidentDirectories directories = new ResidentDirectories(settings);
     private volatile WorkspaceFileWatcher workspaceWatcher;
     private JawataEngine jawataEngine;
 
@@ -66,13 +61,9 @@ public class JawataApplication implements IApplication {
         log.info("Transport selection: {}", transportConfig);
 
         // E18: everything only this process knows goes into one host, and the engine is built from it.
-        jawataEngine = new JawataEngine(
+        jawataEngine = JawataEngine.assemble(
             new ResidentHost(hostWorkspace, lifecycle, endpointPolicy(transportConfig), settings, directories, javaBinding,
-                new org.jawata.resident.workspace.OwnedReconciler(model::current), org.jawata.spi.host.WorkspaceWrites.DIRECT),
-            new RefactoringChangeCache(), new org.jawata.mcp.runtime.RuntimeSessionRegistry());
-
-        // Initialize tool registry and register tools
-        jawataEngine.assemble();
+                new org.jawata.resident.workspace.OwnedReconciler(model::current), org.jawata.spi.host.WorkspaceWrites.DIRECT));
 
         // E19: the host the engine was built from is a service, so the Java provider component can bind to it, and the engine finds
         // what plugs into it (languages, faces) through its whiteboard. The engine reports "loading" until the Java provider arrives.
@@ -88,11 +79,10 @@ public class JawataApplication implements IApplication {
         // inside the try (E19).
         Object exit;
         try {
-            // Sprint 28a (D11): install this server's workspace identity BEFORE the
-            // message loop, from the same workspace.json the async load will read —
-            // the initialize handshake must never race the project load. The live
-            // supplier takes over once projects are actually in.
-            installWorkspaceIdentity();
+            // Sprint 28a (D11): the engine says who it is BEFORE the message loop, from what the directories declare, which is the
+            // same workspace.json the async load reads — the initialize handshake must never race the project load. Faces attach once
+            // the engine runs and detach before it stops (E19).
+            jawataEngine.start();
 
             // Sprint 10 v1.4.0: prefer workspace.json in the JDT data dir as the
             // source of truth for what to load. The manager (jawata-studio)
@@ -101,9 +91,7 @@ public class JawataApplication implements IApplication {
             // launches without the manager).
             CompletableFuture.runAsync(this::autoLoadProjects);
 
-            // Run the main message loop (starts immediately, doesn't wait for project load). Faces attach once the engine runs and
-            // detach before it stops (E19).
-            jawataEngine.whiteboard().started(jawataEngine.api());
+            // Run the main message loop (starts immediately, doesn't wait for project load).
             exit = runMessageLoop(transportConfig);
         } finally {
             jawataEngine.whiteboard().stopping();
@@ -113,100 +101,6 @@ public class JawataApplication implements IApplication {
 
         log.info("JAWATA MCP Server stopped");
         return exit;
-    }
-
-    /**
-     * Sprint 10 v1.4.0: load projects from {@code workspace.json} in the
-     * Eclipse {@code -data} directory if present, otherwise fall back to
-     * {@code JAVA_PROJECT_PATH}. This runs asynchronously so the MCP server
-     * can respond to {@code initialize} immediately while loading proceeds.
-     *
-     * <p>v1.7.1 (bug #5): also check the parent of the OSGi data dir. The
-     * JawataLauncher wrapper injects a UUID subdir into {@code -data} for
-     * session isolation, so OSGi's {@code osgi.instance.area} ends up at
-     * {@code <workspace>/<uuid>/} while the manager writes workspace.json at
-     * {@code <workspace>/workspace.json}. Without the parent-fallback every
-     * non-manager-spawned JVM (Cursor, Claude Code, etc.) saw an empty
-     * project list.</p>
-     */
-    /**
-     * Sprint 28a (D11): who this server is, readable before anything loads. Boot
-     * facts come from {@code workspace.json} (name + configured project roots);
-     * the env-var fallback names its single root. The live supplier reads the
-     * loaded model when it exists — it reflects later load_project / project-add
-     * calls, and while the async load runs it returns empty so the boot list
-     * keeps answering.
-     */
-    private void installWorkspaceIdentity() {
-        try {
-            Path dataDir = directories.resolveDataDir();
-            Path workspaceJson = dataDir == null ? null : DefaultEngineDirectories.findWorkspaceJson(dataDir);
-            if (workspaceJson != null) {
-                org.jawata.mcp.models.WorkspaceIdentity.install(
-                    DefaultEngineDirectories.readProvenance(workspaceJson)[0], DefaultEngineDirectories.readProjects(workspaceJson));
-            } else {
-                String envRoot = SettingKeys.PROJECT_PATH.value().orElse(null);
-                if (envRoot != null && !envRoot.isBlank()) {
-                    Path root = Path.of(envRoot).toAbsolutePath().normalize();
-                    org.jawata.mcp.models.WorkspaceIdentity.install(null, java.util.List.of(root));
-                }
-            }
-            // mcp#27 stage 1: the other residents on this machine, read from the registry
-            // studio publishes beside the workspace directories. A SUPPLIER rather than a
-            // snapshot, because residents start and stop while this one runs — a list read
-            // once at boot would name servers that have since gone and miss ones that arrived.
-            final Path identityDataDir = dataDir;
-            org.jawata.mcp.models.WorkspaceIdentity.installSiblings(() ->
-                org.jawata.mcp.models.SiblingRegistry.around(
-                    identityDataDir, org.jawata.mcp.models.WorkspaceIdentity.name()));
-            // mcp#27 stage 1: and ASK them. One HttpClient for the process — building one per
-            // miss would create a connection pool and two threads each time, on the path that
-            // is already the slow one. The client's own connect timeout bounds the handshake;
-            // SiblingPeek bounds the request and the whole walk.
-            final java.net.http.HttpClient peekClient = java.net.http.HttpClient.newBuilder()
-                .connectTimeout(java.time.Duration.ofMillis(500))
-                .build();
-            org.jawata.mcp.models.WorkspaceIdentity.installPeek(fqn ->
-                org.jawata.mcp.models.SiblingPeek.sweep(
-                    fqn,
-                    org.jawata.mcp.models.SiblingRegistry.around(
-                        identityDataDir, org.jawata.mcp.models.WorkspaceIdentity.name()),
-                    peekClient));
-            org.jawata.mcp.models.WorkspaceIdentity.installLiveKeys(() -> {
-                IJdtService s = this.model.current();
-                if (s == null) {
-                    return java.util.List.of();
-                }
-                return s.allProjects().stream()
-                    .map(org.jawata.core.LoadedProject::projectKey).toList();
-            });
-            // mcp#32: the boot list covers the LOADING window only. Once the
-            // load has terminally failed, the identity says so instead of
-            // naming projects this server does not have.
-            org.jawata.mcp.models.WorkspaceIdentity.installLoadFailure(() ->
-                EngineState.current().loading() == ProjectLoadingState.FAILED ? EngineState.current().loadingError() : null);
-            // mcp#65: and the other end of the same window. The load is asynchronous and on
-            // a 194-module workspace takes minutes; until this says false, a miss is "not
-            // yet" rather than "no".
-            //
-            // NOT_LOADED COUNTS, and the first version of this omitted it — found by the
-            // architect watch and confirmed by reading start(): the identity is installed,
-            // autoLoadProjects is DISPATCHED, and runMessageLoop begins serving, all before
-            // the async task reaches the line that sets LOADING. So the handshake window —
-            // the first message every client sends — ran with the state still NOT_LOADED and
-            // took the fully-loaded path, which is the very defect mcp#65 is about, one state
-            // earlier.
-            //
-            // The question is therefore "has the load FINISHED", not "is it running".
-            // NOT_LOADED is terminal only when neither workspace.json nor JAVA_PROJECT_PATH
-            // exists — and in exactly that case installWorkspaceIdentity installed nothing,
-            // so installed() is false and every sentence below is unreachable.
-            org.jawata.mcp.models.WorkspaceIdentity.installLoadPending(() ->
-                EngineState.current().loading().loadPending());
-        } catch (Exception e) {
-            // Identity is a courtesy layer — a failure here must never stop the server.
-            log.warn("Workspace identity not installed: {}", e.getMessage());
-        }
     }
 
     private void autoLoadProjects() {
@@ -326,13 +220,10 @@ public class JawataApplication implements IApplication {
         // exposes the running transport so JawataApplication.stop() can
         // unblock it on OSGi shutdown.
         try (Transport transport = openTransport(config)) {
-            this.jawataEngine.setActiveTransport(transport);
-            transport.run(jawataEngine.getProtocolHandler()::processMessage);
+            jawataEngine.serve(transport);
         } catch (Exception e) {
             // A port that is taken is reported by the transport to the lifecycle (status 13, jawata-mcp#2); this is every other failure.
             log.error("Error in message loop", e);
-        } finally {
-            this.jawataEngine.setActiveTransport(null);
         }
         // 0 unless the listener failed: 13 for a port that is taken, 70 for a listener that went deaf (REL44-32).
         return lifecycle.exitCode();
@@ -379,47 +270,13 @@ public class JawataApplication implements IApplication {
     @Override
     public void stop() {
         log.info("Stop requested");
-        // Sprint 27a Stage 3b: end the reconciliation loop.
-        //
-        // The interrupt is observed BETWEEN passes, not mid-pass — a pass embeds
-        // up to a full batch (minutes at batch 1000), and this does not wait it
-        // out. So a bounded join gives an in-flight pass a moment to notice and
-        // return, but if it does not, the store closes under it and that pass's
-        // final write fails with a caught SQLException. That is safe, not clean:
-        // every row committed before the close persists (H2 autocommit), so the
-        // next start resumes from a smaller delta and loses nothing. The loop
-        // itself always exits — on the interrupt at the next pass boundary.
-        Thread backfill = jawataEngine.getEmbeddingBackfillThread();
-        if (backfill != null) {
-            backfill.interrupt();
-            try {
-                backfill.join(2000);          // a moment, not the whole pass
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-            }
-            jawataEngine.setEmbeddingBackfillThread(null);
-        }
-        // The schedule is interrupted, not joined: a copy in progress is the store's own
-        // BACKUP TO, which finishes or fails on its own; the daemon thread never holds the
-        // process open, and a partial zip fails its read-back at the next start and is removed.
-        Thread backupSchedule = jawataEngine.getScheduledBackupThread();
-        if (backupSchedule != null) {
-            backupSchedule.interrupt();
-            jawataEngine.setScheduledBackupThread(null);
-        }
-        Transport t = jawataEngine.getActiveTransport();
-        if (t != null) {
-            t.close();
-        }
+        // What this process started is ended here; what the engine started (the reconciliation, the daily copy, the listener, the store)
+        // is the engine's to end.
         WorkspaceFileWatcher watcher = workspaceWatcher;
         if (watcher != null) {
             watcher.close();
             workspaceWatcher = null;
         }
-        ExperienceStore store = jawataEngine.getExperienceStore();
-        if (store != null) {
-            store.close();
-            jawataEngine.setExperienceStore(null);
-        }
+        jawataEngine.stop();
     }
 }
