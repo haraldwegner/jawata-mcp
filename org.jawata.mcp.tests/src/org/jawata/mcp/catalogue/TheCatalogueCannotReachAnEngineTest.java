@@ -88,7 +88,7 @@ class TheCatalogueCannotReachAnEngineTest {
      * declares against the shared table and reaches a Java engine to do it, which is exactly what
      * a catalogue class may not do.</p>
      */
-    private static final String CONTROL = "org.jawata.mcp.catalogue.JavaEngineCoverage";
+    private static final String CONTROL = "org.jawata.mcp.java.JavaEngineCoverage";
 
     /**
      * Where the module's classes land, repo-relative.
