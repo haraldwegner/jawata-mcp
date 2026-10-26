@@ -32,18 +32,20 @@ public class HealthCheckTool implements Tool {
     private final Supplier<ProjectLoadingState> loadingStateSupplier;
     private final Supplier<String> loadingErrorSupplier;
     private final Supplier<IJdtService> serviceSupplier;
+    private final Supplier<List<String>> languagesSupplier;
     private final Instant startTime;
 
     public HealthCheckTool(Supplier<Boolean> projectLoadedSupplier,
                            Supplier<Integer> toolCountSupplier,
                            Supplier<ProjectLoadingState> loadingStateSupplier,
                            Supplier<String> loadingErrorSupplier,
-                           Supplier<IJdtService> serviceSupplier) {
+                           Supplier<IJdtService> serviceSupplier, Supplier<List<String>> languagesSupplier) {
         this.projectLoadedSupplier = projectLoadedSupplier;
         this.toolCountSupplier = toolCountSupplier;
         this.loadingStateSupplier = loadingStateSupplier;
         this.loadingErrorSupplier = loadingErrorSupplier;
         this.serviceSupplier = serviceSupplier;
+        this.languagesSupplier = languagesSupplier;
         this.startTime = Instant.now();
     }
 
@@ -52,7 +54,7 @@ public class HealthCheckTool implements Tool {
                            Supplier<Integer> toolCountSupplier,
                            Supplier<ProjectLoadingState> loadingStateSupplier,
                            Supplier<String> loadingErrorSupplier) {
-        this(projectLoadedSupplier, toolCountSupplier, loadingStateSupplier, loadingErrorSupplier, () -> null);
+        this(projectLoadedSupplier, toolCountSupplier, loadingStateSupplier, loadingErrorSupplier, () -> null, java.util.List::of);
     }
 
     @Override
@@ -301,6 +303,10 @@ public class HealthCheckTool implements Tool {
             "timeoutSeconds", getTimeoutSeconds(),
             "absolutePaths", useAbsolutePaths()
         ));
+
+        // Sprint 28k Stage 8: the languages bound now, so a reader can see that a second language arrived beside Java (and that
+        // none has, while the engine is still loading). Empty is the answer 'no language yet', never a missing key.
+        status.put("languages", languagesSupplier.get());
 
         // Tool count
         status.put("toolCount", toolCountSupplier.get());

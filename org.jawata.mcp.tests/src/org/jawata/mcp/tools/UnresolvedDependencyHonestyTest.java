@@ -119,7 +119,7 @@ class UnresolvedDependencyHonestyTest {
             () -> 1,
             () -> org.jawata.mcp.engine.ProjectLoadingState.LOADED,
             () -> "",
-            () -> service);
+            () -> service, java.util.List::of);
         Map<String, Object> d = data(tool.execute(mapper.createObjectNode()));
 
         @SuppressWarnings("unchecked")

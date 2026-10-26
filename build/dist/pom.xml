@@ -79,6 +79,7 @@
                     <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core.tests</artifactId><version>${project.version}</version></dependency>
                     <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp.tests</artifactId><version>${project.version}</version></dependency>
                     <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.resident.tests</artifactId><version>${project.version}</version></dependency>
+                    <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.standin</artifactId><version>${project.version}</version></dependency>
                 </dependencies>
                 <executions>
                     <execution>
@@ -118,6 +119,9 @@
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.core.tests</artifactId><version>${project.version}</version></artifactItem>
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.mcp.tests</artifactId><version>${project.version}</version></artifactItem>
                                 <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.resident.tests</artifactId><version>${project.version}</version></artifactItem>
+                                <!-- Sprint 28k Stage 8: the stand-in language. In the test run the engine's tests name its classes; the end-to-end
+                                     gate drops this jar into a COPY of the distribution to show a second language plugging in. -->
+                                <artifactItem><groupId>org.jawata</groupId><artifactId>org.jawata.standin</artifactId><version>${project.version}</version></artifactItem>
                                 <artifactItem><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-api</artifactId><version>5.11.4</version></artifactItem>
                                 <artifactItem><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-engine</artifactId><version>5.11.4</version></artifactItem>
                                 <artifactItem><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-params</artifactId><version>5.11.4</version></artifactItem>

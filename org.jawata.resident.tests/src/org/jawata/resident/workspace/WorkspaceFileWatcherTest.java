@@ -310,14 +310,15 @@ class WorkspaceFileWatcherTest {
         final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
 
         @Override
-        public org.jawata.core.LoadedProject addProject(Path path) throws org.eclipse.core.runtime.CoreException {
+        public org.jawata.core.LoadedProject addProject(Path path, org.jawata.resident.project.DeclaredSourceRoots declared)
+                throws org.eclipse.core.runtime.CoreException {
             inside.countDown();
             try {
                 release.await(60, java.util.concurrent.TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            return super.addProject(path);
+            return super.addProject(path, declared);
         }
     }
 

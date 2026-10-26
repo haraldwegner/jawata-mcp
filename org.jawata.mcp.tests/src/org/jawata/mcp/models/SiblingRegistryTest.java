@@ -109,7 +109,7 @@ class SiblingRegistryTest {
                 "found from the workspace dir itself"),
             () -> assertEquals(workspaces, SiblingRegistry.locate(withSession),
                 "and from the session subdir the launcher injects"),
-            () -> assertEquals(1, SiblingRegistry.around(withSession, "javata-dev").size(),
+            () -> assertEquals(1, SiblingRegistry.around(withSession, null, "javata-dev").size(),
                 "and `around` joins the walk to the read"));
     }
 
@@ -127,6 +127,60 @@ class SiblingRegistryTest {
 
         assertEquals(null, SiblingRegistry.locate(deep),
             "a registry five levels up is not this server's registry");
+    }
+
+    // --- Sprint 28k, Stage 8: the notes an Eclipse engine leaves (contract §14.1, consumer) ---------------------------
+
+    /** The fixture pid 4242 is alive and nothing else is: the liveness the notes are read with in these cases. */
+    private static final EngineNotes.Liveness ONLY_4242_LIVES = (pid, startedAt) -> pid == 4242;
+
+    @Test
+    @DisplayName("Stage 8: a LIVE note joins the siblings with its address and no key; stale, malformed and newer-major notes never do")
+    void onlyALiveNoteJoinsTheSiblings(@TempDir Path notes) throws Exception {
+        EngineNotesTest.placeAsIs(notes, EngineNotesTest.LIVE);
+        EngineNotesTest.placeAsIs(notes, EngineNotesTest.STALE);
+        EngineNotesTest.placeAsIs(notes, EngineNotesTest.MALFORMED);
+        EngineNotesTest.placeAsIs(notes, EngineNotesTest.NEWER_MAJOR);
+
+        List<SiblingRegistry.Sibling> siblings = SiblingRegistry.engineNotes(notes, "javata-dev", 1L, ONLY_4242_LIVES);
+
+        // 4242 is also the pid of the newer-major and malformed fixtures: they are alive and still not addressed.
+        assertEquals(List.of(new SiblingRegistry.Sibling("live", 43123, "")), siblings, "got: " + siblings);
+    }
+
+    @Test
+    @DisplayName("Stage 8: an engine does not find itself among its siblings, by its own process id or by its own name")
+    void anEngineIsNotItsOwnSibling(@TempDir Path notes) throws Exception {
+        EngineNotesTest.placeAsIs(notes, EngineNotesTest.LIVE);
+
+        assertAll(
+            () -> assertEquals(List.of(), SiblingRegistry.engineNotes(notes, "javata-dev", 4242L, ONLY_4242_LIVES),
+                "the note of this very process"),
+            () -> assertEquals(List.of(), SiblingRegistry.engineNotes(notes, "live", 1L, ONLY_4242_LIVES),
+                "the note of a workspace this engine is named after"),
+            () -> assertEquals(1, SiblingRegistry.engineNotes(notes, null, 1L, ONLY_4242_LIVES).size(),
+                "THE CONTROL: with neither, the note is a sibling"));
+    }
+
+    @Test
+    @DisplayName("Stage 8: the siblings are studio's residents and the live Eclipse engines, and a missing notes folder changes nothing")
+    void aroundJoinsBothSources(@TempDir Path root) throws Exception {
+        Path workspaces = Files.createDirectories(root.resolve("workspaces"));
+        Path data = Files.createDirectories(workspaces.resolve("javata-dev"));
+        registry(workspaces, """
+            {"residents": [{"workspaceName": "patterns", "port": 8090, "token": "t"}]}
+            """);
+        Path notes = Files.createDirectories(root.resolve("engines"));
+        EngineNotesTest.placeAsIs(notes, EngineNotesTest.LIVE);
+
+        List<SiblingRegistry.Sibling> both = SiblingRegistry.around(data, notes, "javata-dev", 1L, ONLY_4242_LIVES);
+        List<SiblingRegistry.Sibling> noFolder = SiblingRegistry.around(data, root.resolve("no-engines"), "javata-dev", 1L,
+            ONLY_4242_LIVES);
+
+        assertAll(
+            () -> assertEquals(List.of(new SiblingRegistry.Sibling("patterns", 8090, "t"),
+                new SiblingRegistry.Sibling("live", 43123, "")), both, "got: " + both),
+            () -> assertEquals(List.of(new SiblingRegistry.Sibling("patterns", 8090, "t")), noFolder, "got: " + noFolder));
     }
 
     @Test

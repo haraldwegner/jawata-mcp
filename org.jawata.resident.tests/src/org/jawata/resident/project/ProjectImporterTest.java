@@ -253,7 +253,7 @@ class ProjectImporterTest {
         Files.writeString(srcDir.resolve("App.java"), "package com.example; public class App {}");
         Files.writeString(srcDir.resolve("Lib.java"), "package com.example; public class Lib {}");
 
-        int count = importer.countSourceFiles(tempDir);
+        int count = importer.countSourceFiles(tempDir, null);
 
         assertEquals(2, count, "Should find 2 Java files in Bazel standard layout");
     }
@@ -263,7 +263,7 @@ class ProjectImporterTest {
     @Test
     @DisplayName("countSourceFiles should count Java files in Maven layout")
     void countSourceFiles_countsJavaFiles() {
-        int count = importer.countSourceFiles(mavenFixturePath);
+        int count = importer.countSourceFiles(mavenFixturePath, null);
 
         assertTrue(count >= 3,
             "Should find at least 3 Java files (Calculator, HelloWorld, UserService): " + count);
@@ -272,7 +272,7 @@ class ProjectImporterTest {
     @Test
     @DisplayName("countSourceFiles should return 0 for empty project")
     void countSourceFiles_returnsZeroForEmpty(@TempDir Path tempDir) {
-        int count = importer.countSourceFiles(tempDir);
+        int count = importer.countSourceFiles(tempDir, null);
 
         assertEquals(0, count, "Should return 0 for project with no Java files");
     }
@@ -286,7 +286,7 @@ class ProjectImporterTest {
         Files.writeString(srcDir.resolve("Main.java"), "public class Main {}");
         Files.writeString(srcDir.resolve("Helper.java"), "public class Helper {}");
 
-        int count = importer.countSourceFiles(tempDir);
+        int count = importer.countSourceFiles(tempDir, null);
 
         assertEquals(2, count, "Should find 2 Java files in src directory");
     }
@@ -296,7 +296,7 @@ class ProjectImporterTest {
     @Test
     @DisplayName("findPackages should find all packages in project")
     void findPackages_findsAllPackages() {
-        List<String> packages = importer.findPackages(mavenFixturePath);
+        List<String> packages = importer.findPackages(mavenFixturePath, null);
 
         assertFalse(packages.isEmpty(), "Should find at least one package");
         assertTrue(packages.stream().anyMatch(p -> p.contains("com.example")),
@@ -306,7 +306,7 @@ class ProjectImporterTest {
     @Test
     @DisplayName("findPackages should find nested packages")
     void findPackages_findsNestedPackages() {
-        List<String> packages = importer.findPackages(mavenFixturePath);
+        List<String> packages = importer.findPackages(mavenFixturePath, null);
 
         // Should find both com.example and com.example.service
         assertTrue(packages.stream().anyMatch(p -> p.contains("service")),
@@ -316,7 +316,7 @@ class ProjectImporterTest {
     @Test
     @DisplayName("findPackages should return empty for no packages")
     void findPackages_returnsEmptyForNoPackages(@TempDir Path tempDir) {
-        List<String> packages = importer.findPackages(tempDir);
+        List<String> packages = importer.findPackages(tempDir, null);
 
         assertTrue(packages.isEmpty(), "Should return empty list for empty project");
     }
@@ -327,7 +327,7 @@ class ProjectImporterTest {
     @DisplayName("configureJavaProject should add JRE container to classpath")
     void configureJavaProject_addsJreContainer() throws CoreException {
         IProject project = workspaceManager.createLinkedProject("jre-test", mavenFixturePath);
-        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager, null).javaProject();
 
         IClasspathEntry[] classpath = javaProject.getRawClasspath();
         boolean hasJre = Arrays.stream(classpath)
@@ -348,7 +348,7 @@ class ProjectImporterTest {
     @DisplayName("configureJavaProject binds a default VM so the JRE container resolves")
     void configureJavaProject_bindsDefaultVmSoJreResolves() throws CoreException {
         IProject project = workspaceManager.createLinkedProject("vm-test", mavenFixturePath);
-        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager, null).javaProject();
 
         assertNotNull(org.eclipse.jdt.launching.JavaRuntime.getDefaultVMInstall(),
             "a default VM must be registered so JRE_CONTAINER is not unbound");
@@ -364,7 +364,7 @@ class ProjectImporterTest {
     @DisplayName("configureJavaProject should add source folders")
     void configureJavaProject_addsSourceFolders() throws CoreException {
         IProject project = workspaceManager.createLinkedProject("src-test", mavenFixturePath);
-        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager, null).javaProject();
 
         IClasspathEntry[] classpath = javaProject.getRawClasspath();
         boolean hasSource = Arrays.stream(classpath)
@@ -377,7 +377,7 @@ class ProjectImporterTest {
     @DisplayName("configureJavaProject should set output location")
     void configureJavaProject_setsOutputLocation() throws CoreException {
         IProject project = workspaceManager.createLinkedProject("output-test", mavenFixturePath);
-        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager, null).javaProject();
 
         assertNotNull(javaProject.getOutputLocation(), "Output location should be set");
         assertTrue(javaProject.getOutputLocation().toString().contains("bin"),
@@ -388,7 +388,7 @@ class ProjectImporterTest {
     @DisplayName("configureJavaProject should return valid Java project")
     void configureJavaProject_returnsValidProject() throws CoreException {
         IProject project = workspaceManager.createLinkedProject("valid-test", mavenFixturePath);
-        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager).javaProject();
+        IJavaProject javaProject = importer.configureJavaProject(project, mavenFixturePath, workspaceManager, null).javaProject();
 
         assertNotNull(javaProject, "Should return a Java project");
         assertTrue(javaProject.exists(), "Java project should exist");
@@ -526,7 +526,7 @@ class ProjectImporterTest {
         Files.createDirectories(testSrc);
         Files.writeString(testSrc.resolve("Tests.java"), "package com.example; class Tests {}");
 
-        int count = importer.countSourceFiles(tempDir);
+        int count = importer.countSourceFiles(tempDir, null);
 
         assertEquals(2, count,
             "Both <sourceDirectory> production code and <testSourceDirectory> tests should be counted");
@@ -547,7 +547,7 @@ class ProjectImporterTest {
         Files.writeString(src.resolve("A.java"), "package com.example; class A {}");
         Files.writeString(src.resolve("B.java"), "package com.example; class B {}");
 
-        int count = importer.countSourceFiles(tempDir);
+        int count = importer.countSourceFiles(tempDir, null);
 
         assertEquals(2, count, ".classpath src=custom-src should be the source root");
     }
@@ -558,7 +558,7 @@ class ProjectImporterTest {
     @DisplayName("countSourceFiles follows nested aggregators and ${project.basedir} source overrides")
     void countSourceFiles_nestedAggregator() {
         Path fixture = helper.getFixturePath("nested-aggregator");
-        assertEquals(1, importer.countSourceFiles(fixture),
+        assertEquals(1, importer.countSourceFiles(fixture, null),
             "root -> mid -> leaf module recursion must reach the ${project.basedir}/../.. source override");
     }
 
@@ -566,7 +566,7 @@ class ProjectImporterTest {
     @DisplayName("findPackages sees packages behind nested module recursion")
     void findPackages_nestedAggregator() {
         Path fixture = helper.getFixturePath("nested-aggregator");
-        assertTrue(importer.findPackages(fixture).contains("com.example.nested"),
+        assertTrue(importer.findPackages(fixture, null).contains("com.example.nested"),
             "package behind the nested source override must be discovered");
     }
 

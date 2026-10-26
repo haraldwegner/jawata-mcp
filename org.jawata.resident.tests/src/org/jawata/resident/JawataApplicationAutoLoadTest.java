@@ -1,6 +1,7 @@
 package org.jawata.resident;
 
 import org.jawata.mcp.engine.DefaultEngineDirectories;
+import org.jawata.resident.workspace.WorkspaceJson;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

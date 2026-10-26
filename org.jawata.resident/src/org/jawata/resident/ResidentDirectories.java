@@ -7,6 +7,7 @@ import java.util.Optional;
 
 import org.jawata.mcp.engine.DefaultEngineDirectories;
 import org.jawata.mcp.engine.SettingKeys;
+import org.jawata.resident.workspace.WorkspaceJson;
 import org.jawata.spi.host.DeclaredWorkspace;
 import org.jawata.spi.host.EngineSettings;
 

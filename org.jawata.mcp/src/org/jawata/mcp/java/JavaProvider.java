@@ -71,6 +71,11 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
     void bindHost(EngineHost host) {
         this.host = host;
         JavaChange.hostedBy(host.reconciler(), host.writes());
+        // The headless JDT-manipulation config (Sprint 23, Stage 5): the preference node, the JDT-UI-style defaults and the code-template
+        // store that an IDE gets from JDT-UI activation. It is Java's, so it is set up when the Java provider is handed its host and not
+        // when the engine assembles, which lets an engine with no Java assemble. E15: it stands down when the host did the setup itself.
+        org.jawata.mcp.tools.shared.HeadlessJdtConfig.hostedBy(host.binding(JavaBinding.class).orElseThrow());
+        org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
     }
 
     @Override

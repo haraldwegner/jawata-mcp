@@ -28,7 +28,7 @@ class EmbedderBackendHonestyTest {
     @SuppressWarnings("unchecked")
     private Map<String, Object> health() {
         HealthCheckTool tool = new HealthCheckTool(() -> false, () -> 45,
-            () -> org.jawata.mcp.engine.ProjectLoadingState.NOT_LOADED, () -> null, () -> null);
+            () -> org.jawata.mcp.engine.ProjectLoadingState.NOT_LOADED, () -> null, () -> null, java.util.List::of);
         var r = tool.execute(OM.createObjectNode());
         assertTrue(r.isSuccess());
         return (Map<String, Object>) r.getData();

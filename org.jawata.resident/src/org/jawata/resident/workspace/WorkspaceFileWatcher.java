@@ -14,11 +14,13 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
+import org.jawata.resident.project.DeclaredSourceRoots;
 import org.jawata.spi.host.HostWorkspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -442,6 +444,9 @@ public class WorkspaceFileWatcher implements AutoCloseable {
      *  A swallowed load failure left a silently empty workspace on 2026-07-19. */
     private volatile Map<String, String> lastLoadFailures = Map.of();
 
+    /** The declaration each member was loaded with (null for none), so a changed declaration can be told from an unchanged one. */
+    private final Map<Path, DeclaredSourceRoots> loadedWith = new HashMap<>();
+
     /** The last pass's per-project load failures (empty when all loaded). */
     public Map<String, String> loadFailures() {
         return lastLoadFailures;
@@ -449,6 +454,8 @@ public class WorkspaceFileWatcher implements AutoCloseable {
 
     private void applyDiff(List<Path> desired) {
         Map<String, String> failures = new LinkedHashMap<>();
+        // Contract S4: a member that declares its source folders is loaded with exactly those; the others are discovered as before.
+        Map<Path, DeclaredSourceRoots> declared = WorkspaceJson.readSourceRoots(workspaceJson);
         // Map currently-loaded projects: absolute root -> projectKey.
         Map<Path, String> currentByRoot = new HashMap<>();
         for (LoadedProject loaded : service.allProjects()) {
@@ -457,13 +464,26 @@ public class WorkspaceFileWatcher implements AutoCloseable {
 
         Set<Path> desiredSet = new HashSet<>(desired);
 
+        // A member whose declaration changed since this watcher loaded it is loaded again with the new one: the studio rewrites the entry
+        // when the module file changes, and the folders mounted at load are fixed until then. Only members this watcher loaded are
+        // compared; one loaded another way has no declaration of ours to differ from.
+        for (Path p : desired) {
+            String key = currentByRoot.get(p);
+            if (key != null && loadedWith.containsKey(p) && !Objects.equals(loadedWith.get(p), declared.get(p)) && service.removeProject(key)) {
+                log.info("WorkspaceFileWatcher reloads {}: its declared source folders changed", p);
+                currentByRoot.remove(p);
+                loadedWith.remove(p);
+            }
+        }
+
         // Additions: paths in desired but not currently loaded.
         int loaded = service.allProjects().size();
         for (Path p : desired) {
             if (!currentByRoot.containsKey(p)) {
                 if (loaded == 0) {
                     try {
-                        service.loadProject(p);
+                        service.loadProject(p, declared.get(p));
+                        loadedWith.put(p, declared.get(p));
                         log.info("WorkspaceFileWatcher loaded initial project: {}", p);
                         loaded++;
                     } catch (Exception e) {
@@ -472,7 +492,8 @@ public class WorkspaceFileWatcher implements AutoCloseable {
                     }
                 } else {
                     try {
-                        service.addProject(p);
+                        service.addProject(p, declared.get(p));
+                        loadedWith.put(p, declared.get(p));
                         log.info("WorkspaceFileWatcher added project: {}", p);
                         loaded++;
                     } catch (Exception e) {
@@ -488,6 +509,7 @@ public class WorkspaceFileWatcher implements AutoCloseable {
             if (!desiredSet.contains(entry.getKey())) {
                 String key = entry.getValue();
                 if (service.removeProject(key)) {
+                    loadedWith.remove(entry.getKey());
                     log.info("WorkspaceFileWatcher removed project: {} ({})", entry.getKey(), key);
                 } else {
                     log.warn("removeProject({}) returned false for path {}", key, entry.getKey());

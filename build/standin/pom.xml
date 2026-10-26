@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28k, Stage 8: org.jawata.standin, the stand-in language. A bundle of its own so that it can be dropped into a copy of the built
+     distribution (the end-to-end gate's P8) and so that the engine's tests can name its classes; it is NOT part of the distribution. Its
+     dependencies are the language SPI, the engine's exported tool types, and Jackson for the tool's argument node: no Java tooling. -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.jawata</groupId>
+        <artifactId>org.jawata.build</artifactId>
+        <version>4.4.15</version>
+    </parent>
+
+    <artifactId>org.jawata.standin</artifactId>
+
+    <dependencies>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.spi</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.equinox.common</artifactId><version>${v.equinox.common}</version></dependency>
+        <dependency><groupId>org.eclipse.platform</groupId><artifactId>org.eclipse.core.resources</artifactId><version>${v.core.resources}</version></dependency>
+        <dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-databind</artifactId><version>${v.jackson}</version></dependency>
+    </dependencies>
+
+    <build>
+        <sourceDirectory>${project.basedir}/../../org.jawata.standin/src</sourceDirectory>
+        <resources>
+            <!-- The component descriptor (OSGI-INF) rides in the jar beside the classes, as the engine's does. -->
+            <resource>
+                <directory>${project.basedir}/../../org.jawata.standin/resources</directory>
+            </resource>
+        </resources>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestFile>${project.basedir}/../../org.jawata.standin/META-INF/MANIFEST.MF</manifestFile>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

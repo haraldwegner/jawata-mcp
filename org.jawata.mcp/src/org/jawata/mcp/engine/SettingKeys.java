@@ -93,6 +93,11 @@ public final class SettingKeys {
     public static final SettingKey TOOLS_DIR = register("jawata.tools.dir", "tools/ in the distribution folder",
         "Where the jars the forked test runner needs are found; for a development run that has no distribution folder.");
 
+    /** Where the notes of engines running inside an IDE are looked for. */
+    public static final SettingKey ENGINE_NOTES_DIR = register("jawata.engine.notes.dir", "jawata-studio/engines in the OS cache folder",
+        "The folder the notes of jawata engines running inside an IDE are read from, so this resident can reach them as siblings; "
+            + "studio's own data folder setting does not move it.");
+
     /** The distribution folder. */
     public static final SettingKey DIST_ROOT = register("jawata.dist.root", "set by the launcher",
         "The folder the distribution was started from; the launcher sets it.");

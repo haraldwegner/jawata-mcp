@@ -219,14 +219,17 @@ public final class SiblingPeek {
                         "typeName", fqn,
                         "maxChars", 1))));
 
-            HttpRequest request = HttpRequest.newBuilder()
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
                 .uri(URI.create("http://127.0.0.1:" + sibling.port() + "/mcp"))
                 .header("Content-Type", "application/json")
-                .header("Authorization", "Bearer " + sibling.token())
                 .header(PEEK_HEADER, "1")
                 .timeout(PER_SIBLING)
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build();
+                .POST(HttpRequest.BodyPublishers.ofString(body));
+            // An engine inside an IDE is reached through its note, which carries no key (contract §14.1): it is asked without one.
+            if (!sibling.token().isBlank()) {
+                builder.header("Authorization", "Bearer " + sibling.token());
+            }
+            HttpRequest request = builder.build();
 
             HttpResponse<String> response =
                 client.send(request, HttpResponse.BodyHandlers.ofString());

@@ -52,6 +52,14 @@
 #      build/two-resident-probe.sh shows two residents each loading the project their own workspace.json names, the first reaching the
 #      second through residents.json. Front door to the built dist.
 #
+#   P8-S4 (Stage 8, contract S4): a workspace.json carrying "sourceRoots" for studio's two IntelliJ fixtures (intellij-root-plain with a
+#      Maven module nested in it, intellij-without-build) is loaded; inspect(project_structure) shows exactly the declared folders for the
+#      members that declare them, and the Maven module nested in the root module is a project of its own, discovered as before.
+#   P8 (Stage 8, contract §14.1): a resident told to read a scratch folder of engine notes (jawata.engine.notes.dir) answers a miss from
+#      the engine behind a LIVE note (workspace and project named, one consulted of one listed, asked once as a peek and without a key),
+#      and never asks the server behind a STALE note; the malformed and the newer-major note are not listed. The probe process is the
+#      live dummy; the notes are the canonical fixtures with pid, start time and address patched.
+#
 # Usage:  build/28k-e2e.sh [--capture] [dist-dir]
 #         --capture writes the goldens (build/28k-golden-ready.txt, build/28k-golden-tools.json)
 #         from the given dist; only Stage 0 uses it.
@@ -527,5 +535,265 @@ rm -rf "$P7_DIR" "$P7_STORE"
 # (c) two residents, each loading the project its own workspace.json names, the first reaching the second through residents.json
 bash "$ROOT/build/two-resident-probe.sh" "$DIST" || P7_FAILED=1
 
-[ "$PY_STATUS" -eq 0 ] && [ "$P5_FAILED" -eq 0 ] && [ "$P6_FAILED" -eq 0 ] && [ "$P7_FAILED" -eq 0 ]
+# --- P8-S4 (Stage 8, contract S4): a member that declares its source folders mounts exactly those -------------------------------------
+# workspace.json carries, beside the project paths, "sourceRoots" for studio's two IntelliJ fixtures: intellij-root-plain (a module that
+# names src with core/java merged into it, and a Maven module lib nested in it and listed beside it) and intellij-without-build (core with
+# a main and a test folder, tools with src). The dist loads them, and inspect(project_structure) shows the declared folders.
+P8_FAILED=0
+P8_DIR="$(mktemp -d)"
+P8_STORE="$(mktemp -d)"
+P8_LOG="$P8_DIR/resident.log"
+mkdir -p "$P8_DIR/ws" "$P8_DIR/fx"
+cp -r "$ROOT/org.jawata.core.tests/test-resources/sample-projects/intellij-root-plain" \
+      "$ROOT/org.jawata.core.tests/test-resources/sample-projects/intellij-without-build" "$P8_DIR/fx/"
+FX="$P8_DIR/fx"
+cat > "$P8_DIR/ws/workspace.json" << JSON
+{"version":1,"name":"p8s4","projects":["$FX/intellij-root-plain","$FX/intellij-root-plain/lib","$FX/intellij-without-build/core","$FX/intellij-without-build/tools"],
+ "sourceRoots":{"$FX/intellij-root-plain":{"main":["$FX/intellij-root-plain/src","$FX/intellij-root-plain/core/java"],"test":[]},
+ "$FX/intellij-without-build/core":{"main":["$FX/intellij-without-build/core/java"],"test":["$FX/intellij-without-build/core/test"]},
+ "$FX/intellij-without-build/tools":{"main":["$FX/intellij-without-build/tools/src"],"test":[]}}}
+JSON
+P8_PORT=$((PORT + 3))
+# shellcheck disable=SC2086
+java $VECTOR -Djawata.experience.shared.dir="$P8_STORE" -jar "$JAR" -data "$P8_DIR/ws" -port "$P8_PORT" -token "$TOKEN" > "$P8_LOG" 2>&1 &
+P8_PID=$!
+P8_READY=0
+for _ in $(seq 1 120); do
+    grep -q "READY" "$P8_LOG" 2>/dev/null && { P8_READY=1; break; }
+    kill -0 "$P8_PID" 2>/dev/null || break
+    sleep 1
+done
+if [ "$P8_READY" -ne 1 ]; then
+    echo "  FAIL  P8-S4 the resident started on the IntelliJ fixtures never printed READY: $(tail -3 "$P8_LOG")" >&2
+    P8_FAILED=1
+else
+    PROBE_PORT="$P8_PORT" PROBE_TOKEN="$TOKEN" python3 - << 'PY' || P8_FAILED=1
+import json, os, time, urllib.request
+
+PORT, TOKEN = os.environ["PROBE_PORT"], os.environ["PROBE_TOKEN"]
+
+def call(name, arguments):
+    req = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": arguments}}
+    r = urllib.request.Request("http://127.0.0.1:%s/mcp" % PORT, data=json.dumps(req).encode(),
+        headers={"Authorization": "Bearer " + TOKEN, "Mcp-Session-Id": "e2e-28k-p8", "Content-Type": "application/json"})
+    return json.loads(json.loads(urllib.request.urlopen(r, timeout=120).read().decode())["result"]["content"][0]["text"])
+
+# The load is asynchronous: wait until all four members are in.
+keys = []
+for _ in range(120):
+    projects = (call("health_check", {}).get("data") or {}).get("workspace", {}).get("projects", [])
+    keys = sorted(p["projectKey"] for p in projects)
+    if len(keys) == 4:
+        break
+    time.sleep(1)
+
+failed = False
+def check(label, held):
+    global failed
+    print(("  ok    P8-S4 " if held else "  FAIL  P8-S4 ") + label)
+    failed = failed or not held
+
+def roots(key):
+    data = (call("inspect", {"kind": "project_structure", "projectKey": key}).get("data") or {})
+    return sorted(r["path"].split("/")[-1] for r in data.get("sourceRoots", []))
+
+check("the four members load, the Maven module lib nested in the root module as a project of its own: %s" % keys,
+      keys == ["core", "intellij-root-plain", "lib", "tools"])
+# The folder names are the importer's linked-folder names: src-<n>-<path with dashes>.
+check("the root module mounts exactly the folders it declares, src and the merged core/java: %s" % roots("intellij-root-plain"),
+      roots("intellij-root-plain") == ["src-0-src", "src-1-core-java"])
+check("core mounts its main and its test folder: %s" % roots("core"), roots("core") == ["src-0-java", "src-1-test"])
+check("tools mounts its src: %s" % roots("tools"), roots("tools") == ["src-0-src"])
+check("lib, which declares nothing, is discovered as before (Maven layout): %s" % roots("lib"), roots("lib") == ["src-0-src-main-java"])
+raise SystemExit(1 if failed else 0)
+PY
+fi
+kill "$P8_PID" 2>/dev/null; wait "$P8_PID" 2>/dev/null
+rm -rf "$P8_DIR" "$P8_STORE"
+
+# --- P8 (Stage 8, contract §18 ring 1): a second language bound beside Java publishes its own tool, and Java's tools stay ------------
+# org.jawata.standin is the stand-in language (language "fake", tool fake_echo) built as a test bundle beside the dist, not in it. A dist
+# copy that has it in bundles/ is an engine with two languages: health_check lists both, tools/list holds the 44 and the stand-in's one.
+P8L_PORT=$((PORT + 7))
+P8L_DIST="$(mktemp -d)"
+P8L_STORE="$(mktemp -d)"
+P8L_LOG="$WS/resident-p8-standin.log"
+P8L_JAR="$(ls "$DIST"/test-bundles/org.jawata.standin-[0-9]*.jar 2>/dev/null | head -1)"
+mkdir -p "$P8L_DIST/bundles"
+for entry in "$DIST"/*; do
+    case "$(basename "$entry")" in bundles|test-bundles) ;; *) ln -s "$entry" "$P8L_DIST/$(basename "$entry")" ;; esac
+done
+for bundle in "$DIST"/bundles/*; do
+    ln -s "$bundle" "$P8L_DIST/bundles/$(basename "$bundle")"
+done
+if [ -z "$P8L_JAR" ]; then
+    echo "  FAIL  P8 the stand-in language bundle is not in the dist's test-bundles folder" >&2
+    P8_FAILED=1
+else
+    ln -s "$P8L_JAR" "$P8L_DIST/bundles/$(basename "$P8L_JAR")"
+    # shellcheck disable=SC2086
+    java $VECTOR -Djawata.boot.home="$P8L_DIST" -Djawata.experience.shared.dir="$P8L_STORE" \
+         -jar "$JAR" -data "$WS/ws-p8-standin" -port "$P8L_PORT" -token "$TOKEN" > "$P8L_LOG" 2>&1 &
+    P8L_PID=$!
+    P8L_READY=0
+    for _ in $(seq 1 120); do
+        grep -q "READY" "$P8L_LOG" 2>/dev/null && { P8L_READY=1; break; }
+        kill -0 "$P8L_PID" 2>/dev/null || break
+        sleep 1
+    done
+    if [ "$P8L_READY" -ne 1 ]; then
+        echo "  FAIL  P8 the resident with the stand-in language beside Java never printed READY: $(tail -3 "$P8L_LOG")" >&2
+        P8_FAILED=1
+    else
+        PROBE_PORT="$P8L_PORT" PROBE_TOKEN="$TOKEN" python3 - << 'PY' || P8_FAILED=1
+import json, os, time, urllib.request
+
+PORT, TOKEN = os.environ["PROBE_PORT"], os.environ["PROBE_TOKEN"]
+
+def rpc(method, params):
+    req = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+    r = urllib.request.Request("http://127.0.0.1:%s/mcp" % PORT, data=json.dumps(req).encode(),
+        headers={"Authorization": "Bearer " + TOKEN, "Mcp-Session-Id": "e2e-28k-p8l", "Content-Type": "application/json"})
+    return json.loads(urllib.request.urlopen(r, timeout=60).read().decode())
+
+def tools_called(name, arguments):
+    return json.loads(rpc("tools/call", {"name": name, "arguments": arguments})["result"]["content"][0]["text"])
+
+failed = False
+def check(label, held):
+    global failed
+    print(("  ok    P8 " if held else "  FAIL  P8 ") + label)
+    failed = failed or not held
+
+names = []
+for _ in range(60):     # the second language binds when its component starts, just after READY
+    names = [t["name"] for t in rpc("tools/list", {})["result"]["tools"]]
+    if "fake_echo" in names:
+        break
+    time.sleep(1)
+health = tools_called("health_check", {}).get("data") or {}
+languages = health.get("languages")
+check("health_check lists the stand-in language beside java: %s" % languages, isinstance(languages, list) and "fake" in languages and "java" in languages)
+check("the stand-in's tool is published beside the 44: %d tools, fake_echo present: %s" % (len(names), "fake_echo" in names),
+      "fake_echo" in names and len(names) == 45 and "search_symbols" in names)
+echoed = tools_called("fake_echo", {"text": "hello"})
+check("the stand-in's tool answers: %s" % json.dumps(echoed)[:160], echoed.get("success") and (echoed.get("data") or {}).get("echo") == "hello")
+raise SystemExit(1 if failed else 0)
+PY
+    fi
+    kill "$P8L_PID" 2>/dev/null; wait "$P8L_PID" 2>/dev/null
+fi
+rm -rf "$P8L_DIST" "$P8L_STORE"
+
+# --- P8 notes (Stage 8, contract §14.1): the sibling path reaches the engine behind a live note and never the one behind a stale note ----
+# The probe process is the live dummy: it serves the one question a sibling is asked (inspect source) on a loopback port and is the
+# process the live note names. The notes are the canonical fixtures (org.jawata.mcp.tests/test-resources/engine-notes) with their
+# process id, start time and address patched, in a scratch folder the resident is told to read (jawata.engine.notes.dir). A second
+# server answers at the stale note's address, as can happen after a pid and a port are reused; it must never be asked.
+P8N_DIR="$(mktemp -d)"
+P8N_STORE="$(mktemp -d)"
+P8N_LOG="$P8N_DIR/resident.log"
+P8N_SAMPLE="$P8N_DIR/compile-clean"
+mkdir -p "$P8N_DIR/ws" "$P8N_DIR/engines"
+cp -r "$ROOT/org.jawata.core.tests/test-resources/sample-projects/compile-clean" "$P8N_SAMPLE"
+printf '{"version":1,"name":"p8notes","projects":["%s"]}\n' "$P8N_SAMPLE" > "$P8N_DIR/ws/workspace.json"
+# An empty registry of residents beside the workspace: the resident looks for the nearest residents.json above its data folder, and a
+# stray one further up (a test of studio leaves one in the temp folder) would add a sibling to the count this promise asserts on.
+printf '{"residents":[]}\n' > "$P8N_DIR/residents.json"
+P8N_PORT=$((PORT + 4))
+# shellcheck disable=SC2086
+java $VECTOR -Djawata.experience.shared.dir="$P8N_STORE" -Djawata.engine.notes.dir="$P8N_DIR/engines" \
+     -jar "$JAR" -data "$P8N_DIR/ws" -port "$P8N_PORT" -token "$TOKEN" > "$P8N_LOG" 2>&1 &
+P8N_PID=$!
+P8N_READY=0
+for _ in $(seq 1 120); do
+    grep -q "READY" "$P8N_LOG" 2>/dev/null && { P8N_READY=1; break; }
+    kill -0 "$P8N_PID" 2>/dev/null || break
+    sleep 1
+done
+if [ "$P8N_READY" -ne 1 ]; then
+    echo "  FAIL  P8 the resident that reads a scratch notes folder never printed READY: $(tail -3 "$P8N_LOG")" >&2
+    P8_FAILED=1
+else
+    PROBE_PORT="$P8N_PORT" PROBE_TOKEN="$TOKEN" PROBE_NOTES="$P8N_DIR/engines" PROBE_FIXTURES="$ROOT/org.jawata.mcp.tests/test-resources/engine-notes" \
+    PROBE_LIVE_PORT=$((PORT + 5)) PROBE_STALE_PORT=$((PORT + 6)) python3 - << 'PY' || P8_FAILED=1
+import datetime, json, os, threading, time, urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+PORT, TOKEN, NOTES, FIX = os.environ["PROBE_PORT"], os.environ["PROBE_TOKEN"], os.environ["PROBE_NOTES"], os.environ["PROBE_FIXTURES"]
+LIVE_PORT, STALE_PORT = int(os.environ["PROBE_LIVE_PORT"]), int(os.environ["PROBE_STALE_PORT"])
+
+asked = {"live": [], "stale": []}
+def engine(kind):
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            asked[kind].append({"authorization": self.headers.get("Authorization"), "peek": self.headers.get("X-Jawata-Peek")})
+            tool = {"success": True, "data": {"typeName": "com.probe.eclipse.OnlyInEclipse", "projectKey": "eclipse-project"}}
+            body = json.dumps({"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": json.dumps(tool)}]}}).encode()
+            self.send_response(200); self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
+        def log_message(self, *args): pass
+    return Handler
+
+for kind, port in (("live", LIVE_PORT), ("stale", STALE_PORT)):
+    server = ThreadingHTTPServer(("127.0.0.1", port), engine(kind))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+def started_at(pid):
+    """The process start time as the OS reports it; absent where this probe cannot read it (the contract: 'where the OS reports it')."""
+    try:
+        stat = open("/proc/%d/stat" % pid).read().rsplit(")", 1)[1].split()
+        ticks = int(stat[19]); hz = os.sysconf("SC_CLK_TCK")
+        boot = next(int(l.split()[1]) for l in open("/proc/stat") if l.startswith("btime"))
+        return datetime.datetime.fromtimestamp(boot + ticks / hz, datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        return None
+
+def note(fixture, name, patch):
+    n = json.load(open(os.path.join(FIX, fixture)))
+    n.update(patch)
+    json.dump(n, open(os.path.join(NOTES, name), "w"))
+
+me = os.getpid()
+live_patch = {"pid": me, "endpoint": "http://127.0.0.1:%d/mcp" % LIVE_PORT}
+if started_at(me): live_patch["processStartedAt"] = started_at(me)
+note("eclipse-1111111111111111.json", "eclipse-1111111111111111.json", live_patch)
+note("eclipse-2222222222222222.json", "eclipse-2222222222222222.json", {"endpoint": "http://127.0.0.1:%d/mcp" % STALE_PORT})
+for name in ("eclipse-4444444444444444.json", "eclipse-5555555555555555.json"):   # malformed, newer major: copied as they are
+    open(os.path.join(NOTES, name), "w").write(open(os.path.join(FIX, name)).read())
+
+def call(name, arguments):
+    req = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": arguments}}
+    r = urllib.request.Request("http://127.0.0.1:%s/mcp" % PORT, data=json.dumps(req).encode(),
+        headers={"Authorization": "Bearer " + TOKEN, "Mcp-Session-Id": "e2e-28k-p8n", "Content-Type": "application/json"})
+    return json.loads(json.loads(urllib.request.urlopen(r, timeout=120).read().decode())["result"]["content"][0]["text"])
+
+for _ in range(120):    # the load is asynchronous; a miss against a half-loaded workspace is not the miss this is about
+    if (call("health_check", {}).get("data") or {}).get("workspace", {}).get("projects"):
+        break
+    time.sleep(1)
+
+failed = False
+def check(label, held):
+    global failed
+    print(("  ok    P8 " if held else "  FAIL  P8 ") + label)
+    failed = failed or not held
+
+miss = call("find_references", {"kind": "references", "symbol": "com.probe.eclipse.OnlyInEclipse"})
+hint = (miss.get("error") or {}).get("hint") or ""
+check("a symbol this resident lacks is answered from the live Eclipse note: ...%s" % hint[-230:],
+      not miss.get("success") and "workspace 'live' has it, in project 'eclipse-project'" in hint)
+check("exactly one engine was consulted of one listed: the stale, malformed and newer-major notes were not listed",
+      "consulted 1 of 1" in hint)
+check("the live engine was asked once, as a peek, without a key: %s" % asked["live"],
+      len(asked["live"]) == 1 and asked["live"][0]["authorization"] is None and asked["live"][0]["peek"] == "1")
+check("the server behind the stale note was never asked: %s" % asked["stale"], asked["stale"] == [])
+raise SystemExit(1 if failed else 0)
+PY
+fi
+kill "$P8N_PID" 2>/dev/null; wait "$P8N_PID" 2>/dev/null
+rm -rf "$P8N_DIR" "$P8N_STORE"
+
+[ "$PY_STATUS" -eq 0 ] && [ "$P5_FAILED" -eq 0 ] && [ "$P6_FAILED" -eq 0 ] && [ "$P7_FAILED" -eq 0 ] && [ "$P8_FAILED" -eq 0 ]
 exit $?

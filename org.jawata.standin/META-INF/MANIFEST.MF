@@ -1,0 +1,18 @@
+Manifest-Version: 1.0
+Bundle-ManifestVersion: 2
+Bundle-Name: JAWATA Stand-in Language
+Bundle-SymbolicName: org.jawata.standin;singleton:=true
+Bundle-Version: 4.4.15
+Bundle-Vendor: JAWATA
+Bundle-RequiredExecutionEnvironment: JavaSE-21
+Bundle-ActivationPolicy: lazy
+Service-Component: OSGI-INF/org.jawata.standin.FakeLanguageProvider.xml
+Export-Package: org.jawata.standin
+Import-Package: org.jawata.spi.lang;version="[1.0,2.0)",
+ org.jawata.spi.host;version="[1.0,2.0)",
+ org.jawata.mcp.engine;version="[1.0,2.0)",
+ org.jawata.mcp.tools,
+ org.jawata.mcp.models,
+ org.eclipse.core.runtime,
+ org.eclipse.core.resources,
+ com.fasterxml.jackson.databind

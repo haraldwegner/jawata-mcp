@@ -163,3 +163,5 @@ org.jawata.mcp.tools.smell.Cures#stepsFor(String,CodeAddress,List<String>)
 org.jawata.mcp.tools.smell.FowlerDetectors#DECLINED
 org.jawata.mcp.transport.HttpTransport#getActualPort()
 org.jawata.mcp.transport.HttpTransport#sendEvent(String,String)
+# 28k Stage 8: the IJdtService implementation reached by dispatch. AddProjectTool and ScopedJdtService call it through the interface, which this detector does not follow; the watcher, its one direct caller, now calls the two-argument form because it passes the source folders a member declares (contract S4).
+org.jawata.resident.workspace.JdtServiceImpl#addProject(Path)

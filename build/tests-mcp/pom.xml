@@ -18,6 +18,8 @@
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.mcp</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.resident</artifactId><version>${project.version}</version></dependency>
+        <!-- 28k Stage 8: the stand-in language, whose classes the ring-1 contract tests name -->
+        <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.standin</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.11.4</version></dependency>
         <dependency><groupId>org.junit.platform</groupId><artifactId>junit-platform-launcher</artifactId><version>1.11.4</version></dependency>
         <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter-engine</artifactId><version>5.11.4</version></dependency>
@@ -44,6 +46,8 @@
                     <include>field/*.txt</include>
                     <!-- REL44-33: the saved backup copy whose count is one high. -->
                     <include>backups/*.zip</include>
+                    <!-- Sprint 28k, Stage 8: the canonical engine notes (contract section 14.1) and their digests. -->
+                    <include>engine-notes/*</include>
                 </includes>
             </resource>
         </resources>

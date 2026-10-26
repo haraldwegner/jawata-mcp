@@ -21,6 +21,8 @@
         <module>mcp</module>
         <!-- 28k E21: the headless host; depends on core, spi and mcp, none of which depend on it. -->
         <module>resident</module>
+        <!-- 28k Stage 8: the stand-in language (a second LanguageProvider with no Java tooling); never part of the distribution proper. -->
+        <module>standin</module>
         <module>boot</module>
         <module>testrunner</module>
         <module>pitplugin</module>

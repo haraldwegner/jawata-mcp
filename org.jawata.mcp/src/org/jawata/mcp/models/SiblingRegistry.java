@@ -96,9 +96,49 @@ public final class SiblingRegistry {
         return null;
     }
 
-    /** {@link #others(Path, String)} against the registry {@link #locate}d from a data dir. */
-    public static List<Sibling> around(Path dataDir, String selfName) {
-        return others(locate(dataDir), selfName);
+    /**
+     * Everyone this engine can ask: the residents studio lists beside the registry {@link #locate}d from a data dir, then the live
+     * Eclipse engines whose notes are in a folder (Sprint 28k, contract §14.1). Neither source is required; a machine with neither has no
+     * siblings.
+     *
+     * @param dataDir  the engine's data folder, or null
+     * @param notesDir the folder of Eclipse engine notes, or null for none
+     * @param selfName this engine's workspace name, or null when it has none
+     * @return the addressable siblings, studio's first
+     */
+    public static List<Sibling> around(Path dataDir, Path notesDir, String selfName) {
+        return around(dataDir, notesDir, selfName, ProcessHandle.current().pid(), EngineNotes.OS);
+    }
+
+    static List<Sibling> around(Path dataDir, Path notesDir, String selfName, long selfPid, EngineNotes.Liveness liveness) {
+        List<Sibling> siblings = new ArrayList<>(others(locate(dataDir), selfName));
+        siblings.addAll(engineNotes(notesDir, selfName, selfPid, liveness));
+        return List.copyOf(siblings);
+    }
+
+    /**
+     * The Eclipse engines that are running, from their notes. A stale, malformed or newer-major note is not a sibling; a note of this very
+     * process, or of a workspace this engine is named after, is not an <i>other</i> one.
+     *
+     * @param notesDir the folder of notes, or null
+     * @param selfName this engine's workspace name, or null when it has none
+     * @param selfPid  this engine's process id
+     * @param liveness decides whether the process behind a note still runs
+     * @return the live engines, each with the address its note gives and no key
+     */
+    static List<Sibling> engineNotes(Path notesDir, String selfName, long selfPid, EngineNotes.Liveness liveness) {
+        List<Sibling> live = new ArrayList<>();
+        for (EngineNotes.Reading reading : EngineNotes.read(notesDir, liveness)) {
+            if (reading.status() == EngineNotes.Status.LIVE) {
+                boolean itself = reading.pid() == selfPid || (selfName != null && selfName.equals(reading.workspaceName()));
+                if (!itself) {
+                    reading.sibling().ifPresent(live::add);
+                }
+            } else {
+                log.debug("Engine note {} is not a sibling ({}): {}", reading.fileName(), reading.status(), reading.detail());
+            }
+        }
+        return List.copyOf(live);
     }
 
     /**

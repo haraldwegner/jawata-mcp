@@ -30,6 +30,38 @@
     <build>
         <sourceDirectory>${project.basedir}/../../org.jawata.resident.tests/src</sourceDirectory>
         <plugins>
+            <!-- 28k Stage 8: the abstract port contracts and the fake host live in the mcp test sources (org.jawata.mcp.contract), where
+                 the engine's own tests use them. The headless host's ports run the same contracts, so the one folder is compiled into
+                 this fragment too; a class carries no source folder, only its package, and the model sees both as one project. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <id>add-contracts</id>
+                        <phase>generate-sources</phase>
+                        <goals><goal>add-source</goal></goals>
+                        <configuration>
+                            <sources><source>${project.basedir}/../../org.jawata.mcp.tests/src/org/jawata/mcp/contract</source></sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Only the shareable half is compiled here: the concrete tests of the engine's own bundle stay where they are. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/FakeHostPortsContractTest.java</exclude>
+                        <exclude>**/StandInLanguageContractTest.java</exclude>
+                        <exclude>**/JavaLanguageContractTest.java</exclude>
+                        <exclude>**/PurityControl.java</exclude>
+                        <exclude>**/PurityScanTest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>

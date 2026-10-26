@@ -262,6 +262,6 @@ class DegradationStampTest {
             () -> 42,
             () -> {return EngineState.current().loading();},
             () -> {return EngineState.current().loadingError();},
-            () -> null).execute(OM.createObjectNode());
+            () -> null, java.util.List::of).execute(OM.createObjectNode());
     }
 }

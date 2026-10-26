@@ -1,6 +1,5 @@
 package org.jawata.mcp.engine;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 import org.jawata.mcp.ShippedTools;
@@ -461,7 +460,10 @@ public class JawataEngine {
 	void registerTools() {
 		// Sprint 21d: strict disk sync — every tool call reconciles external edits
 		// before executing; the unchanged-tree fast path is the only skip.
-		org.jawata.core.JavaBinding javaBinding = this.host().binding(org.jawata.core.JavaBinding.class).orElseThrow();
+		// A host that serves no Java has no binding: the engine then assembles with the tools that name no language alone, and waits for
+		// no language to bind.
+		java.util.Optional<org.jawata.core.JavaBinding> javaHost = this.host().binding(org.jawata.core.JavaBinding.class);
+		org.jawata.core.JavaBinding javaBinding = javaHost.orElse(null);
 		org.jawata.spi.host.Reconciler reconciler = this.host().reconciler();
 		this.getToolRegistry().setReconciler(reconciler);
 
@@ -497,7 +499,7 @@ public class JawataEngine {
 			}
 		};
 		Built neutral = ShippedTools.neutral(new Wiring(javaBinding, this.host().workspace(),
-				() -> javaBinding.model().current() != null, () -> this.getToolRegistry().getToolCount(),
+				() -> javaBinding != null && javaBinding.model().current() != null, () -> this.getToolRegistry().getToolCount(),
 				() -> EngineState.current().loading(), () -> EngineState.current().loadingError(),
 				() -> this.host().directories().fieldDir(), () -> this.getToolRegistry().inFlight(),
 				this.getRefactoringChangeCache(), this.getExperienceStore(), () -> this.getExperienceStore(),
@@ -516,12 +518,13 @@ public class JawataEngine {
 		// is constructed here, which is what keeps D-SIX satisfied.
 		this.getToolRegistry().setExperienceAdvisor(neutral.advisor());
 
-		// The host serves Java, so the engine is loading until the Java provider binds; the neutral set is published now, and each
-		// language's tools when it arrives.
+		// A host that serves Java is loading until the Java provider binds; the neutral set is published now, and each language's tools
+		// when it arrives. A host that serves none waits for no language.
 		new LanguagePublisher(whiteboard, neutral, published -> {
 			getToolRegistry().publish(published.tools());
 			setFindQualityIssueTool(published.quality());
-		}, java.util.Optional.of("java"), EngineState.current(), this::verifyPublishedSurface);
+		}, javaHost.isPresent() ? java.util.Optional.of("java") : java.util.Optional.empty(), EngineState.current(),
+				this::verifyPublishedSurface);
 	}
 
 	/**
@@ -668,14 +671,18 @@ public class JawataEngine {
 			// mcp#27 stage 1: the other residents on this machine, read from the registry studio publishes beside the workspace
 			// directories. A SUPPLIER rather than a snapshot, because residents start and stop while this one runs.
 			final Path identityDataDir = directories.dataDir().orElse(null);
+			// Stage 8 (contract §14.1): the engines running inside an IDE leave a note where studio's default data folder is, which the
+			// settings can move for a test or for a machine whose cache folder is elsewhere.
+			final Path engineNotesDir = host.settings().get(SettingKeys.ENGINE_NOTES_DIR.name()).filter(dir -> !dir.isBlank())
+					.map(Path::of).orElseGet(org.jawata.mcp.models.EngineNotes::defaultDir);
 			org.jawata.mcp.models.WorkspaceIdentity.installSiblings(() -> org.jawata.mcp.models.SiblingRegistry
-					.around(identityDataDir, org.jawata.mcp.models.WorkspaceIdentity.name()));
+					.around(identityDataDir, engineNotesDir, org.jawata.mcp.models.WorkspaceIdentity.name()));
 			// mcp#27 stage 1: and ASK them. One HttpClient for the process: building one per miss would create a connection pool and
 			// two threads each time, on the path that is already the slow one.
 			final java.net.http.HttpClient peekClient = java.net.http.HttpClient.newBuilder()
 					.connectTimeout(java.time.Duration.ofMillis(500)).build();
 			org.jawata.mcp.models.WorkspaceIdentity.installPeek(fqn -> org.jawata.mcp.models.SiblingPeek.sweep(fqn,
-					org.jawata.mcp.models.SiblingRegistry.around(identityDataDir,
+					org.jawata.mcp.models.SiblingRegistry.around(identityDataDir, engineNotesDir,
 							org.jawata.mcp.models.WorkspaceIdentity.name()),
 					peekClient));
 			org.jawata.mcp.models.WorkspaceIdentity.installLiveKeys(() -> host.workspace().folders().stream()
@@ -697,13 +704,7 @@ public class JawataEngine {
 		// E18: the engine's readers ask the host, and this is the one place that tells
 		// them which host that is.
 		org.jawata.mcp.engine.EngineEnvironment.hostedBy(host().settings(), host().directories());
-		// Sprint 23 (Stage 5): the headless JDT-manipulation config (preference node
-		// id, JDT-UI-style defaults, code-template
-		// store) which an IDE gets from JDT-UI activation. E15: it stands down when the
-		// host has done the setup itself.
-		org.jawata.mcp.tools.shared.HeadlessJdtConfig
-				.hostedBy(host().binding(org.jawata.core.JavaBinding.class).orElseThrow());
-		org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
+		// The JDT-manipulation config is Java's: the Java provider sets it up when it is handed its host (JavaProvider#bindHost).
 		setToolRegistry(new ToolRegistry());
 		// Sprint 21 (v2.0): open the workspace-scoped experience store before
 		// registering

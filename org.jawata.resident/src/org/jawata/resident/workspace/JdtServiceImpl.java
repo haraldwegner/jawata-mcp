@@ -44,6 +44,7 @@ import org.jawata.core.host.HostPaths;
 import org.jawata.core.host.HostPathsImpl;
 import org.jawata.core.project.BuildSystem;
 import org.jawata.core.search.SearchService;
+import org.jawata.resident.project.DeclaredSourceRoots;
 import org.jawata.resident.project.ProjectImporter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -160,6 +161,18 @@ public class JdtServiceImpl implements IJdtService {
      * @throws CoreException if project loading fails
      */
     public void loadProject(Path path) throws CoreException {
+        loadProject(path, null);
+    }
+
+    /**
+     * {@link #loadProject(Path)} for a member that declares its source folders (Sprint 28k, Stage 8; contract S4): exactly those are
+     * mounted, the test ones marked test, instead of discovering roots.
+     *
+     * @param path     Path to the project root
+     * @param declared the source folders the member declared, or null to discover them
+     * @throws CoreException if project loading fails
+     */
+    public void loadProject(Path path, DeclaredSourceRoots declared) throws CoreException {
         log.info("Loading project: {}", path);
 
         // Clear the multi-project map — load_project semantics are
@@ -187,7 +200,7 @@ public class JdtServiceImpl implements IJdtService {
             defaultProjectKey = null;
             workspaceSearchService = null;
 
-            loaded = loadInternal(path);
+            loaded = loadInternal(path, declared);
             defaultProjectKey = loaded.projectKey();
             resolveWorkspaceLocked();
             loaded = projectsByKey.getOrDefault(loaded.projectKey(), loaded);
@@ -212,11 +225,24 @@ public class JdtServiceImpl implements IJdtService {
      * @throws CoreException if project loading fails
      */
     public LoadedProject addProject(Path path) throws CoreException {
+        return addProject(path, null);
+    }
+
+    /**
+     * {@link #addProject(Path)} for a member that declares its source folders (Sprint 28k, Stage 8; contract S4): exactly those are
+     * mounted, the test ones marked test, instead of discovering roots.
+     *
+     * @param path     Path to the project root
+     * @param declared the source folders the member declared, or null to discover them
+     * @return the registered LoadedProject (with its derived key)
+     * @throws CoreException if project loading fails
+     */
+    public LoadedProject addProject(Path path, DeclaredSourceRoots declared) throws CoreException {
         log.info("Adding project to workspace: {}", path);
         LoadedProject loaded;
         assertNoWorkspaceRuleHeld();
         synchronized (resolveLock) {
-            loaded = loadInternal(path);
+            loaded = loadInternal(path, declared);
             workspaceSearchService = null;  // scope changed — rebuild on next access
             // bugs.md #11 (Sprint 14): re-adding a project with the same key as a
             // previously-dropped one clears the dropped-key entry. Otherwise the
@@ -532,16 +558,21 @@ public class JdtServiceImpl implements IJdtService {
     /**
      * Shared loader: detect, configure, register. Does not clear or
      * change the default key — callers decide that.
+     *
+     * @param path     the project's folder
+     * @param declared the source folders the member declared, or null to discover them
+     * @return the registered project
+     * @throws CoreException if the project cannot be configured
      */
-    private LoadedProject loadInternal(Path path) throws CoreException {
+    private LoadedProject loadInternal(Path path, DeclaredSourceRoots declared) throws CoreException {
         Path absRoot = path.toAbsolutePath().normalize();
         HostPaths utils = new HostPathsImpl(absRoot);
 
         workspaceManager.initialize();
 
         BuildSystem detected = projectImporter.detectBuildSystem(absRoot);
-        int fileCount = projectImporter.countSourceFiles(absRoot);
-        List<String> pkgList = projectImporter.findPackages(absRoot);
+        int fileCount = projectImporter.countSourceFiles(absRoot, declared);
+        List<String> pkgList = projectImporter.findPackages(absRoot, declared);
 
         log.info("Detected {} build system, {} source files, {} packages",
             detected, fileCount, pkgList.size());
@@ -557,7 +588,7 @@ public class JdtServiceImpl implements IJdtService {
         IProject project = workspaceManager.createLinkedProject(projectName, absRoot);
 
         org.jawata.resident.project.ImportResult imported =
-            projectImporter.configureJavaProject(project, absRoot, workspaceManager);
+            projectImporter.configureJavaProject(project, absRoot, workspaceManager, declared);
         IJavaProject jp = imported.javaProject();
         SearchService search = new SearchService(jp);
 

@@ -125,10 +125,11 @@ public class ProjectImporter {
      * @param project The workspace project (must be created and open)
      * @param projectPath The filesystem path to the external project
      * @param workspaceManager WorkspaceManager for creating linked folders
+     * @param declared the source folders the member declared (contract S4), or null to discover them
      * @return Configured IJavaProject
      * @throws CoreException if configuration fails
      */
-    public org.jawata.resident.project.ImportResult configureJavaProject(IProject project, java.nio.file.Path projectPath, org.jawata.resident.workspace.WorkspaceManager workspaceManager) throws CoreException {
+    public org.jawata.resident.project.ImportResult configureJavaProject(IProject project, java.nio.file.Path projectPath, org.jawata.resident.workspace.WorkspaceManager workspaceManager, DeclaredSourceRoots declared) throws CoreException {
         IJavaProject javaProject = JavaCore.create(project);
 
         // jawata-mcp#3: a synthesized workspace can start with NO default VM
@@ -147,7 +148,7 @@ public class ProjectImporter {
         entries.add(JavaCore.newContainerEntry(jreContainerPath));
 
         // 2. Create linked folders and add source entries
-        addSourceEntries(entries, project, projectPath, workspaceManager);
+        addSourceEntries(entries, project, projectPath, workspaceManager, declared);
 
         // 3. Add dependency JARs from build system + Require-Bundle siblings
         List<UnresolvedRequirement> unresolved =
@@ -760,6 +761,27 @@ public class ProjectImporter {
     }
 
     /**
+     * The source folders to mount for a project: the ones the member declared (contract S4) when it has an entry, instead of any
+     * discovery; else the discovered ones. A declared folder the disk no longer has is left out and said so; a declaration none of whose
+     * folders exist falls back to discovery, because mounting nothing would load a project that looks healthy and holds nothing.
+     */
+    private List<java.nio.file.Path> sourcePathsFor(java.nio.file.Path projectPath, DeclaredSourceRoots declared) {
+        if (declared == null) {
+            return getAllSourcePaths(projectPath);
+        }
+        List<java.nio.file.Path> existing = declared.existing();
+        if (existing.size() < declared.all().size()) {
+            log.warn("{}: declared source folders missing on disk: {}", projectPath,
+                declared.all().stream().filter(folder -> !existing.contains(folder)).toList());
+        }
+        if (existing.isEmpty()) {
+            log.warn("{}: none of the declared source folders exists; discovering them instead", projectPath);
+            return getAllSourcePaths(projectPath);
+        }
+        return existing;
+    }
+
+    /**
      * Get all source directories, including from submodules if multi-module project.
      */
     private List<java.nio.file.Path> getAllSourcePaths(java.nio.file.Path projectPath) {
@@ -1054,12 +1076,14 @@ public class ProjectImporter {
      * Create linked folders for source directories and add them to classpath.
      * Uses linked folders to keep Eclipse metadata in the workspace.
      * Supports multi-module projects by scanning submodules.
+     *
+     * @param declared the source folders the member declared, or null to discover them
      */
     private void addSourceEntries(List<IClasspathEntry> entries, IProject project,
-            java.nio.file.Path projectPath, org.jawata.resident.workspace.WorkspaceManager workspaceManager)
+            java.nio.file.Path projectPath, org.jawata.resident.workspace.WorkspaceManager workspaceManager, DeclaredSourceRoots declared)
             throws CoreException {
 
-        List<java.nio.file.Path> sourcePaths = getAllSourcePaths(projectPath);
+        List<java.nio.file.Path> sourcePaths = sourcePathsFor(projectPath, declared);
         int folderIndex = 0;
 
         for (java.nio.file.Path srcPath : sourcePaths) {
@@ -1076,7 +1100,8 @@ public class ProjectImporter {
                 // here, which is why scope-filtered tools misclassified test
                 // bundles (mcp#9). Absence of the attribute is JDT's spelling
                 // of "main".
-                boolean test = isTestSourceRoot(srcPath, projectPath);
+                // A declared folder is main or test as the member declared it; a discovered one is classified.
+                boolean test = declared != null ? declared.isTest(srcPath) : isTestSourceRoot(srcPath, projectPath);
                 IClasspathAttribute[] extraAttributes = test
                     ? new IClasspathAttribute[] {
                         JavaCore.newClasspathAttribute(IClasspathAttribute.TEST, "true") }
@@ -1654,10 +1679,14 @@ public class ProjectImporter {
     /**
      * Count Java source files in the project.
      * Supports multi-module projects.
+     *
+     * @param projectPath the project's folder
+     * @param declared    the source folders the member declared, or null to discover them
+     * @return the number of {@code .java} files under the source folders
      */
-    public int countSourceFiles(java.nio.file.Path projectPath) {
+    public int countSourceFiles(java.nio.file.Path projectPath, DeclaredSourceRoots declared) {
         int count = 0;
-        List<java.nio.file.Path> sourcePaths = getAllSourcePaths(projectPath);
+        List<java.nio.file.Path> sourcePaths = sourcePathsFor(projectPath, declared);
 
         for (java.nio.file.Path srcPath : sourcePaths) {
             try (Stream<java.nio.file.Path> stream = Files.walk(srcPath)) {
@@ -1672,10 +1701,14 @@ public class ProjectImporter {
     /**
      * Find all packages in the project.
      * Supports multi-module projects.
+     *
+     * @param projectPath the project's folder
+     * @param declared    the source folders the member declared, or null to discover them
+     * @return the packages that hold {@code .java} files, without duplicates
      */
-    public List<String> findPackages(java.nio.file.Path projectPath) {
+    public List<String> findPackages(java.nio.file.Path projectPath, DeclaredSourceRoots declared) {
         List<String> packages = new ArrayList<>();
-        List<java.nio.file.Path> sourcePaths = getAllSourcePaths(projectPath);
+        List<java.nio.file.Path> sourcePaths = sourcePathsFor(projectPath, declared);
 
         for (java.nio.file.Path srcPath : sourcePaths) {
             try (Stream<java.nio.file.Path> stream = Files.walk(srcPath)) {

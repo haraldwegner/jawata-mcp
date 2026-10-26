@@ -247,6 +247,63 @@ class SiblingPeekTest {
                 "a FAILED tool call must not be read as an answer"));
     }
 
+    // --- Sprint 28k, Stage 8: a sibling that is an Eclipse engine, found through its note ------------------------------
+
+    /** A resident that counts how often it was asked and what credentials the asker sent. */
+    private int port(AtomicReference<String> authorization, java.util.concurrent.atomic.AtomicInteger asked) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/mcp", exchange -> {
+            asked.incrementAndGet();
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            String envelope = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":"
+                + com.fasterxml.jackson.databind.node.TextNode.valueOf(holds("eclipse-project")) + "}]}}";
+            byte[] out = envelope.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, out.length);
+            exchange.getResponseBody().write(out);
+            exchange.close();
+        });
+        server.start();
+        servers.add(server);
+        return server.getAddress().getPort();
+    }
+
+    @Test
+    @DisplayName("Stage 8: a live note's engine is asked, and no credentials are sent because the note carries none")
+    void aLiveNoteIsReachedWithoutAKey(@org.junit.jupiter.api.io.TempDir java.nio.file.Path notes) throws Exception {
+        AtomicReference<String> authorization = new AtomicReference<>("never asked");
+        java.util.concurrent.atomic.AtomicInteger asked = new java.util.concurrent.atomic.AtomicInteger();
+        int port = port(authorization, asked);
+        EngineNotesTest.place(notes, EngineNotesTest.LIVE, note -> note.put("endpoint", "http://127.0.0.1:" + port + "/mcp"));
+
+        List<SiblingRegistry.Sibling> siblings = SiblingRegistry.engineNotes(notes, "someone-else", 1L, (pid, started) -> true);
+        SiblingPeek.Sweep sweep = SiblingPeek.sweep("com.foo.Bar", siblings, client);
+
+        assertAll(
+            () -> assertEquals(1, asked.get(), "the engine behind the note was asked once"),
+            () -> assertEquals("live", sweep.found().orElseThrow().workspaceName(), "got: " + sweep),
+            () -> assertEquals("eclipse-project", sweep.found().orElseThrow().projectKey()),
+            () -> assertEquals(null, authorization.get(), "a keyless endpoint is asked without an Authorization header"));
+    }
+
+    @Test
+    @DisplayName("Stage 8: a stale note's address is never asked, even when something answers there")
+    void aStaleNoteIsNeverAsked(@org.junit.jupiter.api.io.TempDir java.nio.file.Path notes) throws Exception {
+        AtomicReference<String> authorization = new AtomicReference<>();
+        java.util.concurrent.atomic.AtomicInteger asked = new java.util.concurrent.atomic.AtomicInteger();
+        int port = port(authorization, asked);
+        // Something is listening at the stale note's address, as it can be after the pid was reused and the port too.
+        EngineNotesTest.place(notes, EngineNotesTest.STALE, note -> note.put("endpoint", "http://127.0.0.1:" + port + "/mcp"));
+
+        List<SiblingRegistry.Sibling> siblings = SiblingRegistry.engineNotes(notes, "someone-else", 1L, (pid, started) -> false);
+        SiblingPeek.Sweep sweep = SiblingPeek.sweep("com.foo.Bar", siblings, client);
+
+        assertAll(
+            () -> assertEquals(0, siblings.size(), "got: " + siblings),
+            () -> assertEquals(0, asked.get(), "a stale note must not be connected to"),
+            () -> assertTrue(sweep.found().isEmpty()));
+    }
+
     @Test
     @DisplayName("THE CONTROL — no siblings at all asks nobody and is not an error")
     void noSiblingsIsNotAnError() {

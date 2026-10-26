@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28k, Stage 8: the stand-in language. It binds no host: a language that needs nothing of the Java model is a service on its
+     own, which the engine's whiteboard tracker picks up beside the Java provider (contract §4.5, the slot for a second language). -->
+<scr:component xmlns:scr="http://www.osgi.org/xmlns/scr/v1.3.0" name="org.jawata.standin.FakeLanguageProvider" immediate="true">
+  <implementation class="org.jawata.standin.FakeLanguageProvider"/>
+  <service>
+    <provide interface="org.jawata.spi.lang.LanguageProvider"/>
+  </service>
+</scr:component>

@@ -554,7 +554,7 @@ class BuildSystemLoadTest {
 
         try {
             IProject project = workspaceManager.createLinkedProject("load-unreadable", root);
-            IJavaProject jp = importer.configureJavaProject(project, root, workspaceManager).javaProject();
+            IJavaProject jp = importer.configureJavaProject(project, root, workspaceManager, null).javaProject();
             assertNotNull(jp.findType("com.example.Reachable"),
                 "a readable sibling did not resolve — one unreadable directory took the"
                     + " whole project down, which is the same over-reaction as the strict"
@@ -853,7 +853,7 @@ class BuildSystemLoadTest {
         Path link = real.resolveSibling(real.getFileName() + "-link");
         Files.createSymbolicLink(link, real);
         IProject project = workspaceManager.createLinkedProject("load-gradle-link", link);
-        assertRootsAre(importer.configureJavaProject(project, link, workspaceManager).javaProject(),
+        assertRootsAre(importer.configureJavaProject(project, link, workspaceManager, null).javaProject(),
             "src-main-java", "src-test-java");
     }
 
@@ -863,7 +863,7 @@ class BuildSystemLoadTest {
         // A copy: importing the fixture in place let Gradle and the compiler write into it.
         Path path = helper.copyFixture(fixture);
         IProject project = workspaceManager.createLinkedProject("load-" + fixture, path);
-        return importer.configureJavaProject(project, path, workspaceManager).javaProject();
+        return importer.configureJavaProject(project, path, workspaceManager, null).javaProject();
     }
 
     /** The level a project gets when nothing is applied to it. */

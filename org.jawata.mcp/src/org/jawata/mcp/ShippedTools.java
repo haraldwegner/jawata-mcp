@@ -113,7 +113,8 @@ public final class ShippedTools {
 
         /** The workspace service as the tools take it: asked at call time, because a load replaces it. */
         public Supplier<IJdtService> jdt() {
-            return java.model()::current;
+            // A host that serves no Java has no model: every tool that asks sees none, which is what 'no project loaded' already means.
+            return java == null ? () -> null : java.model()::current;
         }
     }
 
@@ -151,7 +152,7 @@ public final class ShippedTools {
         ToolNeeds needs = new ToolNeeds(
             w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests,
             w.runtimeArtifacts());
-        return new Built(List.copyOf(neutralTools(w, runTests, advisor, experience)), null, advisor, experience, needs);
+        return new Built(List.copyOf(neutralTools(w, runTests, advisor, experience, ports)), null, advisor, experience, needs);
     }
 
     public static Built published(Built neutral, List<Tool> tools) {
@@ -163,20 +164,24 @@ public final class ShippedTools {
     /**
      * The tools that name no language, and the verbs whose language answer comes through a provider port: health, the workspace
      * verbs, the field lane, the build and test verbs, the hire path, the refactoring lifecycle and memory.
+     *
+     * @param ports what the tools hold of the languages: {@code health_check} lists the bound ones through it
      */
     private static List<Tool> neutralTools(Wiring w, RunTestsTool runTests, ExperienceAdvisor advisor,
-            ExperienceTool experience) {
+            ExperienceTool experience, ProviderPorts ports) {
         Supplier<IJdtService> jdt = w.jdt();
         List<Tool> tools = new ArrayList<>();
 
         // health_check answers with the registry's own count and the application's load state.
         tools.add(new HealthCheckTool(w.projectLoaded(), w.toolCount(), w.loadingState(),
-            w.loadingError(), jdt));
+            w.loadingError(), jdt, ports.languages()));
 
         // load_project supplies the existing service so it can reuse it (clear-and-load on top) and
         // installs a fresh one on first call, which is what lets add_project / remove_project operate
         // on the same workspace.
-        tools.add(new LoadProjectTool(w.java().model(), w.workspace()));
+        if (w.java() != null) {
+            tools.add(new LoadProjectTool(w.java().model(), w.workspace()));
+        }
 
         // project(action) collapses list/add/remove_project; load_project stays separate because it
         // installs the workspace service.
