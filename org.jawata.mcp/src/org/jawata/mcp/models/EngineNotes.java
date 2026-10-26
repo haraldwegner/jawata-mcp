@@ -1,10 +1,5 @@
 package org.jawata.mcp.models;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -13,9 +8,14 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Stream;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Sprint 28k, Stage 8 (contract §14.1, consumer) — <b>the notes an engine running inside an IDE leaves for the machine.</b>
@@ -88,17 +88,18 @@ public final class EngineNotes {
      * @return {@code jawata-studio/engines} in the OS cache folder
      */
     public static Path defaultDir() {
-        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         Path home = Path.of(System.getProperty("user.home"));
         Path cache;
-        if (os.contains("win")) {
-            String local = System.getenv("LOCALAPPDATA");
-            cache = local == null || local.isBlank() ? home.resolve("AppData").resolve("Local") : Path.of(local);
-        } else if (os.contains("mac")) {
-            cache = home.resolve("Library").resolve("Caches");
-        } else {
-            String xdg = System.getenv("XDG_CACHE_HOME");
-            cache = xdg == null || xdg.isBlank() ? home.resolve(".cache") : Path.of(xdg);
+        switch (org.jawata.core.host.HostOS.current()) {
+            case WINDOWS -> {
+                String local = System.getenv("LOCALAPPDATA");
+                cache = local == null || local.isBlank() ? home.resolve("AppData").resolve("Local") : Path.of(local);
+            }
+            case MACOS -> cache = home.resolve("Library").resolve("Caches");
+            default -> {
+                String xdg = System.getenv("XDG_CACHE_HOME");
+                cache = xdg == null || xdg.isBlank() ? home.resolve(".cache") : Path.of(xdg);
+            }
         }
         return cache.resolve("jawata-studio").resolve("engines");
     }

@@ -53,11 +53,12 @@ public abstract class SymbolAnchorsContract {
     @Test
     @DisplayName("a symbol the language resolves is resolved to a location, and the language answers for it")
     void aResolvableSymbolHasALocation() throws Exception {
+        SymbolAnchors anchors = anchors();
         Optional<String> symbol = resolvableSymbol();
+        assertNotNull(anchors, "a language always has anchors, even one with no symbol to resolve");
         if (symbol.isEmpty()) {
             return; // a language with no symbols resolves none: the other cases are its whole contract
         }
-        SymbolAnchors anchors = anchors();
 
         Map<String, Object> pointer = anchors.pointer(symbol.get());
         Optional<Location> location = anchors.locate(symbol.get());
