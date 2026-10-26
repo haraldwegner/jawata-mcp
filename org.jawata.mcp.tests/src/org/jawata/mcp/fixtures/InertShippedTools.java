@@ -53,7 +53,7 @@ public final class InertShippedTools {
             List::of, () -> null,
             new org.jawata.mcp.runtime.RuntimeArtifactStore(Path.of(System.getProperty("java.io.tmpdir"), "jawata-runtime")),
             new org.jawata.mcp.coverage.CoverageService(
-                new org.jawata.mcp.coverage.CoverageStore(Path.of(System.getProperty("java.io.tmpdir"), "jawata-coverage"))));
+                new org.jawata.mcp.coverage.CoverageStore(Path.of(System.getProperty("java.io.tmpdir"), "jawata-coverage"))), org.jawata.spi.host.DebugTurn.FREE);
     }
 
     /** Every tool the product ships, unregistered. */

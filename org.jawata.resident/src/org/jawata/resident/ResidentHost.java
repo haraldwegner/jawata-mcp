@@ -1,5 +1,6 @@
 package org.jawata.resident;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.jawata.spi.host.EndpointPolicy;
@@ -7,8 +8,11 @@ import org.jawata.spi.host.EngineDirectories;
 import org.jawata.spi.host.EngineHost;
 import org.jawata.spi.host.EngineLifecycle;
 import org.jawata.spi.host.EngineSettings;
+import org.jawata.spi.host.HostCapabilities;
 import org.jawata.spi.host.HostWorkspace;
+import org.jawata.spi.host.Instruments;
 import org.jawata.spi.host.LanguageBinding;
+import org.jawata.spi.host.PersonChannel;
 import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.WorkspaceWrites;
 
@@ -26,6 +30,8 @@ public final class ResidentHost implements EngineHost {
     private final LanguageBinding javaBinding;
     private final Reconciler reconciler;
     private final WorkspaceWrites writes;
+    private final PersonChannel person;
+    private final HostCapabilities capabilities;
 
     /**
      * @param workspace   the projects the Java model holds, which the engine may change
@@ -36,9 +42,10 @@ public final class ResidentHost implements EngineHost {
      * @param javaBinding what the host supplies to the Java provider
      * @param reconciler  how the workspace's files are brought up to date with the disk and built
      * @param writes      how a change's text edits land in the workspace
+     * @param person      how the engine tells the person who runs it something
      */
     public ResidentHost(HostWorkspace workspace, EngineLifecycle lifecycle, EndpointPolicy endpoint, EngineSettings settings,
-                        EngineDirectories directories, LanguageBinding javaBinding, Reconciler reconciler, WorkspaceWrites writes) {
+                        EngineDirectories directories, LanguageBinding javaBinding, Reconciler reconciler, WorkspaceWrites writes, PersonChannel person) {
         this.workspace = workspace;
         this.lifecycle = lifecycle;
         this.endpoint = endpoint;
@@ -47,6 +54,26 @@ public final class ResidentHost implements EngineHost {
         this.javaBinding = javaBinding;
         this.reconciler = reconciler;
         this.writes = writes;
+        this.person = person;
+        // This host serves the one language it was handed a binding for, and it runs nothing on the engine's behalf and checks no
+        // unsaved text: it owns its workspace, and only the agent ever debugs here.
+        this.capabilities = new HostCapabilities("headless", true, false, false,
+            javaBinding == null ? List.of() : List.of("java"));
+    }
+
+    @Override
+    public PersonChannel person() {
+        return person;
+    }
+
+    @Override
+    public Instruments instruments() {
+        return Instruments.NONE;
+    }
+
+    @Override
+    public HostCapabilities capabilities() {
+        return capabilities;
     }
 
     @Override

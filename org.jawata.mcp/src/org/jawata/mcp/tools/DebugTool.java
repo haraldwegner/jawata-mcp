@@ -11,6 +11,7 @@ import org.jawata.mcp.runtime.RuntimeSession;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.runtime.debug.DebugController;
 import org.jawata.mcp.runtime.debug.JdiValues;
+import org.jawata.spi.host.DebugTurn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -90,24 +91,42 @@ public class DebugTool extends AbstractTool {
     private final RuntimeArtifactStore artifacts;
     /** Optional: when present, a hit RECALLS what is already known about its symbol (D15). */
     private final org.jawata.mcp.knowledge.ExperienceRetrieval experience;
+    /** Whose turn it is to debug: when the person has a launch of their own, the agent neither starts nor attaches. */
+    private final DebugTurn debugTurn;
 
     public DebugTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions) {
         this(serviceSupplier, sessions,
-            new RuntimeArtifactStore(org.jawata.mcp.engine.EngineEnvironment.directories().runtimeDir()), null);
+            new RuntimeArtifactStore(org.jawata.mcp.engine.EngineEnvironment.directories().runtimeDir()), null, org.jawata.spi.host.DebugTurn.FREE);
     }
 
     public DebugTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions,
                      RuntimeArtifactStore artifacts) {
-        this(serviceSupplier, sessions, artifacts, null);
+        this(serviceSupplier, sessions, artifacts, null, org.jawata.spi.host.DebugTurn.FREE);
     }
 
     public DebugTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions,
                      RuntimeArtifactStore artifacts,
-                     org.jawata.mcp.knowledge.ExperienceRetrieval experience) {
+                     org.jawata.mcp.knowledge.ExperienceRetrieval experience, DebugTurn debugTurn) {
         super(serviceSupplier);
         this.sessions = sessions;
         this.artifacts = artifacts;
         this.experience = experience;
+        this.debugTurn = debugTurn;
+    }
+
+    /**
+     * The agent does not start or attach to a program while the person has a debug launch of their own: the person wins (contract A3-2),
+     * and two debuggers on one program help nobody.
+     *
+     * @return the refusal, or null when it is the agent's turn
+     */
+    private ToolResponse refusedWhilePersonDebugs() {
+        if (!debugTurn.personIsDebugging()) {
+            return null;
+        }
+        return ToolResponse.error("PERSON_IS_DEBUGGING",
+            "The person has a debug launch of their own running, and it is their turn: the agent does not start or attach to a program now.",
+            "Ask the person to finish or stop their debug session, then try again.");
     }
 
     @Override
@@ -1148,6 +1167,10 @@ public class DebugTool extends AbstractTool {
     }
 
     private ToolResponse attach(JsonNode arguments) throws Exception {
+        ToolResponse refused = refusedWhilePersonDebugs();
+        if (refused != null) {
+            return refused;
+        }
         int pid = getIntParam(arguments, "pid", -1);
         if (pid <= 0) {
             return ToolResponse.invalidParameter("pid",
@@ -1169,6 +1192,10 @@ public class DebugTool extends AbstractTool {
     }
 
     private ToolResponse launch(JsonNode arguments) throws Exception {
+        ToolResponse refused = refusedWhilePersonDebugs();
+        if (refused != null) {
+            return refused;
+        }
         String launcherPath = getStringParam(arguments, "launcherPath");
         String mainClass = getStringParam(arguments, "mainClass");
         String classpath = getStringParam(arguments, "classpath");

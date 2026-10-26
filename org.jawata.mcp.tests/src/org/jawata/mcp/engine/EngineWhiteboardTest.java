@@ -63,8 +63,18 @@ class EngineWhiteboardTest {
             }
 
             @Override
+            public org.jawata.spi.host.PersonChannel person() {
+                return org.jawata.spi.host.PersonChannel.SILENT;
+            }
+
+            @Override
             public EngineSettings settings() {
                 return key -> Optional.empty();
+            }
+
+            @Override
+            public org.jawata.spi.host.HostCapabilities host() {
+                return new org.jawata.spi.host.HostCapabilities("test", true, false, false, List.of());
             }
 
             @Override

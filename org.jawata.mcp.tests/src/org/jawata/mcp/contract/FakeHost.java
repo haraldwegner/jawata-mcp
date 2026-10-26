@@ -16,13 +16,18 @@ import org.eclipse.ltk.core.refactoring.Change;
 import org.eclipse.ltk.core.refactoring.RefactoringStatus;
 import org.jawata.spi.host.BuildKind;
 import org.jawata.spi.host.BuildScope;
+import org.jawata.spi.host.DebugTurn;
 import org.jawata.spi.host.EndpointPolicy;
 import org.jawata.spi.host.EngineDirectories;
 import org.jawata.spi.host.EngineHost;
 import org.jawata.spi.host.EngineLifecycle;
 import org.jawata.spi.host.EngineSettings;
+import org.jawata.spi.host.HostCapabilities;
 import org.jawata.spi.host.HostWorkspace;
+import org.jawata.spi.host.Instruments;
 import org.jawata.spi.host.LanguageBinding;
+import org.jawata.spi.host.Notice;
+import org.jawata.spi.host.PersonChannel;
 import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.SyncReport;
 import org.jawata.spi.host.WorkspaceWrites;
@@ -44,6 +49,9 @@ public final class FakeHost implements EngineHost {
     private final Events lifecycle = new Events();
     private final Map<String, String> settings;
     private final Folders directories;
+    private final Recording person = new Recording();
+    private final Turn debugTurn = new Turn();
+    private volatile List<String> languages = List.of();
 
     /**
      * @param scratch  the one folder everything the host keeps is under
@@ -108,6 +116,106 @@ public final class FakeHost implements EngineHost {
     @Override
     public <B extends LanguageBinding> Optional<B> binding(Class<B> kind) {
         return Optional.empty();
+    }
+
+    @Override
+    public PersonChannel person() {
+        return person;
+    }
+
+    @Override
+    public Instruments instruments() {
+        return () -> debugTurn;
+    }
+
+    @Override
+    public HostCapabilities capabilities() {
+        return new HostCapabilities("fake", workspace.ownsWorkspace(), false, false, languages);
+    }
+
+    /** The person's channel, so a test can read what the engine told them and which work it showed. */
+    public Recording fakePerson() {
+        return person;
+    }
+
+    /** The debug turn, so a test can say the person has started debugging. */
+    public Turn fakeDebugTurn() {
+        return debugTurn;
+    }
+
+    /**
+     * Says which languages this host serves, which the engine then waits for.
+     *
+     * @param names the languages, by the name each language provider answers to
+     */
+    public void serves(String... names) {
+        languages = List.of(names);
+    }
+
+    /** A person's channel that writes down what it is told. */
+    public static final class Recording implements PersonChannel {
+        private final List<Notice> notices = new CopyOnWriteArrayList<>();
+        private final List<String> activities = new CopyOnWriteArrayList<>();
+
+        @Override
+        public void tell(Notice notice) {
+            notices.add(notice);
+        }
+
+        @Override
+        public Activity begin(String label) {
+            activities.add("begin:" + label);
+            return new Activity() {
+                @Override
+                public void step(String what) {
+                    activities.add("step:" + what);
+                }
+
+                @Override
+                public void close() {
+                    activities.add("end:" + label);
+                }
+            };
+        }
+
+        /** @return what the engine told the person, in order */
+        public List<Notice> notices() {
+            return List.copyOf(notices);
+        }
+
+        /** @return the activities the engine began, their steps and their ends, in order */
+        public List<String> activities() {
+            return List.copyOf(activities);
+        }
+    }
+
+    /** A debug turn the test hands to the person. */
+    public static final class Turn implements DebugTurn {
+        private volatile boolean personDebugging;
+        private volatile int registrations;
+        private volatile Runnable endAgentSessions = () -> { };
+
+        @Override
+        public boolean personIsDebugging() {
+            return personDebugging;
+        }
+
+        @Override
+        public void onPersonStartsDebugging(Runnable endAgentSessions) {
+            this.endAgentSessions = endAgentSessions;
+            registrations++;
+        }
+
+        /** @return how many times the engine asked to be told when the person starts debugging */
+        public int registrations() {
+            return registrations;
+        }
+
+        /** The person starts a debug launch of their own: the engine is told, and the agent's sessions end. */
+        public void personStartsDebugging() {
+            personDebugging = true;
+            endAgentSessions.run();
+        }
     }
 
     /** A workspace that holds what it has been told to hold. */

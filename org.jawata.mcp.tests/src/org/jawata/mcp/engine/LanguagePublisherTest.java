@@ -159,7 +159,7 @@ class LanguagePublisherTest {
     @DisplayName("the engine is loading with the neutral tools only, until the Java provider binds, and then publishes all 44")
     void loadingUntilTheJavaProviderBindsThenFortyFour() {
         Built neutral = neutral();
-        new LanguagePublisher(board, neutral, published::add, Optional.of("java"), state, surfaceChecks::incrementAndGet);
+        new LanguagePublisher(board, neutral, published::add, java.util.Set.of("java"), state, surfaceChecks::incrementAndGet);
 
         assertEquals(ProjectLoadingState.LOADING, state.loading(), "no Java provider yet: the engine says it is loading");
         assertEquals(names(neutral), names(latest()), "only the tools that name no language are published");
@@ -179,7 +179,7 @@ class LanguagePublisherTest {
     @Test
     @DisplayName("before any language the quality tool the watch engine binds to is absent, not a stub")
     void noQualityToolBeforeALanguage() {
-        new LanguagePublisher(board, neutral(), published::add, Optional.of("java"), state, surfaceChecks::incrementAndGet);
+        new LanguagePublisher(board, neutral(), published::add, java.util.Set.of("java"), state, surfaceChecks::incrementAndGet);
 
         assertNull(latest().quality());
     }
@@ -187,7 +187,7 @@ class LanguagePublisherTest {
     @Test
     @DisplayName("a host that serves no language is never loading, and nothing is checked")
     void aHostWithoutALanguageIsNotLoading() {
-        new LanguagePublisher(board, neutral(), published::add, Optional.empty(), state, surfaceChecks::incrementAndGet);
+        new LanguagePublisher(board, neutral(), published::add, java.util.Set.of(), state, surfaceChecks::incrementAndGet);
 
         assertNotEquals(ProjectLoadingState.LOADING, state.loading());
         board.bindProvider(new FakeLanguage("fake", "fake_tool"));
@@ -199,7 +199,7 @@ class LanguagePublisherTest {
     void aSecondLanguageDoesNotRebuildTheFirst() {
         FakeLanguage one = new FakeLanguage("one", "one_tool");
         FakeLanguage two = new FakeLanguage("two", "two_tool");
-        new LanguagePublisher(board, neutral(), published::add, Optional.empty(), state, surfaceChecks::incrementAndGet);
+        new LanguagePublisher(board, neutral(), published::add, java.util.Set.of(), state, surfaceChecks::incrementAndGet);
 
         board.bindProvider(one);
         board.bindProvider(two);
@@ -214,7 +214,7 @@ class LanguagePublisherTest {
     void aLanguageThatLeavesTakesItsToolsWithIt() {
         FakeLanguage fake = new FakeLanguage("fake", "fake_tool");
         Built neutral = neutral();
-        new LanguagePublisher(board, neutral, published::add, Optional.empty(), state, surfaceChecks::incrementAndGet);
+        new LanguagePublisher(board, neutral, published::add, java.util.Set.of(), state, surfaceChecks::incrementAndGet);
 
         board.bindProvider(fake);
         assertTrue(names(latest()).contains("fake_tool"));
@@ -227,7 +227,7 @@ class LanguagePublisherTest {
     @Test
     @DisplayName("when the awaited language leaves the engine is loading again, and it is not loading once the language is back")
     void theAwaitedLanguageLeavingPutsTheEngineBackToLoading() {
-        new LanguagePublisher(board, neutral(), published::add, Optional.of("fake"), state, surfaceChecks::incrementAndGet);
+        new LanguagePublisher(board, neutral(), published::add, java.util.Set.of("fake"), state, surfaceChecks::incrementAndGet);
         FakeLanguage fake = new FakeLanguage("fake", "fake_tool");
 
         board.bindProvider(fake);
@@ -244,7 +244,7 @@ class LanguagePublisherTest {
     @Test
     @DisplayName("a language that is not the awaited one does not end the loading state")
     void anotherLanguageDoesNotEndLoading() {
-        new LanguagePublisher(board, neutral(), published::add, Optional.of("java"), state, surfaceChecks::incrementAndGet);
+        new LanguagePublisher(board, neutral(), published::add, java.util.Set.of("java"), state, surfaceChecks::incrementAndGet);
 
         board.bindProvider(new FakeLanguage("cpp", "cpp_tool"));
 

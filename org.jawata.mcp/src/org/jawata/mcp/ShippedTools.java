@@ -109,7 +109,7 @@ public final class ShippedTools {
             Supplier<LearnerEventStore> learnerEvents,
             Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> selfEndpoint,
-            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage) {
+            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn) {
 
         /** The workspace service as the tools take it: asked at call time, because a load replaces it. */
         public Supplier<IJdtService> jdt() {
@@ -151,7 +151,7 @@ public final class ShippedTools {
 
         ToolNeeds needs = new ToolNeeds(
             w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests,
-            w.runtimeArtifacts());
+            w.runtimeArtifacts(), w.debugTurn());
         return new Built(List.copyOf(neutralTools(w, runTests, advisor, experience, ports)), null, advisor, experience, needs);
     }
 

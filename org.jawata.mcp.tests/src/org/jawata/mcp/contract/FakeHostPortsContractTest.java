@@ -95,6 +95,62 @@ class FakeHostPortsContractTest {
         }
     }
 
+    @Nested
+    class Person extends PersonChannelContract {
+        @Override
+        protected org.jawata.spi.host.PersonChannel channel() {
+            return host(java.nio.file.Path.of(".")).person();
+        }
+
+        @org.junit.jupiter.api.Test
+        void theFakeWritesDownWhatItWasTold() {
+            FakeHost host = host(java.nio.file.Path.of("."));
+
+            host.person().tell(org.jawata.spi.host.Notice.warning("degraded"));
+            try (org.jawata.spi.host.PersonChannel.Activity work = host.person().begin("a job")) {
+                work.step("halfway");
+            }
+
+            org.junit.jupiter.api.Assertions.assertEquals(
+                java.util.List.of(org.jawata.spi.host.Notice.warning("degraded")), host.fakePerson().notices());
+            org.junit.jupiter.api.Assertions.assertEquals(
+                java.util.List.of("begin:a job", "step:halfway", "end:a job"), host.fakePerson().activities());
+        }
+    }
+
+    @Nested
+    class Capabilities extends HostCapabilitiesContract {
+        private final FakeHost host = host(java.nio.file.Path.of("."));
+
+        @Override
+        protected org.jawata.spi.host.HostCapabilities capabilities() {
+            host.serves("fake");
+            return host.capabilities();
+        }
+
+        @Override
+        protected HostWorkspace workspaceOfTheSameHost() {
+            return host.workspace();
+        }
+    }
+
+    @Nested
+    class Turn extends DebugTurnContract {
+        private FakeHost host;
+
+        @Override
+        protected org.jawata.spi.host.DebugTurn turn() {
+            host = host(java.nio.file.Path.of("."));
+            return host.instruments().debugTurn();
+        }
+
+        @Override
+        protected boolean personStartsDebugging() {
+            host.fakeDebugTurn().personStartsDebugging();
+            return true;
+        }
+    }
+
     /** The real writes every host without its own uses, over the platform's own change machinery. */
     @Nested
     class DirectWrites extends WorkspaceWritesContract {

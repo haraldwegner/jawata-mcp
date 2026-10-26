@@ -63,7 +63,7 @@ public class JawataApplication implements IApplication {
         // E18: everything only this process knows goes into one host, and the engine is built from it.
         jawataEngine = JawataEngine.assemble(
             new ResidentHost(hostWorkspace, lifecycle, endpointPolicy(transportConfig), settings, directories, javaBinding,
-                new org.jawata.resident.workspace.OwnedReconciler(model::current), org.jawata.spi.host.WorkspaceWrites.DIRECT));
+                new org.jawata.resident.workspace.OwnedReconciler(model::current), org.jawata.spi.host.WorkspaceWrites.DIRECT, new org.jawata.resident.ResidentPersonChannel()));
 
         // E19: the host the engine was built from is a service, so the Java provider component can bind to it, and the engine finds
         // what plugs into it (languages, faces) through its whiteboard. The engine reports "loading" until the Java provider arrives.

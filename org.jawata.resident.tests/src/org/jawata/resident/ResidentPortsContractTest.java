@@ -66,6 +66,46 @@ class ResidentPortsContractTest {
         }
     }
 
+    /** The headless host's person is its log: whatever the engine tells it, it never fails. */
+    @Nested
+    class Person extends org.jawata.mcp.contract.PersonChannelContract {
+        @Override
+        protected org.jawata.spi.host.PersonChannel channel() {
+            return new ResidentPersonChannel();
+        }
+    }
+
+    /** The headless host serves the one language it was handed a binding for, owns its workspace and says so. */
+    @Nested
+    class Capabilities extends org.jawata.mcp.contract.HostCapabilitiesContract {
+        private final HostWorkspace workspace = new ResidentHostWorkspace(new HeadlessModelSource());
+
+        @Override
+        protected org.jawata.spi.host.HostCapabilities capabilities() {
+            return new ResidentHost(workspace, null, null, null, null, new org.jawata.spi.host.LanguageBinding() { }, null, null,
+                new ResidentPersonChannel()).capabilities();
+        }
+
+        @Override
+        protected HostWorkspace workspaceOfTheSameHost() {
+            return workspace;
+        }
+    }
+
+    /** The headless host cannot see a person debugging, so it is always the agent's turn. */
+    @Nested
+    class Turn extends org.jawata.mcp.contract.DebugTurnContract {
+        @Override
+        protected org.jawata.spi.host.DebugTurn turn() {
+            return org.jawata.spi.host.Instruments.NONE.debugTurn();
+        }
+
+        @Override
+        protected boolean personStartsDebugging() {
+            return false;
+        }
+    }
+
     @Nested
     class Reconciliation extends ReconcilerContract {
         final OverALoadedProject project = new OverALoadedProject() { };

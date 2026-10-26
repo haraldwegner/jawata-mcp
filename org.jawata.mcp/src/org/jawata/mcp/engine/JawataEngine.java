@@ -335,6 +335,8 @@ public class JawataEngine {
 			// degraded window on recovery.
 			log.error("Experience store unavailable ({}); continuing with a NON-PERSISTENT "
 					+ "in-memory store — recovery retries in the background", e.getMessage());
+			host().person().tell(org.jawata.spi.host.Notice.warning("The knowledge store could not be opened ("
+					+ e.getMessage() + "); the engine carries on with a temporary store and keeps trying to open the real one."));
 			return new org.jawata.mcp.knowledge.RecoveringExperienceStore(String.valueOf(e.getMessage()),
 					() -> openRealStore(mode, dataDir, workspaceRoot), 30_000);
 		}
@@ -398,13 +400,16 @@ public class JawataEngine {
 	void startEmbeddingBackfill(H2ExperienceStore h2) {
 		final int batch = 1000;
 		Thread t = new Thread(() -> {
-			try {
+			// The person sees this long job in the way their host shows work: a log line headless, a background job in Eclipse.
+			try (org.jawata.spi.host.PersonChannel.Activity work = host().person()
+					.begin("Preparing the knowledge store for recall by meaning")) {
 				org.jawata.mcp.knowledge.EmbeddingIndex index = new org.jawata.mcp.knowledge.EmbeddingIndex(h2,
 						org.jawata.mcp.knowledge.EmbeddingService.shared());
 				if (!index.available()) {
 					log.info("Embedding backfill skipped — no embedder; recall stays" + " keyword-only for this run");
 					return;
 				}
+				work.step("embedding the entries that have no vector yet");
 				long start = System.currentTimeMillis();
 				int total = JawataEngine.reconcileEmbeddings(index, batch,
 						() -> Thread.currentThread().isInterrupted());
@@ -507,7 +512,8 @@ public class JawataEngine {
 				() -> this.getToolRegistry(), () -> this.selfEndpoint(), () -> this.host().directories().memoryRoots(),
 				() -> reconciler, new org.jawata.mcp.runtime.RuntimeArtifactStore(this.host().directories().runtimeDir()),
 				new org.jawata.mcp.coverage.CoverageService(
-						new org.jawata.mcp.coverage.CoverageStore(this.host().directories().coverageDir()))),
+						new org.jawata.mcp.coverage.CoverageStore(this.host().directories().coverageDir())),
+						this.host().instruments().debugTurn()),
 				ProviderPorts.over(whiteboard, languageContext));
 
 		// Kept for what reads them later: the quality ledger's reach to the pre-advice surface (wired in assemble()), and the
@@ -523,8 +529,7 @@ public class JawataEngine {
 		new LanguagePublisher(whiteboard, neutral, published -> {
 			getToolRegistry().publish(published.tools());
 			setFindQualityIssueTool(published.quality());
-		}, javaHost.isPresent() ? java.util.Optional.of("java") : java.util.Optional.empty(), EngineState.current(),
-				this::verifyPublishedSurface);
+		}, java.util.Set.copyOf(this.host().capabilities().languages()), EngineState.current(), this::verifyPublishedSurface);
 	}
 
 	/**
@@ -537,6 +542,11 @@ public class JawataEngine {
 	 * checked against what it actually publishes.</p>
 	 */
 	private void verifyPublishedSurface() {
+		// The cure table and the coverage declaration describe Java's refactoring doors, so they are checked against a host that serves
+		// Java and are not asked of one that serves only another language, whose tools would fail a check that was never about them.
+		if (!host().capabilities().languages().contains("java")) {
+			return;
+		}
 		try {
 			org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(org.jawata.mcp.change.OperationRegistry.theRegistry());
 			int coveredRows = org.jawata.mcp.java.JavaEngineCoverage.verifyAgainstShippedDoors();
@@ -545,6 +555,8 @@ public class JawataEngine {
 		} catch (RuntimeException e) {
 			log.error("The published tool surface disagrees with what the engine declares", e);
 			EngineState.current().loadFailed("the published tool surface is inconsistent: " + e.getMessage());
+			host().person().tell(org.jawata.spi.host.Notice.error("The engine's tool list is inconsistent and it will not serve ("
+					+ e.getMessage() + ")."));
 		}
 	}
 
@@ -567,8 +579,18 @@ public class JawataEngine {
 			}
 
 			@Override
+			public org.jawata.spi.host.PersonChannel person() {
+				return JawataEngine.this.host().person();
+			}
+
+			@Override
 			public org.jawata.spi.host.EngineSettings settings() {
-				return host().settings();
+				return JawataEngine.this.host().settings();
+			}
+
+			@Override
+			public org.jawata.spi.host.HostCapabilities host() {
+				return JawataEngine.this.host().capabilities();
 			}
 
 			@Override
@@ -714,6 +736,8 @@ public class JawataEngine {
 		// resident) must not kill the server — degrade to in-memory and say so.
 		setExperienceStore(openExperienceStore());
 		registerTools();
+		// The person wins the debugger: when they start a debug launch of their own, every session the agent holds ends.
+		host().instruments().debugTurn().onPersonStartsDebugging(getRuntimeSessions()::closeAll);
 
 		// v3.2.1 (dogfood #1): while the store is degraded, EVERY answer says so.
 		if (getExperienceStore() instanceof org.jawata.mcp.knowledge.RecoveringExperienceStore r) {
