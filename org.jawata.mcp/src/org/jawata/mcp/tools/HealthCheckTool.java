@@ -8,13 +8,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.jawata.core.IJdtService;
-import org.jawata.core.LoadedProject;
 import org.jawata.core.host.HostOS;
 import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.tools.shared.WorkspaceHealth;
+import org.jawata.spi.lang.LoadedWorkspace;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -31,7 +29,7 @@ public class HealthCheckTool implements Tool {
     private final Supplier<Integer> toolCountSupplier;
     private final Supplier<ProjectLoadingState> loadingStateSupplier;
     private final Supplier<String> loadingErrorSupplier;
-    private final Supplier<IJdtService> serviceSupplier;
+    private final Supplier<? extends LoadedWorkspace> workspaceSupplier;
     private final Supplier<List<String>> languagesSupplier;
     private final Instant startTime;
 
@@ -39,12 +37,12 @@ public class HealthCheckTool implements Tool {
                            Supplier<Integer> toolCountSupplier,
                            Supplier<ProjectLoadingState> loadingStateSupplier,
                            Supplier<String> loadingErrorSupplier,
-                           Supplier<IJdtService> serviceSupplier, Supplier<List<String>> languagesSupplier) {
+                           Supplier<? extends LoadedWorkspace> workspaceSupplier, Supplier<List<String>> languagesSupplier) {
         this.projectLoadedSupplier = projectLoadedSupplier;
         this.toolCountSupplier = toolCountSupplier;
         this.loadingStateSupplier = loadingStateSupplier;
         this.loadingErrorSupplier = loadingErrorSupplier;
-        this.serviceSupplier = serviceSupplier;
+        this.workspaceSupplier = workspaceSupplier;
         this.languagesSupplier = languagesSupplier;
         this.startTime = Instant.now();
     }
@@ -158,17 +156,17 @@ public class HealthCheckTool implements Tool {
         // array with one entry per loaded project plus the default key,
         // independent of the legacy single-project status above. Empty
         // array if no projects are loaded or the service isn't ready.
-        IJdtService service = serviceSupplier.get();
+        LoadedWorkspace service = workspaceSupplier.get();
         if (service != null) {
             List<Map<String, Object>> projects = new ArrayList<>();
             List<String> unhealthy = new ArrayList<>();
             String defaultKey = service.defaultProjectKey().orElse(null);
-            for (LoadedProject lp : service.allProjects()) {
+            for (LoadedWorkspace.ProjectInfo lp : service.projects()) {
                 Map<String, Object> row = new LinkedHashMap<>();
-                row.put("projectKey", lp.projectKey());
-                row.put("projectPath", lp.projectRoot().toString());
+                row.put("projectKey", lp.key());
+                row.put("projectPath", lp.root().toString());
                 row.put("sourceFileCount", lp.sourceFileCount());
-                row.put("isDefault", lp.projectKey().equals(defaultKey));
+                row.put("isDefault", lp.key().equals(defaultKey));
 
                 // Sprint 28 Stage 8 (G6a): how many requirements this project's
                 // import asked for and could not find.
@@ -185,7 +183,7 @@ public class HealthCheckTool implements Tool {
                 // dependencies would refuse every refactoring across the very
                 // workspace this instrument exists to diagnose. The flag-level
                 // question is C10's ruling, with that blast radius stated.
-                row.put("unresolvedDependencyCount", lp.unresolved().size());
+                row.put("unresolvedDependencyCount", lp.unresolvedCount());
 
                 projects.add(row);
             }
@@ -196,10 +194,10 @@ public class HealthCheckTool implements Tool {
             // finding — and a REFACTORING would rewrite references while blind to that
             // project's call sites. It is the user's workspace and the user's fault to fix,
             // so it is stated here, in the first call anyone makes, with the remedy attached.
-            List<WorkspaceHealth.Problem> problems = WorkspaceHealth.diagnose(service);
+            List<LoadedWorkspace.ProblemInfo> problems = service.problems();
             for (Map<String, Object> row : projects) {
                 String key = String.valueOf(row.get("projectKey"));
-                WorkspaceHealth.Problem p = problems.stream()
+                LoadedWorkspace.ProblemInfo p = problems.stream()
                     .filter(x -> x.projectKey().equals(key)).findFirst().orElse(null);
                 row.put("healthy", p == null);
                 if (p != null) {

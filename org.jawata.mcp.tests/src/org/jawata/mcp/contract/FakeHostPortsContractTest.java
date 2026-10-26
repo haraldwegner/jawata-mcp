@@ -151,6 +151,20 @@ class FakeHostPortsContractTest {
         }
     }
 
+    /** A workspace with no language loaded: no projects, and every question answered with an empty list or nothing. */
+    @Nested
+    class NoLanguageLoaded extends LoadedWorkspaceContract {
+        @Override
+        protected org.jawata.spi.lang.LoadedWorkspace workspace() {
+            return org.jawata.spi.lang.LoadedWorkspace.NONE;
+        }
+
+        @Override
+        protected Set<String> expectedKeys() {
+            return Set.of();
+        }
+    }
+
     /** The real writes every host without its own uses, over the platform's own change machinery. */
     @Nested
     class DirectWrites extends WorkspaceWritesContract {

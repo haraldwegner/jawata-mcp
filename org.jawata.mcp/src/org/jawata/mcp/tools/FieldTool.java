@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.jawata.core.IJdtService;
 import org.jawata.mcp.field.FieldPile;
 import org.jawata.mcp.field.FieldState;
 import org.jawata.mcp.models.ToolResponse;
@@ -46,7 +45,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  * not about code — a workspace whose projects failed to load is exactly when
  * an agent most wants to report the failure.</p>
  */
-public class FieldTool extends AbstractTool {
+public class FieldTool extends NeutralTool {
 
     private final Supplier<Path> fieldDir;
 
@@ -57,21 +56,14 @@ public class FieldTool extends AbstractTool {
      */
     private final Supplier<org.jawata.mcp.field.InFlightCalls> inFlight;
 
-    public FieldTool(Supplier<IJdtService> serviceSupplier, Supplier<Path> fieldDir) {
-        this(serviceSupplier, fieldDir, null);
+    public FieldTool(Supplier<Path> fieldDir) {
+        this(fieldDir, null);
     }
 
     /** mcp#42: the wiring the application uses — the registry's own in-flight registry. */
-    public FieldTool(Supplier<IJdtService> serviceSupplier, Supplier<Path> fieldDir,
-            Supplier<org.jawata.mcp.field.InFlightCalls> inFlight) {
-        super(serviceSupplier);
+    public FieldTool(Supplier<Path> fieldDir, Supplier<org.jawata.mcp.field.InFlightCalls> inFlight) {
         this.fieldDir = fieldDir;
         this.inFlight = inFlight;
-    }
-
-    @Override
-    protected boolean requiresLoadedProject() {
-        return false;
     }
 
     @Override
@@ -158,7 +150,7 @@ public class FieldTool extends AbstractTool {
     }
 
     @Override
-    protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+    public ToolResponse execute(JsonNode arguments) {
         String action = arguments == null ? null : arguments.path("action").asText(null);
         if (action == null || action.isBlank()) {
             return ToolResponse.invalidParameter("action",

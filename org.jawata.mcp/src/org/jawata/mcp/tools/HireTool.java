@@ -12,7 +12,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import org.jawata.core.IJdtService;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.BrainDialect;
 import org.jawata.mcp.execution.HireSite;
@@ -71,7 +70,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * shape {@code run_tests} uses for the same reason and is recorded as a finding rather than built
  * ahead of a brief that needs it.</p>
  */
-public class HireTool extends AbstractTool {
+public class HireTool extends NeutralTool {
 
     /*
      * THERE IS NO `binary` INPUT, AND THE REASON IS A DEFECT THIS TOOL SHIPPED FOR ONE HOUR.
@@ -122,10 +121,10 @@ public class HireTool extends AbstractTool {
     private final Supplier<ExperienceStore> rules;
 
     /** A hire with no endpoint of its own to hand the brain — the stdio resident's case. */
-    public HireTool(Supplier<IJdtService> serviceSupplier, HostProcesses host,
+    public HireTool(HostProcesses host,
             RuntimeArtifactStore artifacts, PlanLedger plans,
             Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry) {
-        this(serviceSupplier, host, artifacts, plans, journal, registry, () -> null);
+        this(host, artifacts, plans, journal, registry, () -> null);
     }
 
     /**
@@ -140,11 +139,11 @@ public class HireTool extends AbstractTool {
      * @param self the resident's own endpoint, a SUPPLIER that may answer null for the same reason
      *     the journal's may: whether this resident has one is known only once its transport listens.
      */
-    public HireTool(Supplier<IJdtService> serviceSupplier, HostProcesses host,
+    public HireTool(HostProcesses host,
             RuntimeArtifactStore artifacts, PlanLedger plans,
             Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> self) {
-        this(serviceSupplier, host, artifacts, plans, journal, registry, self, () -> null);
+        this(host, artifacts, plans, journal, registry, self, () -> null);
     }
 
     /**
@@ -152,11 +151,10 @@ public class HireTool extends AbstractTool {
      *     SUPPLIER that may answer null, for the same reason the journal's may — a degraded resident
      *     has no store, and a hire still goes ahead without its rules.
      */
-    public HireTool(Supplier<IJdtService> serviceSupplier, HostProcesses host,
+    public HireTool(HostProcesses host,
             RuntimeArtifactStore artifacts, PlanLedger plans,
             Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> self, Supplier<ExperienceStore> rules) {
-        super(serviceSupplier);
         this.rules = rules == null ? () -> null : rules;
         if (host == null || artifacts == null || plans == null || journal == null
                 || registry == null) {
@@ -256,22 +254,13 @@ public class HireTool extends AbstractTool {
     }
 
     /**
-     * FALSE, deliberately: a hire does not need a loaded project and its GATES answer for
-     * themselves.
-     *
-     * <p>Returning true would refuse the whole hire with {@code PROJECT_NOT_LOADED} — the
-     * registry's own pre-dispatch answer — and a reader would be told nothing about the brain, the
-     * brief or the gates. With it false the brain runs, each gate reports whether it could answer,
-     * and a gate that needed a project says so in its own row. That is the difference between one
-     * refusal standing in for a run and a record of a run that happened.</p>
+     * A hire does not need a loaded project, and its GATES answer for themselves: refusing the whole hire with
+     * {@code PROJECT_NOT_LOADED} would tell a reader nothing about the brain, the brief or the gates. The brain runs, each gate
+     * reports whether it could answer, and a gate that needed a project says so in its own row. That is the difference between one
+     * refusal standing in for a run and a record of a run that happened.
      */
     @Override
-    protected boolean requiresLoadedProject() {
-        return false;
-    }
-
-    @Override
-    protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+    public ToolResponse execute(JsonNode arguments) {
         LearnerEventStore landsIn = journal.get();
         if (landsIn == null) {
             // DEGRADATION ON THE RESPONSE CHANNEL, which is the only one a client can see. A hire

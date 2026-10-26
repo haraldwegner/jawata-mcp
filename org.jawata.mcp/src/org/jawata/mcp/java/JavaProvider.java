@@ -38,6 +38,7 @@ import org.jawata.spi.host.EngineHost;
 import org.jawata.spi.lang.BuildVerdict;
 import org.jawata.spi.lang.ChangePaths;
 import org.jawata.spi.lang.LanguageProvider;
+import org.jawata.spi.lang.LoadedWorkspace;
 import org.jawata.spi.lang.ProviderContext;
 import org.jawata.spi.lang.SymbolAnchors;
 import org.jawata.spi.lang.TestRuntime;
@@ -101,6 +102,12 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
     @Override
     public Optional<TestRuntime> tests(ProviderContext context) {
         return Optional.of(testRuntime());
+    }
+
+    /** Java's loaded workspace is its own service: the one object answers type queries and the neutral project questions. */
+    @Override
+    public Optional<LoadedWorkspace> workspace(ProviderContext context) {
+        return Optional.ofNullable(model.get());
     }
 
     /**

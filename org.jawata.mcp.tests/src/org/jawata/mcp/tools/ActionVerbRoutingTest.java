@@ -44,7 +44,7 @@ class ActionVerbRoutingTest {
     }
 
     @SuppressWarnings("unchecked")
-    private List<String> enumOf(AbstractTool tool, String prop) {
+    private List<String> enumOf(org.jawata.mcp.tools.Tool tool, String prop) {
         Map<String, Object> props = (Map<String, Object>) tool.getInputSchema().get("properties");
         return (List<String>) ((Map<String, Object>) props.get(prop)).get("enum");
     }

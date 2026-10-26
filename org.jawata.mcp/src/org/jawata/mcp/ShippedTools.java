@@ -174,7 +174,7 @@ public final class ShippedTools {
 
         // health_check answers with the registry's own count and the application's load state.
         tools.add(new HealthCheckTool(w.projectLoaded(), w.toolCount(), w.loadingState(),
-            w.loadingError(), jdt, ports.languages()));
+            w.loadingError(), ports.workspace(), ports.languages()));
 
         // load_project supplies the existing service so it can reuse it (clear-and-load on top) and
         // installs a fresh one on first call, which is what lets add_project / remove_project operate
@@ -185,11 +185,11 @@ public final class ShippedTools {
 
         // project(action) collapses list/add/remove_project; load_project stays separate because it
         // installs the workspace service.
-        tools.add(new ProjectTool(jdt, w.workspace()));
+        tools.add(new ProjectTool(ports.workspace(), w.workspace()));
 
         // The field lane's one front door. Needs no loaded project: it answers about jawata's own
         // use. The registry's in-flight record lets `pile` report calls that never came back.
-        tools.add(new FieldTool(jdt, w.fieldDir(), w.inFlight()));
+        tools.add(new FieldTool(w.fieldDir(), w.inFlight()));
 
         tools.add(new GetDiagnosticsTool(jdt));
         tools.add(new CompileWorkspaceTool(jdt, w.reconciler()));
@@ -199,7 +199,7 @@ public final class ShippedTools {
         // own gates run through, so the gate runner is built per call); the JOURNAL supplier may
         // answer null, because a degraded resident has no journal, and the tool is still published
         // and refuses with that reason; the third is this resident's own endpoint.
-        tools.add(new HireTool(jdt, HostProcesses.system(),
+        tools.add(new HireTool(HostProcesses.system(),
             w.runtimeArtifacts(),
             new PlanLedger(),
             w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore));

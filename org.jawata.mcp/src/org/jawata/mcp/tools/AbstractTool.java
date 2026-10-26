@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.eclipse.core.runtime.IPath;
@@ -12,11 +11,7 @@ import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.search.SearchMatch;
 import org.jawata.core.IJdtService;
-import org.jawata.core.LoadedProject;
-import org.jawata.core.ScopedJdtService;
 import org.jawata.core.exceptions.ProjectNotLoadedException;
-import org.jawata.mcp.engine.EngineState;
-import org.jawata.mcp.engine.ProjectLoadingState;
 import org.jawata.mcp.models.ToolResponse;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -63,11 +58,12 @@ import com.fasterxml.jackson.databind.JsonNode;
  * to promise non-null unconditionally, and {@code profile}'s two
  * model-resolving actions were written against that promise.
  */
-public abstract class AbstractTool implements Tool {
+public abstract class AbstractTool extends WorkspaceTool<IJdtService> {
 
     protected final Supplier<IJdtService> serviceSupplier;
 
     protected AbstractTool(Supplier<IJdtService> serviceSupplier) {
+        super(serviceSupplier);
         this.serviceSupplier = serviceSupplier;
     }
 
@@ -92,101 +88,10 @@ public abstract class AbstractTool implements Tool {
         return service;
     }
 
-    /**
-     * Whether this tool needs at least one readable project.
-     *
-     * <p>Nearly every tool does — it answers about code. The exceptions are the
-     * RUNTIME tools: {@code debug} discovers and attaches to JVMs and
-     * {@code profile} reads a crash log, both of which are meaningful with no
-     * project loaded at all. Overriding this to {@code false} is what keeps the
-     * gate below a single seam instead of a per-tool condition (mcp#28).
-     */
-    protected boolean requiresLoadedProject() {
-        return true;
-    }
-
-    /**
-     * Default execute implementation that checks for a readable project, then
-     * delegates to executeWithService.
-     *
-     * <p><b>The gate is "are there projects to answer from", not "is the
-     * service object present" (mcp#28).</b> A workspace whose every project
-     * FAILED to load still has a service — empty. Tools then ran against
-     * nothing: {@code search_symbols} dereferenced a null search service and
-     * answered INTERNAL_ERROR "this may be a bug", on exactly the path a
-     * redirected agent lands on. Reading emptiness rather than the loading enum
-     * also self-heals, because a later successful {@code load_project} makes the
-     * predicate false without anyone having to remember to clear a flag.
-     *
-     * <p>The loading state still chooses the WORDS: loading, failed-with-reason,
-     * or nothing-loaded.
-     */
+    /** The gate and the {@code projectKey} scoping are {@link WorkspaceTool}'s; what remains is Java's step after them. */
     @Override
-    public ToolResponse execute(JsonNode arguments) {
-        IJdtService service = serviceSupplier.get();
-
-        // Sprint 10: optional projectKey scoping. When the agent passes
-        // projectKey on a tool call, narrow the service view to just that
-        // project so getSearchService() / getJavaProject() / file lookups
-        // operate in single-project scope. Absent: cross-project default.
-        String projectKey = null;
-        if (arguments != null && arguments.has("projectKey") && !arguments.get("projectKey").isNull()) {
-            String raw = arguments.get("projectKey").asText();
-            if (raw != null && !raw.isBlank()) {
-                projectKey = raw;
-            }
-        }
-
-        // A DROPPED key is knowledge only the service holds, and it outranks
-        // "nothing is loaded" — the caller named a key that WAS valid, and
-        // being told when it went away is what lets them recover (bugs.md #11).
-        // Answering the emptiness first would replace that with a generic
-        // not-loaded, which is exactly the regression the suite caught here.
-        if (service != null && projectKey != null && service.getProject(projectKey).isEmpty()) {
-            Optional<Long> dropped = service.wasRecentlyDropped(projectKey);
-            if (dropped.isPresent()) {
-                return ToolResponse.projectKeyDropped(projectKey, dropped.get());
-            }
-        }
-
-        if (requiresLoadedProject() && (service == null || service.allProjects().isEmpty())) {
-            // Check loading state to provide more specific feedback
-            ProjectLoadingState loadingState = EngineState.current().loading();
-            return switch (loadingState) {
-                case LOADING -> ToolResponse.projectLoading();
-                case FAILED -> ToolResponse.projectLoadFailed(EngineState.current().loadingError());
-                default -> ToolResponse.projectNotLoaded();
-            };
-        }
-        if (service == null) {
-            // Only reachable for a tool that DECLARED it needs no project
-            // (the gate above answered for every other case). It runs — with a
-            // null service it never reads.
-            //
-            // Sprint 28b: this used to answer PROJECT_NOT_LOADED anyway, which
-            // silently un-did the override: `debug`, `profile` and `field` all
-            // say they answer about the runtime rather than the model, and all
-            // three were refused whenever no service existed at all — exactly
-            // the moment an agent reaches for them. Nothing in production had
-            // a null service, so no test could see it until a tool arrived
-            // whose whole point is answering when the model is unavailable.
-            return executeWithService(null, arguments);
-        }
-
-        if (projectKey != null) {
-            Optional<LoadedProject> scoped = service.getProject(projectKey);
-            if (scoped.isEmpty()) {
-                // Not dropped (that answered above) and not present: a key that
-                // never existed here. Name the recovery route rather than the
-                // typo.
-                return ToolResponse.invalidParameter(
-                    "projectKey",
-                    "Unknown projectKey '" + projectKey + "'. Use project(action=list) to see available keys.");
-            }
-            return executeWithService(new ScopedJdtService(service, scoped.get()), arguments);
-        }
-
-        return executeWithService(service, arguments);
+    protected final ToolResponse executeWithWorkspace(IJdtService workspace, JsonNode arguments) {
+        return executeWithService(workspace, arguments);
     }
 
     /**
@@ -319,57 +224,7 @@ public abstract class AbstractTool implements Tool {
 
     // Common helper methods for parameter extraction
 
-    /**
-     * Get a required string parameter.
-     *
-     * @param arguments The arguments node
-     * @param name The parameter name
-     * @return The parameter value, or null if missing
-     */
-    protected String getStringParam(JsonNode arguments, String name) {
-        if (arguments == null || !arguments.has(name)) {
-            return null;
-        }
-        return arguments.get(name).asText();
-    }
-
-    /**
-     * Get an optional string parameter with default.
-     */
-    protected String getStringParam(JsonNode arguments, String name, String defaultValue) {
-        String value = getStringParam(arguments, name);
-        return value != null ? value : defaultValue;
-    }
-
-    /**
-     * Get an optional int parameter with default.
-     */
-    protected int getIntParam(JsonNode arguments, String name, int defaultValue) {
-        if (arguments == null || !arguments.has(name)) {
-            return defaultValue;
-        }
-        return arguments.get(name).asInt(defaultValue);
-    }
-
-    /**
-     * Get an optional boolean parameter with default.
-     */
-    protected boolean getBooleanParam(JsonNode arguments, String name, boolean defaultValue) {
-        if (arguments == null || !arguments.has(name)) {
-            return defaultValue;
-        }
-        return arguments.get(name).asBoolean(defaultValue);
-    }
-
-    /**
-     * Check if a required parameter is present.
-     */
-    protected ToolResponse requireParam(JsonNode arguments, String name) {
-        if (arguments == null || !arguments.has(name)) {
-            return ToolResponse.invalidParameter(name, "Required parameter missing");
-        }
-        return null; // No error
-    }
+    
 
     // ========== SearchMatch formatting helpers ==========
 

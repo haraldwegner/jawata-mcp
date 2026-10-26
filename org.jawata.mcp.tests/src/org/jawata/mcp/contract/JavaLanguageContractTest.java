@@ -76,6 +76,26 @@ class JavaLanguageContractTest {
     }
 
     @Nested
+    class Workspace extends LoadedWorkspaceContract {
+        final OverLoadedProject project = new OverLoadedProject() { };
+
+        @RegisterExtension
+        TestProjectHelper helper = project.helper;
+
+        @Override
+        protected org.jawata.spi.lang.LoadedWorkspace workspace() throws Exception {
+            project.load();
+            return project.provider.workspace(NO_HOST).orElseThrow();
+        }
+
+        @Override
+        protected java.util.Set<String> expectedKeys() throws Exception {
+            project.load();
+            return java.util.Set.of(project.service.defaultProjectKey().orElseThrow());
+        }
+    }
+
+    @Nested
     class Paths extends ChangePathsContract {
         final OverLoadedProject project = new OverLoadedProject() { };
 

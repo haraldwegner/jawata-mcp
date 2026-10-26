@@ -175,7 +175,7 @@ class InFlightCallsTest {
         calls.startedAt("inspect", "landmarks",
             System.currentTimeMillis() - InFlightCalls.DEFAULT_STUCK_MS - 5_000);
 
-        FieldTool tool = new FieldTool(() -> null, () -> dir, () -> calls);
+        FieldTool tool = new FieldTool(() -> dir, () -> calls);
         ToolResponse response = tool.execute(OM.createObjectNode().put("action", "pile"));
 
         assertTrue(response.isSuccess(), "got: " + response.getError());
@@ -206,7 +206,7 @@ class InFlightCallsTest {
     void nothingStuckIsStatedRatherThanOmitted() {
         // An absent key would make "nothing is stuck" and "this build cannot tell" the
         // same answer to a reader, which is the defect one level up from this one.
-        FieldTool tool = new FieldTool(() -> null, () -> Path.of("/nonexistent-field-dir"),
+        FieldTool tool = new FieldTool(() -> Path.of("/nonexistent-field-dir"),
             InFlightCalls::new);
         ToolResponse response = tool.execute(OM.createObjectNode().put("action", "pile"));
 

@@ -26,4 +26,12 @@ public interface LanguageProvider {
 
     /** What a forked test run of one of its projects needs; empty when the language has no tests to run. */
     Optional<TestRuntime> tests(ProviderContext context);
+
+    /**
+     * The projects this language has loaded, in plain types; empty while it has none loaded or holds no projects at all (the
+     * language's answer is read at the moment of each ask, because a workspace may load or replace its model after the provider exists).
+     */
+    default Optional<LoadedWorkspace> workspace(ProviderContext context) {
+        return Optional.empty();
+    }
 }

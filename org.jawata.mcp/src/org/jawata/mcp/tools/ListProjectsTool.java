@@ -1,17 +1,17 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.core.LoadedProject;
-import org.jawata.mcp.models.ToolResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.lang.LoadedWorkspace;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * List all projects currently loaded into the workspace.
@@ -30,9 +30,9 @@ public class ListProjectsTool implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(ListProjectsTool.class);
 
-    private final Supplier<IJdtService> serviceSupplier;
+    private final Supplier<? extends LoadedWorkspace> serviceSupplier;
 
-    public ListProjectsTool(Supplier<IJdtService> serviceSupplier) {
+    public ListProjectsTool(Supplier<? extends LoadedWorkspace> serviceSupplier) {
         this.serviceSupplier = serviceSupplier;
     }
 
@@ -68,7 +68,7 @@ public class ListProjectsTool implements Tool {
 
     @Override
     public ToolResponse execute(JsonNode arguments) {
-        IJdtService service = serviceSupplier.get();
+        LoadedWorkspace service = serviceSupplier.get();
         if (service == null) {
             // Empty result rather than error — listing an empty workspace is
             // a valid query.
@@ -80,18 +80,18 @@ public class ListProjectsTool implements Tool {
         try {
             String defaultKey = service.defaultProjectKey().orElse(null);
             List<Map<String, Object>> rows = new ArrayList<>();
-            for (LoadedProject lp : service.allProjects()) {
+            for (LoadedWorkspace.ProjectInfo lp : service.projects()) {
                 Map<String, Object> row = new LinkedHashMap<>();
-                row.put("projectKey", lp.projectKey());
-                row.put("projectPath", lp.projectRoot().toString());
+                row.put("projectKey", lp.key());
+                row.put("projectPath", lp.root().toString());
                 // v1.7.1 (bug #4): hyphen instead of underscore on the wire so
                 // ECLIPSE_PDE serialises as "eclipse-pde" rather than "eclipse_pde".
-                row.put("buildSystem", lp.buildSystem().name().toLowerCase().replace('_', '-'));
+                row.put("buildSystem", lp.buildSystem().replace('_', '-'));
                 row.put("sourceFileCount", lp.sourceFileCount());
                 row.put("packageCount", lp.packageCount());
                 row.put("classpathEntryCount", lp.classpathEntryCount());
                 row.put("loadedAt", lp.loadedAt().toString());
-                row.put("isDefault", lp.projectKey().equals(defaultKey));
+                row.put("isDefault", lp.key().equals(defaultKey));
                 rows.add(row);
             }
             Map<String, Object> result = new LinkedHashMap<>();

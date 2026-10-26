@@ -5,9 +5,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.spi.host.HostWorkspace;
+import org.jawata.spi.lang.LoadedWorkspace;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -17,7 +17,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  * stays separate — it installs the workspace service.) Not read-only (add/remove
  * mutate workspace state).
  */
-public class ProjectTool extends AbstractTool {
+public class ProjectTool implements Tool {
 
     private static final List<String> ACTIONS = List.of("list", "add", "remove");
 
@@ -26,11 +26,10 @@ public class ProjectTool extends AbstractTool {
     private final RemoveProjectTool remove;
 
     /**
-     * @param serviceSupplier the workspace service, read at call time
+     * @param serviceSupplier the language's loaded workspace, read at call time
      * @param workspace       whether the engine owns the workspace; when it does not, add and remove are refused
      */
-    public ProjectTool(Supplier<IJdtService> serviceSupplier, HostWorkspace workspace) {
-        super(serviceSupplier);
+    public ProjectTool(Supplier<? extends LoadedWorkspace> serviceSupplier, HostWorkspace workspace) {
         this.list = new ListProjectsTool(serviceSupplier);
         this.add = new AddProjectTool(serviceSupplier, workspace);
         this.remove = new RemoveProjectTool(serviceSupplier, workspace);
@@ -78,7 +77,7 @@ public class ProjectTool extends AbstractTool {
     // their public execute().
     @Override
     public ToolResponse execute(JsonNode arguments) {
-        String action = getStringParam(arguments, "action");
+        String action = arguments != null && arguments.hasNonNull("action") ? arguments.get("action").asText() : null;
         if (action == null || action.isBlank()) {
             return ToolResponse.invalidParameter("action", "action is required; one of " + ACTIONS);
         }

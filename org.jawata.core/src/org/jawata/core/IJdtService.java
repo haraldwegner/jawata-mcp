@@ -24,7 +24,7 @@ import java.util.concurrent.Callable;
  * <p>This interface defines the contract for JDT-based analysis.
  * Implementations wrap the Eclipse JDT SearchEngine and related APIs.
  */
-public interface IJdtService {
+public interface IJdtService extends org.jawata.spi.lang.LoadedWorkspace {
 
     /**
      * Get path utilities for the loaded project.
@@ -270,5 +270,53 @@ public interface IJdtService {
      * contradict it). ABSTRACT deliberately: a defaulted no-op would let an
      * implementation look complete while the reconcile silently never fires.
      */
+    @Override
     void reresolveWorkspace();
+
+    // ============================================================
+    // The neutral workspace role (Sprint 28k, Stage 9): the tools that name no language ask
+    // org.jawata.spi.lang.LoadedWorkspace, and this service is what answers it for Java, in plain types.
+    // ============================================================
+
+    /** One of this service's projects as the neutral role describes it. */
+    private static ProjectInfo infoOf(LoadedProject project) {
+        return new ProjectInfo(project.projectKey(), project.projectRoot(), project.buildSystem().name().toLowerCase(),
+            project.sourceFileCount(), project.packageCount(), project.classpathEntryCount(), project.unresolved().size(),
+            project.loadedAt(), project.javaProject() == null ? project.projectKey() : project.javaProject().getProject().getName());
+    }
+
+    @Override
+    default List<ProjectInfo> projects() {
+        return allProjects().stream().map(IJdtService::infoOf).toList();
+    }
+
+    @Override
+    default Optional<ProjectInfo> project(String key) {
+        return getProject(key).map(IJdtService::infoOf);
+    }
+
+    @Override
+    default ProjectInfo addProjectAt(Path root) throws Exception {
+        return infoOf(addProject(root));
+    }
+
+    @Override
+    default String display(Path path) {
+        return getPathUtils().formatPath(path);
+    }
+
+    @Override
+    default Path resolvePath(String path) {
+        return getPathUtils().resolve(path);
+    }
+
+    @Override
+    default List<ProblemInfo> problems() {
+        return WorkspaceProbe.problemsIn(this);
+    }
+
+    @Override
+    default org.jawata.spi.lang.LoadedWorkspace scoped(String key) {
+        return getProject(key).<org.jawata.spi.lang.LoadedWorkspace>map(project -> new ScopedJdtService(this, project)).orElse(null);
+    }
 }

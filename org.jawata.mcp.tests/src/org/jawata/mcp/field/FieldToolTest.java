@@ -27,7 +27,7 @@ class FieldToolTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static FieldTool tool(Path dir) {
-        return new FieldTool(() -> null, () -> dir);
+        return new FieldTool(() -> dir);
     }
 
     private static ObjectNode args(String action) {

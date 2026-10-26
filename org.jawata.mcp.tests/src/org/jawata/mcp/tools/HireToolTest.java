@@ -188,7 +188,7 @@ class HireToolTest {
             ToolRegistry gates) {
         // WITH the resident's endpoint, as a resident serving HTTP has. A claude hire without one
         // is refused (S16-36); the case that pins that builds its tool without one on purpose.
-        return new HireTool(() -> null, processes, artifacts, plans, () -> journal, () -> gates,
+        return new HireTool(processes, artifacts, plans, () -> journal, () -> gates,
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"));
     }
 
@@ -710,7 +710,7 @@ class HireToolTest {
         // keeps the machine's own MCP servers, settings and hooks: measured $2.26 for a one-word
         // answer, and --tools "" (the editors-absent containment) is only sent WITH an endpoint.
         // An unbounded hire is refused rather than run and reported.
-        HireTool hire = new HireTool(() -> null, aHostThatMustNotSpawn(), artifacts, plans,
+        HireTool hire = new HireTool(aHostThatMustNotSpawn(), artifacts, plans,
             () -> events, () -> aRegistryWithACleanGate());
 
         ToolResponse response = hire.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
@@ -727,7 +727,7 @@ class HireToolTest {
     @Test
     @DisplayName("architect F1: a brain whose writes are held only by an INSTRUCTION is refused before it spawns, unless the seat opts in")
     void anInstructionOnlyBrainIsRefusedUnlessTheSeatOptsIn() throws Exception {
-        HireTool hire = new HireTool(() -> null, aHostThatMustNotSpawn(), artifacts, plans,
+        HireTool hire = new HireTool(aHostThatMustNotSpawn(), artifacts, plans,
             () -> events, () -> aRegistryWithACleanGate());
 
         ToolResponse response = hire.execute(hireArgs(seatFile(CURSOR_SEAT_WITHOUT_OPT_IN)));
@@ -808,7 +808,7 @@ class HireToolTest {
     @Test
     @DisplayName("S16-36: the refusal is claude's alone — a brain that does not attach the resident still hires without an endpoint")
     void aBrainThatDoesNotUseTheEndpointStillHiresWithoutOne() throws Exception {
-        HireTool hire = new HireTool(() -> null, new StandsIn(host, aBrainThatAnswers()), artifacts,
+        HireTool hire = new HireTool(new StandsIn(host, aBrainThatAnswers()), artifacts,
             plans, () -> events, () -> aRegistryWithACleanGate());
 
         ToolResponse response = hire.execute(hireArgs(seatFile(CURSOR_SEAT)));

@@ -41,7 +41,7 @@ class PileSaysWhenNotJustHowOftenTest {
     private static final long DAY = 86_400_000L;
 
     private static FieldTool tool(Path dir) {
-        return new FieldTool(() -> null, () -> dir);
+        return new FieldTool(() -> dir);
     }
 
     private static ObjectNode pileArgs() {

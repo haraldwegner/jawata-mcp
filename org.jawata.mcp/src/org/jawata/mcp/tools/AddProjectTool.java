@@ -1,20 +1,20 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.core.LoadedProject;
-import org.jawata.mcp.engine.EngineState;
-import org.jawata.mcp.models.ToolResponse;
-import org.jawata.spi.host.HostWorkspace;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+
+import org.jawata.mcp.engine.EngineState;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.host.HostWorkspace;
+import org.jawata.spi.lang.LoadedWorkspace;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Append a Java project to the existing workspace without clearing previously
@@ -34,15 +34,15 @@ public class AddProjectTool implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(AddProjectTool.class);
 
-    private final Supplier<IJdtService> serviceSupplier;
+    private final Supplier<? extends LoadedWorkspace> serviceSupplier;
 
     private final HostWorkspace workspace;
 
     /**
-     * @param serviceSupplier the workspace service, read at call time
+     * @param serviceSupplier the language's loaded workspace, read at call time
      * @param workspace       whether the engine may change the workspace; when it may not, the tool answers HOST_OWNS_WORKSPACE
      */
-    public AddProjectTool(Supplier<IJdtService> serviceSupplier, HostWorkspace workspace) {
+    public AddProjectTool(Supplier<? extends LoadedWorkspace> serviceSupplier, HostWorkspace workspace) {
         this.serviceSupplier = serviceSupplier;
         this.workspace = workspace;
     }
@@ -97,7 +97,7 @@ public class AddProjectTool implements Tool {
         if (arguments == null || !arguments.has("projectPath")) {
             return ToolResponse.invalidParameter("projectPath", "Required parameter missing");
         }
-        IJdtService service = serviceSupplier.get();
+        LoadedWorkspace service = serviceSupplier.get();
         if (service == null) {
             return ToolResponse.error(
                 "PROJECT_NOT_LOADED",
@@ -122,7 +122,7 @@ public class AddProjectTool implements Tool {
             }
 
             log.info("Appending project to workspace: {}", path);
-            LoadedProject loaded = service.addProject(path);
+            LoadedWorkspace.ProjectInfo loaded = service.addProjectAt(path);
 
             // mcp#35, SECOND DOOR. noteWorkspaceLoaded()'s own javadoc names BOTH
             // load_project and add_project as paths that install a service without
@@ -133,9 +133,9 @@ public class AddProjectTool implements Tool {
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", "loaded");
-            result.put("projectKey", loaded.projectKey());
-            result.put("projectPath", loaded.projectRoot().toString());
-            result.put("buildSystem", loaded.buildSystem().name().toLowerCase());
+            result.put("projectKey", loaded.key());
+            result.put("projectPath", loaded.root().toString());
+            result.put("buildSystem", loaded.buildSystem());
             result.put("sourceFileCount", loaded.sourceFileCount());
             result.put("packageCount", loaded.packageCount());
             result.put("classpathEntryCount", loaded.classpathEntryCount());

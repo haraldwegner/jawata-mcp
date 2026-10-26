@@ -55,7 +55,7 @@ class FieldToolLeakTest {
             false, new Token("RUNNER_TIMEOUT"), 3, Token.of("claude_code"),
             new Version(3, 11, 0)));
 
-        FieldTool tool = new FieldTool(() -> null, () -> dir);
+        FieldTool tool = new FieldTool(() -> dir);
         List<ToolResponse> everyAnswer = List.of(
             tool.execute(args("pile")),
             tool.execute(args("pile").put("limit", 1)),
