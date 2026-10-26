@@ -1,13 +1,13 @@
 package org.jawata.mcp.tools.shared;
 
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.models.ToolResponse;
-
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.lang.LoadedWorkspace;
 
 /**
  * Is this workspace fit to be analysed — and, if not, exactly what is wrong with it.
@@ -30,44 +30,24 @@ import java.util.Optional;
  */
 public final class WorkspaceHealth {
 
-    /** One thing wrong with one project, and what to do about it. */
-    public record Problem(String projectKey, String projectPath, String problem, String remedy) {
-        public Map<String, Object> describe() {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("projectKey", projectKey);
-            row.put("projectPath", projectPath);
-            row.put("problem", problem);
-            row.put("remedy", remedy);
-            return row;
-        }
-    }
-
     private WorkspaceHealth() {
-    }
-
-    /** Everything wrong with this workspace. Empty when it is healthy. */
-    public static List<Problem> diagnose(IJdtService service) {
-        List<Problem> problems = new ArrayList<>();
-        for (org.jawata.spi.lang.LoadedWorkspace.ProblemInfo found : org.jawata.core.WorkspaceProbe.problemsIn(service)) {
-            problems.add(new Problem(found.projectKey(), found.projectPath(), found.problem(), found.remedy()));
-        }
-        return problems;
     }
 
     /**
      * Refuse a reference-rewriting refactoring while any project cannot be read.
      *
-     * @param what the refactoring, in the tool's own words (e.g. "rename")
+     * @param workspace the language's loaded workspace, or null when none is loaded
+     * @param what      the refactoring, in the tool's own words (e.g. "rename")
      * @return the refusal, fully qualified, or empty when the workspace is sound
      */
-    public static Optional<ToolResponse> refuseIfUnhealthy(IJdtService service, String what) {
-        List<Problem> problems = diagnose(service);
+    public static Optional<ToolResponse> refuseIfUnhealthy(LoadedWorkspace workspace, String what) {
+        List<LoadedWorkspace.ProblemInfo> problems = workspace == null ? List.of() : workspace.problems();
         if (problems.isEmpty()) {
             return Optional.empty();
         }
 
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (Problem p : problems) {
+        for (LoadedWorkspace.ProblemInfo p : problems) {
             rows.add(p.describe());
         }
         Map<String, Object> data = new LinkedHashMap<>();
@@ -76,7 +56,7 @@ public final class WorkspaceHealth {
         data.put("refused", what);
 
         StringBuilder detail = new StringBuilder();
-        for (Problem p : problems) {
+        for (LoadedWorkspace.ProblemInfo p : problems) {
             detail.append("\n  • ").append(p.projectKey()).append(" (").append(p.projectPath())
                 .append(")\n      problem: ").append(p.problem())
                 .append("\n      fix:     ").append(p.remedy());

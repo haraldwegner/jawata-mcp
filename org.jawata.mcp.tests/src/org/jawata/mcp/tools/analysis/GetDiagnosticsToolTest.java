@@ -27,7 +27,7 @@ class GetDiagnosticsToolTest {
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProject("simple-maven");
-        tool = new GetDiagnosticsTool(() -> service);
+        tool = new GetDiagnosticsTool(() -> service, () -> new org.jawata.mcp.java.JavaSourceDiagnostics());
         objectMapper = new ObjectMapper();
         calculatorPath = helper.getFixturePath("simple-maven")
             .resolve("src/main/java/com/example/Calculator.java").toString();

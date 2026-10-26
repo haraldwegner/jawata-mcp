@@ -88,7 +88,7 @@ class MoveMethodToolTest {
             "the call site must be rewritten onto the new receiver:\n" + clientAfter);
 
         // Non-vacuous: the move + call-site rewrite leaves the project compiling.
-        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
+        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         ToolResponse cr = compile.execute(mapper.createObjectNode());
         assertTrue(cr.isSuccess(), "compile must succeed; got: " + cr.getError());
         @SuppressWarnings("unchecked")

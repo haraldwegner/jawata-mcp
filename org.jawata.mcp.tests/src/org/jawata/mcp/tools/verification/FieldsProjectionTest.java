@@ -228,7 +228,7 @@ class FieldsProjectionTest {
     void diagnostics() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
         ToolRegistry registry = new ToolRegistry();
-        registry.register(new GetDiagnosticsTool(() -> service));
+        registry.register(new GetDiagnosticsTool(() -> service, () -> new org.jawata.mcp.java.JavaSourceDiagnostics()));
         registry.setReconciler(new OwnedReconciler(() -> service));
 
         // Prime the guard, write a broken file externally, let the builder see it

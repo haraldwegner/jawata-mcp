@@ -5,15 +5,10 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 
-import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.jawata.core.IJdtService;
-import org.jawata.core.LoadedProject;
-import org.jawata.mcp.java.JavaBuildVerdict;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.spi.host.BuildKind;
@@ -21,6 +16,7 @@ import org.jawata.spi.host.BuildScope;
 import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.lang.BuildVerdict;
 import org.jawata.spi.lang.Diagnostic;
+import org.jawata.spi.lang.LoadedWorkspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,15 +39,25 @@ import com.fasterxml.jackson.databind.JsonNode;
  * compiler errors, classpath errors, manifest errors — that AST reconcile alone
  * misses.</p>
  */
-public class CompileWorkspaceTool extends AbstractTool {
+public class CompileWorkspaceTool extends WorkspaceTool<LoadedWorkspace> {
 
     private static final Logger log = LoggerFactory.getLogger(CompileWorkspaceTool.class);
 
     /** The host's reconciler, which refreshes and builds; read at call time (28k E6). */
     private final Supplier<Reconciler> reconciler;
 
-    public CompileWorkspaceTool(Supplier<IJdtService> serviceSupplier, Supplier<Reconciler> reconciler) {
-        super(serviceSupplier);
+    /** The language's compile check, read at call time: the one place the problem and task rows come from (28k E10b). */
+    private final Supplier<BuildVerdict> verdict;
+
+    /**
+     * @param workspace  the language's loaded workspace
+     * @param verdict    the language's compile check
+     * @param reconciler the host's way to refresh and build
+     */
+    public CompileWorkspaceTool(Supplier<? extends LoadedWorkspace> workspace, Supplier<BuildVerdict> verdict,
+            Supplier<Reconciler> reconciler) {
+        super(workspace);
+        this.verdict = verdict;
         this.reconciler = reconciler;
     }
 
@@ -163,7 +169,7 @@ public class CompileWorkspaceTool extends AbstractTool {
     private static final Set<String> VALID_SCOPES = Set.of("main", "test", "both");
 
     @Override
-    protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+    protected ToolResponse executeWithWorkspace(LoadedWorkspace service, JsonNode arguments) {
         String minSeverityRaw = getStringParam(arguments, "minSeverity", "ERROR");
         boolean includeTaskMarkers = getBooleanParam(arguments, "includeTaskMarkers", false);
         boolean cleanFirst = getBooleanParam(arguments, "clean", false);
@@ -184,31 +190,9 @@ public class CompileWorkspaceTool extends AbstractTool {
             }
         }
 
-        // AbstractTool.execute already validated `projectKey` if present and
-        // wrapped the service in a ScopedJdtService; however, ScopedJdtService
-        // delegates allProjects() to the underlying multi-project service, so
-        // we need to choose the project set ourselves. When projectKey is set,
-        // operate on just that one; otherwise walk every loaded project.
-        String projectKey = getStringParam(arguments, "projectKey");
-        Collection<LoadedProject> projects;
-        if (projectKey != null && !projectKey.isBlank()) {
-            Optional<LoadedProject> scoped = service.getProject(projectKey);
-            if (scoped.isEmpty()) {
-                // bugs.md #11 (Sprint 14): same dropped-vs-typo distinction
-                // as AbstractTool.execute. AbstractTool doesn't fire for this
-                // tool because compile_workspace handles its own projectKey
-                // (it needs unscoped allProjects() when none is set).
-                Optional<Long> dropped = service.wasRecentlyDropped(projectKey);
-                if (dropped.isPresent()) {
-                    return ToolResponse.projectKeyDropped(projectKey, dropped.get());
-                }
-                return ToolResponse.invalidParameter("projectKey",
-                    "Unknown projectKey '" + projectKey + "'. Use project(action=list).");
-            }
-            projects = List.of(scoped.get());
-        } else {
-            projects = service.allProjects();
-        }
+        // WorkspaceTool already validated `projectKey` if present (the dropped-versus-typo answers are its own) and narrowed the
+        // workspace to that one project, so the projects it lists are the ones to build.
+        Collection<LoadedWorkspace.ProjectInfo> projects = service.projects();
 
         // v3.2.1 (dogfood #2): compiling an EMPTY workspace used to answer
         // success/0 errors/0 compiled — a clean-looking no-op that read as a
@@ -227,7 +211,7 @@ public class CompileWorkspaceTool extends AbstractTool {
             List<Map<String, Object>> diagnostics = new ArrayList<>();
             // Sprint 28k (E6, C1 architect F1): ONE rebuild over the selected projects; only what the host's
             // reconciler answers as built is counted, and every other selected project is named below.
-            List<String> names = projects.stream().map(p -> p.javaProject().getProject().getName()).toList();
+            List<String> names = projects.stream().map(LoadedWorkspace.ProjectInfo::buildName).toList();
             Set<String> built;
             try {
                 built = reconciler.get().rebuild(new BuildScope(names),
@@ -240,17 +224,17 @@ public class CompileWorkspaceTool extends AbstractTool {
             List<Map<String, Object>> notBuilt = new ArrayList<>();
             // Sprint 28k (E10b): the compile check exists once — the problem and task rows come from the language's verdict,
             // read here after the build, instead of this tool sweeping the host's markers itself.
-            BuildVerdict verdict = new JavaBuildVerdict(service);
+            BuildVerdict language = verdict.get();
             BuildScope selected = new BuildScope(names);
-            Map<String, List<Diagnostic>> problemRows = byProject(verdict.diagnostics(selected, new NullProgressMonitor()));
+            Map<String, List<Diagnostic>> problemRows = byProject(language.diagnostics(selected, new NullProgressMonitor()));
             Map<String, List<Diagnostic>> taskRows = includeTaskMarkers
-                ? byProject(verdict.tasks(selected, new NullProgressMonitor())) : Map.of();
+                ? byProject(language.tasks(selected, new NullProgressMonitor())) : Map.of();
 
-            for (LoadedProject loaded : projects) {
-                IProject project = loaded.javaProject().getProject();
-                if (!built.contains(project.getName())) {
+            for (LoadedWorkspace.ProjectInfo loaded : projects) {
+                String buildName = loaded.buildName();
+                if (!built.contains(buildName)) {
                     Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("project", loaded.projectKey());
+                    row.put("project", loaded.key());
                     row.put("problem", "the host's reconciler did not build it (its build failed, or the host does not hold it)");
                     row.put("remedy", "read the server log for the build failure, then refresh_workspace");
                     notBuilt.add(row);
@@ -277,7 +261,7 @@ public class CompileWorkspaceTool extends AbstractTool {
                 //
                 // Continue collecting markers whatever was built — partial results are still useful.
 
-                for (Diagnostic row : problemRows.getOrDefault(project.getName(), List.of())) {
+                for (Diagnostic row : problemRows.getOrDefault(buildName, List.of())) {
                     if (row.severity().compareTo(minSeverity) < 0) continue;
                     if (!inScope(row.scope(), scope)) continue;
                     diagnostics.add(describe(row, loaded, service));
@@ -285,7 +269,7 @@ public class CompileWorkspaceTool extends AbstractTool {
                     else if (row.severity() == Diagnostic.Severity.WARNING) warningCount++;
                 }
 
-                for (Diagnostic task : taskRows.getOrDefault(project.getName(), List.of())) {
+                for (Diagnostic task : taskRows.getOrDefault(buildName, List.of())) {
                     if (!inScope(task.scope(), scope)) continue;
                     diagnostics.add(describe(task, loaded, service));
                 }
@@ -305,8 +289,7 @@ public class CompileWorkspaceTool extends AbstractTool {
             // run — a green gate that never looked. Say so loudly and count
             // each such project as an error, so 0/0 always means "compiled
             // clean" and never "could not compile".
-            List<org.jawata.mcp.tools.shared.WorkspaceHealth.Problem> unbuildable =
-                org.jawata.mcp.tools.shared.WorkspaceHealth.diagnose(service);
+            List<LoadedWorkspace.ProblemInfo> unbuildable = service.problems();
             if (!unbuildable.isEmpty() || !notBuilt.isEmpty()) {
                 List<Map<String, Object>> rows = new ArrayList<>();
                 for (var p : unbuildable) {
@@ -406,17 +389,17 @@ public class CompileWorkspaceTool extends AbstractTool {
         return grouped;
     }
 
-    static Map<String, Object> describe(Diagnostic row, LoadedProject loaded, IJdtService service) {
+    static Map<String, Object> describe(Diagnostic row, LoadedWorkspace.ProjectInfo loaded, LoadedWorkspace service) {
         Map<String, Object> entry = new LinkedHashMap<>();
         if (row.filePath() != null) {
-            entry.put("filePath", service.getPathUtils().formatPath(row.filePath()));
+            entry.put("filePath", service.display(java.nio.file.Path.of(row.filePath())));
         }
         if (row.line() > 0) entry.put("line", row.line() - 1); // markers are 1-based; tools are 0-based
         if (row.detail().charStart() >= 0) entry.put("charStart", row.detail().charStart());
         if (row.detail().charEnd() >= 0) entry.put("charEnd", row.detail().charEnd());
         entry.put("severity", row.severity().name());
         entry.put("message", row.message());
-        entry.put("sourceProject", loaded.projectKey());
+        entry.put("sourceProject", loaded.key());
         return entry;
     }
 }

@@ -265,4 +265,15 @@ public class ScopedJdtService implements IJdtService {
     public void reresolveWorkspace() {
         delegate.reresolveWorkspace();
     }
+
+    /** The neutral view of a scoped service holds only its own project, though {@link #allProjects()} stays the whole workspace. */
+    @Override
+    public List<ProjectInfo> projects() {
+        return delegate.project(scope.projectKey()).map(List::of).orElse(List.of());
+    }
+
+    @Override
+    public List<ProblemInfo> problems() {
+        return delegate.problems().stream().filter(problem -> problem.projectKey().equals(scope.projectKey())).toList();
+    }
 }

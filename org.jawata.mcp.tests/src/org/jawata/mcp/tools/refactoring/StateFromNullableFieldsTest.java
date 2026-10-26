@@ -109,7 +109,7 @@ class StateFromNullableFieldsTest {
         assertFalse(bodyOf(after, "public void advance(int by)").contains("ticks += by * 2"),
             () -> "the branch bodies must have moved out of advance():\n" + after);
 
-        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
+        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         @SuppressWarnings("unchecked")
         Map<String, Object> cdata =
             (Map<String, Object>) compile.execute(mapper.createObjectNode()).getData();

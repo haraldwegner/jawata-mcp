@@ -112,7 +112,7 @@ class AForwardingAnonymousClassIsDeletedTest {
                 + " given, and the fixture's remaining " + (wrappersBefore - 1)
                 + " must still construct:\n" + strategy);
 
-        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
+        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         @SuppressWarnings("unchecked")
         Map<String, Object> cdata =
             (Map<String, Object>) compile.execute(mapper.createObjectNode()).getData();

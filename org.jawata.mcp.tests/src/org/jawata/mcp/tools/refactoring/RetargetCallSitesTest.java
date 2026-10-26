@@ -63,7 +63,7 @@ class RetargetCallSitesTest {
     }
 
     private int compileErrors() {
-        ToolResponse cr = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service)).execute(mapper.createObjectNode());
+        ToolResponse cr = new CompileWorkspaceTool(() -> service, () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service)).execute(mapper.createObjectNode());
         assertTrue(cr.isSuccess(), "compile failed: " + cr.getError());
         @SuppressWarnings("unchecked")
         Map<String, Object> d = (Map<String, Object>) cr.getData();

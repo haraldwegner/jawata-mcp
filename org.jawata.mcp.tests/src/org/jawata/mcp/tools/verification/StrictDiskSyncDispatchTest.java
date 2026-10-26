@@ -46,7 +46,7 @@ class StrictDiskSyncDispatchTest {
         service = loaded;
         registry = new ToolRegistry();
         registry.register(new SearchSymbolsTool(() -> service));
-        registry.register(new GetDiagnosticsTool(() -> service));
+        registry.register(new GetDiagnosticsTool(() -> service, () -> new org.jawata.mcp.java.JavaSourceDiagnostics()));
         registry.register(
             new RenameSymbolTool(() -> service, new RefactoringChangeCache(), () -> null));
         registry.setReconciler(new OwnedReconciler(() -> service));

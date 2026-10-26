@@ -82,7 +82,7 @@ class ADeadPublishedMemberIsDeletableTest {
         assertTrue(after.contains("public void register(String entry)"),
             () -> "the neighbouring member must survive:\n" + after);
 
-        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
+        CompileWorkspaceTool compile = new CompileWorkspaceTool(() -> service, () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         @SuppressWarnings("unchecked")
         Map<String, Object> cdata =
             (Map<String, Object>) compile.execute(mapper.createObjectNode()).getData();

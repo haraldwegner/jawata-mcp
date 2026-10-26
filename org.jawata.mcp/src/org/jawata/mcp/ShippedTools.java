@@ -191,8 +191,8 @@ public final class ShippedTools {
         // use. The registry's in-flight record lets `pile` report calls that never came back.
         tools.add(new FieldTool(w.fieldDir(), w.inFlight()));
 
-        tools.add(new GetDiagnosticsTool(jdt));
-        tools.add(new CompileWorkspaceTool(jdt, w.reconciler()));
+        tools.add(new GetDiagnosticsTool(ports.workspace(), ports.diagnostics()));
+        tools.add(new CompileWorkspaceTool(ports.workspace(), ports.verdict(), w.reconciler()));
         tools.add(runTests);
 
         // The hire path. The REGISTRY supplier breaks a real cycle (the tool sits in the registry its
@@ -204,7 +204,7 @@ public final class ShippedTools {
             new PlanLedger(),
             w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore));
 
-        tools.add(new RefreshWorkspaceTool(jdt, w.reconciler()));
+        tools.add(new RefreshWorkspaceTool(ports.workspace(), ports.verdict(), w.reconciler()));
         tools.add(new RefactoringTool(jdt, w.changeCache(), advisor));
         tools.add(experience);
 

@@ -18,7 +18,7 @@ import org.jawata.spi.lang.TestRuntime;
  * @param tests   the first bound provider's test runtime, or null while no language can run tests
  * @param languages the names of the languages bound now, in the order they bound; empty while none is
  */
-public record ProviderPorts(Supplier<SymbolAnchors> anchors, Supplier<TestRuntime> tests, Supplier<java.util.List<String>> languages, java.util.function.Supplier<org.jawata.spi.lang.LoadedWorkspace> workspace) {
+public record ProviderPorts(Supplier<SymbolAnchors> anchors, Supplier<TestRuntime> tests, Supplier<java.util.List<String>> languages, java.util.function.Supplier<org.jawata.spi.lang.LoadedWorkspace> workspace, java.util.function.Supplier<org.jawata.spi.lang.BuildVerdict> verdict, java.util.function.Supplier<org.jawata.spi.lang.SourceDiagnostics> diagnostics) {
 
     /** The ports over the languages bound on {@code board} now and later, each provider asked under {@code context}. */
     public static ProviderPorts over(EngineWhiteboard board, ProviderContext context) {
@@ -35,6 +35,14 @@ public record ProviderPorts(Supplier<SymbolAnchors> anchors, Supplier<TestRuntim
             () -> board.providers().stream()
                 .map((LanguageProvider provider) -> provider.workspace(context))
                 .flatMap(Optional::stream)
-                .findFirst().orElse(org.jawata.spi.lang.LoadedWorkspace.NONE));
+                .findFirst().orElse(org.jawata.spi.lang.LoadedWorkspace.NONE),
+            () -> board.providers().stream()
+                .map((LanguageProvider provider) -> provider.verdict(context))
+                .filter(Objects::nonNull)
+                .findFirst().orElse(null),
+            () -> board.providers().stream()
+                .map((LanguageProvider provider) -> provider.diagnostics(context))
+                .flatMap(Optional::stream)
+                .findFirst().orElse(null));
     }
 }

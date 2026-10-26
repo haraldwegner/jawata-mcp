@@ -34,4 +34,9 @@ public interface LanguageProvider {
     default Optional<LoadedWorkspace> workspace(ProviderContext context) {
         return Optional.empty();
     }
+
+    /** The errors and warnings it finds in a source file without a build; empty when the language has no such check. */
+    default Optional<SourceDiagnostics> diagnostics(ProviderContext context) {
+        return Optional.empty();
+    }
 }

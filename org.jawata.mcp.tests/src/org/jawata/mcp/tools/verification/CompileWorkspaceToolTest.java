@@ -69,7 +69,7 @@ class CompileWorkspaceToolTest {
     @BeforeEach
     void setUp() throws Exception {
         service = helper.loadProjectCopy("compile-clean");
-        tool = new CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
+        tool = new CompileWorkspaceTool(() -> service, () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         objectMapper = new ObjectMapper();
     }
 
@@ -96,7 +96,7 @@ class CompileWorkspaceToolTest {
     void aProjectTheReconcilerDidNotBuildIsNamedNotCounted() {
         // A host whose rebuild builds nothing: before C1 the tool counted the project as compiled and answered 0 errors,
         // the green gate that never looked.
-        CompileWorkspaceTool skipping = new CompileWorkspaceTool(() -> service,
+        CompileWorkspaceTool skipping = new CompileWorkspaceTool(() -> service, () -> new org.jawata.mcp.java.JavaBuildVerdict(service),
             () -> new org.jawata.spi.host.Reconciler() {
                 @Override
                 public org.jawata.spi.host.SyncReport syncBeforeCall() {

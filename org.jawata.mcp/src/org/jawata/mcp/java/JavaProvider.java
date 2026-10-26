@@ -110,6 +110,12 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
         return Optional.ofNullable(model.get());
     }
 
+    /** Java's problems in a source file: JDT's reconcile, or the last build's markers for a file that is not open. */
+    @Override
+    public Optional<org.jawata.spi.lang.SourceDiagnostics> diagnostics(ProviderContext context) {
+        return Optional.of(new JavaSourceDiagnostics());
+    }
+
     /**
      * What the knowledge classes and the tools that hold them keep: Java's anchors over whatever model is loaded at the moment of
      * the ask, or null while none is. The one place {@link JavaSymbolAnchors#over} is called (E12, ledger 28k-C3-8), so a tool that

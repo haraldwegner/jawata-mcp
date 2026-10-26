@@ -56,7 +56,7 @@ class WorkspaceHealthGuardTest {
     @Test
     @DisplayName("a healthy workspace is not obstructed — the guard must not cry wolf")
     void aHealthyWorkspacePassesTheGuard() {
-        assertTrue(WorkspaceHealth.diagnose(service).isEmpty(),
+        assertTrue(service.problems().isEmpty(),
             "the fixture workspace is sound");
         assertTrue(WorkspaceHealth.refuseIfUnhealthy(service, "rename_symbol").isEmpty(),
             "a guard that fires on a good workspace is worse than no guard — it teaches "
@@ -80,10 +80,10 @@ class WorkspaceHealthGuardTest {
         service.allProjects().iterator().next().javaProject().getProject()
             .close(new org.eclipse.core.runtime.NullProgressMonitor());
 
-        List<WorkspaceHealth.Problem> problems = WorkspaceHealth.diagnose(service);
+        List<org.jawata.spi.lang.LoadedWorkspace.ProblemInfo> problems = service.problems();
         assertEquals(1, problems.size(), "the dead project is found: " + problems);
 
-        WorkspaceHealth.Problem p = problems.get(0);
+        org.jawata.spi.lang.LoadedWorkspace.ProblemInfo p = problems.get(0);
         assertNotNull(p.projectKey(), "it is NAMED");
         assertNotNull(p.projectPath(), "with its path, so the user can go and look");
         assertTrue(p.problem().contains("CLOSED"),
@@ -163,7 +163,7 @@ class WorkspaceHealthGuardTest {
             org.eclipse.core.resources.IncrementalProjectBuilder.FULL_BUILD, null);
 
         // 1. HEALTH: named, explained, remedied — not healthy:true.
-        List<WorkspaceHealth.Problem> problems = WorkspaceHealth.diagnose(service);
+        List<org.jawata.spi.lang.LoadedWorkspace.ProblemInfo> problems = service.problems();
         assertFalse(problems.isEmpty(), "an unbuildable project must be diagnosed");
         assertTrue(problems.get(0).problem().contains("BUILD PATH"),
             "the diagnosis names the build path: " + problems.get(0).problem());
@@ -172,7 +172,7 @@ class WorkspaceHealthGuardTest {
         assertNotNull(problems.get(0).remedy());
 
         // 2. THE GATE: get_diagnostics must say COULD NOT COMPILE, never bare 0.
-        GetDiagnosticsTool diag = new GetDiagnosticsTool(() -> service);
+        GetDiagnosticsTool diag = new GetDiagnosticsTool(() -> service, () -> new org.jawata.mcp.java.JavaSourceDiagnostics());
         Map<String, Object> d = data(diag.execute(om.createObjectNode()));
         assertNotNull(d.get("couldNotCompile"),
             "the response carries the could-not-compile block: " + d);

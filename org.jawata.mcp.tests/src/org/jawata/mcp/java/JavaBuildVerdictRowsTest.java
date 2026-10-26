@@ -147,7 +147,7 @@ class JavaBuildVerdictRowsTest {
     @Test
     @DisplayName("compile_workspace answers the verdict's rows: errors by default, warnings and notes only when asked, test code only for scope=test")
     void compileWorkspaceAnswersTheRowsThatMeetItsFilters() {
-        CompileWorkspaceTool tool = new CompileWorkspaceTool(() -> service, () -> new OwnedReconciler(() -> service));
+        CompileWorkspaceTool tool = new CompileWorkspaceTool(() -> service, () -> new JavaBuildVerdict(service), () -> new OwnedReconciler(() -> service));
 
         JsonNode byDefault = answered(tool.execute(mapper.createObjectNode()));
         assertTrue(rowsOf(byDefault).stream().allMatch(d -> "ERROR".equals(d.get("severity").asText())),
@@ -185,7 +185,7 @@ class JavaBuildVerdictRowsTest {
     @Test
     @DisplayName("refresh_workspace answers the verdict's errors and warnings, and no notes")
     void refreshWorkspaceAnswersErrorsAndWarnings() {
-        RefreshWorkspaceTool tool = new RefreshWorkspaceTool(() -> service, () -> new OwnedReconciler(() -> service));
+        RefreshWorkspaceTool tool = new RefreshWorkspaceTool(() -> service, () -> new JavaBuildVerdict(service), () -> new OwnedReconciler(() -> service));
 
         JsonNode data = answered(tool.execute(mapper.createObjectNode()));
 

@@ -60,7 +60,7 @@ public final class InertShippedTools {
     public static List<Tool> tools() {
         ShippedTools.Wiring wiring = wiring(new ToolRegistry());
         JavaProvider javaProvider = new JavaProvider(wiring.jdt());
-        ShippedTools.Built neutral = ShippedTools.neutral(wiring, new ProviderPorts(javaProvider.memoryAnchors(), javaProvider::testRuntime, java.util.List::of, () -> org.jawata.spi.lang.LoadedWorkspace.NONE));
+        ShippedTools.Built neutral = ShippedTools.neutral(wiring, new ProviderPorts(javaProvider.memoryAnchors(), javaProvider::testRuntime, java.util.List::of, () -> org.jawata.spi.lang.LoadedWorkspace.NONE, () -> null, () -> null));
         // The composition LanguagePublisher does when the Java provider binds: the neutral tools, then the language's own.
         List<Tool> all = new java.util.ArrayList<>(neutral.tools());
         all.addAll(javaProvider.tools(neutral.needs()));

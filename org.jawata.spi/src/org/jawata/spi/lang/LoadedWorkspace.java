@@ -72,6 +72,11 @@ public interface LoadedWorkspace {
         public LoadedWorkspace scoped(String key) {
             return null;
         }
+
+        @Override
+        public int unitCount(String key) {
+            return 0;
+        }
     };
 
     /** @return the loaded projects, in the order they were loaded; empty when none is */
@@ -136,6 +141,13 @@ public interface LoadedWorkspace {
     LoadedWorkspace scoped(String key);
 
     /**
+     * @param key a project key
+     * @return how many source units the project holds right now, counted live (not as at the load), or 0 when it is not loaded; the
+     *         figure a refresh reports as the files it picked up
+     */
+    int unitCount(String key);
+
+    /**
      * One loaded project.
      *
      * @param key                 the name a caller passes to scope a call to this project
@@ -161,5 +173,15 @@ public interface LoadedWorkspace {
      * @param remedy      what the person can do about it
      */
     record ProblemInfo(String projectKey, String projectPath, String problem, String remedy) {
+
+        /** @return the four fields as a response row, in the order a reader expects them */
+        public java.util.Map<String, Object> describe() {
+            java.util.Map<String, Object> row = new java.util.LinkedHashMap<>();
+            row.put("projectKey", projectKey);
+            row.put("projectPath", projectPath);
+            row.put("problem", problem);
+            row.put("remedy", remedy);
+            return row;
+        }
     }
 }

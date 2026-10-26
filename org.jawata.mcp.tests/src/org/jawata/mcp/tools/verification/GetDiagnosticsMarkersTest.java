@@ -51,7 +51,7 @@ class GetDiagnosticsMarkersTest {
     void closed_file_problem_marker_is_reported() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
         ToolRegistry registry = new ToolRegistry();
-        registry.register(new GetDiagnosticsTool(() -> service));
+        registry.register(new GetDiagnosticsTool(() -> service, () -> new org.jawata.mcp.java.JavaSourceDiagnostics()));
         registry.setReconciler(new OwnedReconciler(() -> service));
 
         // Prime the guard (first call reconciles the new root once).
@@ -97,7 +97,7 @@ class GetDiagnosticsMarkersTest {
     void clean_fixture_reports_zero_errors() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
         ToolRegistry registry = new ToolRegistry();
-        registry.register(new GetDiagnosticsTool(() -> service));
+        registry.register(new GetDiagnosticsTool(() -> service, () -> new org.jawata.mcp.java.JavaSourceDiagnostics()));
         registry.setReconciler(new OwnedReconciler(() -> service));
 
         ObjectNode args = mapper.createObjectNode();

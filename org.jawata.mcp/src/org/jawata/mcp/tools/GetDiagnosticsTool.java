@@ -1,20 +1,10 @@
 package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.core.IPackageFragment;
-import org.eclipse.jdt.core.IPackageFragmentRoot;
-import org.eclipse.jdt.core.JavaModelException;
-import org.eclipse.jdt.core.compiler.CategorizedProblem;
-import org.eclipse.jdt.core.compiler.IProblem;
-import org.eclipse.jdt.core.dom.AST;
-import org.eclipse.jdt.core.dom.CompilationUnit;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.java.JavaBuildVerdict;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.spi.lang.Diagnostic;
+import org.jawata.spi.lang.LoadedWorkspace;
+import org.jawata.spi.lang.SourceDiagnostics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,19 +13,29 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
  * Get compilation diagnostics (errors and warnings) for a file or project.
  *
- * Uses Eclipse JDT's reconcile mechanism to get IProblem[] with compiler errors/warnings.
+ * <p>Asks the language for the problems it finds in a source file without a build (Sprint 28k, Stage 9: {@link SourceDiagnostics}); for
+ * Java that is JDT's reconcile.</p>
  */
-public class GetDiagnosticsTool extends AbstractTool {
+public class GetDiagnosticsTool extends WorkspaceTool<LoadedWorkspace> {
 
     private static final Logger log = LoggerFactory.getLogger(GetDiagnosticsTool.class);
 
-    public GetDiagnosticsTool(Supplier<IJdtService> serviceSupplier) {
-        super(serviceSupplier);
+    /** The language's per-file check, read at call time because a language may arrive after the tool is built. */
+    private final Supplier<SourceDiagnostics> diagnostics;
+
+    /**
+     * @param workspace   the language's loaded workspace
+     * @param diagnostics the language's per-file problem check
+     */
+    public GetDiagnosticsTool(Supplier<? extends LoadedWorkspace> workspace, Supplier<SourceDiagnostics> diagnostics) {
+        super(workspace);
+        this.diagnostics = diagnostics;
     }
 
     @Override
@@ -93,7 +93,7 @@ public class GetDiagnosticsTool extends AbstractTool {
     }
 
     @Override
-    protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+    protected ToolResponse executeWithWorkspace(LoadedWorkspace workspace, JsonNode arguments) {
         String filePath = getStringParam(arguments, "filePath");
         String severity = getStringParam(arguments, "severity", "all");
         int maxResults = getIntParam(arguments, "maxResults", 100);
@@ -106,47 +106,38 @@ public class GetDiagnosticsTool extends AbstractTool {
             return ToolResponse.invalidParameter("fields", e.getMessage());
         }
 
+        SourceDiagnostics language = diagnostics.get();
+        if (language == null) {
+            return ToolResponse.invalidParameter("filePath",
+                "No loaded language can report diagnostics for a source file.");
+        }
+
         try {
-            List<Map<String, Object>> diagnostics = new ArrayList<>();
-            int errorCount = 0;
-            int warningCount = 0;
+            List<Map<String, Object>> collected = new ArrayList<>();
+            Tally tally = new Tally();
             int filesChecked = 0;
 
             if (filePath != null && !filePath.isBlank()) {
                 // Check single file
                 Path path = Path.of(filePath);
-                ICompilationUnit cu = service.getCompilationUnit(path);
-                if (cu == null) {
+                Optional<List<SourceDiagnostics.Row>> rows = language.inFile(workspace, path);
+                if (rows.isEmpty()) {
                     return ToolResponse.fileNotFound(filePath);
                 }
                 filesChecked = 1;
-                DiagnosticCounts counts = collectDiagnostics(service, cu, path, severity, maxResults, diagnostics);
-                errorCount = counts.errors;
-                warningCount = counts.warnings;
+                collect(workspace, path, rows.get(), severity, maxResults, collected, tally);
             } else {
-                // Check all files in the project
-                for (IPackageFragmentRoot root : service.getJavaProject().getPackageFragmentRoots()) {
-                    if (diagnostics.size() >= maxResults) break;
-                    if (root.getKind() != IPackageFragmentRoot.K_SOURCE) continue;
-
-                    for (IJavaElement child : root.getChildren()) {
-                        if (diagnostics.size() >= maxResults) break;
-                        if (!(child instanceof IPackageFragment pkg)) continue;
-
-                        for (ICompilationUnit cu : pkg.getCompilationUnits()) {
-                            if (diagnostics.size() >= maxResults) break;
-                            filesChecked++;
-
-                            Path cuPath = getCompilationUnitPath(cu);
-                            DiagnosticCounts counts = collectDiagnostics(service, cu, cuPath, severity,
-                                maxResults - diagnostics.size(), diagnostics);
-                            errorCount += counts.errors;
-                            warningCount += counts.warnings;
-                        }
-                    }
-                }
+                // Check all files in the project, until enough problems are found
+                int[] checked = {0};
+                language.inEveryFile(workspace, (path, rows) -> {
+                    checked[0]++;
+                    collect(workspace, path, rows, severity, maxResults - collected.size(), collected, tally);
+                    return collected.size() < maxResults;
+                });
+                filesChecked = checked[0];
             }
 
+            int errorCount = tally.errors;
             Map<String, Object> data = new LinkedHashMap<>();
             // jawata-mcp#4 (Sprint 27a Stage 8): a gate that could not look
             // must SAY so, never answer green. On an unbuildable project the
@@ -154,8 +145,7 @@ public class GetDiagnosticsTool extends AbstractTool {
             // exact state that read as "compiles clean" on the M2 workspace.
             // Each health problem counts as an ERROR so no caller can gate on
             // a vacuous zero.
-            List<org.jawata.mcp.tools.shared.WorkspaceHealth.Problem> unbuildable =
-                org.jawata.mcp.tools.shared.WorkspaceHealth.diagnose(service);
+            List<LoadedWorkspace.ProblemInfo> unbuildable = workspace.problems();
             if (!unbuildable.isEmpty()) {
                 List<Map<String, Object>> rows = new ArrayList<>();
                 for (var p : unbuildable) {
@@ -167,17 +157,17 @@ public class GetDiagnosticsTool extends AbstractTool {
                     + " could not look. Fix each per its remedy, then refresh_workspace.");
                 errorCount += unbuildable.size();
             }
-            data.put("totalDiagnostics", diagnostics.size());
+            data.put("totalDiagnostics", collected.size());
             data.put("errorCount", errorCount);
-            data.put("warningCount", warningCount);
+            data.put("warningCount", tally.warnings);
             data.put("filesChecked", filesChecked);
             data.put("diagnostics",
-                org.jawata.mcp.tools.shared.FieldsProjection.project(diagnostics, fields));
+                org.jawata.mcp.tools.shared.FieldsProjection.project(collected, fields));
 
             return ToolResponse.success(data, ResponseMeta.builder()
-                .totalCount(diagnostics.size())
-                .returnedCount(diagnostics.size())
-                .truncated(diagnostics.size() >= maxResults)
+                .totalCount(collected.size())
+                .returnedCount(collected.size())
+                .truncated(collected.size() >= maxResults)
                 .suggestedNextTools(List.of(
                     "go_to_definition to navigate to error location",
                     "inspect(kind=document_symbols) to see file structure"
@@ -190,191 +180,51 @@ public class GetDiagnosticsTool extends AbstractTool {
         }
     }
 
-    private Path getCompilationUnitPath(ICompilationUnit cu) {
-        try {
-            if (cu.getResource() != null && cu.getResource().getLocation() != null) {
-                return Path.of(cu.getResource().getLocation().toOSString());
-            }
-        } catch (Exception e) {
-            log.trace("Error getting CU path: {}", e.getMessage());
-        }
-        return Path.of(cu.getElementName());
-    }
-
-    private DiagnosticCounts collectDiagnostics(IJdtService service, ICompilationUnit cu, Path path,
-                                                  String severity, int remaining,
-                                                  List<Map<String, Object>> diagnostics) {
-        int errorCount = 0;
-        int warningCount = 0;
-
-        try {
-            // Reconcile to get AST with problems
-            CompilationUnit ast = cu.reconcile(
-                AST.getJLSLatest(),
-                ICompilationUnit.FORCE_PROBLEM_DETECTION,
-                null,
-                null
-            );
-
-            if (ast == null) {
-                // Sprint 21e (item C): reconcile returns a null AST for NON-working-copies
-                // — in this headless server no file is ever a working copy, so this tool
-                // NEVER reported problems for closed files (proven 2026-07-07). Post-build
-                // PROBLEM markers are per-call fresh since 21d (build on change): read them
-                // instead — the same sweep compile_workspace uses, same response shape.
-                return collectFromMarkers(service, cu, path, severity, remaining, diagnostics);
-            }
-
-            IProblem[] problems = ast.getProblems();
-
-            for (IProblem problem : problems) {
-                if (diagnostics.size() >= diagnostics.size() + remaining) break;
-
-                boolean isError = problem.isError();
-                boolean isWarning = problem.isWarning();
-
-                // 22c (2026-07-11, ported from upstream 2119dd80): newer JDT reports
-                // problems at other severities (e.g. info). This tool's contract is
-                // errors and warnings only — anything else must not be surfaced or
-                // counted (it would be mislabeled "warning" and totalDiagnostics would
-                // exceed errorCount + warningCount).
-                if (!isError && !isWarning) continue;
-
-                // Filter by severity
-                if ("error".equals(severity) && !isError) continue;
-                if ("warning".equals(severity) && !isWarning) continue;
-
-                if (isError) errorCount++;
-                if (isWarning) warningCount++;
-
-                Map<String, Object> diag = new LinkedHashMap<>();
-                diag.put("filePath", service.getPathUtils().formatPath(path));
-                diag.put("line", problem.getSourceLineNumber() - 1); // Convert to 0-based
-                diag.put("startOffset", problem.getSourceStart());
-                diag.put("endOffset", problem.getSourceEnd());
-                diag.put("severity", isError ? "error" : "warning");
-                diag.put("message", problem.getMessage());
-                diag.put("problemId", problem.getID());
-                diag.put("category", categorizeProblem(problem));
-
-                diagnostics.add(diag);
-            }
-        } catch (JavaModelException e) {
-            log.debug("Error reconciling {}: {}", path, e.getMessage());
-            // Add parse error as diagnostic
-            Map<String, Object> diag = new LinkedHashMap<>();
-            diag.put("filePath", service.getPathUtils().formatPath(path));
-            diag.put("line", 0);
-            diag.put("severity", "error");
-            diag.put("message", "Failed to analyze file: " + e.getMessage());
-            diag.put("category", "PARSE_ERROR");
-            diagnostics.add(diag);
-            errorCount++;
-        }
-
-        return new DiagnosticCounts(errorCount, warningCount);
-    }
-
-    /**
-     * Sprint 21e (item C): the honest closed-file path — the file's post-build problems, taken
-     * from the language's build verdict (28k E10b: the one place the host's markers are read).
-     * {@code problemId}/{@code category} are carried where the row has them; counts, locations
-     * and severity are the contract.
-     */
-    private DiagnosticCounts collectFromMarkers(IJdtService service, ICompilationUnit cu, Path path,
-                                                  String severity, int remaining,
-                                                  List<Map<String, Object>> diagnostics) {
-        int errorCount = 0;
-        int warningCount = 0;
-        for (Diagnostic row : new JavaBuildVerdict(service).diagnosticsIn(path.toString())) {
-            if (remaining <= 0) {
+    /** Adds one file's rows that pass the severity filter, up to {@code remaining}, counting what it adds. */
+    private void collect(LoadedWorkspace workspace, Path path, List<SourceDiagnostics.Row> rows, String severity, int remaining,
+                         List<Map<String, Object>> into, Tally tally) {
+        int room = remaining;
+        for (SourceDiagnostics.Row row : rows) {
+            if (room <= 0) {
                 break;
             }
-            boolean isError = row.severity() == Diagnostic.Severity.ERROR;
-            boolean isWarning = row.severity() == Diagnostic.Severity.WARNING;
-            // 22c (2026-07-11): same contract as the AST path above — errors and
-            // warnings only; info rows neither surfaced nor counted.
-            if (!isError && !isWarning) {
-                continue;
-            }
+            boolean isError = "error".equals(row.severity());
             if ("error".equals(severity) && !isError) {
                 continue;
             }
-            if ("warning".equals(severity) && !isWarning) {
+            if ("warning".equals(severity) && isError) {
                 continue;
             }
             if (isError) {
-                errorCount++;
-            }
-            if (isWarning) {
-                warningCount++;
+                tally.errors++;
+            } else {
+                tally.warnings++;
             }
             Map<String, Object> diag = new LinkedHashMap<>();
-            diag.put("filePath", service.getPathUtils().formatPath(path));
-            diag.put("line", row.line() > 0 ? row.line() - 1 : 0);
-            diag.put("startOffset", row.detail().charStart());
-            diag.put("endOffset", row.detail().charEnd());
-            diag.put("severity", isError ? "error" : "warning");
+            diag.put("filePath", workspace.display(path));
+            diag.put("line", row.line());
+            if (row.startOffset() != null) {
+                diag.put("startOffset", row.startOffset());
+            }
+            if (row.endOffset() != null) {
+                diag.put("endOffset", row.endOffset());
+            }
+            diag.put("severity", row.severity());
             diag.put("message", row.message());
-            if (row.detail().problemId() >= 0) {
-                diag.put("problemId", row.detail().problemId());
+            if (row.problemId() != null) {
+                diag.put("problemId", row.problemId());
             }
-            if (row.detail().categoryId() >= 0) {
-                diag.put("category", String.valueOf(row.detail().categoryId()));
+            if (row.category() != null) {
+                diag.put("category", row.category());
             }
-            diagnostics.add(diag);
-            remaining--;
+            into.add(diag);
+            room--;
         }
-        return new DiagnosticCounts(errorCount, warningCount);
     }
 
-    /**
-     * Categorize a problem using JDT's categorization system.
-     */
-    private String categorizeProblem(IProblem problem) {
-        // CategorizedProblem provides richer categorization
-        if (problem instanceof CategorizedProblem categorized) {
-            return categoryIdToName(categorized.getCategoryID());
-        }
-
-        // Fall back to IProblem bit flag checking
-        int id = problem.getID();
-
-        if ((id & IProblem.Syntax) != 0) return "SYNTAX";
-        if ((id & IProblem.ImportRelated) != 0) return "IMPORT";
-        if ((id & IProblem.TypeRelated) != 0) return "TYPE";
-        if ((id & IProblem.MethodRelated) != 0) return "METHOD";
-        if ((id & IProblem.ConstructorRelated) != 0) return "CONSTRUCTOR";
-        if ((id & IProblem.FieldRelated) != 0) return "FIELD";
-        if ((id & IProblem.Internal) != 0) return "INTERNAL";
-
-        return "OTHER";
+    /** The errors and warnings the call has collected. */
+    private static final class Tally {
+        int errors;
+        int warnings;
     }
-
-    private String categoryIdToName(int categoryId) {
-        return switch (categoryId) {
-            case CategorizedProblem.CAT_UNSPECIFIED -> "UNSPECIFIED";
-            case CategorizedProblem.CAT_BUILDPATH -> "BUILDPATH";
-            case CategorizedProblem.CAT_SYNTAX -> "SYNTAX";
-            case CategorizedProblem.CAT_IMPORT -> "IMPORT";
-            case CategorizedProblem.CAT_TYPE -> "TYPE";
-            case CategorizedProblem.CAT_MEMBER -> "MEMBER";
-            case CategorizedProblem.CAT_INTERNAL -> "INTERNAL";
-            case CategorizedProblem.CAT_JAVADOC -> "JAVADOC";
-            case CategorizedProblem.CAT_CODE_STYLE -> "CODE_STYLE";
-            case CategorizedProblem.CAT_POTENTIAL_PROGRAMMING_PROBLEM -> "POTENTIAL_PROBLEM";
-            case CategorizedProblem.CAT_NAME_SHADOWING_CONFLICT -> "NAME_SHADOWING";
-            case CategorizedProblem.CAT_DEPRECATION -> "DEPRECATION";
-            case CategorizedProblem.CAT_UNNECESSARY_CODE -> "UNNECESSARY_CODE";
-            case CategorizedProblem.CAT_UNCHECKED_RAW -> "UNCHECKED_RAW";
-            case CategorizedProblem.CAT_NLS -> "NLS";
-            case CategorizedProblem.CAT_RESTRICTION -> "RESTRICTION";
-            case CategorizedProblem.CAT_MODULE -> "MODULE";
-            case CategorizedProblem.CAT_COMPLIANCE -> "COMPLIANCE";
-            case CategorizedProblem.CAT_PREVIEW_RELATED -> "PREVIEW";
-            default -> "OTHER";
-        };
-    }
-
-    private record DiagnosticCounts(int errors, int warnings) {}
 }

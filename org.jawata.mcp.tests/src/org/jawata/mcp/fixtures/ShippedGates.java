@@ -47,8 +47,8 @@ public final class ShippedGates {
      */
     public static List<Tool> tools() {
         return List.of(
-            new CompileWorkspaceTool(() -> null, () -> null),
-            new GetDiagnosticsTool(() -> null),
+            new CompileWorkspaceTool(() -> null, () -> null, () -> null),
+            new GetDiagnosticsTool(() -> null, () -> null),
             new RunTestsTool(() -> null, () -> null));
     }
 

@@ -316,6 +316,30 @@ public interface IJdtService extends org.jawata.spi.lang.LoadedWorkspace {
     }
 
     @Override
+    default int unitCount(String key) {
+        Optional<LoadedProject> project = getProject(key);
+        if (project.isEmpty() || project.get().javaProject() == null) {
+            return 0;
+        }
+        int count = 0;
+        try {
+            for (org.eclipse.jdt.core.IPackageFragmentRoot root : project.get().javaProject().getPackageFragmentRoots()) {
+                if (root.getKind() != org.eclipse.jdt.core.IPackageFragmentRoot.K_SOURCE) {
+                    continue;
+                }
+                for (var element : root.getChildren()) {
+                    if (element instanceof org.eclipse.jdt.core.IPackageFragment fragment) {
+                        count += fragment.getCompilationUnits().length;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            // A project that cannot be walked holds nothing countable; the health probe is what says why.
+        }
+        return count;
+    }
+
+    @Override
     default org.jawata.spi.lang.LoadedWorkspace scoped(String key) {
         return getProject(key).<org.jawata.spi.lang.LoadedWorkspace>map(project -> new ScopedJdtService(this, project)).orElse(null);
     }

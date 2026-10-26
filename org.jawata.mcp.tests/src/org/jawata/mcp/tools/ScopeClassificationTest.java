@@ -189,7 +189,7 @@ class ScopeClassificationTest {
         service.loadProject(mainCopy);
         service.addProject(testsCopy);
         org.jawata.mcp.tools.CompileWorkspaceTool tool =
-            new org.jawata.mcp.tools.CompileWorkspaceTool(() -> service, () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
+            new org.jawata.mcp.tools.CompileWorkspaceTool(() -> service, () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service));
         com.fasterxml.jackson.databind.ObjectMapper mapper =
             new com.fasterxml.jackson.databind.ObjectMapper();
 

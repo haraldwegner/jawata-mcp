@@ -1,5 +1,7 @@
 package org.jawata.mcp.tools;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -26,7 +28,29 @@ import com.fasterxml.jackson.databind.JsonNode;
  */
 public abstract class WorkspaceTool<W extends LoadedWorkspace> extends NeutralTool {
 
-    private final Supplier<? extends W> workspaceSupplier;
+    /**
+	 * Decorate a tool's input schema with an optional {@code projectKey}
+	 * property documenting the Sprint 10 multi-project scoping convention.
+	 * Tools call this from {@link #getInputSchema()} so the parameter shows
+	 * up in the MCP {@code tools/list} response.
+	 *
+	 * <p>Returns a fresh map; the original is not mutated. Works for tools
+	 * whose properties map is immutable (e.g. {@code Map.of(...)}).
+	 */
+	@SuppressWarnings("unchecked")
+	protected static Map<String, Object> withProjectKey(Map<String, Object> schema) {
+	    Map<String, Object> wrapped = new LinkedHashMap<>(schema);
+	    Map<String, Object> oldProps = (Map<String, Object>) wrapped.getOrDefault("properties", Map.of());
+	    Map<String, Object> newProps = new LinkedHashMap<>(oldProps);
+	    newProps.putIfAbsent("projectKey", Map.of(
+	        "type", "string",
+	        "description", "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace."
+	    ));
+	    wrapped.put("properties", newProps);
+	    return wrapped;
+	}
+
+	private final Supplier<? extends W> workspaceSupplier;
 
     /** @param workspaceSupplier the language's loaded workspace, read at call time because a load replaces it */
     protected WorkspaceTool(Supplier<? extends W> workspaceSupplier) {
