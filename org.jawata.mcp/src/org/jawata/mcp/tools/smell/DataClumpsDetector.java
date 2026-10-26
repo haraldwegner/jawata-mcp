@@ -7,9 +7,9 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.domain.Detector;
 import org.jawata.mcp.domain.Finding;
 import org.jawata.mcp.domain.Findings;
+import org.jawata.mcp.java.Detector;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.SourceScan;
 
@@ -128,7 +128,7 @@ public final class DataClumpsDetector implements Detector {
                         // reads it, so it carries the qualified name a door can resolve;
                         // the message names the CLUMP, not the method.
                         .add(new Occurrence(filePath, line, SmellAddress.qualifiedOr(
-                            org.jawata.mcp.models.CodeAddress.symbolOf(node.resolveBinding()),
+                            org.jawata.mcp.tools.shared.SourceScan.symbolOf(node.resolveBinding()),
                             node.getName().getIdentifier())));
                 }
                 return true;

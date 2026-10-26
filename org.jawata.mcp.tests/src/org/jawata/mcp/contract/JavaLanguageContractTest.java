@@ -76,6 +76,20 @@ class JavaLanguageContractTest {
     }
 
     @Nested
+    class Paths extends ChangePathsContract {
+        final OverLoadedProject project = new OverLoadedProject() { };
+
+        @RegisterExtension
+        TestProjectHelper helper = project.helper;
+
+        @Override
+        protected org.jawata.spi.lang.ChangePaths paths() throws Exception {
+            project.load();
+            return project.provider.paths(NO_HOST);
+        }
+    }
+
+    @Nested
     class Verdict extends BuildVerdictContract {
         final OverLoadedProject project = new OverLoadedProject() { };
 

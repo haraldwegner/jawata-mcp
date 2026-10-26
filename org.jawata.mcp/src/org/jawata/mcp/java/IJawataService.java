@@ -1,6 +1,8 @@
-package org.jawata.mcp.domain;
+package org.jawata.mcp.java;
 
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.domain.Advisor;
+import org.jawata.mcp.domain.NoOpAdvisor;
 
 /**
  * Sprint 16b/D — JAWATA's own engineering abstraction, the seam tools call instead

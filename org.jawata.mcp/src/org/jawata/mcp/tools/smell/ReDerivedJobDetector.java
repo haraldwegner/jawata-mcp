@@ -10,7 +10,7 @@ import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.domain.Detector;
+import org.jawata.mcp.java.Detector;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 

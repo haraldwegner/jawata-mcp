@@ -1,10 +1,10 @@
 package org.jawata.mcp.tools.smell;
 
-import org.jawata.mcp.domain.DetectorCatalog;
+import org.jawata.mcp.java.DetectorCatalog;
 
 /**
  * Sprint 19 (Kerievsky) — registers the pattern-opportunity {@link
- * org.jawata.mcp.domain.Detector}s under family {@code kerievsky}. These are the
+ * org.jawata.mcp.java.Detector}s under family {@code kerievsky}. These are the
  * detect triggers for the {@code refactor_to_pattern} transforms; the "toward"
  * triggers largely reuse existing Fowler kinds ({@code switch_statements},
  * {@code long_method}, {@code speculative_generality}), so this contributor holds

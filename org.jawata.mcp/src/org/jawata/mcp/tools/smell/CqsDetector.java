@@ -160,7 +160,7 @@ public final class CqsDetector extends AbstractAstDetector {
         // THE QUALIFIED METHOD, not the identifier: separate_query_from_modifier is an
         // operation and has to be pointed at ONE method; a simple name points at every
         // method of that name in the workspace.
-        String symbol = org.jawata.mcp.models.CodeAddress.symbolOf(node.resolveBinding());
+        String symbol = org.jawata.mcp.tools.shared.SourceScan.symbolOf(node.resolveBinding());
         return new Finding(
             "cqs", filePath, ast.getLineNumber(node.getName().getStartPosition()), -1, "warning",
             "Method '" + name + "' both writes " + describe(mutated) + " and returns a value — a "

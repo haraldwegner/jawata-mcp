@@ -300,7 +300,7 @@ public class FindUnusedCodeTool extends AbstractTool {
                 // one renderer, the same one step 5 gave the other thirteen detectors. The
                 // key is `symbol` because that is what every door reads and what the cure
                 // join looks for; `name` stays for the readers that already use it.
-                String symbol = org.jawata.mcp.models.CodeAddress.symbolOf(binding);
+                String symbol = org.jawata.mcp.tools.shared.SourceScan.symbolOf(binding);
                 if (symbol != null) {
                     item.put("symbol", symbol);
                 }

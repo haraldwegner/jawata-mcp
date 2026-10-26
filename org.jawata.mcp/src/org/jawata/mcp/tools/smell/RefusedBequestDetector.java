@@ -45,7 +45,7 @@ public final class RefusedBequestDetector extends AbstractAstDetector {
                         "refused_bequest", filePath, line, -1, "warning",
                         "Override '" + name + "' rejects its inheritance (throws "
                             + "UnsupportedOperationException). Consider Replace Inheritance with Delegation.",
-                        SmellAddress.qualifiedOr(org.jawata.mcp.models.CodeAddress.symbolOf(
+                        SmellAddress.qualifiedOr(org.jawata.mcp.tools.shared.SourceScan.symbolOf(
                             node.resolveBinding()), name)));
                 }
                 return true;

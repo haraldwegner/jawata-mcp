@@ -2,7 +2,7 @@ package org.jawata.mcp.domain;
 
 /**
  * Sprint 16b/D — the canonical quality/smell result of the JAWATA domain. A
- * {@link Detector} produces {@code Finding}s; {@link Findings#toResponse} renders
+ * {@code Detector} (in the Java provider) produces {@code Finding}s; {@link Findings#toResponse} renders
  * them to the MCP wire shape. This is the value type Sprint 17 (Fowler smells)
  * and Sprint 20 (SOLID) detectors emit — adding capability is registering a
  * detector that returns these, not adding a tool.

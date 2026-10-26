@@ -3,7 +3,7 @@ package org.jawata.mcp.tools.smell;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.jawata.mcp.models.CodeAddress;
+import org.jawata.mcp.tools.shared.SourceScan;
 
 /**
  * THE ADDRESS A DETECTOR EMITS, in the three shapes detectors actually hold.
@@ -15,7 +15,7 @@ import org.jawata.mcp.models.CodeAddress;
  * it up. A finding therefore said "here is the fix" and carried nothing the fix could be
  * pointed at.</p>
  *
- * <p>{@link CodeAddress#symbolOf} does the rendering; this is the three ways of GETTING the
+ * <p>{@link SourceScan#symbolOf} does the rendering; this is the three ways of GETTING the
  * binding, kept in one place so a detector adds one call rather than its own resolution —
  * which is how the five copies of a type lookup this sprint already merged came about.</p>
  */
@@ -39,7 +39,7 @@ public final class SmellAddress {
 
     /** The qualified name of the type being visited. */
     static String owner(TypeDeclaration node) {
-        return node == null ? null : CodeAddress.symbolOf(node.resolveBinding());
+        return node == null ? null : SourceScan.symbolOf(node.resolveBinding());
     }
 
     /**
@@ -64,7 +64,7 @@ public final class SmellAddress {
     public static String enclosingSymbol(ASTNode node) {
         for (ASTNode at = node; at != null; at = at.getParent()) {
             if (at instanceof MethodDeclaration method) {
-                return qualifiedOr(CodeAddress.symbolOf(method.resolveBinding()),
+                return qualifiedOr(SourceScan.symbolOf(method.resolveBinding()),
                     method.getName().getIdentifier());
             }
             if (at instanceof TypeDeclaration type) {

@@ -39,7 +39,7 @@ public final class LongParameterListDetector extends AbstractAstDetector {
                         (node.isConstructor() ? "Constructor '" : "Method '") + name + "' has "
                             + count + " parameters (threshold " + threshold
                             + "). Consider Introduce Parameter Object.",
-                        SmellAddress.qualifiedOr(org.jawata.mcp.models.CodeAddress.symbolOf(
+                        SmellAddress.qualifiedOr(org.jawata.mcp.tools.shared.SourceScan.symbolOf(
                             node.resolveBinding()), name)));
                 }
                 return true;

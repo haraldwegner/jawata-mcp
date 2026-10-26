@@ -1,8 +1,10 @@
-package org.jawata.mcp.domain;
+package org.jawata.mcp.java;
+
+import org.jawata.core.IJdtService;
+import org.jawata.mcp.domain.Findings;
+import org.jawata.mcp.models.ToolResponse;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.models.ToolResponse;
 
 /**
  * Sprint 16b/D — a registered quality/smell analysis, addressed by {@code kind}.

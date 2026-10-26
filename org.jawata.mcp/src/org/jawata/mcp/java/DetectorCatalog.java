@@ -1,4 +1,4 @@
-package org.jawata.mcp.domain;
+package org.jawata.mcp.java;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -9,6 +9,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+
+import org.jawata.mcp.java.Detector;
 
 /**
  * Sprint 16b/D — an ordered registry of {@link Detector}s keyed by {@code kind}.

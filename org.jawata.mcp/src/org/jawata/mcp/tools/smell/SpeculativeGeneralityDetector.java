@@ -56,7 +56,7 @@ public final class SpeculativeGeneralityDetector extends AbstractAstDetector {
                                 + "' has exactly one subtype (" + subtypes[0].getElementName()
                                 + "). Consider Collapse Hierarchy / Inline Class.",
                             SmellAddress.qualifiedOr(
-                                org.jawata.mcp.models.CodeAddress.symbolOf(binding), name)));
+                                org.jawata.mcp.tools.shared.SourceScan.symbolOf(binding), name)));
                     }
                 } catch (Exception e) {
                     // search failure — do not flag

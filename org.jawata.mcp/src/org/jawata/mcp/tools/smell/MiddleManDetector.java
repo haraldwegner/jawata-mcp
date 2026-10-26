@@ -62,7 +62,7 @@ public final class MiddleManDetector extends AbstractAstDetector {
                     // fine in the sentence and is not an address — a simple name is shared
                     // by every class that uses it, so nothing can look it up, and the cure
                     // this finding names is an operation that must be pointed somewhere.
-                    String symbol = org.jawata.mcp.models.CodeAddress.symbolOf(
+                    String symbol = org.jawata.mcp.tools.shared.SourceScan.symbolOf(
                         node.resolveBinding());
                     out.add(new Finding(
                         "middle_man", filePath, line, -1, "warning",

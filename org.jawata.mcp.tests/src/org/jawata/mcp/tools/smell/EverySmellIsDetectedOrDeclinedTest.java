@@ -1,6 +1,6 @@
 package org.jawata.mcp.tools.smell;
 
-import org.jawata.mcp.domain.DetectorCatalog;
+import org.jawata.mcp.java.DetectorCatalog;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

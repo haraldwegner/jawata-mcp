@@ -33,7 +33,8 @@ public abstract class BuildVerdictContract {
     protected abstract String fileThatBuilds() throws Exception;
 
     /**
-     * @return a file the language does not build
+     * @return a file the language does not build because it does not PARSE; a file that parses and fails to type-check proves nothing about
+     * the syntax category
      * @throws Exception when the fixture cannot be made
      */
     protected abstract String fileThatDoesNotBuild() throws Exception;
@@ -64,6 +65,17 @@ public abstract class BuildVerdictContract {
 
         assertFalse(problems.isEmpty(), "the file does not build and the verdict did not say so");
         assertTrue(verdict.describeCreated(file).isPresent(), "a created file that does not build is described");
+    }
+
+    @Test
+    @DisplayName("a file that does not parse is a SYNTAX problem: the lifecycle counts only those against a file a change created, so any other category lets a broken new file stand")
+    void anUnparseableFileIsASyntaxProblem() throws Exception {
+        String file = fileThatDoesNotBuild();
+
+        Set<BuildVerdict.SourceProblem> problems = verdict().problemsIn(List.of(file)).getOrDefault(file, Set.of());
+
+        assertTrue(problems.stream().anyMatch(BuildVerdict.SourceProblem::syntax),
+            "the file is not buildable because it does not parse, and no problem says syntax: " + problems);
     }
 
     @Test

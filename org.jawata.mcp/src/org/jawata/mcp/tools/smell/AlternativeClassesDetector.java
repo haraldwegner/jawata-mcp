@@ -10,9 +10,9 @@ import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.domain.Detector;
 import org.jawata.mcp.domain.Finding;
 import org.jawata.mcp.domain.Findings;
+import org.jawata.mcp.java.Detector;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.SourceScan;
 

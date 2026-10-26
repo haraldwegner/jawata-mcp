@@ -1,13 +1,15 @@
 package org.jawata.mcp.domain;
 
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-
-import java.util.List;
-
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
+
+import org.jawata.mcp.java.DetectorCatalog;
+import org.jawata.mcp.java.JawataService;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 
 /** Sprint 18 — the default no-store Advisor: empty advice, record is a safe no-op. */
 class NoOpAdvisorTest {

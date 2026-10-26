@@ -76,6 +76,25 @@ class FakeHostPortsContractTest {
         }
     }
 
+    @Nested
+    class Lifecycle extends EngineLifecycleContract {
+        @org.junit.jupiter.api.io.TempDir
+        Path scratch;
+
+        private FakeHost host;
+
+        @Override
+        protected org.jawata.spi.host.EngineLifecycle lifecycle() {
+            host = host(scratch);
+            return host.lifecycle();
+        }
+
+        @Override
+        protected java.util.List<String> reportsSeen() {
+            return host.lifecycleEvents();
+        }
+    }
+
     /** The real writes every host without its own uses, over the platform's own change machinery. */
     @Nested
     class DirectWrites extends WorkspaceWritesContract {

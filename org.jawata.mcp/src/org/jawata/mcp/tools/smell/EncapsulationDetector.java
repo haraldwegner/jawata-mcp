@@ -129,7 +129,7 @@ public final class EncapsulationDetector extends AbstractAstDetector {
                     // THE OWNER IS QUALIFIED. `Ticket#label` names a field in whichever
                     // Ticket the reader happens to open; the cure is an operation and needs
                     // the one the finding meant.
-                    String owner = org.jawata.mcp.models.CodeAddress.symbolOf(
+                    String owner = org.jawata.mcp.tools.shared.SourceScan.symbolOf(
                         node.resolveBinding());
                     out.add(new Finding("encapsulation", filePath,
                         ast.getLineNumber(node.getName().getStartPosition()), -1, "warning",

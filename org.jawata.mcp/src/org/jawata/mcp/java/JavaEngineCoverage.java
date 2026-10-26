@@ -1,4 +1,4 @@
-package org.jawata.mcp.catalogue;
+package org.jawata.mcp.java;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;

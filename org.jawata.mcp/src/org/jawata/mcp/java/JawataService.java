@@ -1,9 +1,11 @@
-package org.jawata.mcp.domain;
-
-import org.jawata.core.IJdtService;
+package org.jawata.mcp.java;
 
 import java.util.Objects;
 import java.util.function.Supplier;
+
+import org.jawata.core.IJdtService;
+import org.jawata.mcp.domain.Advisor;
+import org.jawata.mcp.domain.NoOpAdvisor;
 
 /**
  * Sprint 16b/D — default {@link IJawataService}. The JDT bridge is supplied lazily

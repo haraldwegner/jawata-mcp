@@ -62,7 +62,7 @@ public final class PrimitiveObsessionDetector extends AbstractAstDetector {
                         (node.isConstructor() ? "Constructor '" : "Method '") + name + "' takes "
                             + primitive + " primitive/String parameters of " + total
                             + ". Consider Replace Type Code with Class / Parameter Object.",
-                        SmellAddress.qualifiedOr(org.jawata.mcp.models.CodeAddress.symbolOf(
+                        SmellAddress.qualifiedOr(org.jawata.mcp.tools.shared.SourceScan.symbolOf(
                             node.resolveBinding()), name)));
                 }
                 return true;

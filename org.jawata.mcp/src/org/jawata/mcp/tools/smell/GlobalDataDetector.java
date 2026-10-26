@@ -102,7 +102,7 @@ public final class GlobalDataDetector extends AbstractAstDetector {
                     // be pointed at, and the cure this finding names is an operation that
                     // has to be pointed somewhere. Null when the binding did not resolve —
                     // the finding then carries no symbol, which is the honest absence.
-                    String symbol = org.jawata.mcp.models.CodeAddress.symbolOf(
+                    String symbol = org.jawata.mcp.tools.shared.SourceScan.symbolOf(
                         f.resolveBinding());
                     out.add(new Finding(
                         "global_data", filePath, line, -1, "warning",

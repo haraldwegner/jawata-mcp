@@ -7,9 +7,9 @@ import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.jawata.core.IJdtService;
 import org.jawata.core.project.SourceRootClassifier;
-import org.jawata.mcp.domain.Detector;
 import org.jawata.mcp.domain.Finding;
 import org.jawata.mcp.domain.Findings;
+import org.jawata.mcp.java.Detector;
 import org.jawata.mcp.models.ToolResponse;
 
 import java.nio.file.Path;

@@ -1,10 +1,10 @@
 package org.jawata.mcp.tools.smell;
 
-import org.jawata.mcp.domain.DetectorCatalog;
+import org.jawata.mcp.java.DetectorCatalog;
 
 /**
  * Sprint 22a P1-d — registers the dependency-direction {@link
- * org.jawata.mcp.domain.Detector}s into a {@link DetectorCatalog} (family
+ * org.jawata.mcp.java.Detector}s into a {@link DetectorCatalog} (family
  * {@code quality}). Like the Fowler/SOLID registrars, adding a detector here
  * surfaces it as a new {@code find_quality_issue} kind with no new tool. This
  * is also the &ge;1 net-new catalog kind Sprint 22a R.1 (Stage 14) requires.

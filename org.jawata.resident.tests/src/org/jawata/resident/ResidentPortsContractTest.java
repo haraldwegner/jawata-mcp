@@ -55,6 +55,17 @@ class ResidentPortsContractTest {
         }
     }
 
+    /** The headless host's endpoint: loopback, a key, and a start line it prints when told (the supervisor's contract). */
+    @Nested
+    class Endpoint extends org.jawata.mcp.contract.EndpointPolicyContract {
+        @Override
+        protected org.jawata.spi.host.EndpointPolicy policy() {
+            org.jawata.mcp.transport.TransportConfig config = new org.jawata.mcp.transport.TransportConfig(
+                org.jawata.mcp.transport.TransportConfig.Kind.HTTP, 0, "127.0.0.1", "contract-token", null);
+            return new ResidentEndpointPolicy(config, org.jawata.mcp.transport.ResolvedToken.resolve(config));
+        }
+    }
+
     @Nested
     class Reconciliation extends ReconcilerContract {
         final OverALoadedProject project = new OverALoadedProject() { };

@@ -539,7 +539,7 @@ public class JawataEngine {
 	private void verifyPublishedSurface() {
 		try {
 			org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(org.jawata.mcp.change.OperationRegistry.theRegistry());
-			int coveredRows = org.jawata.mcp.catalogue.JavaEngineCoverage.verifyAgainstShippedDoors();
+			int coveredRows = org.jawata.mcp.java.JavaEngineCoverage.verifyAgainstShippedDoors();
 			log.info("This engine performs {} of {} catalogue refactorings", coveredRows,
 					org.jawata.catalogue.Refactorings.all().size());
 		} catch (RuntimeException e) {

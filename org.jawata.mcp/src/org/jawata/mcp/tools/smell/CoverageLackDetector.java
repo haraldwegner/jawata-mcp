@@ -5,9 +5,9 @@ import org.jawata.core.IJdtService;
 import org.jawata.mcp.coverage.CoverageManifest;
 import org.jawata.mcp.coverage.CoverageModel;
 import org.jawata.mcp.coverage.CoverageService;
-import org.jawata.mcp.domain.Detector;
 import org.jawata.mcp.domain.Finding;
 import org.jawata.mcp.domain.Findings;
+import org.jawata.mcp.java.Detector;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 

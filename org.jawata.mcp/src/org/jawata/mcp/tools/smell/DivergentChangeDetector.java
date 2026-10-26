@@ -2,9 +2,9 @@ package org.jawata.mcp.tools.smell;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.domain.Detector;
 import org.jawata.mcp.domain.Finding;
 import org.jawata.mcp.domain.Findings;
+import org.jawata.mcp.java.Detector;
 import org.jawata.mcp.models.ToolResponse;
 
 import java.nio.file.Path;

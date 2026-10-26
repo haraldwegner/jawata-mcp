@@ -2,8 +2,9 @@ package org.jawata.mcp.catalogue;
 
 import org.jawata.catalogue.CatalogueRow;
 import org.jawata.catalogue.Refactorings;
-import org.jawata.mcp.catalogue.JavaEngineCoverage.Declaration;
-import org.jawata.mcp.catalogue.JavaEngineCoverage.Verdict;
+import org.jawata.mcp.java.JavaEngineCoverage;
+import org.jawata.mcp.java.JavaEngineCoverage.Declaration;
+import org.jawata.mcp.java.JavaEngineCoverage.Verdict;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

@@ -1,9 +1,9 @@
 package org.jawata.mcp.tools.smell;
 
-import org.jawata.mcp.domain.DetectorCatalog;
+import org.jawata.mcp.java.DetectorCatalog;
 
 /**
- * Sprint 17 — registers the Fowler smell {@link org.jawata.mcp.domain.Detector}s
+ * Sprint 17 — registers the Fowler smell {@link org.jawata.mcp.java.Detector}s
  * into a {@link DetectorCatalog}. SRP-separate from {@code QualityDetectors}
  * (which adapts the eight legacy lexical/structural analyzers); the
  * {@code find_quality_issue} front door projects the combined catalog, so each

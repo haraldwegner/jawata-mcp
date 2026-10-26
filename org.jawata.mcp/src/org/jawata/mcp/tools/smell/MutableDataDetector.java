@@ -109,7 +109,7 @@ public final class MutableDataDetector extends AbstractAstDetector {
                 // somewhere.
                 org.eclipse.jdt.core.dom.ITypeBinding owner = node.resolveBinding();
                 String qualified = owner == null ? null
-                    : org.jawata.mcp.models.CodeAddress.symbolOf(owner);
+                    : org.jawata.mcp.tools.shared.SourceScan.symbolOf(owner);
                 String prefix = qualified == null ? node.getName().getIdentifier() : qualified;
                 int i = 0;
                 for (Map.Entry<String, String> e : leaks.entrySet()) {

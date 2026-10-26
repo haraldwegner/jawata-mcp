@@ -2,9 +2,9 @@ package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.domain.DetectorCatalog;
-import org.jawata.mcp.domain.JawataService;
-import org.jawata.mcp.domain.IJawataService;
+import org.jawata.mcp.java.DetectorCatalog;
+import org.jawata.mcp.java.IJawataService;
+import org.jawata.mcp.java.JawataService;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.smell.DependencyDetectors;
@@ -99,16 +99,16 @@ public class FindQualityIssueTool extends AbstractTool {
      * every registry's output passes through, which is what stops the next
      * detector from having to remember its own wiring.</p>
      */
-    private static org.jawata.mcp.domain.DetectorCatalog cured(
+    private static org.jawata.mcp.java.DetectorCatalog cured(
             Supplier<IJdtService> serviceSupplier,
             Supplier<org.jawata.mcp.knowledge.ExperienceStore> store) {
-        org.jawata.mcp.domain.DetectorCatalog catalog =
+        org.jawata.mcp.java.DetectorCatalog catalog =
             DependencyDetectors.registerInto(
                 KerievskyDetectors.registerInto(
                     SolidDetectors.registerInto(
                         FowlerDetectors.registerInto(
                             QualityDetectors.builtins(serviceSupplier), store))));
-        for (org.jawata.mcp.domain.Detector d : catalog.all()) {
+        for (org.jawata.mcp.java.Detector d : catalog.all()) {
             if (d instanceof org.jawata.mcp.tools.smell.AbstractAstDetector ast) {
                 ast.useStore(store);
             }

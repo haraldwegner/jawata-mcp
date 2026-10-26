@@ -43,7 +43,7 @@ class PurityScanTest {
 
     /** The engine's neutral packages (rule R11). */
     private static final List<String> NEUTRAL_PACKAGES = List.of("knowledge", "execution", "learn", "transport", "protocol", "embed",
-        "domain", "field", "models", "catalogue", "change", "engine");
+        "domain", "field", "models", "change", "engine");
 
     @Test
     @DisplayName("THE CONTROL — the scan finds the JDT type, the jawata core type and System.exit in a class that has them")
@@ -75,24 +75,6 @@ class PurityScanTest {
      * leave its excuse behind. Ledger row C8-1.
      */
     private static final List<String> KNOWN_DEVIATIONS = List.of(
-        // The Java-bound detector contract and its service types live in the neutral package by history.
-        "/org/jawata/mcp/domain/Detector.class -> org/jawata/core/IJdtService",
-        "/org/jawata/mcp/domain/IJawataService.class -> org/jawata/core/IJdtService",
-        "/org/jawata/mcp/domain/JawataService.class -> org/jawata/core/IJdtService",
-        // The Java share of the coverage report asks the Java model.
-        "/org/jawata/mcp/catalogue/JavaEngineCoverage.class -> org/jawata/core/IJdtService",
-        // A code address is read from a JDT binding; it is the Java provider's constructor living in the neutral model package.
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/IBinding",
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/IMethodBinding",
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/IMethodBinding.getDeclaringClass",
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/IMethodBinding.getName",
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/ITypeBinding",
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/ITypeBinding.getErasure",
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/ITypeBinding.getName",
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/ITypeBinding.getQualifiedName",
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/IVariableBinding",
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/IVariableBinding.getDeclaringClass",
-        "/org/jawata/mcp/models/CodeAddress.class -> org/eclipse/jdt/core/dom/IVariableBinding.getName",
         // The assembly asks the host for the Java binding, once, to hand it to the Java provider.
         "/org/jawata/mcp/engine/JawataEngine.class -> org/jawata/core/IJdtService",
         "/org/jawata/mcp/engine/JawataEngine.class -> org/jawata/core/JavaBinding",

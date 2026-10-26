@@ -1,9 +1,9 @@
 package org.jawata.mcp.tools.smell;
 
-import org.jawata.mcp.domain.DetectorCatalog;
+import org.jawata.mcp.java.DetectorCatalog;
 
 /**
- * Sprint 20 — registers the net-new SOLID {@link org.jawata.mcp.domain.Detector}s
+ * Sprint 20 — registers the net-new SOLID {@link org.jawata.mcp.java.Detector}s
  * into a {@link DetectorCatalog} under family {@code solid}. SRP's §7
  * "unfinished encapsulation" signal and the OCP/LSP traces are NOT re-detected
  * here — they are existing Fowler kinds tagged {@code solid} by

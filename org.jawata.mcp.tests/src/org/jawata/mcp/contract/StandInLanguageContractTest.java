@@ -32,6 +32,23 @@ class StandInLanguageContractTest {
     }
 
     @Nested
+    class Paths extends ChangePathsContract {
+        @Override
+        protected org.jawata.spi.lang.ChangePaths paths() {
+            return new org.jawata.standin.FakeChangePaths();
+        }
+    }
+
+    /** The default every language starts from: no element of its own, the absolute path as it is. */
+    @Nested
+    class NoLanguagePaths extends ChangePathsContract {
+        @Override
+        protected org.jawata.spi.lang.ChangePaths paths() {
+            return org.jawata.spi.lang.ChangePaths.ABSOLUTE;
+        }
+    }
+
+    @Nested
     class Verdict extends BuildVerdictContract {
         @TempDir
         Path scratch;
