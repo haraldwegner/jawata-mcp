@@ -110,6 +110,18 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
         return "java";
     }
 
+    /**
+     * The cure table and the coverage declaration describe Java's refactoring doors, so they are checked here, against what the engine
+     * publishes, and not by the engine, which then asks every bound language and knows none of them.
+     */
+    @Override
+    public void verifyPublishedSurface() {
+        org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(org.jawata.mcp.change.OperationRegistry.theRegistry());
+        int coveredRows = JavaEngineCoverage.verifyAgainstShippedDoors();
+        org.slf4j.LoggerFactory.getLogger(JavaProvider.class).info("This engine performs {} of {} catalogue refactorings", coveredRows,
+                org.jawata.catalogue.Refactorings.all().size());
+    }
+
     @Override
     public BuildVerdict verdict(ProviderContext context) {
         return new JavaBuildVerdict(model.get());

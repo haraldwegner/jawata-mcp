@@ -44,4 +44,14 @@ public interface LanguageProvider {
     default Optional<SourceUnits> sourceUnits(ProviderContext context) {
         return Optional.empty();
     }
+
+    /**
+     * Checks what this language declares about its own tools against what the engine now publishes, at the moment every language the
+     * host serves has published its tools. A disagreement is thrown, and the engine then fails the load and says so rather than serve
+     * a cure or a catalogue row that would be refused at the front door. A language that declares nothing of the kind keeps this.
+     *
+     * @throws RuntimeException when what the language declares and what is published disagree
+     */
+    default void verifyPublishedSurface() {
+    }
 }

@@ -540,16 +540,12 @@ public class JawataEngine {
 	 * checked against what it actually publishes.</p>
 	 */
 	private void verifyPublishedSurface() {
-		// The cure table and the coverage declaration describe Java's refactoring doors, so they are checked against a host that serves
-		// Java and are not asked of one that serves only another language, whose tools would fail a check that was never about them.
-		if (!host().capabilities().languages().contains("java")) {
-			return;
-		}
+		// What a language declares about its tools is checked by that language, so a language that is not bound is not asked and the
+		// engine names none.
 		try {
-			org.jawata.mcp.tools.smell.CureCatalog.validateAgainst(org.jawata.mcp.change.OperationRegistry.theRegistry());
-			int coveredRows = org.jawata.mcp.java.JavaEngineCoverage.verifyAgainstShippedDoors();
-			log.info("This engine performs {} of {} catalogue refactorings", coveredRows,
-					org.jawata.catalogue.Refactorings.all().size());
+			for (org.jawata.spi.lang.LanguageProvider provider : whiteboard.providers()) {
+				provider.verifyPublishedSurface();
+			}
 		} catch (RuntimeException e) {
 			log.error("The published tool surface disagrees with what the engine declares", e);
 			EngineState.current().loadFailed("the published tool surface is inconsistent: " + e.getMessage());

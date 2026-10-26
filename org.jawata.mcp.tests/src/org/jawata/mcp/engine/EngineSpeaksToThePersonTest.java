@@ -101,4 +101,51 @@ class EngineSpeaksToThePersonTest {
         assertEquals(ProjectLoadingState.LOADING, before, "a language the host serves has not bound yet");
         assertNotEquals(ProjectLoadingState.LOADING, after, "and the engine is ready once it has");
     }
+
+    @Test
+    @DisplayName("a language that finds what it declares disagrees with what is published fails the load, and the person is told why")
+    void aLanguageThatDisagreesWithTheSurfaceFailsTheLoad() {
+        assemble(Map.of(SettingKeys.EXPERIENCE_STORE.name(), "memory", SettingKeys.EMBED_DISABLED.name(), "true"), "fake");
+
+        EngineState.current().booted();
+        FakeLanguageProvider standIn = new FakeLanguageProvider();
+        engine.whiteboard().bindProvider(new org.jawata.spi.lang.LanguageProvider() {
+            @Override
+            public String language() {
+                return standIn.language();
+            }
+
+            @Override
+            public org.jawata.spi.lang.BuildVerdict verdict(org.jawata.spi.lang.ProviderContext context) {
+                return standIn.verdict(context);
+            }
+
+            @Override
+            public org.jawata.spi.lang.ChangePaths paths(org.jawata.spi.lang.ProviderContext context) {
+                return standIn.paths(context);
+            }
+
+            @Override
+            public org.jawata.spi.lang.SymbolAnchors anchors(org.jawata.spi.lang.ProviderContext context) {
+                return standIn.anchors(context);
+            }
+
+            @Override
+            public java.util.Optional<org.jawata.spi.lang.TestRuntime> tests(org.jawata.spi.lang.ProviderContext context) {
+                return standIn.tests(context);
+            }
+
+            @Override
+            public void verifyPublishedSurface() {
+                throw new IllegalStateException("a fake cure names a door nobody published");
+            }
+        });
+
+        List<Notice> told = host.fakePerson().notices();
+        assertTrue(EngineState.current().loadingError() != null
+            && EngineState.current().loadingError().contains("a fake cure names a door nobody published"),
+            "the load failed, and says why: " + EngineState.current().loadingError());
+        assertTrue(told.stream().anyMatch(n -> n.level() == Notice.Level.ERROR && n.text().contains("a fake cure names a door nobody published")),
+            "and the person is told: " + told);
+    }
 }
