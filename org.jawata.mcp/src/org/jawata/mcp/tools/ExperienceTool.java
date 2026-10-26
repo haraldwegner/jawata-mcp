@@ -9,8 +9,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
-import org.eclipse.jdt.core.JavaModelException;
-import org.jawata.core.IJdtService;
 import org.jawata.mcp.knowledge.Confidence;
 import org.jawata.mcp.knowledge.DescribedUnits;
 import org.jawata.mcp.knowledge.EntryForm;
@@ -26,6 +24,7 @@ import org.jawata.mcp.knowledge.StoryTemplate;
 import org.jawata.mcp.knowledge.StoryWriter;
 import org.jawata.mcp.knowledge.SymbolFact;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.lang.SourceUnits;
 import org.jawata.spi.lang.SymbolAnchors;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -150,7 +149,7 @@ public final class ExperienceTool implements Tool {
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON =
         new com.fasterxml.jackson.databind.ObjectMapper();
 
-    private final Supplier<IJdtService> serviceSupplier;
+    private final Supplier<? extends SourceUnits> serviceSupplier;
     private final ExperienceStore store;
     private final ExperienceRetrieval retrieval;
     private final ExperienceMaintenance maintenance;
@@ -201,7 +200,7 @@ public final class ExperienceTool implements Tool {
         return concrete instanceof org.jawata.mcp.knowledge.H2ExperienceStore h2 ? h2 : null;
     }
 
-    public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store) {
+    public ExperienceTool(Supplier<? extends SourceUnits> serviceSupplier, ExperienceStore store) {
         this(serviceSupplier, store, List::of);
     }
 
@@ -249,13 +248,13 @@ public final class ExperienceTool implements Tool {
     private org.jawata.mcp.knowledge.TranscriptStore transcript;
 
     /** Sprint 21a (item C): {@code defaultRoots} feed no-path {@code load} / {@code reseed}. */
-    public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
+    public ExperienceTool(Supplier<? extends SourceUnits> serviceSupplier, ExperienceStore store,
             Supplier<List<java.nio.file.Path>> defaultRoots) {
         this(serviceSupplier, store, defaultRoots, null);
     }
 
     /** Sprint 21b (item D): package-private resolver override so tests can simulate staleness. */
-    ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
+    ExperienceTool(Supplier<? extends SourceUnits> serviceSupplier, ExperienceStore store,
             Supplier<List<java.nio.file.Path>> defaultRoots,
             ExperienceMaintenance.PointerResolver resolverOverride) {
         this(serviceSupplier, store, defaultRoots, resolverOverride, null);
@@ -267,7 +266,7 @@ public final class ExperienceTool implements Tool {
      * whose copies are known to be bad, so the refusal and the override are driven through the real
      * tool path and not only through the policy.
      */
-    public ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
+    public ExperienceTool(Supplier<? extends SourceUnits> serviceSupplier, ExperienceStore store,
             Supplier<List<java.nio.file.Path>> defaultRoots,
             ExperienceMaintenance.PointerResolver resolverOverride,
             org.jawata.mcp.knowledge.StoreBackups backupsOverride) {
@@ -278,12 +277,12 @@ public final class ExperienceTool implements Tool {
      * E12 (ledger 28k-C3-8): the tool over memory's anchors as the language provider builds them, handed in by the one producer so
      * the tool builds none of its own.
      */
-    public static ExperienceTool withAnchors(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
+    public static ExperienceTool withAnchors(Supplier<? extends SourceUnits> serviceSupplier, ExperienceStore store,
             Supplier<List<java.nio.file.Path>> defaultRoots, Supplier<SymbolAnchors> anchors) {
         return new ExperienceTool(serviceSupplier, store, defaultRoots, null, null, anchors);
     }
 
-    private ExperienceTool(Supplier<IJdtService> serviceSupplier, ExperienceStore store,
+    private ExperienceTool(Supplier<? extends SourceUnits> serviceSupplier, ExperienceStore store,
             Supplier<List<java.nio.file.Path>> defaultRoots,
             ExperienceMaintenance.PointerResolver resolverOverride,
             org.jawata.mcp.knowledge.StoreBackups backupsOverride,
@@ -775,8 +774,7 @@ public final class ExperienceTool implements Tool {
             case "describe" -> describe(args);
             case "transcript_append" -> transcriptAppend(args);
             case "transcript_verify" -> transcriptVerify(args);
-            case "duplicate_check" -> duplicateCheck(
-                serviceSupplier == null ? null : serviceSupplier.get(), args);
+            case "duplicate_check" -> duplicateCheck(serviceSupplier == null ? null : serviceSupplier.get(), args);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + KINDS);
         };
@@ -2732,7 +2730,7 @@ public final class ExperienceTool implements Tool {
                     + " 'area' to ask what a file's package is for, 'jobs_for' to ask what"
                     + " job the store already holds for each member you name.");
         }
-        IJdtService service = serviceSupplier == null ? null : serviceSupplier.get();
+        SourceUnits service = serviceSupplier == null ? null : serviceSupplier.get();
         return switch (action) {
             case "next" -> describeNext(service, args);
             case "done" -> describeDone(service, args);
@@ -2772,7 +2770,7 @@ public final class ExperienceTool implements Tool {
      * and would turn an absent job into an unanswerable question at the moment the gate has
      * to decide.</p>
      */
-    private ToolResponse describeJobsFor(IJdtService service, JsonNode args) {
+    private ToolResponse describeJobsFor(SourceUnits service, JsonNode args) {
         List<String> symbols = new java.util.ArrayList<>(strings(args, "symbols"));
         List<String> filePaths = strings(args, "filePaths");
         List<String> unreadable = new java.util.ArrayList<>();
@@ -2792,13 +2790,13 @@ public final class ExperienceTool implements Tool {
                     continue;
                 }
                 try {
-                    org.eclipse.jdt.core.ICompilationUnit cu =
-                        service.getCompilationUnit(java.nio.file.Path.of(path));
-                    if (cu == null) {
+                    List<int[]> written = changedLinesFor(args, path);
+                    Optional<List<SourceUnits.MemberAt>> methods = service.methods(java.nio.file.Path.of(path), written != null);
+                    if (methods.isEmpty()) {
                         unreadable.add(path + " (not in a loaded project)");
                         continue;
                     }
-                    collectMembersInto(symbols, cu, changedLinesFor(args, path));
+                    collectMembersInto(symbols, methods.get(), written);
                 } catch (Exception e) {
                     // NAMED, never dropped: a file we could not read is not a file with
                     // nothing in it, and a shorter list that reads as complete is how a
@@ -2889,37 +2887,19 @@ public final class ExperienceTool implements Tool {
         return ranges.isEmpty() ? null : ranges;
     }
 
-    /** The 1-based line a character offset falls on. */
-    private static int lineAt(String source, int offset) {
-        int line = 1;
-        for (int i = 0; i < offset && i < source.length(); i++) {
-            if (source.charAt(i) == '\n') {
-                line++;
-            }
-        }
-        return line;
-    }
-
     /**
-     * The methods of {@code cu} as {@code Type#method}, every one when {@code ranges} is null and
-     * otherwise only those whose source — their Javadoc included — overlaps a written line.
+     * The methods as {@code Type#method}, every one when {@code ranges} is null and otherwise only those whose source — their
+     * Javadoc included — overlaps a written line.
      */
-    private void collectMembersInto(List<String> symbols, org.eclipse.jdt.core.ICompilationUnit cu,
-            List<int[]> ranges) throws JavaModelException {
-        String source = ranges == null ? null : cu.getSource();
-        for (org.eclipse.jdt.core.IType type : cu.getAllTypes()) {
-            for (org.eclipse.jdt.core.IMethod m : type.getMethods()) {
-                if (source != null) {
-                    org.eclipse.jdt.core.ISourceRange where = m.getSourceRange();
-                    int first = lineAt(source, where.getOffset());
-                    int last = lineAt(source, where.getOffset() + Math.max(0, where.getLength() - 1));
-                    boolean written = ranges.stream().anyMatch(r -> r[0] <= last && r[1] >= first);
-                    if (!written) {
-                        continue;
-                    }
+    private void collectMembersInto(List<String> symbols, List<SourceUnits.MemberAt> methods, List<int[]> ranges) {
+        for (SourceUnits.MemberAt m : methods) {
+            if (ranges != null) {
+                boolean written = ranges.stream().anyMatch(r -> r[0] <= m.lastLine() && r[1] >= m.firstLine());
+                if (!written) {
+                    continue;
                 }
-                symbols.add(type.getFullyQualifiedName('.') + "#" + m.getElementName());
             }
+            symbols.add(m.owner() + "#" + m.name());
         }
     }
 
@@ -3111,7 +3091,7 @@ public final class ExperienceTool implements Tool {
      * reading an empty answer must be able to tell "nothing like this exists" from "I
      * could not check" — which is the distinction this whole sprint is about.</p>
      */
-    private ToolResponse duplicateCheck(IJdtService service, JsonNode args) {
+    private ToolResponse duplicateCheck(org.jawata.spi.lang.SourceUnits service, JsonNode args) {
         String draft = text(args, "draft");
         if (draft == null || draft.isBlank()) {
             return ToolResponse.invalidParameter("draft",
@@ -3132,9 +3112,8 @@ public final class ExperienceTool implements Tool {
             notKnownWhy = "no project is loaded";
         } else {
             try {
-                org.eclipse.jdt.core.ICompilationUnit cu =
-                    service.getCompilationUnit(java.nio.file.Path.of(filePath));
-                if (cu == null || !cu.exists()) {
+                Optional<List<SourceUnits.MemberAt>> declared = service.methods(java.nio.file.Path.of(filePath), false);
+                if (declared.isEmpty()) {
                     // A file that does not exist YET is the commonest case for a Write,
                     // and it is not a failure: there is simply nothing to subtract.
                     notKnownWhy = "the file is not in a loaded project (a new file, or"
@@ -3154,10 +3133,8 @@ public final class ExperienceTool implements Tool {
                     // fixture, which is what makes it a work package and not an edit.
                     // The direction is at least the safe one: a missed nomination costs a
                     // reader nothing, a false one costs them the time to disprove it.
-                    for (org.eclipse.jdt.core.IType type : cu.getAllTypes()) {
-                        for (org.eclipse.jdt.core.IMethod m : type.getMethods()) {
-                            already.add(m.getElementName());
-                        }
+                    for (SourceUnits.MemberAt m : declared.get()) {
+                        already.add(m.name());
                     }
                     existingKnown = true;
                 }
@@ -3259,7 +3236,7 @@ public final class ExperienceTool implements Tool {
      * same two sets would be a parallel retrieval path, and this codebase has paid for one
      * of those.</p>
      */
-    private ToolResponse describeArea(IJdtService service, JsonNode args) {
+    private ToolResponse describeArea(org.jawata.spi.lang.SourceUnits service, JsonNode args) {
         if (service == null) {
             return ToolResponse.error("NO_PROJECT",
                 "describe area needs a loaded project — which package a file declares is"
@@ -3271,20 +3248,19 @@ public final class ExperienceTool implements Tool {
             return ToolResponse.invalidParameter("filePath",
                 "Required — the source file whose area you want.");
         }
-        org.eclipse.jdt.core.ICompilationUnit cu =
-            service.getCompilationUnit(java.nio.file.Path.of(filePath));
-        if (cu == null) {
-            // NAMED, never an empty answer: "this file is in no loaded project" and "this
-            // package has nothing written about it" are different facts, and a caller that
-            // cannot tell them apart will read the first as the second.
-            return ToolResponse.error("SYMBOL_NOT_FOUND",
-                "No compilation unit at " + filePath + " — the file is not in a loaded"
-                    + " project, so its package cannot be derived.",
-                "Load the project that owns it, or check the path.");
-        }
         String pkg;
         try {
-            pkg = packageOf(cu);
+            SourceUnits.SourceFacts declared = service.facts(java.nio.file.Path.of(filePath)).orElse(null);
+            if (declared == null) {
+                // NAMED, never an empty answer: "this file is in no loaded project" and "this
+                // package has nothing written about it" are different facts, and a caller that
+                // cannot tell them apart will read the first as the second.
+                return ToolResponse.error("SYMBOL_NOT_FOUND",
+                    "No compilation unit at " + filePath + " — the file is not in a loaded"
+                        + " project, so its package cannot be derived.",
+                    "Load the project that owns it, or check the path.");
+            }
+            pkg = declared.packageName();
         } catch (Exception e) {
             return ToolResponse.error("SYMBOL_NOT_FOUND",
                 "Could not read the package of " + filePath + ": " + e.getMessage(),
@@ -3319,7 +3295,7 @@ public final class ExperienceTool implements Tool {
     }
 
     /** The outstanding units in scope, with the facts needed to read one. */
-    private ToolResponse describeNext(IJdtService service, JsonNode args) {
+    private ToolResponse describeNext(org.jawata.spi.lang.SourceUnits service, JsonNode args) {
         if (service == null) {
             return ToolResponse.error("NO_PROJECT",
                 "describe next needs a loaded project — the units it hands out are the"
@@ -3331,23 +3307,21 @@ public final class ExperienceTool implements Tool {
         List<org.jawata.mcp.knowledge.DescribedUnits.Unit> candidates = new java.util.ArrayList<>();
         List<String> unreadable = new java.util.ArrayList<>();
         Map<String, Map<String, Object>> facts = new java.util.LinkedHashMap<>();
-        for (java.nio.file.Path file : service.getAllJavaFiles()) {
-            org.eclipse.jdt.core.ICompilationUnit cu = service.getCompilationUnit(file);
-            if (cu == null) {
-                continue;
-            }
+        for (java.nio.file.Path file : service.files()) {
             try {
-                String pkg = packageOf(cu);
+                SourceUnits.SourceFacts declared = service.facts(file).orElse(null);
+                if (declared == null) {
+                    continue;
+                }
+                String pkg = declared.packageName();
                 if (scope != null && !scope.isBlank()
                         && !pkg.equals(scope) && !pkg.startsWith(scope + ".")) {
                     continue;
                 }
                 String path = file.toString();
-                String bundle = cu.getJavaProject() == null ? null
-                    : cu.getJavaProject().getElementName();
                 candidates.add(org.jawata.mcp.knowledge.DescribedUnits.Unit.of(
-                    path, cu.getSource(), bundle));
-                facts.put(path, unitFacts(cu, pkg, bundle));
+                    path, declared.source(), declared.bundle()));
+                facts.put(path, unitFacts(declared));
             } catch (Exception e) {
                 // A unit that cannot be read is NAMED, not silently dropped. A shorter queue
                 // that reads as complete is how a bundle ends up half-described with nothing
@@ -3471,7 +3445,7 @@ public final class ExperienceTool implements Tool {
      *     store-only caller — and the recording works without it; what is lost is the count,
      *     which is then said to be absent rather than reported as zero.
      */
-    private ToolResponse describeDone(IJdtService service, JsonNode args) {
+    private ToolResponse describeDone(org.jawata.spi.lang.SourceUnits service, JsonNode args) {
         String unit = text(args, "unit");
         if (unit == null || unit.isBlank()) {
             return ToolResponse.invalidParameter("unit",
@@ -3542,8 +3516,7 @@ public final class ExperienceTool implements Tool {
      * second into a false reassurance. That is this project's own recorded deepest bug class, and
      * it is exactly the shape a count invites.</p>
      */
-    private void describeWhatIsBeingClosedOver(IJdtService service, String unit,
-            Map<String, Object> out) {
+    private void describeWhatIsBeingClosedOver(org.jawata.spi.lang.SourceUnits service, String unit, Map<String, Object> out) {
         if (service == null) {
             out.put("closingOver", "not counted — no project is loaded, so this unit's members"
                 + " could not be derived. This is a failure to look, not an answer that nothing"
@@ -3552,14 +3525,13 @@ public final class ExperienceTool implements Tool {
         }
         List<String> members = new java.util.ArrayList<>();
         try {
-            org.eclipse.jdt.core.ICompilationUnit cu =
-                service.getCompilationUnit(java.nio.file.Path.of(unit));
-            if (cu == null) {
+            Optional<List<SourceUnits.MemberAt>> declared = service.methods(java.nio.file.Path.of(unit), false);
+            if (declared.isEmpty()) {
                 out.put("closingOver", "not counted — " + unit + " is not in a loaded project,"
                     + " so its members could not be derived. A failure to look, not an absence.");
                 return;
             }
-            collectMembersInto(members, cu, null);
+            collectMembersInto(members, declared.get(), null);
         } catch (Exception e) {
             out.put("closingOver", "not counted — " + unit + " could not be read ("
                 + e.getMessage() + "). A failure to look, not an absence.");
@@ -3598,29 +3570,15 @@ public final class ExperienceTool implements Tool {
         }
     }
 
-    /** The package a unit declares, or the empty string for the default package. */
-    private static String packageOf(org.eclipse.jdt.core.ICompilationUnit cu) throws Exception {
-        org.eclipse.jdt.core.IPackageDeclaration[] declared = cu.getPackageDeclarations();
-        return declared.length == 0 ? "" : declared[0].getElementName();
-    }
-
     /** What an agent needs to start reading a unit: where it sits and what it declares. */
-    private static Map<String, Object> unitFacts(org.eclipse.jdt.core.ICompilationUnit cu,
-            String pkg, String bundle) throws Exception {
+    private static Map<String, Object> unitFacts(SourceUnits.SourceFacts declared) {
         Map<String, Object> facts = new java.util.LinkedHashMap<>();
-        facts.put("package", pkg);
+        facts.put("package", declared.packageName());
         List<Map<String, Object>> types = new java.util.ArrayList<>();
-        for (org.eclipse.jdt.core.IType type : cu.getTypes()) {
+        for (SourceUnits.TypeFacts type : declared.types()) {
             Map<String, Object> t = new java.util.LinkedHashMap<>();
-            t.put("type", type.getFullyQualifiedName('.'));
-            List<String> members = new java.util.ArrayList<>();
-            for (org.eclipse.jdt.core.IMethod m : type.getMethods()) {
-                members.add(m.getElementName());
-            }
-            for (org.eclipse.jdt.core.IField f : type.getFields()) {
-                members.add(f.getElementName());
-            }
-            t.put("members", members);
+            t.put("type", type.name());
+            t.put("members", new java.util.ArrayList<>(type.members()));
             types.add(t);
         }
         facts.put("types", types);

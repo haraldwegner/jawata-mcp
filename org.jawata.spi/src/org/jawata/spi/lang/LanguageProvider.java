@@ -39,4 +39,9 @@ public interface LanguageProvider {
     default Optional<SourceDiagnostics> diagnostics(ProviderContext context) {
         return Optional.empty();
     }
+
+    /** The source files it holds and what they declare, for the experience store to describe; empty when it holds none to describe. */
+    default Optional<SourceUnits> sourceUnits(ProviderContext context) {
+        return Optional.empty();
+    }
 }

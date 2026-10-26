@@ -147,7 +147,7 @@ public final class ShippedTools {
         ExperienceAdvisor advisor = new ExperienceAdvisor(w.experienceStore(), ports.anchors(), w.embeddingIndex().get());
 
         // The local experience/knowledge store's front door.
-        ExperienceTool experience = ExperienceTool.withAnchors(w.jdt(), w.experienceStore(), w.defaultMemoryRoots(), ports.anchors());
+        ExperienceTool experience = ExperienceTool.withAnchors(ports.sourceUnits(), w.experienceStore(), w.defaultMemoryRoots(), ports.anchors());
 
         ToolNeeds needs = new ToolNeeds(
             w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests,

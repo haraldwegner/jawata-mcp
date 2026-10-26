@@ -42,7 +42,7 @@ class DescribeVerbTest {
     void setUp() throws Exception {
         service = helper.loadProjectCopy("compile-clean");
         store = H2ExperienceStore.open(null);
-        tool = new ExperienceTool(() -> service, store);
+        tool = new ExperienceTool(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store);
         json = new ObjectMapper();
     }
 

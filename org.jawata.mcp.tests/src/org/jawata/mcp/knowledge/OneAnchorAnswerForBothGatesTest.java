@@ -95,7 +95,7 @@ class OneAnchorAnswerForBothGatesTest {
     void theGateRefusesItAndTheSweepQueuesIt() throws Exception {
         JdtServiceImpl service = helper.loadProject("simple-maven");
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
-            ExperienceTool tool = ExperienceTool.withAnchors(() -> service, store, List::of,
+            ExperienceTool tool = ExperienceTool.withAnchors(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store, List::of,
                 new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
 
             // PROOF OF LIFE FIRST. If the fixture's own anchor does not resolve, every

@@ -43,7 +43,7 @@ class JobsForChangedLinesTest {
     private ToolResponse ask(int[][] ranges) throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
-            ExperienceTool tool = new ExperienceTool(() -> service, store);
+            ExperienceTool tool = new ExperienceTool(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store);
             Path file = helloWorld();
             ObjectNode a = JSON.createObjectNode();
             a.put("kind", "describe");

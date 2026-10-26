@@ -55,7 +55,7 @@ class CoverageFollowsUseTest {
     void setUp() throws Exception {
         service = helper.loadProjectCopy("compile-clean");
         store = H2ExperienceStore.open(null);
-        tool = new ExperienceTool(() -> service, store);
+        tool = new ExperienceTool(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store);
         json = new ObjectMapper();
     }
 
@@ -195,7 +195,7 @@ class CoverageFollowsUseTest {
     @DisplayName("the worked package actually comes first, not merely announced")
     void the_batch_leads_with_the_worked_package() throws Exception {
         JdtServiceImpl bigger = helper.loadProjectCopy("simple-maven");
-        ExperienceTool wide = new ExperienceTool(() -> bigger, store);
+        ExperienceTool wide = new ExperienceTool(() -> new org.jawata.mcp.java.JavaSourceUnits(bigger), store);
 
         // The WHOLE fixture, not a page of it. At 50 the calibration never reached a second
         // package — simple-maven's other one sorts far down file order — and the proof of life

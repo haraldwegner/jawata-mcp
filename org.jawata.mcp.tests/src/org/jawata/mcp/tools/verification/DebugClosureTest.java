@@ -189,7 +189,7 @@ class DebugClosureTest {
         // RECORD what the running program taught us, anchored at the symbol it taught us at.
         org.jawata.mcp.knowledge.H2ExperienceStore store =
             org.jawata.mcp.knowledge.H2ExperienceStore.open(null);
-        ExperienceTool experience = new ExperienceTool(() -> service, store);
+        ExperienceTool experience = new ExperienceTool(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store);
         ObjectNode record = om.createObjectNode();
         record.put("kind", "record");
         record.put("type", "lesson");
@@ -229,7 +229,7 @@ class DebugClosureTest {
         org.jawata.mcp.knowledge.H2ExperienceStore store =
             org.jawata.mcp.knowledge.H2ExperienceStore.open(null);
         String priorSymbol = TARGET + "#computeSignal";
-        ExperienceTool experience = new ExperienceTool(() -> service, store);
+        ExperienceTool experience = new ExperienceTool(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store);
         ObjectNode seed = om.createObjectNode();
         seed.put("kind", "record");
         seed.put("type", "failure_mode");

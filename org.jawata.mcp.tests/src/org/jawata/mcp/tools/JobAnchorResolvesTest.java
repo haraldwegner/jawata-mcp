@@ -77,7 +77,7 @@ class JobAnchorResolvesTest {
     @Test
     @DisplayName("a job anchored at a member that does not exist is refused by name")
     void an_unresolvable_anchor_is_refused() {
-        ExperienceTool tool = ExperienceTool.withAnchors(() -> service, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
+        ExperienceTool tool = ExperienceTool.withAnchors(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
 
         ToolResponse r = recordJob(tool, "com.example.AlphaTool#noSuchMemberAnywhere");
 
@@ -98,7 +98,7 @@ class JobAnchorResolvesTest {
     @DisplayName("a job anchored at a member that DOES exist is accepted")
     @SuppressWarnings("unchecked")
     void a_resolvable_anchor_is_accepted() {
-        ExperienceTool tool = ExperienceTool.withAnchors(() -> service, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
+        ExperienceTool tool = ExperienceTool.withAnchors(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
 
         ToolResponse r = recordJob(tool, "com.example.AlphaTool#parse");
 
@@ -165,7 +165,7 @@ class JobAnchorResolvesTest {
                 }
                 return method.getReturnType().isPrimitive() ? false : null;
             });
-        ExperienceTool tool = ExperienceTool.withAnchors(() -> throwing, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> throwing).memoryAnchors());
+        ExperienceTool tool = ExperienceTool.withAnchors(() -> new org.jawata.mcp.java.JavaSourceUnits(throwing), store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> throwing).memoryAnchors());
 
         ToolResponse r = recordJob(tool, "com.example.AlphaTool#parse");
 
@@ -229,7 +229,7 @@ class JobAnchorResolvesTest {
             IJdtService.class.getClassLoader(), new Class<?>[] {IJdtService.class},
             (proxy, method, methodArgs) -> "findType".equals(method.getName()) ? unreadable
                 : (method.getReturnType().isPrimitive() ? false : null));
-        ExperienceTool tool = ExperienceTool.withAnchors(() -> service, store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
+        ExperienceTool tool = ExperienceTool.withAnchors(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors());
 
         ToolResponse r = recordJob(tool, "com.example.AlphaTool#parse");
 

@@ -116,6 +116,13 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
         return Optional.of(new JavaSourceDiagnostics());
     }
 
+    /** The compilation units of whatever model is loaded at the moment of the ask; empty while none is. */
+    @Override
+    public Optional<org.jawata.spi.lang.SourceUnits> sourceUnits(ProviderContext context) {
+        IJdtService loaded = model.get();
+        return loaded == null ? Optional.empty() : Optional.of(new JavaSourceUnits(loaded));
+    }
+
     /**
      * What the knowledge classes and the tools that hold them keep: Java's anchors over whatever model is loaded at the moment of
      * the ask, or null while none is. The one place {@link JavaSymbolAnchors#over} is called (E12, ledger 28k-C3-8), so a tool that

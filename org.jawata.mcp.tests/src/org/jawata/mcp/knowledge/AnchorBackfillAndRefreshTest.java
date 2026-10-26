@@ -199,7 +199,7 @@ class AnchorBackfillAndRefreshTest {
 
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
         try (H2ExperienceStore store = H2ExperienceStore.open(null)) {
-            registry.register(new org.jawata.mcp.tools.ExperienceTool(() -> service, store));
+            registry.register(new org.jawata.mcp.tools.ExperienceTool(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store));
 
             com.fasterxml.jackson.databind.ObjectMapper mapper =
                 new com.fasterxml.jackson.databind.ObjectMapper();
