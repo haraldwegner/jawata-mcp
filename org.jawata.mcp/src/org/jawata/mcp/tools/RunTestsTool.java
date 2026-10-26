@@ -5,24 +5,17 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.eclipse.core.runtime.NullProgressMonitor;
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.core.IJavaProject;
-import org.eclipse.jdt.core.IMethod;
-import org.eclipse.jdt.core.IType;
-import org.jawata.core.IJdtService;
-import org.jawata.core.LoadedProject;
 import org.jawata.mcp.execution.ForkedTestRunner;
-import org.jawata.mcp.java.TestWorkingFolder;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.junit.JUnitLaunchHelper;
-import org.jawata.mcp.tools.shared.FrameworkDetection;
+import org.jawata.spi.lang.LoadedWorkspace;
 import org.jawata.spi.lang.RunnerSpec;
 import org.jawata.spi.lang.TestRuntime;
+import org.jawata.spi.lang.TestTarget;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -48,7 +41,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  * {@code evidenceFinalized=false} on crash/kill/timeout). The project is
  * built first and the run is REFUSED while compile errors exist.</p>
  */
-public class RunTestsTool extends AbstractTool {
+public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
 
     private static final Logger log = LoggerFactory.getLogger(RunTestsTool.class);
 
@@ -93,15 +86,15 @@ public class RunTestsTool extends AbstractTool {
     private final Supplier<TestRuntime> testRuntime;
 
     /** The tool over the given test runtime: the producer hands in the one its provider builds (E12, ledger 28k-C3-8). */
-    public RunTestsTool(Supplier<IJdtService> serviceSupplier, Supplier<TestRuntime> testRuntime) {
-        this(serviceSupplier, testRuntime, new org.jawata.mcp.coverage.CoverageService(
+    public RunTestsTool(Supplier<? extends LoadedWorkspace> workspace, Supplier<TestRuntime> testRuntime) {
+        this(workspace, testRuntime, new org.jawata.mcp.coverage.CoverageService(
             new org.jawata.mcp.coverage.CoverageStore(org.jawata.mcp.engine.EngineEnvironment.directories().coverageDir())));
     }
 
     /** The tool over the given test runtime and coverage evidence: the engine hands in the evidence over the host's own folder. */
-    public RunTestsTool(Supplier<IJdtService> serviceSupplier, Supplier<TestRuntime> testRuntime,
+    public RunTestsTool(Supplier<? extends LoadedWorkspace> workspace, Supplier<TestRuntime> testRuntime,
             org.jawata.mcp.coverage.CoverageService coverage) {
-        super(serviceSupplier);
+        super(workspace);
         this.testRuntime = testRuntime;
         this.coverage = coverage;
     }
@@ -355,7 +348,7 @@ public class RunTestsTool extends AbstractTool {
     }
 
     @Override
-    protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+    protected ToolResponse executeWithWorkspace(LoadedWorkspace workspace, JsonNode arguments) {
         if (arguments == null) {
             return ToolResponse.invalidParameter("scope", "Required object 'scope' is missing.");
         }
@@ -381,10 +374,10 @@ public class RunTestsTool extends AbstractTool {
                 return handleCoverageAction(action, arguments);
             }
             case "coverage_import" -> {
-                return handleCoverageImport(service, arguments);
+                return handleCoverageImport(workspace, arguments);
             }
             case "coverage_mutation" -> {
-                return handleCoverageMutation(service, arguments);
+                return handleCoverageMutation(workspace, arguments);
             }
             case "run", "start" -> { /* fall through to launch */ }
             default -> {
@@ -408,31 +401,20 @@ public class RunTestsTool extends AbstractTool {
             return ToolResponse.invalidParameter("scope.kind", "Required field missing.");
         }
 
-        String projectKey = getStringParam(arguments, "projectKey");
-        LoadedProject loaded;
-        if (projectKey != null && !projectKey.isBlank()) {
-            Optional<LoadedProject> scoped = service.getProject(projectKey);
-            if (scoped.isEmpty()) {
-                Optional<Long> dropped = service.wasRecentlyDropped(projectKey);
-                if (dropped.isPresent()) {
-                    return ToolResponse.projectKeyDropped(projectKey, dropped.get());
-                }
-                return ToolResponse.invalidParameter("projectKey",
-                    "Unknown projectKey '" + projectKey + "'. Use project(action=list).");
-            }
-            loaded = scoped.get();
-        } else {
-            loaded = service.allProjects().stream().findFirst().orElse(null);
-            if (loaded == null) {
-                return ToolResponse.projectNotLoaded();
-            }
+        // The base tool has already named a project the caller scoped to (and refused one that is unknown or dropped), so the first
+        // project of the workspace it hands us is the one to test.
+        LoadedWorkspace.ProjectInfo loaded = workspace.projects().get(0);
+        // The language is asked (contract §4.5, E10): what the forked run needs, and whether the project builds.
+        TestRuntime tests = testRuntime.get();
+        if (tests == null) {
+            return ToolResponse.projectLoading();
         }
-        IJavaProject javaProject = loaded.javaProject();
+        String projectName = loaded.buildName();
 
         try {
             String frameworkRaw = getStringParam(arguments, "framework", "auto");
-            JUnitLaunchHelper.TestRunnerKind runner = FrameworkDetection.detect(frameworkRaw, javaProject);
-            if (runner == null) {
+            String frameworkLabel = tests.frameworkFor(projectName, frameworkRaw).orElse(null);
+            if (frameworkLabel == null) {
                 return ToolResponse.invalidParameter("framework",
                     "Could not detect a JUnit/TestNG framework on the project's classpath. "
                         + "Set framework explicitly or add a test dependency.");
@@ -447,11 +429,11 @@ public class RunTestsTool extends AbstractTool {
 
             switch (kind) {
                 case "method" -> {
-                    ToolResponse error = configureMethodScope(spec, scope, service);
+                    ToolResponse error = configureMethodScope(spec, scope, workspace, tests);
                     if (error != null) return error;
                 }
                 case "class" -> {
-                    ToolResponse error = configureClassScope(spec, scope, service);
+                    ToolResponse error = configureClassScope(spec, scope, workspace, tests);
                     if (error != null) return error;
                 }
                 case "package" -> {
@@ -496,12 +478,6 @@ public class RunTestsTool extends AbstractTool {
 
             // Evidence needs compiled classes: build, and refuse honestly on
             // compile errors instead of running tests against stale bytes.
-            // The language is asked (contract §4.5, E10): what the forked run needs, and whether the project builds.
-            TestRuntime tests = testRuntime.get();
-            if (tests == null) {
-                return ToolResponse.projectLoading();
-            }
-            String projectName = javaProject.getProject().getName();
             String buildProblem = tests.buildAndCheck(projectName, new NullProgressMonitor()).orElse(null);
             if (buildProblem != null) {
                 // Every argument was valid; the project's own state declined (S19 dogfood: it was
@@ -523,10 +499,7 @@ public class RunTestsTool extends AbstractTool {
             }
             // S19-17: the folder of the module that owns the tests, as Maven and Gradle start them,
             // not the JDT project's own folder (a link folder in the studio's cache).
-            spec.workingDirectory = TestWorkingFolder.of(loaded);
-
-            String frameworkLabel = frameworkRaw.equals("auto")
-                ? runnerKindToShortName(runner) : frameworkRaw;
+            spec.workingDirectory = tests.workingFolder(projectName);
 
             // Sprint 23 D3/D4: optional coverage collection on this run;
             // attribution=true additionally records per-test segments.
@@ -540,7 +513,7 @@ public class RunTestsTool extends AbstractTool {
                 artifactId = coverage.mountCollector(spec, withAttribution);
             }
             final String covArtifact = artifactId;
-            final LoadedProject covProject = loaded;
+            final LoadedWorkspace.ProjectInfo covProject = loaded;
             final String covFramework = frameworkLabel;
 
             if ("start".equals(action)) {
@@ -561,7 +534,7 @@ public class RunTestsTool extends AbstractTool {
                     Thread finalizer = new Thread(() -> {
                         try {
                             ForkedTestRunner.Result done = running.await();
-                            coverage.finalizeArtifact(covArtifact, covProject, spec, done,
+                            coverage.finalizeArtifact(covArtifact, covProject, tests.rootsOf(projectName), spec, done,
                                 covFramework, evidenceKind);
                         } catch (Exception e) {
                             log.warn("coverage artifact {} not finalized: {}",
@@ -591,7 +564,7 @@ public class RunTestsTool extends AbstractTool {
                 return ToolResponse.invalidParameter("concurrency", limit.getMessage());
             }
             if (withCoverage) {
-                coverage.finalizeArtifact(artifactId, loaded, spec, r, frameworkLabel, evidenceKind);
+                coverage.finalizeArtifact(artifactId, loaded, tests.rootsOf(projectName), spec, r, frameworkLabel, evidenceKind);
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
@@ -1131,28 +1104,21 @@ public class RunTestsTool extends AbstractTool {
     
 
     /** Stage 8 — import an external exec file; class-id gate applies at analysis. */
-    private ToolResponse handleCoverageImport(IJdtService service, JsonNode arguments) {
+    private ToolResponse handleCoverageImport(LoadedWorkspace workspace, JsonNode arguments) {
         try {
             String execFile = getStringParam(arguments, "execFile");
             if (execFile == null || execFile.isBlank()) {
                 return ToolResponse.invalidParameter("execFile",
                     "execFile is required for coverage_import.");
             }
-            String projectKey = getStringParam(arguments, "projectKey");
-            LoadedProject project;
-            if (projectKey != null && !projectKey.isBlank()) {
-                Optional<LoadedProject> scoped = service.getProject(projectKey);
-                if (scoped.isEmpty()) {
-                    return ToolResponse.invalidParameter("projectKey",
-                        "Unknown projectKey '" + projectKey + "'.");
-                }
-                project = scoped.get();
-            } else {
-                project = service.allProjects().stream().findFirst().orElse(null);
-                if (project == null) return ToolResponse.projectNotLoaded();
+            // The base tool has narrowed the workspace to the project the caller named, so the first project is the one.
+            LoadedWorkspace.ProjectInfo project = workspace.projects().get(0);
+            TestRuntime tests = testRuntime.get();
+            if (tests == null) {
+                return ToolResponse.projectLoading();
             }
             String evidenceKind = getStringParam(arguments, "evidenceKind", "imported");
-            String id = coverage.importArtifact(project,
+            String id = coverage.importArtifact(project, tests.rootsOf(project.buildName()),
                 Path.of(execFile), evidenceKind);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("operation", "run_tests");
@@ -1789,7 +1755,7 @@ public class RunTestsTool extends AbstractTool {
     }
 
     /** Stage 10 — targeted, opt-in, bounded mutation testing via PIT. */
-    private ToolResponse handleCoverageMutation(IJdtService service, JsonNode arguments) {
+    private ToolResponse handleCoverageMutation(org.jawata.spi.lang.LoadedWorkspace workspace, JsonNode arguments) {
         try {
             java.util.List<String> targetClasses = new ArrayList<>();
             if (arguments.has("targetClasses") && arguments.get("targetClasses").isArray()) {
@@ -1840,35 +1806,29 @@ public class RunTestsTool extends AbstractTool {
                 }
             }
 
-            LoadedProject project = service.allProjects().stream().findFirst().orElse(null);
-            if (project == null) return ToolResponse.projectNotLoaded();
+            LoadedWorkspace.ProjectInfo project = workspace.projects().get(0);
             TestRuntime tests = testRuntime.get();
             if (tests == null) {
                 return ToolResponse.projectLoading();
             }
-            String buildProblem = tests
-                .buildAndCheck(project.javaProject().getProject().getName(), new NullProgressMonitor()).orElse(null);
+            String projectName = project.buildName();
+            String buildProblem = tests.buildAndCheck(projectName, new NullProgressMonitor()).orElse(null);
             if (buildProblem != null) {
                 return ToolResponse.preconditionNotMet(buildProblem, PROJECT_DOES_NOT_COMPILE);
             }
+            // The sources PIT reads are the ones that exist on disk.
             java.util.List<String> sourceRoots = new ArrayList<>();
-            org.eclipse.core.resources.IWorkspaceRoot wsRoot =
-                org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot();
-            for (org.eclipse.jdt.core.IClasspathEntry entry
-                    : project.javaProject().getResolvedClasspath(true)) {
-                if (entry.getEntryKind() == org.eclipse.jdt.core.IClasspathEntry.CPE_SOURCE) {
-                    org.eclipse.core.resources.IResource res = wsRoot.findMember(entry.getPath());
-                    if (res != null && res.getLocation() != null) {
-                        sourceRoots.add(res.getLocation().toOSString());
-                    }
+            for (String root : tests.rootsOf(projectName).sourceRoots()) {
+                if (java.nio.file.Files.isDirectory(Path.of(root))) {
+                    sourceRoots.add(root);
                 }
             }
 
             int timeout = Math.min(600, Math.max(30,
                 getIntParam(arguments, "timeoutSeconds", 300)));
             org.jawata.mcp.coverage.MutationService.Result r =
-                new org.jawata.mcp.coverage.MutationService().run(
-                    project.javaProject(), targetClasses, targetTests, sourceRoots, timeout);
+                new org.jawata.mcp.coverage.MutationService().run(tests.runtimeClasspath(projectName),
+                    tests.workingFolder(projectName), targetClasses, targetTests, sourceRoots, timeout);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("operation", "run_tests");
@@ -2111,8 +2071,7 @@ public class RunTestsTool extends AbstractTool {
         data.put("stderrTail", r.stderrTail == null ? "" : r.stderrTail);
     }
 
-    private ToolResponse configureMethodScope(ForkedTestRunner.Spec spec,
-                                              JsonNode scope, IJdtService service)
+    private ToolResponse configureMethodScope(ForkedTestRunner.Spec spec, JsonNode scope, org.jawata.spi.lang.LoadedWorkspace workspace, TestRuntime tests)
             throws Exception {
         if (scope.has("typeName") && scope.has("methodName")) {
             spec.selectMethods.add(scope.get("typeName").asText()
@@ -2123,35 +2082,19 @@ public class RunTestsTool extends AbstractTool {
             return ToolResponse.invalidParameter("scope",
                 "kind='method' requires either {typeName, methodName} or {filePath, line, column}.");
         }
-        Path filePath = service.getPathUtils().resolve(scope.get("filePath").asText());
+        Path filePath = workspace.resolvePath(scope.get("filePath").asText());
         int line = scope.get("line").asInt();
         int column = scope.get("column").asInt();
-        IJavaElement element = service.getElementAtPosition(filePath, line, column);
-        IMethod method = null;
-        // Walk up if the position landed on a body element rather than the
-        // declaration itself.
-        for (IJavaElement walk = element; walk != null; walk = walk.getParent()) {
-            if (walk instanceof IMethod m) {
-                method = m;
-                break;
-            }
-        }
-        if (method == null) {
+        TestTarget found = tests.testAt(filePath, line, column, true).orElse(null);
+        if (found == null) {
             return ToolResponse.symbolNotFound(
                 "No method at " + filePath + ":" + line + ":" + column);
         }
-        IType declaring = method.getDeclaringType();
-        if (declaring == null) {
-            return ToolResponse.invalidParameter("scope",
-                "Method has no declaring type (synthetic?).");
-        }
-        spec.selectMethods.add(declaring.getFullyQualifiedName()
-            + "#" + method.getElementName());
+        spec.selectMethods.add(found.typeName() + "#" + found.methodName());
         return null;
     }
 
-    private ToolResponse configureClassScope(ForkedTestRunner.Spec spec,
-                                             JsonNode scope, IJdtService service)
+    private ToolResponse configureClassScope(ForkedTestRunner.Spec spec, JsonNode scope, org.jawata.spi.lang.LoadedWorkspace workspace, TestRuntime tests)
             throws Exception {
         if (scope.has("typeName") && !scope.get("typeName").asText().isBlank()) {
             spec.selectClasses.add(scope.get("typeName").asText());
@@ -2161,24 +2104,16 @@ public class RunTestsTool extends AbstractTool {
             return ToolResponse.invalidParameter("scope",
                 "kind='class' requires either typeName or {filePath, line, column}.");
         }
-        Path filePath = service.getPathUtils().resolve(scope.get("filePath").asText());
+        Path filePath = workspace.resolvePath(scope.get("filePath").asText());
         int line = scope.get("line").asInt();
         int column = scope.get("column").asInt();
-        IType type = service.getTypeAtPosition(filePath, line, column);
-        if (type == null) {
+        TestTarget found = tests.testAt(filePath, line, column, false).orElse(null);
+        if (found == null) {
             return ToolResponse.symbolNotFound(
                 "No type at " + filePath + ":" + line + ":" + column);
         }
-        spec.selectClasses.add(type.getFullyQualifiedName());
+        spec.selectClasses.add(found.typeName());
         return null;
-    }
-
-    private static String runnerKindToShortName(JUnitLaunchHelper.TestRunnerKind k) {
-        return switch (k) {
-            case JUNIT3 -> "junit3";
-            case JUNIT4 -> "junit4";
-            case JUNIT5 -> "junit5";
-        };
     }
 
 }

@@ -140,7 +140,7 @@ public final class ShippedTools {
      * the advisor and the experience tool, which it wires further, so these objects must not be built again when a language arrives.
      */
     public static Built neutral(Wiring w, ProviderPorts ports) {
-        RunTestsTool runTests = new RunTestsTool(w.jdt(), ports.tests(), w.coverage());
+        RunTestsTool runTests = new RunTestsTool(ports.workspace(), ports.tests(), w.coverage());
 
         // The plan lifecycle consults and records against the knowledge store through the SAME advisor the pre-advice surface uses,
         // so it is given the embedding index, not left keyword-only.

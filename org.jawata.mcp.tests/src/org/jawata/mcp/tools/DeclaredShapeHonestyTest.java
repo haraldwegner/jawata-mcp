@@ -67,7 +67,7 @@ class DeclaredShapeHonestyTest {
     }
 
     @SuppressWarnings("unchecked")
-    private List<String> actionEnum(AbstractTool tool) {
+    private List<String> actionEnum(org.jawata.mcp.tools.Tool tool) {
         Map<String, Object> props = (Map<String, Object>) tool.getInputSchema().get("properties");
         return (List<String>) ((Map<String, Object>) props.get("action")).get("enum");
     }

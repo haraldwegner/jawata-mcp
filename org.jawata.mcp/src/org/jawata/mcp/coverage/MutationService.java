@@ -1,17 +1,5 @@
 package org.jawata.mcp.coverage;
 
-import org.eclipse.jdt.core.IClasspathEntry;
-import org.eclipse.jdt.core.IJavaProject;
-import org.jawata.core.host.HostCommand;
-import org.jawata.core.host.HostProcesses;
-import org.jawata.mcp.java.RunnerClasspath;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
-
-import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
@@ -25,6 +13,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+
+import javax.xml.parsers.DocumentBuilderFactory;
+
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.java.RunnerClasspath;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
 /**
  * Sprint 23 (D5) — targeted mutation testing: PIT (CLI, forked JVM) on a
@@ -79,11 +78,14 @@ public final class MutationService {
     }
 
     /**
-     * @param targetClasses production classes to mutate (globs ok)
-     * @param targetTests   the exercising tests (from attribution or explicit)
+     * @param projectClasspath what the project's own code needs at run time, as paths (the language's answer)
+     * @param projectFolder    the folder PIT starts in
+     * @param targetClasses    production classes to mutate (globs ok)
+     * @param targetTests      the exercising tests (from attribution or explicit)
+     * @param sourceRoots      where the project's sources are
+     * @param timeoutSeconds   how long PIT may run before it is reaped
      */
-    public Result run(IJavaProject project, List<String> targetClasses,
-            List<String> targetTests, List<String> sourceRoots, int timeoutSeconds)
+    public Result run(List<String> projectClasspath, java.nio.file.Path projectFolder, List<String> targetClasses, List<String> targetTests, List<String> sourceRoots, int timeoutSeconds)
             throws Exception {
         Result result = new Result();
         Path reportDir = Files.createTempDirectory("jawata-pit-");
@@ -105,18 +107,7 @@ public final class MutationService {
         // PIT's XML reporter needs commons-text (+lang3).
         cp.add(RunnerClasspath.toolJar("commons-text-"));
         cp.add(RunnerClasspath.toolJar("commons-lang3-"));
-        Set<String> projectCp = new LinkedHashSet<>();
-        for (var entry : org.eclipse.jdt.launching.JavaRuntime
-                .computeUnresolvedRuntimeClasspath(project)) {
-            for (var resolved : org.eclipse.jdt.launching.JavaRuntime
-                    .resolveRuntimeClasspathEntry(entry, project)) {
-                if (resolved.getClasspathProperty()
-                        == org.eclipse.jdt.launching.IRuntimeClasspathEntry.USER_CLASSES
-                        && resolved.getLocation() != null) {
-                    projectCp.add(resolved.getLocation());
-                }
-            }
-        }
+        Set<String> projectCp = new LinkedHashSet<>(projectClasspath);
 
         List<String> cmd = new ArrayList<>();
         cmd.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
@@ -148,7 +139,7 @@ public final class MutationService {
         // report shown to the user, stdout is only drained).
         Process p = HostProcesses.system().start(
             HostCommand.of(cmd)
-                .in(Path.of(project.getProject().getLocation().toOSString()))
+                .in(projectFolder)
                 .withSeparateStderr());
         StringBuilder err = new StringBuilder();
         Thread gobbler = new Thread(() -> {

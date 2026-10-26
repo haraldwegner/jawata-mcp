@@ -13,15 +13,14 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.eclipse.jdt.core.IClasspathEntry;
-import org.eclipse.jdt.core.IJavaProject;
-import org.jawata.core.LoadedProject;
 import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostOS;
 import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.ForkedTestRunner;
 import org.jawata.mcp.java.RunnerClasspath;
+import org.jawata.spi.lang.LoadedWorkspace;
+import org.jawata.spi.lang.ProjectRoots;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -76,7 +75,7 @@ public final class CoverageService {
     }
 
     /** Post-run: write the provenance manifest — evidence is only now an artifact. */
-    public CoverageManifest finalizeArtifact(String artifactId, LoadedProject project,
+    public CoverageManifest finalizeArtifact(String artifactId, LoadedWorkspace.ProjectInfo project, ProjectRoots roots,
             ForkedTestRunner.Spec spec, ForkedTestRunner.Result result,
             String framework, String evidenceKind) throws IOException {
         CoverageManifest m = new CoverageManifest();
@@ -87,16 +86,17 @@ public final class CoverageService {
         m.jacocoVersion = "0.8.15";
         m.jdkVersion = System.getProperty("java.version");
         m.environment = HostOS.description();
-        m.projectKey = project.projectKey();
-        m.projectRoot = project.projectRoot().toString();
+        m.projectKey = project.key();
+        m.projectRoot = project.root().toString();
         m.framework = framework;
         m.evidenceKind = evidenceKind == null || evidenceKind.isBlank() ? "unit" : evidenceKind;
         m.selectClasses = new ArrayList<>(spec.selectClasses);
         m.selectMethods = new ArrayList<>(spec.selectMethods);
         m.selectPackages = new ArrayList<>(spec.selectPackages);
 
-        collectRoots(project.javaProject(), m);
-        gitProvenance(project.projectRoot(), m);
+        m.classRoots.addAll(roots.classRoots());
+        m.sourceRoots.addAll(roots.sourceRoots());
+        gitProvenance(project.root(), m);
 
         Path segments = store.root().resolve(artifactId).resolve("segments");
         if (Files.isDirectory(segments)) {
@@ -115,35 +115,6 @@ public final class CoverageService {
 
         store.writeManifest(artifactId, m);
         return m;
-    }
-
-    /** Output folders = class roots (bundle identity); source folders for provenance. */
-    private static void collectRoots(IJavaProject project, CoverageManifest m) {
-        try {
-            org.eclipse.core.resources.IWorkspaceRoot wsRoot =
-                org.eclipse.core.resources.ResourcesPlugin.getWorkspace().getRoot();
-            org.eclipse.core.runtime.IPath defaultOut = project.getOutputLocation();
-            addWorkspacePath(wsRoot, defaultOut, m.classRoots);
-            for (IClasspathEntry entry : project.getResolvedClasspath(true)) {
-                if (entry.getEntryKind() == IClasspathEntry.CPE_SOURCE) {
-                    addWorkspacePath(wsRoot, entry.getPath(), m.sourceRoots);
-                    if (entry.getOutputLocation() != null) {
-                        addWorkspacePath(wsRoot, entry.getOutputLocation(), m.classRoots);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            log.warn("cannot collect class/source roots: {}", e.getMessage());
-        }
-    }
-
-    private static void addWorkspacePath(org.eclipse.core.resources.IWorkspaceRoot wsRoot,
-            org.eclipse.core.runtime.IPath path, List<String> into) {
-        if (path == null) return;
-        org.eclipse.core.resources.IResource res = wsRoot.findMember(path);
-        org.eclipse.core.runtime.IPath loc = res != null ? res.getLocation() : null;
-        String value = loc != null ? loc.toOSString() : path.toOSString();
-        if (!into.contains(value)) into.add(value);
     }
 
     private static void gitProvenance(Path projectRoot, CoverageManifest m) {
@@ -203,7 +174,7 @@ public final class CoverageService {
      * gated by the class-id check at analysis time (mismatched bytes surface
      * as stale-bytes REFUSALS, exactly like a local stale artifact).
      */
-    public String importArtifact(LoadedProject project, Path execSource, String evidenceKind)
+    public String importArtifact(LoadedWorkspace.ProjectInfo project, ProjectRoots roots, Path execSource, String evidenceKind)
             throws IOException {
         if (!Files.isRegularFile(execSource)) {
             throw new IOException("exec file not found: " + execSource);
@@ -217,12 +188,13 @@ public final class CoverageService {
         m.jacocoVersion = "0.8.15";
         m.jdkVersion = System.getProperty("java.version");
         m.environment = HostOS.description();
-        m.projectKey = project.projectKey();
-        m.projectRoot = project.projectRoot().toString();
+        m.projectKey = project.key();
+        m.projectRoot = project.root().toString();
         m.evidenceKind = evidenceKind == null || evidenceKind.isBlank() ? "imported" : evidenceKind;
         m.framework = "imported";
-        collectRoots(project.javaProject(), m);
-        gitProvenance(project.projectRoot(), m);
+        m.classRoots.addAll(roots.classRoots());
+        m.sourceRoots.addAll(roots.sourceRoots());
+        gitProvenance(project.root(), m);
         m.runFinalized = true;
         m.completionStatus = "IMPORTED";
         store.writeManifest(id, m);
