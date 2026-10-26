@@ -45,7 +45,7 @@ class ReplaceExceptionWithPrecheckToolTest {
         org.jawata.mcp.change.RefactoringChangeCache cache =
             new org.jawata.mcp.change.RefactoringChangeCache();
         tool = new ChangeMethodSignatureTool(() -> service, cache);
-        lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
+        lifecycle = org.jawata.mcp.fixtures.JavaLifecycle.door(service, cache);
         targets = service.getProjectRoot()
             .resolve("src/main/java/com/example/PrecheckTargets.java");
     }

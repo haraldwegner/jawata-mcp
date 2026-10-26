@@ -41,7 +41,7 @@ class ConvertAnonymousToLambdaToolTest {
         service = helper.loadProjectCopy("simple-maven");
         cache = new RefactoringChangeCache();
         tool = new ConvertAnonymousToLambdaTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         objectMapper = new ObjectMapper();
         anonymousExamplesFile = helper.getTempDirectory()
             .resolve("simple-maven/src/main/java/com/example/AnonymousClassExamples.java");

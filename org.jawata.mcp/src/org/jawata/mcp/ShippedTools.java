@@ -149,10 +149,12 @@ public final class ShippedTools {
         // The local experience/knowledge store's front door.
         ExperienceTool experience = ExperienceTool.withAnchors(ports.sourceUnits(), w.experienceStore(), w.defaultMemoryRoots(), ports.anchors());
 
+        // Where a language offers the plan actions of the refactoring door, which is built now and reads the slot at each call.
+        org.jawata.mcp.change.PlanSlot plans = new org.jawata.mcp.change.PlanSlot();
         ToolNeeds needs = new ToolNeeds(
             w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests,
-            w.runtimeArtifacts(), w.debugTurn());
-        return new Built(List.copyOf(neutralTools(w, runTests, advisor, experience, ports)), null, advisor, experience, needs);
+            w.runtimeArtifacts(), w.debugTurn(), plans, advisor);
+        return new Built(List.copyOf(neutralTools(w, runTests, experience, ports, plans)), null, advisor, experience, needs);
     }
 
     public static Built published(Built neutral, List<Tool> tools) {
@@ -167,8 +169,7 @@ public final class ShippedTools {
      *
      * @param ports what the tools hold of the languages: {@code health_check} lists the bound ones through it
      */
-    private static List<Tool> neutralTools(Wiring w, RunTestsTool runTests, ExperienceAdvisor advisor,
-            ExperienceTool experience, ProviderPorts ports) {
+    private static List<Tool> neutralTools(Wiring w, RunTestsTool runTests, ExperienceTool experience, ProviderPorts ports, org.jawata.mcp.change.PlanSlot plans) {
         Supplier<IJdtService> jdt = w.jdt();
         List<Tool> tools = new ArrayList<>();
 
@@ -205,7 +206,7 @@ public final class ShippedTools {
             w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore));
 
         tools.add(new RefreshWorkspaceTool(ports.workspace(), ports.verdict(), w.reconciler()));
-        tools.add(new RefactoringTool(jdt, w.changeCache(), advisor));
+        tools.add(new RefactoringTool(ports.workspace(), w.changeCache(), ports.changes(), plans::current));
         tools.add(experience);
 
         return tools;

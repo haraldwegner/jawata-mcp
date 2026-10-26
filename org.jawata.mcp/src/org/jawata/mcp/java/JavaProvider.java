@@ -159,6 +159,11 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
         Supplier<IJdtService> jdt = model;
         List<Tool> tools = new ArrayList<>();
 
+        // The plan actions of the refactoring door are Java's: the plans are made of its refactorings. The door is built before any
+        // language binds and reads the slot at each call.
+        needs.plans().offer(new org.jawata.mcp.tools.PlanRefactoringTool(jdt, needs.changeCache(),
+            new org.jawata.mcp.change.PlanStore(), needs.advisor()));
+
         // Core navigation, diagnostics-free analysis and call hierarchy.
         tools.add(new SearchSymbolsTool(jdt));
         tools.add(new GoToDefinitionTool(jdt));

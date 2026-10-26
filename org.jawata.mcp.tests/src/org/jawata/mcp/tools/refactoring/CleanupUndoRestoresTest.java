@@ -74,7 +74,7 @@ class CleanupUndoRestoresTest {
         assertNotEquals(before, after, kind + " changed nothing, so the undo below proves"
             + " nothing either");
 
-        ToolResponse undone = new UndoRefactoringTool(() -> service, cache)
+        ToolResponse undone = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service))
             .execute(mapper.createObjectNode().put("undoChangeId", undoId));
         assertTrue(undone.isSuccess(), "the undo must run; got: " + undone.getError());
         assertEquals(before, Files.readString(file, StandardCharsets.UTF_8),

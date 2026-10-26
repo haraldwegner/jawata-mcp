@@ -43,7 +43,7 @@ class ExtractInterfaceToolTest {
         service = helper.loadProjectCopy("simple-maven");
         cache = new RefactoringChangeCache();
         tool = new ExtractInterfaceTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         objectMapper = new ObjectMapper();
         interfaceTargetFile = helper.getTempDirectory()
             .resolve("simple-maven/src/main/java/com/example/InterfaceExtractTarget.java");

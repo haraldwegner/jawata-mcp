@@ -50,8 +50,8 @@ class ApplyUndoInspectToolsTest {
     void setUp() throws Exception {
         service = helper.loadProjectCopy("simple-maven");
         cache = new RefactoringChangeCache();
-        applyTool = new ApplyRefactoringTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        applyTool = new ApplyRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         inspectTool = new InspectRefactoringTool(() -> service, cache);
         objectMapper = new ObjectMapper();
         targetPath = helper.getTempDirectory()

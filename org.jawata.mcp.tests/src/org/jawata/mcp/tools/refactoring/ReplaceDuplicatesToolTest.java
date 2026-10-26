@@ -48,8 +48,8 @@ class ReplaceDuplicatesToolTest {
         cache = new RefactoringChangeCache();
         findTool = new FindDuplicateCodeTool(() -> service);
         replaceTool = new ReplaceDuplicatesTool(() -> service, cache);
-        applyTool = new ApplyRefactoringTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        applyTool = new ApplyRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         objectMapper = new ObjectMapper();
         animalFile = helper.getTempDirectory()
             .resolve("simple-maven/src/main/java/com/example/Animal.java");

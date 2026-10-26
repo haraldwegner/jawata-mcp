@@ -175,8 +175,7 @@ class RemoveMiddleManToolTest {
         ObjectNode undo = mapper.createObjectNode();
         undo.put("action", "undo");
         undo.put("undoChangeId", String.valueOf(data.get("undoChangeId")));
-        ToolResponse reverted = new org.jawata.mcp.tools.RefactoringTool(
-            () -> service, cache, new org.jawata.mcp.domain.NoOpAdvisor()).execute(undo);
+        ToolResponse reverted = org.jawata.mcp.fixtures.JavaLifecycle.door(service, cache).execute(undo);
         assertTrue(reverted.isSuccess(), "the undo must run; got: " + reverted.getError());
         assertEquals(before, read(middleMan), "the middle man is back:\n" + read(middleMan));
         assertEquals(beforeCaller, read(caller), "and so is its caller:\n" + read(caller));

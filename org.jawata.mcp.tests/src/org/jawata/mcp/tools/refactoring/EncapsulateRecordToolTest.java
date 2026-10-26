@@ -48,7 +48,7 @@ class EncapsulateRecordToolTest {
         org.jawata.mcp.change.RefactoringChangeCache cache =
             new org.jawata.mcp.change.RefactoringChangeCache();
         tool = new DataTool(() -> service, cache);
-        lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
+        lifecycle = org.jawata.mcp.fixtures.JavaLifecycle.door(service, cache);
         Path pkg = service.getProjectRoot().resolve("src/main/java/com/example");
         targets = pkg.resolve("EncapsulateRecordTargets.java");
         user = pkg.resolve("EncapsulateRecordUser.java");

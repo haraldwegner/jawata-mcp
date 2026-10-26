@@ -57,7 +57,7 @@ class AForwardingAnonymousClassIsDeletedTest {
         org.jawata.mcp.change.RefactoringChangeCache cache =
             new org.jawata.mcp.change.RefactoringChangeCache();
         tool = new DeleteAnonymousImplementationTool(() -> service, cache);
-        lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
+        lifecycle = org.jawata.mcp.fixtures.JavaLifecycle.door(service, cache);
         mapper = new ObjectMapper();
         projectPath = service.getProjectRoot();
     }

@@ -41,7 +41,7 @@ class ApplyCleanupToolTest {
         service = helper.loadProjectCopy("simple-maven");
         cache = new RefactoringChangeCache();
         tool = new ApplyCleanupTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         objectMapper = new ObjectMapper();
         targetFile = helper.getTempDirectory()
             .resolve("simple-maven/src/main/java/com/example/CleanupTargets.java");

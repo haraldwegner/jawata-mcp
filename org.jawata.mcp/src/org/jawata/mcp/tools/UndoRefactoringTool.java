@@ -1,34 +1,40 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.change.ChangeEngine;
-import org.jawata.mcp.change.RefactoringChangeCache;
-import org.jawata.mcp.models.ResponseMeta;
-import org.jawata.mcp.models.ToolResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import org.jawata.mcp.change.ChangeContext;
+import org.jawata.mcp.change.ChangeEngine;
+import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.models.ResponseMeta;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.lang.LoadedWorkspace;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
 /**
  * Sprint 14b — reverses a previously applied refactoring via its cached
  * undo-Change. One-shot: the undo handle is consumed.
  */
-public class UndoRefactoringTool extends AbstractTool {
+public class UndoRefactoringTool extends WorkspaceTool<LoadedWorkspace> {
 
     private static final Logger log = LoggerFactory.getLogger(UndoRefactoringTool.class);
 
     private final RefactoringChangeCache changeCache;
 
-    public UndoRefactoringTool(Supplier<IJdtService> serviceSupplier,
-                               RefactoringChangeCache changeCache) {
-        super(serviceSupplier);
+    /** What a change is applied under, asked at each use: the host's writes and reconciler and the language's verdict and paths. */
+    private final Supplier<ChangeContext> changes;
+
+    public UndoRefactoringTool(Supplier<? extends LoadedWorkspace> workspace,
+                               RefactoringChangeCache changeCache, Supplier<ChangeContext> changes) {
+        super(workspace);
         this.changeCache = changeCache;
+        this.changes = changes;
     }
 
     @Override
@@ -62,7 +68,7 @@ public class UndoRefactoringTool extends AbstractTool {
     }
 
     @Override
-    protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+    protected ToolResponse executeWithWorkspace(LoadedWorkspace workspace, JsonNode arguments) {
         ToolResponse missing = requireParam(arguments, "undoChangeId");
         if (missing != null) {
             return missing;
@@ -77,7 +83,7 @@ public class UndoRefactoringTool extends AbstractTool {
                     + "already been used, or the id belongs to a staged change.");
         }
 
-        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(entry.get().change(), org.jawata.mcp.java.JavaChange.contextFor(service));
+        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(entry.get().change(), changes.get());
         if (outcome.validationError() != null) {
             return ToolResponse.error(
                 "REFACTORING_FAILED",

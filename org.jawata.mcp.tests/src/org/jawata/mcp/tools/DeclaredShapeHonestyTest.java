@@ -107,7 +107,7 @@ class DeclaredShapeHonestyTest {
      * kind is mentioned at all. That is exactly the failure that occurred — not a
      * thin description, an absent one.</p>
      */
-    private static void assertDescribesEveryKindItPublishes(AbstractTool frontDoor) {
+    private static void assertDescribesEveryKindItPublishes(org.jawata.mcp.tools.Tool frontDoor) {
         List<String> publishedKinds = discriminatorValues(frontDoor);
         String description = frontDoor.getDescription();
 
@@ -134,7 +134,7 @@ class DeclaredShapeHonestyTest {
      * publish fifteen operations between them.</p>
      */
     @SuppressWarnings("unchecked")
-    private static List<String> discriminatorValues(AbstractTool frontDoor) {
+    private static List<String> discriminatorValues(org.jawata.mcp.tools.Tool frontDoor) {
         Map<String, Object> props =
             (Map<String, Object>) frontDoor.getInputSchema().get("properties");
         if (props == null) {
@@ -155,10 +155,10 @@ class DeclaredShapeHonestyTest {
     }
 
     /** Every parametric front door the application registers, by its published name. */
-    private Map<String, AbstractTool> frontDoors() {
+    private Map<String, Tool> frontDoors() {
         RefactoringChangeCache cache = new RefactoringChangeCache();
         Supplier<IJdtService> svc = () -> service;
-        Map<String, AbstractTool> doors = new LinkedHashMap<>();
+        Map<String, Tool> doors = new LinkedHashMap<>();
         // DERIVED AT S8b STEP 8. This map was hand-written and each door joined it by hand,
         // one stage at a time — `data` at Stage 5, `change_method_signature` at Stage 4, both
         // with a comment explaining that they had been excluded while they published a single
@@ -175,8 +175,7 @@ class DeclaredShapeHonestyTest {
         // NOT KindedTool and its verbs never enter the operation namespace. It is outside
         // RefactoringDoors for that reason, and inside this map because the honesty rules DO
         // apply to it.
-        doors.put("refactoring", new RefactoringTool(svc, cache,
-            new org.jawata.mcp.domain.NoOpAdvisor()));
+        doors.put("refactoring", org.jawata.mcp.fixtures.JavaLifecycle.door(service, cache));
         return doors;
     }
 
@@ -195,7 +194,7 @@ class DeclaredShapeHonestyTest {
         // schema, routed and tested. So the guard follows the hand-written text rather than
         // a list of door names, and a door drops out of it the moment its own lane converts
         // it — which is what keeps this from becoming the next thing that goes stale.
-        Map<String, AbstractTool> handWritten = new LinkedHashMap<>();
+        Map<String, Tool> handWritten = new LinkedHashMap<>();
         frontDoors().forEach((name, door) -> {
             assertEquals(name, door.getName(),
                 "this list is keyed by the PUBLISHED name; a rename must show up here");
@@ -241,7 +240,7 @@ class DeclaredShapeHonestyTest {
     @DisplayName("no door names one of its kinds in its PREAMBLE — that is the copy returning")
     void noPreambleNamesAKindByItsPublishedSpelling() {
         int checked = 0;
-        for (Map.Entry<String, AbstractTool> entry : frontDoors().entrySet()) {
+        for (Map.Entry<String, Tool> entry : frontDoors().entrySet()) {
             if (!(entry.getValue() instanceof FrontDoor door) || door.preamble().isEmpty()) {
                 continue;
             }
@@ -290,7 +289,7 @@ class DeclaredShapeHonestyTest {
     @Test
     @DisplayName("the guard covers every parametric front door, not the three it started with")
     void theGuardsOwnCoverage() {
-        Map<String, AbstractTool> doors = frontDoors();
+        Map<String, Tool> doors = frontDoors();
         assertEquals(10, doors.size(),
             "ten parametric front doors are guarded; if the surface changed, change this"
                 + " number deliberately rather than letting the guard quietly shrink: "
@@ -421,7 +420,7 @@ class DeclaredShapeHonestyTest {
     void theCureTableValidatesAgainstTheRealFrontDoors() {
         org.jawata.mcp.change.OperationRegistry registry =
             new org.jawata.mcp.change.OperationRegistry();
-        java.util.Map<String, AbstractTool> tools = new LinkedHashMap<>(frontDoors());
+        java.util.Map<String, Tool> tools = new LinkedHashMap<>(frontDoors());
         // `data` used to be added by hand here, because frontDoors() did not carry it — it
         // published no kind enum and so was not a parametric front door at all. Stage 5 made
         // it one, and frontDoors() now lists it, so the hand-add is gone rather than left

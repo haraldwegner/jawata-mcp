@@ -39,7 +39,7 @@ class RefactorPlanToolTest {
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
-        tool = new RefactoringTool(() -> service, new RefactoringChangeCache());
+        tool = org.jawata.mcp.fixtures.JavaLifecycle.door(service, new RefactoringChangeCache());
         mapper = new ObjectMapper();
     }
 

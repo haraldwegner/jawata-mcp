@@ -68,7 +68,7 @@ class ExtractClassToolTest {
         service = helper.loadProjectCopy("simple-maven");
         RefactoringChangeCache cache = new RefactoringChangeCache();
         tool = new ExtractTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         mapper = new ObjectMapper();
         pkgDir = helper.getTempDirectory().resolve("simple-maven/src/main/java/com/example");
         targetFile = pkgDir.resolve("SrpCohesionTargets.java");

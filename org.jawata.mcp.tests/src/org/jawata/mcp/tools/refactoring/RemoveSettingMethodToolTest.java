@@ -51,7 +51,7 @@ class RemoveSettingMethodToolTest {
         tool = new DataTool(() -> service, cache);
         // The SAME cache, because staging and undo are two calls about one change: a
         // lifecycle door holding its own cache would answer about nothing.
-        lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
+        lifecycle = org.jawata.mcp.fixtures.JavaLifecycle.door(service, cache);
         targets = service.getProjectRoot()
             .resolve("src/main/java/com/example/SettingMethodTargets.java");
     }

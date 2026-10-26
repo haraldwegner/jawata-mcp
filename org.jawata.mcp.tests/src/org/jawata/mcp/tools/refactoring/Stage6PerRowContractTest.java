@@ -376,8 +376,7 @@ class Stage6PerRowContractTest {
             ObjectNode undo = mapper.createObjectNode();
             undo.put("action", "undo");
             undo.put("undoChangeId", String.valueOf(undoId));
-            ToolResponse reverted = new org.jawata.mcp.tools.RefactoringTool(
-                () -> service, cache, new org.jawata.mcp.domain.NoOpAdvisor()).execute(undo);
+            ToolResponse reverted = org.jawata.mcp.fixtures.JavaLifecycle.door(service, cache).execute(undo);
             if (!reverted.isSuccess()) {
                 problems.add(row.label() + ": undo failed — " + reverted.getError());
                 continue;

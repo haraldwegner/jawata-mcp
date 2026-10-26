@@ -44,7 +44,7 @@ class OrganizeImportsToolTest {
         service = helper.loadProjectCopy("simple-maven");
         cache = new RefactoringChangeCache();
         tool = new OrganizeImportsTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         objectMapper = new ObjectMapper();
         refactoringTargetFile = helper.getTempDirectory()
             .resolve("simple-maven/src/main/java/com/example/RefactoringTarget.java");

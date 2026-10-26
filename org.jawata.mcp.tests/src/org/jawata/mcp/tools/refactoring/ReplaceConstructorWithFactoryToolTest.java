@@ -203,7 +203,7 @@ class ReplaceConstructorWithFactoryToolTest {
         assertTrue(!dispatcherBefore.equals(Files.readString(dispatcherFile)),
             "precondition: the calling file must actually have been rewritten");
 
-        ToolResponse undone = new UndoRefactoringTool(() -> service, cache)
+        ToolResponse undone = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service))
             .execute(mapper.createObjectNode().put("undoChangeId", undoId));
         assertTrue(undone.isSuccess(), () -> String.valueOf(undone.getError()));
 

@@ -80,7 +80,7 @@ class ExtractClassAcrossFilesTest {
         service = helper.loadProjectCopy("extract-crossfile");
         RefactoringChangeCache cache = new RefactoringChangeCache();
         tool = new ExtractTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         mapper = new ObjectMapper();
         projectRoot = helper.getTempDirectory().resolve("extract-crossfile");
         pkgDir = projectRoot.resolve("src/main/java/com/example/crossfile");

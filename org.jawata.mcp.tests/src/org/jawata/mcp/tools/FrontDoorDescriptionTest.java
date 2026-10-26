@@ -402,7 +402,7 @@ class FrontDoorDescriptionTest {
     @Test
     @DisplayName("refactoring takes the DESCRIPTION seam and deliberately not the routing seam")
     void refactoringTakesOneSeamNotTwo() {
-        RefactoringTool door = new RefactoringTool(() -> null, new RefactoringChangeCache());
+        RefactoringTool door = new RefactoringTool(() -> null, new RefactoringChangeCache(), () -> null, () -> null);
 
         assertFalse(door instanceof KindedTool,
             "its verbs are lifecycle operations over a change some other door produced."
@@ -422,7 +422,7 @@ class FrontDoorDescriptionTest {
         // BOTH `action` — its discriminator — and `kind`, which is a parameter of ONE action.
         // Inherited, the usage line would have advertised refactor_to_pattern's six plannable
         // operations as this door's own.
-        RefactoringTool door = new RefactoringTool(() -> null, new RefactoringChangeCache());
+        RefactoringTool door = new RefactoringTool(() -> null, new RefactoringChangeCache(), () -> null, () -> null);
 
         assertEquals(
             List.of("apply", "undo", "inspect", "plan", "apply_plan", "inspect_plan", "undo_plan"),
@@ -574,7 +574,7 @@ class FrontDoorDescriptionTest {
         }
         // The lifecycle door takes the description half only and is deliberately NOT in
         // RefactoringDoors (its verbs are not operations), so it is named here, once.
-        doors.add(new RefactoringTool(() -> null, cache));
+        doors.add(new RefactoringTool(() -> null, cache, () -> null, () -> null));
         return doors;
     }
 

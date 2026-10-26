@@ -94,7 +94,7 @@ class ActionVerbRoutingTest {
     @Test
     @DisplayName("refactoring: actions present; bad/missing id fails like the narrow tool")
     void refactoring_routes() {
-        RefactoringTool tool = new RefactoringTool(() -> service, cache);
+        RefactoringTool tool = org.jawata.mcp.fixtures.JavaLifecycle.door(service, cache);
         assertTrue(enumOf(tool, "action").containsAll(List.of("apply", "undo", "inspect")));
         // apply with an unknown changeId → not success (same as ApplyRefactoringTool).
         ObjectNode a = obj("action", "apply"); a.put("changeId", "nope");

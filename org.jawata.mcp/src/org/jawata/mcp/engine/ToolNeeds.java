@@ -19,11 +19,16 @@ import com.fasterxml.jackson.databind.JsonNode;
  * @param experienceStore the knowledge store as it is now (the debugger recalls from it)
  * @param runtimeSessions the live debug and profile sessions
  * @param impactedTests   how {@code inspect} asks {@code run_tests} for the tests a change reaches
+ * @param runtimeArtifacts where the debug and profile sessions keep what they record
+ * @param debugTurn       whether the person is debugging, which the runtime tools respect
+ * @param plans           where a language offers the plan actions of the refactoring front door
+ * @param advisor         what the plan lifecycle consults and records against the knowledge store
  */
 public record ToolNeeds(
         RefactoringChangeCache changeCache,
         Supplier<ExperienceStore> storeSupplier,
         ExperienceStore experienceStore,
         RuntimeSessionRegistry runtimeSessions,
-        Function<JsonNode, ToolResponse> impactedTests, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.spi.host.DebugTurn debugTurn) {
+        Function<JsonNode, ToolResponse> impactedTests, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.spi.host.DebugTurn debugTurn,
+        org.jawata.mcp.change.PlanSlot plans, org.jawata.mcp.domain.Advisor advisor) {
 }

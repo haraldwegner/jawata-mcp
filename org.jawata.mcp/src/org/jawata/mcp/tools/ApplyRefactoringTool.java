@@ -1,30 +1,36 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.change.ChangeEngine;
-import org.jawata.mcp.change.RefactoringChangeCache;
-import org.jawata.mcp.models.ResponseMeta;
-import org.jawata.mcp.models.ToolResponse;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import org.jawata.mcp.change.ChangeContext;
+import org.jawata.mcp.change.ChangeEngine;
+import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.models.ResponseMeta;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.lang.LoadedWorkspace;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
 /**
  * Sprint 14b — commits a Change previously staged with
  * {@code auto_apply: false}. One-shot: the staged entry is consumed.
  */
-public class ApplyRefactoringTool extends AbstractTool {
+public class ApplyRefactoringTool extends WorkspaceTool<LoadedWorkspace> {
 
     private final RefactoringChangeCache changeCache;
 
-    public ApplyRefactoringTool(Supplier<IJdtService> serviceSupplier,
-                                RefactoringChangeCache changeCache) {
-        super(serviceSupplier);
+    /** What a change is applied under, asked at each use: the host's writes and reconciler and the language's verdict and paths. */
+    private final Supplier<ChangeContext> changes;
+
+    public ApplyRefactoringTool(Supplier<? extends LoadedWorkspace> workspace,
+                                RefactoringChangeCache changeCache, Supplier<ChangeContext> changes) {
+        super(workspace);
         this.changeCache = changeCache;
+        this.changes = changes;
     }
 
     @Override
@@ -59,7 +65,7 @@ public class ApplyRefactoringTool extends AbstractTool {
     }
 
     @Override
-    protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+    protected ToolResponse executeWithWorkspace(LoadedWorkspace workspace, JsonNode arguments) {
         ToolResponse missing = requireParam(arguments, "changeId");
         if (missing != null) {
             return missing;
@@ -84,7 +90,7 @@ public class ApplyRefactoringTool extends AbstractTool {
         // ones it mattered most for: they wrap them in PreparedRefactoring, which answers
         // OK to both LTK condition checks on purpose.
         org.jawata.mcp.change.GatedApply.Result gated =
-            org.jawata.mcp.change.GatedApply.perform(entry.get().change(), org.jawata.mcp.java.JavaChange.contextFor(service), org.jawata.mcp.change.GatedApply.Mode.UNDO);
+            org.jawata.mcp.change.GatedApply.perform(entry.get().change(), changes.get(), org.jawata.mcp.change.GatedApply.Mode.UNDO);
         ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(

@@ -176,7 +176,7 @@ class ReplaceConditionalWithPolymorphismToolTest {
         assertTrue(!before.equals(Files.readString(routerFile)),
             "precondition: something must have changed, or the restore passes for free");
 
-        ToolResponse undone = new UndoRefactoringTool(() -> service, cache)
+        ToolResponse undone = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service))
             .execute(mapper.createObjectNode().put("undoChangeId", undoId));
         assertTrue(undone.isSuccess(), () -> String.valueOf(undone.getError()));
         assertEquals(before, Files.readString(routerFile),

@@ -1,28 +1,29 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.change.RefactoringChangeCache;
-import org.jawata.mcp.models.ResponseMeta;
-import org.jawata.mcp.models.ToolResponse;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.models.ResponseMeta;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.lang.LoadedWorkspace;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
 /**
  * Sprint 14b — returns the cached diff/summary of a staged change (or an
  * undo handle) WITHOUT applying anything. Non-consuming.
  */
-public class InspectRefactoringTool extends AbstractTool {
+public class InspectRefactoringTool extends WorkspaceTool<LoadedWorkspace> {
 
     private final RefactoringChangeCache changeCache;
 
-    public InspectRefactoringTool(Supplier<IJdtService> serviceSupplier,
+    public InspectRefactoringTool(Supplier<? extends LoadedWorkspace> workspace,
                                   RefactoringChangeCache changeCache) {
-        super(serviceSupplier);
+        super(workspace);
         this.changeCache = changeCache;
     }
 
@@ -66,7 +67,7 @@ public class InspectRefactoringTool extends AbstractTool {
     }
 
     @Override
-    protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+    protected ToolResponse executeWithWorkspace(LoadedWorkspace workspace, JsonNode arguments) {
         ToolResponse missing = requireParam(arguments, "changeId");
         if (missing != null) {
             return missing;

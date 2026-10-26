@@ -1,32 +1,5 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.eclipse.jdt.core.dom.AST;
-import org.eclipse.jdt.core.dom.ASTParser;
-import org.eclipse.jdt.core.dom.ASTVisitor;
-import org.eclipse.jdt.core.dom.CompilationUnit;
-import org.eclipse.jdt.core.dom.MethodDeclaration;
-import org.eclipse.ltk.core.refactoring.Change;
-import org.eclipse.ltk.core.refactoring.CompositeChange;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.change.ChangeEngine;
-import org.jawata.mcp.change.ParityGate;
-import org.jawata.mcp.change.Plan;
-import org.jawata.mcp.change.PlanStep;
-import org.jawata.mcp.domain.Advisor;
-import org.jawata.mcp.domain.Outcome;
-import org.jawata.mcp.models.ResponseMeta;
-import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.change.PlanStore;
-import org.jawata.mcp.refactoring.PurityCheck;
-import org.jawata.mcp.refactoring.PurityCheck.PurityFinding;
-import org.jawata.mcp.change.RefactoringChangeCache;
-import org.jawata.mcp.tools.smell.CureCatalog;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -38,6 +11,35 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
+
+import org.eclipse.jdt.core.dom.AST;
+import org.eclipse.jdt.core.dom.ASTParser;
+import org.eclipse.jdt.core.dom.ASTVisitor;
+import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.MethodDeclaration;
+import org.eclipse.ltk.core.refactoring.Change;
+import org.eclipse.ltk.core.refactoring.CompositeChange;
+import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
+import org.jawata.mcp.change.ParityGate;
+import org.jawata.mcp.change.Plan;
+import org.jawata.mcp.change.PlanLifecycle;
+import org.jawata.mcp.change.PlanStep;
+import org.jawata.mcp.change.PlanStore;
+import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.domain.Advisor;
+import org.jawata.mcp.domain.Outcome;
+import org.jawata.mcp.models.ResponseMeta;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.refactoring.PurityCheck;
+import org.jawata.mcp.refactoring.PurityCheck.PurityFinding;
+import org.jawata.mcp.tools.smell.CureCatalog;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Sprint 18 — the plan-lifecycle delegate behind {@code refactoring(action=plan|
@@ -55,20 +57,16 @@ import java.util.function.Supplier;
  *       findings are surfaced, not blocking.</li>
  * </ul>
  *
- * <p>Not registered — a package-private delegate the {@code refactoring} front door
- * routes plan actions to; it shares the front door's {@code changeCache} and a
- * process-lived {@link PlanStore}.</p>
+ * <p>Not registered — Java's {@link PlanLifecycle}, offered to the {@code refactoring} front
+ * door when the Java provider binds (Sprint 28k, Stage 9); it shares the front door's
+ * {@code changeCache} and a process-lived {@link PlanStore}.</p>
  */
-class PlanRefactoringTool extends AbstractTool {
+public class PlanRefactoringTool extends AbstractTool implements PlanLifecycle {
 
     private static final Logger log = LoggerFactory.getLogger(PlanRefactoringTool.class);
 
-    static final List<String> PLAN_KINDS = List.of(
-        "compose_method", "replace_type_code_with_class", "inline_singleton",
-        // OCP-cure recipes (CureCatalog.recipesFor) — single-step, parity-gated
-        // refactor_to_pattern plans. Was OcpCure.recipesFor until S7 folded the three
-        // cure tables into one; this file's import moved and the comment did not.
-        "refactor_to_state", "refactor_to_command_dispatcher", "form_template_method");
+    /** The plannable kinds, one list for the front door and for the recipes ({@link PlanLifecycle#KINDS}). */
+    static final List<String> PLAN_KINDS = PlanLifecycle.KINDS;
 
     private static final Set<String> CONTROL_FIELDS =
         Set.of("action", "kind", "target", "filePath", "planId", "sections", "projectKey", "auto_apply");
@@ -93,7 +91,7 @@ class PlanRefactoringTool extends AbstractTool {
         ToolResponse invoke(IJdtService service, JsonNode args);
     }
 
-    PlanRefactoringTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache changeCache,
+    public PlanRefactoringTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache changeCache,
                         PlanStore planStore, Advisor advisor) {
         super(serviceSupplier);
         this.changeCache = changeCache;
@@ -103,6 +101,12 @@ class PlanRefactoringTool extends AbstractTool {
         this.patternTool = new RefactorToPatternTool(serviceSupplier, changeCache);
         registerStepTool("extract", extractTool::executeWithService);
         registerStepTool("refactor_to_pattern", patternTool::executeWithService);
+    }
+
+    /** The plan actions over the workspace the front door hands in, which for Java is its own service, possibly narrowed to one project. */
+    @Override
+    public ToolResponse run(org.jawata.spi.lang.LoadedWorkspace workspace, JsonNode arguments) {
+        return executeWithService((IJdtService) workspace, arguments);
     }
 
     /** Makes {@code invoker} the primitive that runs every plan step named {@code tool}, replacing one already there. */

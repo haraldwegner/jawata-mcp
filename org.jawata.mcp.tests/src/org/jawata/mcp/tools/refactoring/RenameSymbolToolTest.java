@@ -47,8 +47,8 @@ class RenameSymbolToolTest {
         service = helper.loadProjectCopy("simple-maven");
         cache = new RefactoringChangeCache();
         tool = new RenameSymbolTool(() -> service, cache, () -> null);
-        applyTool = new ApplyRefactoringTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        applyTool = new ApplyRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         objectMapper = new ObjectMapper();
         projectPath = helper.getTempDirectory().resolve("simple-maven");
         refactoringTargetFile = projectPath.resolve("src/main/java/com/example/RefactoringTarget.java");

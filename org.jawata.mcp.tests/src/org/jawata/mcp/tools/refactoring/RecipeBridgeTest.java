@@ -40,7 +40,7 @@ class RecipeBridgeTest {
     @BeforeEach
     void setUp() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("recipe-bridge");
-        tool = new RefactoringTool(() -> service, new RefactoringChangeCache());
+        tool = org.jawata.mcp.fixtures.JavaLifecycle.door(service, new RefactoringChangeCache());
         mapper = new ObjectMapper();
         registryFile = helper.getTempDirectory()
             .resolve("recipe-bridge/src/main/java/com/example/recipe/Registry.java");

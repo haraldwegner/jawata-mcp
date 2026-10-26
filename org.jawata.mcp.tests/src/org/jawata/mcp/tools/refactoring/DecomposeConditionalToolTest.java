@@ -48,7 +48,7 @@ class DecomposeConditionalToolTest {
         // and read as a defect in the row rather than in the wiring.
         RefactoringChangeCache cache = new RefactoringChangeCache();
         tool = new RefactorToPatternTool(() -> service, cache);
-        lifecycle = new org.jawata.mcp.tools.RefactoringTool(() -> service, cache);
+        lifecycle = org.jawata.mcp.fixtures.JavaLifecycle.door(service, cache);
         mapper = new ObjectMapper();
         target = service.allProjects().iterator().next().projectRoot()
             .resolve("src/main/java/com/example/DecomposeConditionalTargets.java");

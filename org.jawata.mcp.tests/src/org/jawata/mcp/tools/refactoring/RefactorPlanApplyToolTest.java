@@ -47,8 +47,8 @@ class RefactorPlanApplyToolTest {
         // compilable ComposeMethodTargets, verbatim — so the coordinates carry over.
         JdtServiceImpl service = helper.loadProjectCopy("compose-clean");
         RefactoringChangeCache cache = new RefactoringChangeCache();
-        tool = new RefactoringTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        tool = org.jawata.mcp.fixtures.JavaLifecycle.door(service, cache);
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         mapper = new ObjectMapper();
         targetFile = helper.getTempDirectory()
             .resolve("compose-clean/src/main/java/com/example/ComposeMethodTargets.java");

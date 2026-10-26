@@ -1,24 +1,24 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import org.jawata.core.IJdtService;
-import org.jawata.mcp.domain.Advisor;
-import org.jawata.mcp.domain.NoOpAdvisor;
-import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.change.PlanStore;
-import org.jawata.mcp.change.RefactoringChangeCache;
-
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
+
+import org.jawata.mcp.change.ChangeContext;
+import org.jawata.mcp.change.PlanLifecycle;
+import org.jawata.mcp.change.RefactoringChangeCache;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.lang.LoadedWorkspace;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Sprint 16b/A (v1.1.1) — the staged-refactoring lifecycle front door, collapsing
  * apply_refactoring / undo_refactoring / inspect_refactoring by {@code action}.
  * Not marked read-only (apply/undo mutate; inspect reads).
  */
-public class RefactoringTool extends AbstractTool implements FrontDoor {
+public class RefactoringTool extends WorkspaceTool<LoadedWorkspace> implements FrontDoor {
 
     // Sprint 18: the single-change lifecycle (apply/undo/inspect on a changeId) plus
     // the multi-step plan lifecycle. Actions are advertised as they land (C4: plan;
@@ -29,26 +29,25 @@ public class RefactoringTool extends AbstractTool implements FrontDoor {
     private final ApplyRefactoringTool apply;
     private final UndoRefactoringTool undo;
     private final InspectRefactoringTool inspect;
-    private final PlanRefactoringTool planTool;
-
-    /** Back-compat: no store wired — the advisor is the Sprint-18 {@link NoOpAdvisor}. */
-    public RefactoringTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
-        this(serviceSupplier, cache, new NoOpAdvisor());
-    }
+    private final Supplier<PlanLifecycle> plans;
 
     /**
-     * Sprint 21 Stage 3 — inject the {@link Advisor} (the store-backed
-     * {@code ExperienceAdvisor} in production) so the plan lifecycle consults + records
-     * against the knowledge store.
+     * The lifecycle door over a language's workspace (Sprint 28k, Stage 9): the staged-change actions run under the change context the
+     * language supplies, and the plan actions go to the plan lifecycle the language offered, asked at each call because the door is
+     * built before any language binds.
+     *
+     * @param workspace the language's loaded workspace
+     * @param cache     the staged changes and undo handles
+     * @param changes   what a change is applied under
+     * @param plans     the language's plan actions, or null while no language has offered them
      */
-    public RefactoringTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache,
-                           Advisor advisor) {
-        super(serviceSupplier);
-        this.apply = new ApplyRefactoringTool(serviceSupplier, cache);
-        this.undo = new UndoRefactoringTool(serviceSupplier, cache);
-        this.inspect = new InspectRefactoringTool(serviceSupplier, cache);
-        // Process-lived plan store so a planId from `plan` survives to apply_plan/inspect_plan/undo_plan.
-        this.planTool = new PlanRefactoringTool(serviceSupplier, cache, new PlanStore(), advisor);
+    public RefactoringTool(Supplier<? extends LoadedWorkspace> workspace, RefactoringChangeCache cache,
+                           Supplier<ChangeContext> changes, Supplier<PlanLifecycle> plans) {
+        super(workspace);
+        this.apply = new ApplyRefactoringTool(workspace, cache, changes);
+        this.undo = new UndoRefactoringTool(workspace, cache, changes);
+        this.inspect = new InspectRefactoringTool(workspace, cache);
+        this.plans = plans;
     }
 
     @Override
@@ -177,7 +176,7 @@ public class RefactoringTool extends AbstractTool implements FrontDoor {
         properties.put("action", action);
         properties.put("changeId", Map.of("type", "string", "description", "apply/inspect: the staged change id."));
         properties.put("undoChangeId", Map.of("type", "string", "description", "undo: the undo handle id."));
-        properties.put("kind", Map.of("type", "string", "enum", PlanRefactoringTool.PLAN_KINDS,
+        properties.put("kind", Map.of("type", "string", "enum", PlanLifecycle.KINDS,
             "description", "plan: which multi-step refactoring to plan."));
         properties.put("target", Map.of("type", "string", "description", "plan: optional symbol/label for advice + display."));
         properties.put("filePath", Map.of("type", "string", "description", "plan: source file of the refactoring target."));
@@ -193,19 +192,28 @@ public class RefactoringTool extends AbstractTool implements FrontDoor {
     }
 
     @Override
-    protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
+    protected ToolResponse executeWithWorkspace(LoadedWorkspace workspace, JsonNode arguments) {
         String action = getStringParam(arguments, "action");
         if (action == null || action.isBlank()) {
             return ToolResponse.invalidParameter("action", "action is required; one of " + ACTIONS);
         }
         return switch (action) {
-            case "apply"   -> apply.executeWithService(service, arguments);
-            case "undo"    -> undo.executeWithService(service, arguments);
-            case "inspect" -> inspect.executeWithService(service, arguments);
-            case "plan", "apply_plan", "inspect_plan", "undo_plan"
-                           -> planTool.executeWithService(service, arguments);
+            case "apply"   -> apply.executeWithWorkspace(workspace, arguments);
+            case "undo"    -> undo.executeWithWorkspace(workspace, arguments);
+            case "inspect" -> inspect.executeWithWorkspace(workspace, arguments);
+            case "plan", "apply_plan", "inspect_plan", "undo_plan" -> planned(workspace, arguments);
             default -> ToolResponse.invalidParameter("action",
                 "Unknown action '" + action + "'. Allowed: " + ACTIONS);
         };
+    }
+
+    /** A plan action, answered by the language that offered the plan lifecycle, or refused while none has. */
+    private ToolResponse planned(LoadedWorkspace workspace, JsonNode arguments) {
+        PlanLifecycle lifecycle = plans.get();
+        if (lifecycle == null) {
+            return ToolResponse.invalidParameter("action",
+                "No loaded language offers refactoring plans, so '" + getStringParam(arguments, "action") + "' is not available.");
+        }
+        return lifecycle.run(workspace, arguments);
     }
 }

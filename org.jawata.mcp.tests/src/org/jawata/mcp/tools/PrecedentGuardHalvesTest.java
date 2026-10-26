@@ -131,13 +131,13 @@ class PrecedentGuardHalvesTest {
     void theShippedRefactoringToolsAreAllSubjectsOfThePrecedent() {
         org.jawata.mcp.change.RefactoringChangeCache cache =
             new org.jawata.mcp.change.RefactoringChangeCache();
-        List<AbstractTool> shipped = new java.util.ArrayList<>(
+        List<Tool> shipped = new java.util.ArrayList<>(
             RefactoringDoors.all(() -> null, cache));
         shipped.addAll(RefactoringDoors.standalone(() -> null, cache, () -> null));
-        shipped.add(new RefactoringTool(() -> null, cache));
+        shipped.add(new RefactoringTool(() -> null, cache, () -> null, () -> null));
 
         assertFalse(shipped.isEmpty(), "proof of life: the derivation yields tools");
-        for (AbstractTool tool : shipped) {
+        for (Tool tool : shipped) {
             assertTrue(tool.isRevertible(),
                 tool.getName() + " changes the workspace and has an undo, so a precedent against"
                     + " it is exactly what the guard is for — and it answers false");

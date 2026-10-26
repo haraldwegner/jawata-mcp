@@ -44,7 +44,7 @@ class ComposeMethodToolTest {
         JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
         RefactoringChangeCache cache = new RefactoringChangeCache();
         tool = new RefactorToPatternTool(() -> service, cache);
-        undoTool = new UndoRefactoringTool(() -> service, cache);
+        undoTool = new UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         mapper = new ObjectMapper();
         targetFile = helper.getTempDirectory()
             .resolve("simple-maven/src/main/java/com/example/ComposeMethodTargets.java");

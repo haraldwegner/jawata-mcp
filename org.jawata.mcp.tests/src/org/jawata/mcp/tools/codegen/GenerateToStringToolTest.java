@@ -34,7 +34,7 @@ class GenerateToStringToolTest {
         service = helper.loadProjectCopy("simple-maven");
         var cache = new org.jawata.mcp.change.RefactoringChangeCache();
         tool = new GenerateToStringTool(() -> service, cache);
-        undoTool = new org.jawata.mcp.tools.UndoRefactoringTool(() -> service, cache);
+        undoTool = new org.jawata.mcp.tools.UndoRefactoringTool(() -> service, cache, org.jawata.mcp.fixtures.JavaLifecycle.changes(service));
         objectMapper = new ObjectMapper();
     }
 
