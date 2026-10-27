@@ -53,6 +53,31 @@ class RunTestsOutputTailTest {
         assertTrue(tail.contains("80 DEBUG/TRACE lines left out"), "the tail does not say what it left out: " + tail);
     }
 
+    @Test
+    @DisplayName("run_tests: an INFO line followed by more DEBUG lines than the tail holds is still in the tail (S19-30)")
+    void theInfoLineSurvivesMoreDebugLinesThanTheTailHolds() throws Exception {
+        JdtServiceImpl service = helper.loadProjectCopy("runner-module-relative-file");
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
+
+        ObjectNode args = new ObjectMapper().createObjectNode();
+        ObjectNode scope = args.putObject("scope");
+        scope.put("kind", "class");
+        scope.put("typeName", "com.example.rel.LongNoisyOutputTest");
+        args.put("framework", "junit5");
+        args.put("timeoutSeconds", 120);
+        ToolResponse r = tool.execute(args);
+
+        assertTrue(r.isSuccess(), "got: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        String tail = String.valueOf(data.get("stdoutTail"));
+        // 150 DEBUG lines follow the INFO line: cutting to the last 100 lines first would leave
+        // 100 DEBUG lines and no INFO line.
+        assertTrue(tail.contains("statusCode=[500] backend gone"), "the INFO line was cut off the tail: " + tail);
+        assertFalse(tail.contains("DEBUG org.example.Library"), "DEBUG lines are still in the tail: " + tail);
+        assertTrue(tail.contains("150 DEBUG/TRACE lines left out"), "the tail does not say what it left out: " + tail);
+    }
+
     // ---------------------------------------------------------- the filter itself
 
     @Test

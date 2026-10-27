@@ -390,7 +390,9 @@ public final class ForkedTestRunner {
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
             }
-            // S19-20: a library's DEBUG chatter must not fill the 100 lines that are left to show.
+            // S19-20, S19-30: DEBUG and TRACE lines go BEFORE the last 100 lines are taken, so a
+            // long stream of them after a line that matters cannot push that line out of the tail.
+            // (Only the first STREAM_CAP_BYTES are captured: what the cap cut off is not here.)
             String[] lines = LogNoise.withoutDebug(buf.toString()).split("\n");
             int from = Math.max(0, lines.length - 100);
             StringBuilder out = new StringBuilder();
