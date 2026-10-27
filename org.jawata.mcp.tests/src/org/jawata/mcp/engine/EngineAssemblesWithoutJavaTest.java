@@ -147,7 +147,9 @@ class EngineAssemblesWithoutJavaTest {
             }
         };
         ChangeContext context = new ChangeContext(host.writes(), host.reconciler(), language.verdict(hostPorts), language.paths(hostPorts));
-        Path folder = Files.createDirectories(scratch.resolve("project"));
+        // The real path: the platform names a project's files by its canonical location, and a temp folder is reached through a symbolic
+        // link on macOS (/var -> /private/var) and by a short name on Windows (RUNNER~1), neither of which it would match.
+        Path folder = Files.createDirectories(scratch.toRealPath().resolve("project"));
         IWorkspace workspace = ResourcesPlugin.getWorkspace();
         IProject project = workspace.getRoot().getProject("stand-in-" + System.nanoTime());
         IProjectDescription description = workspace.newProjectDescription(project.getName());

@@ -23,6 +23,14 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class WorkspaceJsonSourceRootsTest {
 
+    /** Absolute on every OS: a path that starts with a slash has no drive on Windows, where the reader makes it absolute against one. */
+    private static final Path WS = Path.of("").toAbsolutePath().getRoot().resolve("ws");
+
+    /** A path as JSON text: forward slashes, which every OS reads and which need no escaping. */
+    private static String json(Path path) {
+        return path.toString().replace('\\', '/');
+    }
+
     private static Path write(Path dir, String json) throws Exception {
         Path file = dir.resolve("workspace.json");
         Files.writeString(file, json);
@@ -32,33 +40,36 @@ class WorkspaceJsonSourceRootsTest {
     @Test
     @DisplayName("the declared folders are read per project path, main and test apart")
     void declaredFoldersAreReadPerProject(@TempDir Path dir) throws Exception {
+        Path core = WS.resolve("core");
+        Path tools = WS.resolve("tools");
         Path file = write(dir, """
-            {"version":1,"name":"w","projects":["/ws/core","/ws/tools"],
-             "sourceRoots":{"/ws/core":{"main":["/ws/core/java"],"test":["/ws/core/test"]},
-                            "/ws/tools":{"main":["/ws/tools/src"],"test":[]}}}
-            """);
+            {"version":1,"name":"w","projects":["%1$s","%2$s"],
+             "sourceRoots":{"%1$s":{"main":["%1$s/java"],"test":["%1$s/test"]},
+                            "%2$s":{"main":["%2$s/src"],"test":[]}}}
+            """.formatted(json(core), json(tools)));
 
         Map<Path, DeclaredSourceRoots> roots = WorkspaceJson.readSourceRoots(file);
 
         assertAll(
             () -> assertEquals(2, roots.size(), "got: " + roots),
-            () -> assertEquals(List.of(Path.of("/ws/core/java")), roots.get(Path.of("/ws/core")).main()),
-            () -> assertEquals(List.of(Path.of("/ws/core/test")), roots.get(Path.of("/ws/core")).test()),
-            () -> assertEquals(List.of(), roots.get(Path.of("/ws/tools")).test()));
+            () -> assertEquals(List.of(core.resolve("java")), roots.get(core).main()),
+            () -> assertEquals(List.of(core.resolve("test")), roots.get(core).test()),
+            () -> assertEquals(List.of(), roots.get(tools).test()));
     }
 
     @Test
     @DisplayName("a folder given relative is the project's own: it is resolved against the project path")
     void relativeFoldersAreTheProjects(@TempDir Path dir) throws Exception {
+        Path project = WS.resolve("core");
         Path file = write(dir, """
-            {"projects":["/ws/core"],"sourceRoots":{"/ws/core":{"main":["java"],"test":["test"]}}}
-            """);
+            {"projects":["%1$s"],"sourceRoots":{"%1$s":{"main":["java"],"test":["test"]}}}
+            """.formatted(json(project)));
 
-        DeclaredSourceRoots core = WorkspaceJson.readSourceRoots(file).get(Path.of("/ws/core"));
+        DeclaredSourceRoots core = WorkspaceJson.readSourceRoots(file).get(project);
 
         assertAll(
-            () -> assertEquals(List.of(Path.of("/ws/core/java")), core.main()),
-            () -> assertEquals(List.of(Path.of("/ws/core/test")), core.test()));
+            () -> assertEquals(List.of(project.resolve("java")), core.main()),
+            () -> assertEquals(List.of(project.resolve("test")), core.test()));
     }
 
     @Test
@@ -74,17 +85,20 @@ class WorkspaceJsonSourceRootsTest {
     @Test
     @DisplayName("an entry that names no folder at all is not an entry: the member is discovered instead of mounted empty")
     void anEntryWithNoFoldersIsNotAnEntry(@TempDir Path dir) throws Exception {
+        Path empty = WS.resolve("empty");
+        Path odd = WS.resolve("odd");
+        Path core = WS.resolve("core");
         Path file = write(dir, """
-            {"sourceRoots":{"/ws/empty":{"main":[],"test":[]},"/ws/odd":"src","/ws/core":{"main":["/ws/core/java"]}}}
-            """);
+            {"sourceRoots":{"%1$s":{"main":[],"test":[]},"%2$s":"src","%3$s":{"main":["%3$s/java"]}}}
+            """.formatted(json(empty), json(odd), json(core)));
 
         Map<Path, DeclaredSourceRoots> roots = WorkspaceJson.readSourceRoots(file);
 
         assertAll(
             // Mounting no folder at all would load a project that looks healthy and holds nothing: the failure Sprint 28 closed.
-            () -> assertFalse(roots.containsKey(Path.of("/ws/empty")), "got: " + roots),
-            () -> assertFalse(roots.containsKey(Path.of("/ws/odd")), "got: " + roots),
-            () -> assertTrue(roots.containsKey(Path.of("/ws/core")), "a missing 'test' is an empty one: " + roots));
+            () -> assertFalse(roots.containsKey(empty), "got: " + roots),
+            () -> assertFalse(roots.containsKey(odd), "got: " + roots),
+            () -> assertTrue(roots.containsKey(core), "a missing 'test' is an empty one: " + roots));
     }
 
     @Test

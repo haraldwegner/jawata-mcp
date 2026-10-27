@@ -18,7 +18,7 @@ public final class LogNoise {
 
     private static final Pattern DEBUG_LINE = Pattern.compile(
         "^(?:\\d{2}:\\d{2}:\\d{2}[.,]\\d+\\s+|\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}[.,]\\d+\\s+)?"
-            + "(?:\\[[^\\]]*\\]\\s+)?(?:DEBUG|TRACE)\\s.*$");
+            + "(?:\\[[^\\]]*\\]\\s+)?(?:DEBUG|TRACE)\\s.*$", Pattern.DOTALL);
 
     private LogNoise() {}
 

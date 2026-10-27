@@ -74,9 +74,14 @@ class DeclaredSourceRootsLoadTest {
         }
     }
 
+    /** A path as JSON text: forward slashes, which every OS reads and which need no escaping (a Windows path's backslashes would). */
+    private static String json(Path path) {
+        return path.toString().replace('\\', '/');
+    }
+
     private void load(String sourceRootsJson) throws Exception {
-        String roots = sourceRootsJson == null ? "" : ",\"sourceRoots\":{\"" + core + "\":" + sourceRootsJson + "}";
-        Files.writeString(dataDir.resolve("workspace.json"), "{\"version\":1,\"name\":\"s4\",\"projects\":[\"" + core + "\"]" + roots + "}");
+        String roots = sourceRootsJson == null ? "" : ",\"sourceRoots\":{\"" + json(core) + "\":" + sourceRootsJson + "}";
+        Files.writeString(dataDir.resolve("workspace.json"), "{\"version\":1,\"name\":\"s4\",\"projects\":[\"" + json(core) + "\"]" + roots + "}");
         watcher = new WorkspaceFileWatcher(dataDir, service);
         watcher.start();
         assertEquals(1, service.allProjects().size(), "the member loaded: " + watcher.loadFailures());
@@ -102,7 +107,7 @@ class DeclaredSourceRootsLoadTest {
     @Test
     @DisplayName("a member with an entry mounts exactly its declared folders, the test one marked test, and not the folder beside them")
     void aDeclaredMemberMountsWhatItDeclared() throws Exception {
-        load("{\"main\":[\"" + core.resolve("java") + "\"],\"test\":[\"" + core.resolve("test") + "\"]}");
+        load("{\"main\":[\"" + json(core.resolve("java")) + "\"],\"test\":[\"" + json(core.resolve("test")) + "\"]}");
 
         Map<Path, Boolean> mounted = mountedRoots();
 
@@ -119,9 +124,9 @@ class DeclaredSourceRootsLoadTest {
         load(null);
         assertTrue(mountedRoots().containsKey(core.resolve("src").toRealPath()), "discovered at first");
 
-        Files.writeString(dataDir.resolve("workspace.json"), "{\"version\":1,\"name\":\"s4\",\"projects\":[\"" + core + "\"],"
-            + "\"sourceRoots\":{\"" + core + "\":{\"main\":[\"" + core.resolve("java") + "\"],\"test\":[\"" + core.resolve("test")
-            + "\"]}}}");
+        Files.writeString(dataDir.resolve("workspace.json"), "{\"version\":1,\"name\":\"s4\",\"projects\":[\"" + json(core) + "\"],"
+            + "\"sourceRoots\":{\"" + json(core) + "\":{\"main\":[\"" + json(core.resolve("java")) + "\"],\"test\":[\""
+            + json(core.resolve("test")) + "\"]}}}");
 
         long deadline = System.nanoTime() + java.time.Duration.ofSeconds(30).toNanos();
         boolean reloaded = false;

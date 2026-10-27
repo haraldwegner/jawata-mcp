@@ -181,8 +181,8 @@ jobs:
         # below is what makes this real: a skip in THIS job is a failure, so
         # these cannot quietly stop running.
         {
-          echo org.jawata.core.project.BuildSystemLoadTest
-          echo org.jawata.core.project.ProjectImporterGradleToolingTest
+          echo org.jawata.resident.project.BuildSystemLoadTest
+          echo org.jawata.resident.project.ProjectImporterGradleToolingTest
           echo org.jawata.mcp.tools.verification.RunTestsShapesTest
         } > /tmp/one-class.txt
         # jawata.bundle.pools: the PDE cell resolves Require-Bundle against an
@@ -214,6 +214,14 @@ jobs:
           *"containersFailed=0"*) ;;
           *) echo "FAIL: a container failed — a @BeforeAll, @AfterAll or class initializer threw."
              grep -n '\^\^ FAILED' load-cells.log || true
+             exit 1 ;;
+        esac
+        # A class the list names that the runner cannot load is a class that did not run: Sprint 28k Stage 7 moved two of these
+        # three into another bundle, the list went on naming the old addresses, and this job failed on a skip it had never run.
+        case "$line" in
+          *"unloadable=0"*) ;;
+          *) echo "FAIL: a class this list names cannot be loaded (moved or renamed?):"
+             grep -n -i 'unloadable' load-cells.log || true
              exit 1 ;;
         esac
         # An abort here is the Gradle Tooling API finding no distribution, or

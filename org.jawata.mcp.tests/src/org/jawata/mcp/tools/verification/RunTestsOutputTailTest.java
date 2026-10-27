@@ -78,6 +78,17 @@ class RunTestsOutputTailTest {
     }
 
     @Test
+    @DisplayName("lines that end in a carriage return, as a Windows JVM prints them, are left out like any other")
+    void debugLinesThatEndInACarriageReturnAreLeftOut() {
+        String text = "12:04:11.942 [main] DEBUG org.example.A -- one\r\n12:04:11.943 [main] INFO org.example.A -- kept\r\n";
+
+        String out = LogNoise.withoutDebug(text);
+
+        assertFalse(out.contains("DEBUG org.example.A"), out);
+        assertTrue(out.contains("kept") && out.contains("1 DEBUG/TRACE lines left out"), out);
+    }
+
+    @Test
     @DisplayName("a line at a higher level that merely mentions DEBUG is kept")
     void aHigherLevelLineThatMentionsDebugIsKept() {
         String text = "12:04:11.943 [main] INFO org.example.A -- the DEBUG switch is on\n";
