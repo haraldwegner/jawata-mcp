@@ -2,7 +2,7 @@ Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: JAWATA Resident
 Bundle-SymbolicName: org.jawata.resident;singleton:=true
-Bundle-Version: 4.4.15
+Bundle-Version: 4.4.16
 Bundle-Vendor: JAWATA
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy

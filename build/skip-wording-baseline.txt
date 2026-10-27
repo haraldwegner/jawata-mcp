@@ -2,20 +2,21 @@
 # build/skip-wording-gate.py. Each is a skip whose condition has not fired in CI. Keyed by
 # file and message, one `file<TAB>message` per line. A line here is a decision, like a
 # budget pattern: it says 'this skip is known and unbudgeted'.
+build/boot/src/test/java/org/jawata/boot/JawataBootTest.java	this machine lets the test user delete from a read-only folder (running as root?)
 org.jawata.core.tests/src/org/jawata/core/host/HostFsResidueTest.java	the directory is still readable (running as root?) — refusing to pass on a case this run could not construct
 org.jawata.core.tests/src/org/jawata/core/host/HostFsResidueTest.java	the parent is still traversable, so existence is still determinable — this run could not construct the case and must not report a pass
-org.jawata.core.tests/src/org/jawata/core/project/BuildSystemLoadTest.java	the Gradle Tooling API produced no model here — it needs a Gradle distribution and returns nothing by design when there is none. UNPROVEN in this environment, not passing.
-org.jawata.core.tests/src/org/jawata/core/project/BuildSystemLoadTest.java	the Gradle model resolved but listed no jars. The fixture declares a flat-dir dependency, so this means the model could not resolve it — UNPROVEN, not passing.
-org.jawata.core.tests/src/org/jawata/core/project/ClasspathGoldenParityTest.java	jawata.dist.root must be set (the boot sets it)
 org.jawata.mcp.tests/src/org/jawata/mcp/ContainerMarkerProbes.java	mcp#54 probe: the container assumed its way out
 org.jawata.mcp.tests/src/org/jawata/mcp/coverage/StaleFingerprintIsNotFreshTest.java	the dangling link was not constructed, so this run measures nothing
 org.jawata.mcp.tests/src/org/jawata/mcp/learn/ArchitectGateTest.java	every kind of this door is structural today, so there is no control to run
 org.jawata.mcp.tests/src/org/jawata/mcp/learn/GateNessIsDeclaredNotListedTest.java	the production sources are not present — an honest skip beats a false pass
+org.jawata.mcp.tests/src/org/jawata/mcp/models/EngineNotesTest.java	this OS does not report a process start time
 org.jawata.mcp.tests/src/org/jawata/mcp/runtime/UnreadableArtifactIsReportedTest.java	the directory is still readable (running as root?) — refusing to pass on a case this run could not construct
 org.jawata.mcp.tests/src/org/jawata/mcp/tools/DeclaredShapeHonestyTest.java	fixture produced no findings; nothing to attribute
 org.jawata.mcp.tests/src/org/jawata/mcp/tools/verification/HostBoundaryRulesTest.java	sources are not present in this run — the boundary rule is UNPROVEN here, not passing
 org.jawata.mcp.tests/src/org/jawata/mcp/tools/verification/HostBoundaryRulesTest.java	sources are not present — UNPROVEN here, not passing
-org.jawata.mcp.tests/src/org/jawata/mcp/tools/verification/NativeTriageTest.java	(no message: JUnit prints a generic line no budget carries)
 org.jawata.mcp.tests/src/org/jawata/mcp/tools/verification/PdeExternalPoolTest.java	jawata.dist.root must be set (the boot sets it)
 org.jawata.mcp.tests/src/org/jawata/mcp/tools/verification/RcpLaunchShapeTest.java	test framework was not booted from a single jar; RCP fixture premise absent
 org.jawata.mcp.tests/src/org/jawata/mcp/tools/verification/RunTestsShapesTest.java	local repository must hold the fixture jars (our own build guarantees them)
+org.jawata.resident.tests/src/org/jawata/resident/project/BuildSystemLoadTest.java	the Gradle Tooling API produced no model here — it needs a Gradle distribution and returns nothing by design when there is none. UNPROVEN in this environment, not passing.
+org.jawata.resident.tests/src/org/jawata/resident/project/BuildSystemLoadTest.java	the Gradle model resolved but listed no jars. The fixture declares a flat-dir dependency, so this means the model could not resolve it — UNPROVEN, not passing.
+org.jawata.resident.tests/src/org/jawata/resident/project/ClasspathGoldenParityTest.java	jawata.dist.root must be set (the boot sets it)
