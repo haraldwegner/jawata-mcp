@@ -401,9 +401,13 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
             return ToolResponse.invalidParameter("scope.kind", "Required field missing.");
         }
 
-        // The base tool has already named a project the caller scoped to (and refused one that is unknown or dropped), so the first
-        // project of the workspace it hands us is the one to test.
-        LoadedWorkspace.ProjectInfo loaded = workspace.projects().get(0);
+        // S19-63: the project to test is the one the caller scoped to, or the only one loaded, or the one whose folder holds the
+        // file the scope names. A type or a package does not say which project holds it, so with several loaded the call is
+        // refused: taking the first one ran singleton's test in event-aggregator and answered success with zero tests.
+        LoadedWorkspace.ProjectInfo loaded = testedProject(workspace, scope);
+        if (loaded == null) {
+            return projectNotNamed(workspace);
+        }
         // The language is asked (contract §4.5, E10): what the forked run needs, and whether the project builds.
         TestRuntime tests = testRuntime.get();
         if (tests == null) {
@@ -550,6 +554,7 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
                 data.put("sessionId", session.id);
                 data.put("state", session.state());
                 data.put("framework", frameworkLabel);
+                data.put("project", loaded.key());
                 if (selection != null) data.put("selection", selection);
                 if (withCoverage) data.put("coverageArtifactId", artifactId);
                 data.put("hint", "Poll run_tests(action=status, sessionId=…) for per-class "
@@ -571,6 +576,7 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
             data.put("operation", "run_tests");
             data.put("framework", frameworkLabel);
             data.put("projectsTested", 1);
+            data.put("project", loaded.key());
             if (selection != null) data.put("selection", selection);
             if (withCoverage) {
                 data.put("coverageArtifactId", artifactId);
@@ -587,6 +593,37 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
             log.warn("run_tests threw unexpectedly: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
         }
+    }
+
+    /**
+     * The project a run tests (S19-63): the only one loaded (the base tool has already narrowed the workspace to the project a
+     * caller named with {@code projectKey}), or the deepest one whose folder holds the file the scope names; {@code null} when
+     * several are loaded and the scope names a type or a package, which does not say which project holds it.
+     */
+    private static LoadedWorkspace.ProjectInfo testedProject(LoadedWorkspace workspace, JsonNode scope) {
+        java.util.List<LoadedWorkspace.ProjectInfo> all = workspace.projects();
+        if (all.size() == 1) {
+            return all.get(0);
+        }
+        if (scope.has("filePath") && !scope.get("filePath").asText().isBlank()) {
+            Path file = workspace.resolvePath(scope.get("filePath").asText());
+            return all.stream()
+                .filter(p -> file.startsWith(p.root()))
+                .max(java.util.Comparator.comparingInt(p -> p.root().getNameCount()))
+                .orElse(null);
+        }
+        return null;
+    }
+
+    /** The refusal for a scope that names a type or a package while several projects are loaded: it lists the keys that settle it. */
+    private static ToolResponse projectNotNamed(LoadedWorkspace workspace) {
+        java.util.List<String> keys = workspace.projects().stream().map(LoadedWorkspace.ProjectInfo::key).toList();
+        int shown = Math.min(keys.size(), 20);
+        String listed = String.join(", ", keys.subList(0, shown)) + (keys.size() > shown ? ", … and " + (keys.size() - shown) + " more" : "");
+        return ToolResponse.invalidParameter("projectKey",
+            "This workspace holds " + keys.size() + " projects and the scope does not say which one holds the tests: a type or a "
+                + "package can be in any of them, and testing the first project would run nothing and still answer success. "
+                + "Pass projectKey, one of: " + listed + ".");
     }
 
     /** Sprint 23 D3 — the coverage-evidence query surface. */
