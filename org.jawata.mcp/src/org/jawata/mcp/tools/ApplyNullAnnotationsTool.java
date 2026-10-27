@@ -364,6 +364,13 @@ public class ApplyNullAnnotationsTool extends AbstractApplyingRefactoringTool {
                     + "pass style= explicitly to say which family you want."));
         }
         String annFqn = "nullable".equals(nullness) ? style.nullableFqn() : style.nonnullFqn();
+        // An annotation the project cannot resolve would write an import that does not compile: the compile gate undoes it on apply,
+        // but a STAGED change showed a clean diff for it (Stage 11, dogfood: JSpecify chosen for a project with none of the families).
+        if (member.getJavaProject().findType(annFqn) == null) {
+            return Preparation.fail(ToolResponse.error("NULLNESS_ANNOTATION_NOT_ON_CLASSPATH",
+                "The project cannot resolve " + annFqn + " (" + style.name() + "), so the annotation would not compile.",
+                "Add the library that provides it, or pass style= naming a family the project already has."));
+        }
 
         ICompilationUnit cu = member.getCompilationUnit();
         if (cu == null) {

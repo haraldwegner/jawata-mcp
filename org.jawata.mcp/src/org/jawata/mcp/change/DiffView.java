@@ -61,6 +61,35 @@ public record DiffView(String diff, List<DiffRenderer.FileSummary> files,
     }
 
     /**
+     * Says which files a staged change touches that this diff does not show. A change that CREATES a file (an extracted interface, a
+     * generated enum) has no old text to diff, so the file is in the change but not in the diff; the answer then read as an empty diff
+     * and the reviewer could not tell a change that does nothing from one that adds a file (Stage 11, dogfood).
+     *
+     * @param data     the response data to add {@code filesNotInDiff} and its note to; left alone when every file is in the diff
+     * @param affected every file the change touches, as {@code ChangeEngine.affectedFilePaths} names them
+     */
+    public void putUnshownInto(Map<String, Object> data, List<String> affected) {
+        List<String> unshown = new ArrayList<>();
+        for (String file : affected) {
+            if (files.stream().noneMatch(shown -> sameFile(file, shown.filePath()))) {
+                unshown.add(file);
+            }
+        }
+        if (!unshown.isEmpty()) {
+            data.put("filesNotInDiff", unshown);
+            data.put("filesNotInDiffNote", unshown.size() + " file(s) this change creates or moves are not in the diff: there is no"
+                + " old text to compare, and their content exists only once the change is applied. Apply to read them; undo removes them.");
+        }
+    }
+
+    /** Whether two paths, one possibly relative to a project and the other absolute, name the same file. */
+    private static boolean sameFile(String a, String b) {
+        String x = a.replace('\\', '/');
+        String y = b.replace('\\', '/');
+        return x.equals(y) || x.endsWith("/" + y) || y.endsWith("/" + x);
+    }
+
+    /**
      * Writes {@code diff} and {@code diffSummary} into a response's data map, plus
      * {@code truncated} and {@code diffLength} when the text was capped.
      *

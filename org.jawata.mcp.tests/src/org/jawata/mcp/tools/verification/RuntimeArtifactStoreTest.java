@@ -31,6 +31,7 @@ class RuntimeArtifactStoreTest {
 
     @Test
     @DisplayName("store → list → delete, and the manifest says where the artifact came from")
+    @SuppressWarnings("unchecked")
     void storeListDelete() throws Exception {
         RuntimeArtifactStore store = new RuntimeArtifactStore(root);
         assertTrue(store.list().isEmpty(), "a fresh store holds nothing");
@@ -59,7 +60,7 @@ class RuntimeArtifactStoreTest {
         assertNotNull(manifest.get().get("expiresMillis"), "and given an expiry");
 
         // SIZE — the caller can see what it is costing them.
-        Map<String, Object> described = store.describeAll().get(0);
+        Map<String, Object> described = ((List<Map<String, Object>>) store.listing(0, 1).get("artifacts")).get(0);
         assertTrue(((Number) described.get("bytes")).longValue() > 0, "got: " + described);
         assertEquals(Boolean.FALSE, described.get("expired"));
 
@@ -71,6 +72,54 @@ class RuntimeArtifactStoreTest {
 
         // Deleting what is not there is a false, not a crash.
         assertFalse(store.delete(id));
+    }
+
+    @Test
+    @DisplayName("Stage 11 (dogfood): the listing is a page, newest first, that says how many the store holds and whether more follow")
+    @SuppressWarnings("unchecked")
+    void theListingIsBoundedAndSaysSo() throws Exception {
+        RuntimeArtifactStore store = new RuntimeArtifactStore(root);
+        for (int i = 0; i < 30; i++) {
+            String id = String.format("dump-%04d", i);
+            store.createArtifactDir(id);
+            store.writeManifest(id, Map.of("kind", "dump"));
+        }
+
+        Map<String, Object> first = store.listing(0, 1000);
+        Map<String, Object> rest = store.listing(25, 10);
+        Map<String, Object> beyond = store.listing(500, 10);
+
+        assertEquals(30, first.get("count"), "the store holds 30, and the answer says so: " + first.get("count"));
+        assertEquals(RuntimeArtifactStore.LISTING_MAX, first.get("returned"), "a limit above the maximum is clamped, not honoured");
+        assertEquals(Boolean.TRUE, first.get("hasMore"));
+        assertEquals("dump-0029", ((List<Map<String, Object>>) first.get("artifacts")).get(0).get("artifactId"), "newest first");
+        assertEquals(5, rest.get("returned"));
+        assertEquals(Boolean.FALSE, rest.get("hasMore"));
+        assertEquals(0, beyond.get("returned"), "an offset past the end is an empty page, not an error");
+        assertEquals(30, beyond.get("count"));
+        assertEquals(RuntimeArtifactStore.LISTING_DEFAULT, store.listing(0, RuntimeArtifactStore.LISTING_DEFAULT).get("returned"));
+    }
+
+    @Test
+    @DisplayName("4.4.17 gate: the newest artifact is on the first page whatever its kind sorts as — a heap dump made after twelve flight recordings is listed first")
+    @SuppressWarnings("unchecked")
+    void theNewestArtifactLeadsTheListingWhateverItsKind() throws Exception {
+        RuntimeArtifactStore store = new RuntimeArtifactStore(root);
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < 12; i++) {
+            String id = "jfr-sample-" + (now - 100_000 + i) + "-aaaa000" + (i % 10);
+            store.createArtifactDir(id);
+            store.writeManifest(id, Map.of("kind", "jfr-sample"));
+        }
+        String dump = "heap-dump-" + now + "-bbbb0000";
+        store.createArtifactDir(dump);
+        store.writeManifest(dump, Map.of("kind", "heap-dump"));
+
+        List<Map<String, Object>> firstPage = (List<Map<String, Object>>) store.listing(0, RuntimeArtifactStore.LISTING_DEFAULT).get("artifacts");
+
+        assertEquals(dump, firstPage.get(0).get("artifactId"),
+            "the newest artifact is first; by name it sorted after all twelve recordings and fell off the page: " + firstPage);
+        assertEquals(dump, store.list().get(0));
     }
 
     @Test
@@ -114,6 +163,7 @@ class RuntimeArtifactStoreTest {
 
     @Test
     @DisplayName("THE PRUNER ACTUALLY RUNS: an expired artifact is gone by ordinary use of the store")
+    @SuppressWarnings("unchecked")
     void expiryIsEnforcedByNormalUseNotJustAvailable() throws Exception {
         // Sprint-24 audit: pruneExpired() was correct code with NO production caller
         // anywhere — expiry was metadata that never deleted anything, while the `artifacts`
@@ -129,9 +179,9 @@ class RuntimeArtifactStoreTest {
         store.createArtifactDir(live);
         store.writeManifest(live, Map.of("kind", "dump"));
 
-        // describeAll() is exactly what profile/debug(action=artifacts) calls. Simply
+        // listing() is exactly what profile/debug(action=artifacts) calls. Simply
         // LOOKING at the store must honour the expiry it advertises.
-        List<Map<String, Object>> described = store.describeAll();
+        List<Map<String, Object>> described = (List<Map<String, Object>>) store.listing(0, RuntimeArtifactStore.LISTING_MAX).get("artifacts");
 
         assertEquals(1, described.size(), "the expired artifact must be gone: " + described);
         assertEquals(live, described.get(0).get("artifactId"));

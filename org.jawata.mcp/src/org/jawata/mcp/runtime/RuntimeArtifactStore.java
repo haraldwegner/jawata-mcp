@@ -104,6 +104,24 @@ public final class RuntimeArtifactStore {
         }
     }
 
+    /**
+     * When an id was made, read from its {@code <kind>-<millis>-<rand>} form; {@code Long.MIN_VALUE} for an id that does not
+     * have that form, so it sorts as oldest and is then ordered by name. Ordering by name alone put every {@code jfr-sample}
+     * ahead of every {@code heap-dump} whatever their ages, so the first page of a listing hid the newest artifact of a kind
+     * that sorts earlier in the alphabet.
+     */
+    private static long madeAtMillis(String artifactId) {
+        String[] parts = artifactId.split("-");
+        if (parts.length < 3) {
+            return Long.MIN_VALUE;
+        }
+        try {
+            return Long.parseLong(parts[parts.length - 2]);
+        } catch (NumberFormatException e) {
+            return Long.MIN_VALUE;
+        }
+    }
+
     /** All artifact ids, newest first. Only manifested dirs count — a half-written one is not an artifact. */
     public List<String> list() {
         if (!Files.isDirectory(root)) {
@@ -120,8 +138,10 @@ public final class RuntimeArtifactStore {
             // row exists to describe. That assumption is what this removes.
             return dirs.filter(Files::isDirectory)
                 .filter(d -> manifestMissing(d) != Boolean.TRUE)
-                .sorted(Comparator.comparing((Path d) -> d.getFileName().toString()).reversed())
                 .map(d -> d.getFileName().toString())
+                .sorted(Comparator.<String>comparingLong(RuntimeArtifactStore::madeAtMillis)
+                    .thenComparing(Comparator.<String>naturalOrder())
+                    .reversed())
                 .toList();
         } catch (IOException e) {
             log.warn("cannot list runtime store {}: {}", root, e.getMessage());
@@ -129,27 +149,53 @@ public final class RuntimeArtifactStore {
         }
     }
 
+    /** The default and the most a listing returns in one answer; a row is about 2.6 KB, so 25 stay under what a client takes. */
+    public static final int LISTING_DEFAULT = 10;
+    public static final int LISTING_MAX = 25;
+
     /**
-     * Artifacts with their manifests and on-disk sizes — what a caller needs to decide what
-     * to delete. Sweeps first: looking at the store is the moment its own promises come due.
+     * One page of the artifact listing, newest first, for the tools that show it to a person or an agent. Stage 11 (dogfood): a
+     * store holding a week of hired runs listed 1,972 artifacts, 4.97 MB, in one answer, which the client refused. The answer says
+     * how many the store holds, which page this is and whether more follow, so a short page is never read as the whole.
+     *
+     * @param offset how many of the newest to skip
+     * @param limit  how many to return, clamped to 1 to {@value #LISTING_MAX}
+     * @return the page with {@code count} (all the store holds), {@code returned}, {@code offset}, {@code limit}, {@code hasMore}
+     *     and {@code root}
      */
-    public List<Map<String, Object>> describeAll() {
+    public Map<String, Object> listing(int offset, int limit) {
         sweep();
-        List<Map<String, Object>> described = new ArrayList<>();
-        for (String id : list()) {
-            Map<String, Object> row = new LinkedHashMap<>(readManifest(id).orElse(Map.of()));
-            // D5: the size travels as a number only when one was actually taken. A caller
-            // deciding what to delete must not read "could not look" as "takes no space".
-            java.util.OptionalLong bytes = sizeOf(id);
-            if (bytes.isPresent()) {
-                row.put("bytes", bytes.getAsLong());
-            } else {
-                row.put("bytesUnavailable", "the artifact directory could not be walked");
-            }
-            row.put("expired", isExpired(id));
-            described.add(row);
+        List<String> ids = list();
+        int from = Math.min(Math.max(offset, 0), ids.size());
+        int size = Math.min(Math.max(limit, 1), LISTING_MAX);
+        int to = Math.min(from + size, ids.size());
+        List<Map<String, Object>> page = new ArrayList<>();
+        for (String id : ids.subList(from, to)) {
+            page.add(describe(id));
         }
-        return described;
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("artifacts", page);
+        data.put("count", ids.size());
+        data.put("returned", page.size());
+        data.put("offset", from);
+        data.put("limit", size);
+        data.put("hasMore", to < ids.size());
+        data.put("root", root.toString());
+        return data;
+    }
+
+    private Map<String, Object> describe(String id) {
+        Map<String, Object> row = new LinkedHashMap<>(readManifest(id).orElse(Map.of()));
+        // D5: the size travels as a number only when one was actually taken. A caller
+        // deciding what to delete must not read "could not look" as "takes no space".
+        java.util.OptionalLong bytes = sizeOf(id);
+        if (bytes.isPresent()) {
+            row.put("bytes", bytes.getAsLong());
+        } else {
+            row.put("bytesUnavailable", "the artifact directory could not be walked");
+        }
+        row.put("expired", isExpired(id));
+        return row;
     }
 
     /**

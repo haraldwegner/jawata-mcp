@@ -161,7 +161,9 @@ class SiblingPeekTest {
             // could reach, and the counts are the only thing that distinguishes them.
             () -> assertEquals(2, sweep.listed()),
             () -> assertEquals(2, sweep.answered(), "both replied: " + sweep),
-            () -> assertTrue(sweep.describe().contains("2 of 2"), sweep.describe()));
+            () -> assertTrue(sweep.describe().contains("2 of 2"), sweep.describe()),
+            // Both replied, so "none holds it" is a claim the answers support.
+            () -> assertTrue(sweep.describe().startsWith("No sibling workspace holds it"), sweep.describe()));
     }
 
     @Test
@@ -181,7 +183,10 @@ class SiblingPeekTest {
                 "a resident that never heard us was not consulted: " + sweep),
             () -> assertEquals(1, sweep.listed(),
                 "the stale row is still a row we had to consider: " + sweep),
-            () -> assertTrue(sweep.describe().contains("consulted 0 of 1"), sweep.describe()));
+            () -> assertTrue(sweep.describe().contains("consulted 0 of 1"), sweep.describe()),
+            // A sibling that never answered has not said it lacks the type, so the sentence must not claim it does.
+            () -> assertTrue(sweep.describe().startsWith("No sibling workspace answered"), sweep.describe()),
+            () -> assertFalse(sweep.describe().contains("holds it"), sweep.describe()));
     }
 
     @Test

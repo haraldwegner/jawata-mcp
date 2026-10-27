@@ -157,10 +157,15 @@ public final class SiblingPeek {
                 ? "consulted " + answered + " of " + listed + " sibling workspace(s) before the"
                     + " time budget ran out"
                 : "consulted " + answered + " of " + listed + " sibling workspace(s)";
+            // "Holds it" is a claim about every sibling, so it is made only about ones that replied: a sibling that never
+            // answered (a resident that is still starting, a stale registry row) has not said it does not hold the type.
+            String miss = listed > 0 && answered == 0 ? "No sibling workspace answered"
+                : answered < listed ? "No sibling workspace that answered holds it"
+                : "No sibling workspace holds it";
             return found
                 .map(f -> "Not here — workspace '" + f.workspaceName() + "' has it, in project '"
                     + f.projectKey() + "'. (" + scope + ".)")
-                .orElse("No sibling workspace holds it (" + scope + ").");
+                .orElse(miss + " (" + scope + ").");
         }
     }
 

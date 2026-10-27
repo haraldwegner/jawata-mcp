@@ -318,6 +318,7 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
             data.put("applied", false);
             data.put("changeId", changeId);
             view.putInto(data);
+            view.putUnshownInto(data, files);
             putStagedUnverified(data);
             data.put("summary", summary);
             return ToolResponse.success(data, ResponseMeta.builder()

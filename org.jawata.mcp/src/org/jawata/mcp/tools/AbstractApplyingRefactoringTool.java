@@ -213,6 +213,7 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
             data.put("applied", false);
             data.put("changeId", changeId);
             view.putInto(data);
+            view.putUnshownInto(data, files);
             putStagedUnverified(data);
             data.put("summary", summary);
             preparation.extras.forEach(data::putIfAbsent);

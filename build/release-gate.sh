@@ -12,6 +12,8 @@
 #   2. a clean install of the version being released minutes   (a version bump needs it: the
 #                                                              hollow-wiring gate loads the project
 #                                                              through Maven and fails otherwise)
+#   2b. the engine end-to-end gate on the built dist  minutes  (28k-e2e.sh: P0 to P8, tools/list byte for byte;
+#                                                              nothing in CI runs it)
 #   3. the whole suite, embedder ON, with the        ~16 min   (CI: build, ubuntu)
 #      hollow-wiring gate and the end-to-end gate
 #   4. the whole suite, embedder OFF, judged against ~16 min   (CI: embedder-off)
@@ -46,6 +48,10 @@ step "skip wording" python3 build/skip-wording-gate.py
 step "skip wording, its own test" bash build/skip-wording-gate-test.sh
 step "clean install of this version" mvn -B -q -f build/pom.xml clean install -DskipTests
 step "the distribution ships the Lombok agent, and it works" build/lombok-agent-probe.sh
+# THE PUBLISHED SURFACE OF THE BUILT DISTRIBUTION, through MCP: tools/list against the golden byte for byte, the front door's
+# promises P0 to P8. Stage 11's audit found it run by hand at the checkpoint and by nothing at the release, so a release carried
+# no recorded result for it.
+step "the engine end-to-end gate on the built dist (28k-e2e.sh)" build/28k-e2e.sh
 step "whole suite, embedder ON (with the hollow-wiring and end-to-end gates)" build/run-suite.sh 4 --full
 
 # The same suite with the embedder switched off, as the CI job runs it. The end-to-end gate ran

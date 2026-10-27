@@ -145,6 +145,22 @@ class ADiffIsSummarisedAndCappedTest {
     }
 
     @Test
+    @DisplayName("Stage 11 (dogfood): a file the change creates has no text in the diff, and the answer names it instead of reading as empty")
+    void aCreatedFileIsNamedWhenTheDiffCannotShowIt() {
+        String diff = DiffRenderer.unifiedDiff(List.of(new DiffRenderer.FileDiff("src/A.java", "a\n", "b\n")));
+        Map<String, Object> data = new LinkedHashMap<>();
+
+        DiffView.of(diff, false).putUnshownInto(data, List.of("/work/project/src/A.java", "/work/project/src/Reporting.java"));
+
+        assertEquals(List.of("/work/project/src/Reporting.java"), data.get("filesNotInDiff"),
+            "the modified file is in the diff, the created one is not: " + data);
+        assertNotNull(data.get("filesNotInDiffNote"));
+        Map<String, Object> allShown = new LinkedHashMap<>();
+        DiffView.of(diff, false).putUnshownInto(allShown, List.of("/work/project/src/A.java"));
+        assertNull(allShown.get("filesNotInDiff"), "nothing is missing, so nothing is said: " + allShown);
+    }
+
+    @Test
     @DisplayName("over the cap the text is cut, truncated says so, and the summary still covers all")
     void aLargeDiffIsCappedAndSaysSo() {
         String diff = DiffRenderer.unifiedDiff(List.of(

@@ -534,7 +534,7 @@ public class ProfileTool extends AbstractTool {
                 case "native_hs_err" -> nativeHsErr(arguments);
                 case "native_nmt" -> nativeNmt(arguments);
                 case "native_handoff" -> nativeHandoff(arguments);
-                case "artifacts" -> listArtifacts();
+                case "artifacts" -> listArtifacts(arguments);
                 case "artifact_delete" -> deleteArtifact(arguments);
                 default -> ToolResponse.invalidParameter("action",
                     "Unknown action '" + action + "'. Allowed: " + ACTIONS);
@@ -1929,15 +1929,13 @@ public class ProfileTool extends AbstractTool {
         }
     }
 
-    private ToolResponse listArtifacts() {
-        List<Map<String, Object>> all = artifacts.describeAll();
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("artifacts", all);
-        data.put("count", all.size());
-        data.put("root", artifacts.root().toString());
+    private ToolResponse listArtifacts(JsonNode arguments) {
+        Map<String, Object> data = artifacts.listing(getIntParam(arguments, "offset", 0),
+            getIntParam(arguments, "limit", RuntimeArtifactStore.LISTING_DEFAULT));
         return ToolResponse.success(data, ResponseMeta.builder()
-            .returnedCount(all.size())
-            .steering("Shared with debug's artifacts — delete with "
+            .returnedCount((Integer) data.get("returned"))
+            .steering("Newest first, " + data.get("returned") + " of " + data.get("count") + ": page with offset and limit (most "
+                + RuntimeArtifactStore.LISTING_MAX + "). Shared with debug's artifacts — delete with "
                 + "profile(action=artifact_delete, artifactId=…); expired ones are pruned.")
             .build());
     }

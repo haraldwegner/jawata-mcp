@@ -77,6 +77,39 @@ class ApplyNullAnnotationsToolTest {
     }
 
     @Test
+    @DisplayName("Stage 11 (dogfood): a project with none of the annotation families is refused, staged or not, instead of shown a diff that cannot compile")
+    void anAnnotationTheProjectCannotResolveIsRefused() throws Exception {
+        Path root = Files.createDirectories(helper.getTempDirectory().resolve("no-annotations"));
+        Files.writeString(root.resolve("pom.xml"), """
+            <project xmlns="http://maven.apache.org/POM/4.0.0">
+              <modelVersion>4.0.0</modelVersion>
+              <groupId>test</groupId><artifactId>no-annotations</artifactId><version>1</version>
+              <properties><maven.compiler.release>21</maven.compiler.release></properties>
+            </project>
+            """);
+        Files.writeString(Files.createDirectories(root.resolve("src/main/java/com/example")).resolve("Plain.java"), """
+            package com.example;
+            class Plain {
+                String echo(String note) { return note; }
+            }
+            """);
+        JdtServiceImpl own = helper.disposeAfter(new JdtServiceImpl());
+        own.loadProject(root);
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("kind", "add");
+        args.put("symbol", "com.example.Plain#echo");
+        args.put("nullness", "nullable");
+        args.put("parameter", "note");
+        args.put("style", "JSPECIFY");
+        args.put("auto_apply", false);
+
+        ToolResponse r = new ApplyNullAnnotationsTool(() -> own, new RefactoringChangeCache()).execute(args);
+
+        assertFalse(r.isSuccess(), "a staged diff for an import the project cannot resolve is a clean-looking diff that cannot compile");
+        assertEquals("NULLNESS_ANNOTATION_NOT_ON_CLASSPATH", r.getError().getCode());
+    }
+
+    @Test
     @DisplayName("public target is refused without allowPublicApi, accepted with it")
     void publicApiGuard() throws Exception {
         ObjectNode refused = objectMapper.createObjectNode();

@@ -145,13 +145,14 @@ class UnreadableArtifactIsReportedTest {
 
     @Test
     @DisplayName("D5: and the caller's own row says so, instead of carrying bytes=0")
+    @SuppressWarnings("unchecked")
     void theDescribedRowNamesWhatItCouldNotMeasure() throws Exception {
         Path root = storeWithOneArtifact();
         RuntimeArtifactStore store = new RuntimeArtifactStore(root);
         Path dir = root.resolve("art-1");
         makeUnreadable(dir);
         try {
-            List<Map<String, Object>> rows = store.describeAll();
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) store.listing(0, RuntimeArtifactStore.LISTING_MAX).get("artifacts");
 
             // THIS WAS AN assumeTrue, AND ITS REMOVAL IS THE CONTROL FOR THE list() FIX.
             //

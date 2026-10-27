@@ -22,12 +22,13 @@ class FindFieldWritesToolTest {
     @RegisterExtension
     TestProjectHelper helper = new TestProjectHelper();
     private FindFieldWritesTool tool;
+    private JdtServiceImpl service;
     private ObjectMapper objectMapper;
     private String refactoringTargetPath;
 
     @BeforeEach
     void setUp() throws Exception {
-        JdtServiceImpl service = helper.loadProject("simple-maven");
+        service = helper.loadProject("simple-maven");
         tool = new FindFieldWritesTool(() -> service);
         objectMapper = new ObjectMapper();
         Path projectPath = helper.getFixturePath("simple-maven");
@@ -61,6 +62,24 @@ class FindFieldWritesToolTest {
         Map<String, Object> write = writes.get(0);
         assertNotNull(write.get("line"));
         assertEquals("WRITE", write.get("accessType"));
+    }
+
+    @Test @DisplayName("Stage 11 (dogfood): a match with a resource and no compilation unit is not reported as a write")
+    void aMatchWithoutACompilationUnitIsNotReportedAsAWrite() throws Exception {
+        // The dogfood run listed the project's own folder as a write of a field, with no line and no column: a match whose element
+        // is not in any source file still carries a resource. Built directly, because which search produces one depends on the
+        // project's layout; what the tool must do with one does not.
+        org.eclipse.jdt.core.IJavaProject project = service.allProjects().iterator().next().javaProject();
+        org.eclipse.jdt.core.search.SearchMatch match = new org.eclipse.jdt.core.search.SearchMatch(project,
+            org.eclipse.jdt.core.search.SearchMatch.A_ACCURATE, 0, 1,
+            org.eclipse.jdt.core.search.SearchEngine.getDefaultSearchParticipant(), project.getProject());
+        java.lang.reflect.Method createWriteInfo = FindFieldWritesTool.class.getDeclaredMethod("createWriteInfo",
+            org.eclipse.jdt.core.search.SearchMatch.class, org.jawata.core.IJdtService.class);
+        createWriteInfo.setAccessible(true);
+
+        Object row = createWriteInfo.invoke(tool, match, service);
+
+        assertNull(row, "a write a caller cannot open is not a write: " + row);
     }
 
     @Test @DisplayName("supports maxResults parameter")

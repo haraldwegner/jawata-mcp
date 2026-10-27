@@ -228,20 +228,23 @@ public class FindFieldWritesTool extends AbstractTool {
 
             // Get ICompilationUnit for line/column calculation
             Object element = match.getElement();
-            if (element instanceof IJavaElement javaElement) {
-                ICompilationUnit cu = (ICompilationUnit) javaElement.getAncestor(IJavaElement.COMPILATION_UNIT);
-                if (cu != null) {
-                    int writeLine = service.getLineNumber(cu, match.getOffset());
-                    int writeColumn = service.getColumnNumber(cu, match.getOffset());
-                    info.put("line", writeLine);
-                    info.put("column", writeColumn);
+            ICompilationUnit cu = element instanceof IJavaElement javaElement
+                ? (ICompilationUnit) javaElement.getAncestor(IJavaElement.COMPILATION_UNIT) : null;
+            if (cu == null) {
+                // A match inside a compiled class (a project's own build output is searched too) is the write the source already
+                // reports, found a second time with no line a caller could open. Stage 11 (dogfood): it was counted as a write
+                // whose location was the project's own folder.
+                return null;
+            }
+            int writeLine = service.getLineNumber(cu, match.getOffset());
+            int writeColumn = service.getColumnNumber(cu, match.getOffset());
+            info.put("line", writeLine);
+            info.put("column", writeColumn);
 
-                    // Get context line (shows the actual write statement)
-                    String context = service.getContextLine(cu, match.getOffset());
-                    if (!context.isEmpty()) {
-                        info.put("context", context);
-                    }
-                }
+            // Get context line (shows the actual write statement)
+            String context = service.getContextLine(cu, match.getOffset());
+            if (!context.isEmpty()) {
+                info.put("context", context);
             }
 
             info.put("accessType", "WRITE");

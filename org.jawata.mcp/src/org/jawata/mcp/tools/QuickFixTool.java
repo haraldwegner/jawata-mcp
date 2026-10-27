@@ -48,7 +48,7 @@ public class QuickFixTool extends AbstractTool {
             USAGE: quick_fix(action="<action>", ...)
 
             - suggest_imports — candidate imports for an unresolved type. Needs: typeName.
-            - list            — available quick-fixes for the diagnostics in a file. Needs: filePath.
+            - list            — available quick-fixes for the diagnostics at a line. Needs: filePath, line (zero-based).
             - apply           — apply a specific quick-fix. Needs: filePath + the fix selector.
 
             Requires load_project to be called first.
