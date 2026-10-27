@@ -94,6 +94,30 @@ class PurityScanTest {
         assertEquals(List.of(), mended, "a named deviation no longer occurs: take it off the list");
     }
 
+    /** The Java provider's own package: the engine, which serves every language, may not name a class of it (ledger 28k-C9-9). */
+    private static final String JAVA_PROVIDER = "org/jawata/mcp/java/";
+
+    private static List<String> namesOfTheJavaProvider(Set<String> references) {
+        return references.stream().filter(reference -> reference.startsWith(JAVA_PROVIDER)).toList();
+    }
+
+    @Test
+    @DisplayName("THE CONTROL — the rule that finds the Java provider's package finds it in the Java provider")
+    void theScanSeesTheJavaProviderPackage() throws IOException {
+        assertFalse(namesOfTheJavaProvider(referencesIn(bytesOf(org.jawata.mcp.java.JavaProvider.class))).isEmpty());
+    }
+
+    @Test
+    @DisplayName("the engine package names no class of the Java provider, so it serves any language without knowing Java")
+    void theEngineNamesNoJavaProviderClass() throws IOException {
+        List<String> violations = new ArrayList<>();
+        int scanned = scanFolder(FrameworkUtil.getBundle(JawataEngine.class), "org/jawata/mcp/engine/", violations,
+            PurityScanTest::namesOfTheJavaProvider);
+
+        assertTrue(scanned > 0, "no class file was found under the engine package: the scan looked at nothing");
+        assertEquals(List.of(), violations);
+    }
+
     private static List<String> scan(Bundle bundle, String folder) throws IOException {
         List<String> violations = new ArrayList<>();
         int scanned = scanFolder(bundle, folder.substring(1) + "/", violations);
@@ -107,17 +131,22 @@ class PurityScanTest {
      * whose classes live in the same packages and are not part of what ships.
      */
     private static int scanFolder(Bundle bundle, String folder, List<String> violations) throws IOException {
+        return scanFolder(bundle, folder, violations, PurityScanTest::violations);
+    }
+
+    private static int scanFolder(Bundle bundle, String folder, List<String> violations,
+            java.util.function.Function<Set<String>, List<String>> rule) throws IOException {
         int scanned = 0;
         Enumeration<String> paths = bundle.getEntryPaths(folder);
         while (paths != null && paths.hasMoreElements()) {
             String path = paths.nextElement();
             if (path.endsWith("/")) {
-                scanned += scanFolder(bundle, path, violations);
+                scanned += scanFolder(bundle, path, violations, rule);
             } else if (path.endsWith(".class")) {
                 scanned++;
                 URL url = bundle.getEntry(path);
                 try (InputStream in = url.openStream()) {
-                    for (String violation : violations(referencesIn(in.readAllBytes()))) {
+                    for (String violation : rule.apply(referencesIn(in.readAllBytes()))) {
                         violations.add("/" + path + " -> " + violation);
                     }
                 }

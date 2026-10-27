@@ -8,7 +8,6 @@ import java.util.function.Supplier;
 import org.jawata.core.IJdtService;
 import org.jawata.core.JavaBinding;
 import org.jawata.core.ModelSource;
-import org.jawata.mcp.change.ChangeContext;
 import org.jawata.mcp.engine.ToolNeeds;
 import org.jawata.mcp.engine.ToolSource;
 import org.jawata.mcp.knowledge.ExperienceRetrieval;
@@ -176,14 +175,6 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
      */
     public TestRuntime testRuntime() {
         return new JavaTestRuntime(model.get());
-    }
-
-    /**
-     * The context a change is applied under, built from what this provider and the host supply: the host's writes and reconciler,
-     * this provider's verdict and paths. The headless host's own reconciler arrives with E18; until then the caller names one.
-     */
-    public ChangeContext changeContext(ProviderContext context) {
-        return new ChangeContext(context.writes(), context.reconciler(), verdict(context), paths(context));
     }
 
     /**
