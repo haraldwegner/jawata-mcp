@@ -406,7 +406,7 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
         // refused: taking the first one ran singleton's test in event-aggregator and answered success with zero tests.
         LoadedWorkspace.ProjectInfo loaded = testedProject(workspace, scope);
         if (loaded == null) {
-            return projectNotNamed(workspace);
+            return projectNotNamed(workspace, scope);
         }
         // The language is asked (contract §4.5, E10): what the forked run needs, and whether the project builds.
         TestRuntime tests = testRuntime.get();
@@ -602,28 +602,53 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
      */
     private static LoadedWorkspace.ProjectInfo testedProject(LoadedWorkspace workspace, JsonNode scope) {
         java.util.List<LoadedWorkspace.ProjectInfo> all = workspace.projects();
-        if (all.size() == 1) {
-            return all.get(0);
+        LoadedWorkspace.ProjectInfo only = onlyProject(workspace);
+        if (only != null) {
+            return only;
         }
         if (scope.has("filePath") && !scope.get("filePath").asText().isBlank()) {
-            Path file = workspace.resolvePath(scope.get("filePath").asText());
+            // A relative path would be resolved against the DEFAULT project's folder, which is the first-project mistake
+            // again, so with several projects loaded only an absolute path names one.
+            Path named = Path.of(scope.get("filePath").asText());
+            if (!named.isAbsolute()) {
+                return null;
+            }
+            Path file = named.toAbsolutePath().normalize();
             return all.stream()
-                .filter(p -> file.startsWith(p.root()))
+                .filter(p -> file.startsWith(p.root().toAbsolutePath().normalize()))
                 .max(java.util.Comparator.comparingInt(p -> p.root().getNameCount()))
                 .orElse(null);
         }
         return null;
     }
 
+    /** The one project a call is about when nothing says otherwise: the only project loaded (or the one the caller named, which leaves one); {@code null} when several are loaded. */
+    private static LoadedWorkspace.ProjectInfo onlyProject(LoadedWorkspace workspace) {
+        java.util.List<LoadedWorkspace.ProjectInfo> all = workspace.projects();
+        return all.size() == 1 ? all.get(0) : null;
+    }
+
     /** The refusal for a scope that names a type or a package while several projects are loaded: it lists the keys that settle it. */
     private static ToolResponse projectNotNamed(LoadedWorkspace workspace) {
-        java.util.List<String> keys = workspace.projects().stream().map(LoadedWorkspace.ProjectInfo::key).toList();
+        return projectNotNamed(workspace, null);
+    }
+
+    /**
+     * The same refusal, worded for the scope that caused it: a type or a package (or an action that names only types) does not say
+     * which project holds it; a file path names one only when it is absolute and inside a loaded project's folder.
+     */
+    private static ToolResponse projectNotNamed(LoadedWorkspace workspace, JsonNode scope) {
+        java.util.List<String> keys = workspace.projects().stream().map(LoadedWorkspace.ProjectInfo::key).sorted().toList();
         int shown = Math.min(keys.size(), 20);
         String listed = String.join(", ", keys.subList(0, shown)) + (keys.size() > shown ? ", … and " + (keys.size() - shown) + " more" : "");
+        boolean aFile = scope != null && scope.has("filePath") && !scope.get("filePath").asText().isBlank();
+        String why = aFile
+            ? "The file '" + scope.get("filePath").asText() + "' is not an absolute path inside a loaded project's folder, so it does not say which project holds it."
+            : "The call does not say which project holds the tests: a type or a package can be in any of them.";
         return ToolResponse.invalidParameter("projectKey",
-            "This workspace holds " + keys.size() + " projects and the scope does not say which one holds the tests: a type or a "
-                + "package can be in any of them, and testing the first project would run nothing and still answer success. "
-                + "Pass projectKey, one of: " + listed + ".");
+            "This workspace holds " + keys.size() + " projects. " + why + " Testing the first project would run nothing and still answer success. "
+                + "Pass projectKey" + (aFile ? "" : ", or scope.filePath as an absolute path inside the project")
+                + ". Keys" + (keys.size() > shown ? " (the first " + shown + " in alphabetical order; project(action=list) has them all)" : "") + ": " + listed + ".");
     }
 
     /** Sprint 23 D3 — the coverage-evidence query surface. */
@@ -1148,8 +1173,11 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
                 return ToolResponse.invalidParameter("execFile",
                     "execFile is required for coverage_import.");
             }
-            // The base tool has narrowed the workspace to the project the caller named, so the first project is the one.
-            LoadedWorkspace.ProjectInfo project = workspace.projects().get(0);
+            // S19-63b: the project the caller named, or the only one loaded; never the first of many.
+            LoadedWorkspace.ProjectInfo project = onlyProject(workspace);
+            if (project == null) {
+                return projectNotNamed(workspace);
+            }
             TestRuntime tests = testRuntime.get();
             if (tests == null) {
                 return ToolResponse.projectLoading();
@@ -1843,7 +1871,11 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
                 }
             }
 
-            LoadedWorkspace.ProjectInfo project = workspace.projects().get(0);
+            // S19-63b: the target classes are types, which do not say which project holds them.
+            LoadedWorkspace.ProjectInfo project = onlyProject(workspace);
+            if (project == null) {
+                return projectNotNamed(workspace);
+            }
             TestRuntime tests = testRuntime.get();
             if (tests == null) {
                 return ToolResponse.projectLoading();

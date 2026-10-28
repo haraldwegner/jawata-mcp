@@ -63,6 +63,84 @@ class RunTestsNamesItsProjectTest {
     }
 
     @Test
+    @DisplayName("run_tests: coverage_import and coverage_mutation with no projectKey in a workspace of several projects are refused too (S19-63b)")
+    void theCoverageActionsRefuseAnUnnamedProjectToo() throws Exception {
+        JdtServiceImpl service = helper.loadWorkspaceCopy("compile-clean", OWNER_FIXTURE);
+        assertTrue(service.projects().size() > 1, "the fixture workspace holds several projects");
+        RunTestsTool tool = toolOver(service);
+
+        ObjectNode importArgs = new ObjectMapper().createObjectNode();
+        importArgs.put("action", "coverage_import");
+        importArgs.put("execFile", "no-such.exec");
+        ToolResponse imported = tool.execute(importArgs);
+        assertFalse(imported.isSuccess(), "coverage_import answered: " + imported.getData());
+        assertTrue(String.valueOf(imported.getError()).contains("projectKey"),
+            "coverage_import names the parameter that settles it: " + imported.getError());
+
+        ObjectNode mutationArgs = new ObjectMapper().createObjectNode();
+        mutationArgs.put("action", "coverage_mutation");
+        mutationArgs.putArray("targetClasses").add("com.example.rel.Anything");
+        mutationArgs.putArray("targetTests").add("com.example.rel.RelativeFileTest");
+        ToolResponse mutated = tool.execute(mutationArgs);
+        assertFalse(mutated.isSuccess(), "coverage_mutation answered: " + mutated.getData());
+        assertTrue(String.valueOf(mutated.getError()).contains("projectKey"),
+            "coverage_mutation names the parameter that settles it: " + mutated.getError());
+    }
+
+    @Test
+    @DisplayName("run_tests: a scope that names an absolute file inside a project runs that project with no projectKey (S19-63)")
+    void anAbsoluteFileInsideAProjectNamesItsProject() throws Exception {
+        JdtServiceImpl service = helper.loadWorkspaceCopy("compile-clean", OWNER_FIXTURE);
+        LoadedWorkspace.ProjectInfo owner = service.projects().stream()
+            .filter(p -> p.root().toString().contains(OWNER_FIXTURE))
+            .findFirst().orElseThrow(() -> new AssertionError("no project of " + OWNER_FIXTURE));
+        java.nio.file.Path file;
+        try (java.util.stream.Stream<java.nio.file.Path> walk = java.nio.file.Files.walk(owner.root())) {
+            file = walk.filter(p -> p.getFileName().toString().equals("RelativeFileTest.java")).findFirst()
+                .orElseThrow(() -> new AssertionError("RelativeFileTest.java not under " + owner.root()));
+        }
+        java.util.List<String> lines = java.nio.file.Files.readAllLines(file);
+        int line = 0;
+        while (line < lines.size() && !lines.get(line).contains("class RelativeFileTest")) {
+            line++;
+        }
+        assertTrue(line < lines.size(), "the class declaration is in " + file);
+
+        ObjectNode args = new ObjectMapper().createObjectNode();
+        ObjectNode scope = args.putObject("scope");
+        scope.put("kind", "class");
+        scope.put("filePath", file.toAbsolutePath().toString());
+        scope.put("line", line);
+        scope.put("column", lines.get(line).indexOf("class RelativeFileTest"));
+        args.put("framework", "junit5");
+        args.put("timeoutSeconds", 120);
+        ToolResponse r = toolOver(service).execute(args);
+
+        assertTrue(r.isSuccess(), "got: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        assertEquals(owner.key(), data.get("project"), "the project holding the file ran: " + data);
+    }
+
+    @Test
+    @DisplayName("run_tests: a relative file path, or a file outside every project, is refused when several projects are loaded (S19-63)")
+    void aRelativeOrUnownedFileIsRefusedWhenSeveralProjectsAreLoaded() throws Exception {
+        JdtServiceImpl service = helper.loadWorkspaceCopy("compile-clean", OWNER_FIXTURE);
+        for (String path : new String[] {"src/test/java/com/example/rel/RelativeFileTest.java", "/nowhere/at/all/Foo.java"}) {
+            ObjectNode args = new ObjectMapper().createObjectNode();
+            ObjectNode scope = args.putObject("scope");
+            scope.put("kind", "class");
+            scope.put("filePath", path);
+            scope.put("line", 0);
+            scope.put("column", 0);
+            ToolResponse r = toolOver(service).execute(args);
+            assertFalse(r.isSuccess(), path + " answered: " + r.getData());
+            String error = String.valueOf(r.getError());
+            assertTrue(error.contains(path) && error.contains("absolute path"), "the refusal names the file and what settles it: " + error);
+        }
+    }
+
+    @Test
     @DisplayName("run_tests: with the owning project's key the class runs, and the answer names the project it ran")
     void withTheProjectKeyTheClassRunsAndTheAnswerNamesTheProject() throws Exception {
         JdtServiceImpl service = helper.loadWorkspaceCopy("compile-clean", OWNER_FIXTURE);
