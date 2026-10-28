@@ -148,6 +148,34 @@ public interface LoadedWorkspace {
     int unitCount(String key);
 
     /**
+     * Which loaded projects declare a type in their own sources, so a call that names a type without naming a project can be sent to
+     * the project that holds it (S19-63c).
+     *
+     * <p>The default answers every loaded project: a language that cannot tell leaves the caller where it was, with nothing narrowed.
+     * An answer that cannot rule a project out must keep it in the list; an empty list means every project was asked and none holds
+     * the type.</p>
+     *
+     * @param typeName a fully qualified type name
+     * @return the keys of the projects whose sources declare it, in alphabetical order
+     */
+    default List<String> projectsHoldingType(String typeName) {
+        return projects().stream().map(ProjectInfo::key).sorted().toList();
+    }
+
+    /**
+     * Which loaded projects declare a package, or a package below it, in their own sources.
+     *
+     * <p>The same contract as {@link #projectsHoldingType}: the default answers every loaded project, and a project that cannot be
+     * ruled out stays in the list.</p>
+     *
+     * @param packageName a package name
+     * @return the keys of the projects whose sources hold that package or one inside it, in alphabetical order
+     */
+    default List<String> projectsHoldingPackage(String packageName) {
+        return projects().stream().map(ProjectInfo::key).sorted().toList();
+    }
+
+    /**
      * One loaded project.
      *
      * @param key                 the name a caller passes to scope a call to this project

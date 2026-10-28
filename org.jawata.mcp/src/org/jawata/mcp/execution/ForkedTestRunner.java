@@ -34,8 +34,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *   <li><b>Timeout + cancellation</b> — hard deadline; on expiry the whole
  *       process TREE is reaped ({@code descendants().destroyForcibly()}
  *       then the root).</li>
- *   <li><b>Bounded output</b> — stdout/stderr captured to
- *       {@value #STREAM_CAP_BYTES}-byte caps, surfaced as 100-line tails.</li>
+ *   <li><b>Bounded output</b> — stdout/stderr are read as they are printed and
+ *       only the END is kept: the last {@value #TAIL_LINES} lines, each cut at
+ *       {@value #MAX_LINE_CHARS} characters, however much the run prints.</li>
  *   <li><b>Environment allowlist</b> — the child env is CLEARED and only
  *       {@link #ENV_ALLOWLIST} entries are copied from the server process;
  *       no secret inheritance. No PATH: the JVM binary is invoked by
@@ -57,7 +58,10 @@ public final class ForkedTestRunner {
 
     private static final Logger log = LoggerFactory.getLogger(ForkedTestRunner.class);
 
-    private static final int STREAM_CAP_BYTES = 1_000_000;
+    /** How many lines of a run's output the answer carries: the last ones. */
+    private static final int TAIL_LINES = 100;
+    /** The longest line kept whole; a longer one is cut and marked, so a run that prints no line breaks cannot fill the memory. */
+    private static final int MAX_LINE_CHARS = 8192;
     private static final int MAX_CONCURRENT_SESSIONS = 4;
     private static final Semaphore SESSIONS = new Semaphore(MAX_CONCURRENT_SESSIONS);
     private static final List<String> ENV_ALLOWLIST = List.of("LANG", "LC_ALL", "TZ");
@@ -350,27 +354,58 @@ public final class ForkedTestRunner {
         }
     }
 
-    /** Bounded async reader; keeps the head up to the cap, returns a 100-line tail. */
+    /**
+     * Bounded async reader that keeps the END of the stream (S19-30b): it reads the run's output as it is printed and holds the last
+     * {@value #TAIL_LINES} lines that are not DEBUG or TRACE, the last {@value #TAIL_LINES} lines of any kind, and a count of the
+     * DEBUG and TRACE lines it saw. Memory is bounded by the line count and by {@value #MAX_LINE_CHARS} characters per line, not by how
+     * much the run prints, so the line that explains a failure is still there after any amount of output before it.
+     */
     private static final class StreamTail {
-        private final StringBuilder buf = new StringBuilder();
-        private boolean truncated;
+        private final java.util.ArrayDeque<String> lastLines = new java.util.ArrayDeque<>();
+        private final java.util.ArrayDeque<String> lastKept = new java.util.ArrayDeque<>();
+        private long noiseLines;
         private final Thread thread;
 
         private StreamTail(InputStream in) {
             this.thread = new Thread(() -> {
                 try (BufferedReader r = new BufferedReader(
                         new InputStreamReader(in, StandardCharsets.UTF_8))) {
-                    char[] chunk = new char[8192];
-                    int n;
-                    while ((n = r.read(chunk)) >= 0) {
-                        synchronized (this) {
-                            if (buf.length() + n > STREAM_CAP_BYTES) {
-                                int allowed = STREAM_CAP_BYTES - buf.length();
-                                if (allowed > 0) buf.append(chunk, 0, allowed);
-                                truncated = true;
+                    StringBuilder line = new StringBuilder();
+                    boolean clipped = false;
+                    while (true) {
+                        int c = r.read();
+                        if (c >= 0 && c != '\n') {
+                            if (line.length() < MAX_LINE_CHARS) {
+                                line.append((char) c);
                             } else {
-                                buf.append(chunk, 0, n);
+                                clipped = true;
                             }
+                            continue;
+                        }
+                        if (c < 0 && line.length() == 0) {
+                            break;
+                        }
+                        // A line is complete, or the stream ended inside one: file it without a Windows line ending.
+                        int end = line.length() > 0 && line.charAt(line.length() - 1) == '\r' ? line.length() - 1 : line.length();
+                        String text = line.substring(0, end) + (clipped ? "…" : "");
+                        line.setLength(0);
+                        clipped = false;
+                        synchronized (this) {
+                            lastLines.addLast(text);
+                            if (lastLines.size() > TAIL_LINES) {
+                                lastLines.removeFirst();
+                            }
+                            if (LogNoise.isNoise(text)) {
+                                noiseLines++;
+                            } else {
+                                lastKept.addLast(text);
+                                if (lastKept.size() > TAIL_LINES) {
+                                    lastKept.removeFirst();
+                                }
+                            }
+                        }
+                        if (c < 0) {
+                            break;
                         }
                     }
                 } catch (IOException ignored) { }
@@ -390,15 +425,17 @@ public final class ForkedTestRunner {
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
             }
-            // S19-20, S19-30: DEBUG and TRACE lines go BEFORE the last 100 lines are taken, so a
-            // long stream of them after a line that matters cannot push that line out of the tail.
-            // (Only the first STREAM_CAP_BYTES are captured: what the cap cut off is not here.)
-            String[] lines = LogNoise.withoutDebug(buf.toString()).split("\n");
-            int from = Math.max(0, lines.length - 100);
+            // S19-20, S19-30, S19-30b: DEBUG and TRACE lines are set aside as they arrive, so the last 100 lines that are
+            // left are the end of the run however many lines came before it. A run with nothing else to show, or with no
+            // DEBUG or TRACE line, shows its last 100 lines as they came.
+            boolean somethingElse = lastKept.stream().anyMatch(l -> !l.isBlank());
+            boolean setAside = noiseLines > 0 && somethingElse;
             StringBuilder out = new StringBuilder();
-            if (truncated) out.append("[…stream truncated…]\n");
-            for (int i = from; i < lines.length; i++) {
-                out.append(lines[i]).append('\n');
+            for (String l : setAside ? lastKept : lastLines) {
+                out.append(l).append('\n');
+            }
+            if (setAside) {
+                out.append('[').append(noiseLines).append(" DEBUG/TRACE lines left out]\n");
             }
             return out.toString();
         }

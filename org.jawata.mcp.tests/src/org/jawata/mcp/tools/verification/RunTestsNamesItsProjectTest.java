@@ -45,21 +45,81 @@ class RunTestsNamesItsProjectTest {
         return new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
     }
 
+    private ObjectNode packageScope(String packageName) {
+        ObjectNode args = new ObjectMapper().createObjectNode();
+        ObjectNode scope = args.putObject("scope");
+        scope.put("kind", "package");
+        scope.put("packageName", packageName);
+        args.put("framework", "junit5");
+        args.put("timeoutSeconds", 120);
+        return args;
+    }
+
+    private static LoadedWorkspace.ProjectInfo ownerOf(JdtServiceImpl service, String fixture) {
+        return service.projects().stream()
+            .filter(p -> p.root().toString().contains(fixture))
+            .findFirst().orElseThrow(() -> new AssertionError("no project of " + fixture + " in " + service.projects()));
+    }
+
     @Test
-    @DisplayName("run_tests: a type named with no projectKey in a workspace of several projects is refused, not run in the first one")
-    void aTypeNamedWithoutAProjectKeyIsRefusedWhenSeveralProjectsAreLoaded() throws Exception {
+    @DisplayName("run_tests: a type that exactly one loaded project holds runs in that project with no projectKey (S19-63c)")
+    void aTypeOneProjectHoldsRunsInThatProjectWithoutAKey() throws Exception {
         // The project that does NOT hold the test comes first, as event-aggregator did before singleton.
         JdtServiceImpl service = helper.loadWorkspaceCopy("compile-clean", OWNER_FIXTURE);
         assertTrue(service.projects().size() > 1, "the fixture workspace holds several projects");
 
         ToolResponse r = toolOver(service).execute(classScope("com.example.rel.RelativeFileTest"));
 
-        assertFalse(r.isSuccess(), "a run in the wrong project must not answer success: " + r.getData());
+        assertTrue(r.isSuccess(), "the workspace can say which project holds the class, so it runs: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        assertEquals(ownerOf(service, OWNER_FIXTURE).key(), data.get("project"), "the answer names the project that held it: " + data);
+    }
+
+    @Test
+    @DisplayName("run_tests: a type that no loaded project holds is refused as not found, not as an unnamed project (S19-63c)")
+    void aTypeNoProjectHoldsIsRefusedAsNotFound() throws Exception {
+        JdtServiceImpl service = helper.loadWorkspaceCopy("compile-clean", OWNER_FIXTURE);
+
+        ToolResponse r = toolOver(service).execute(classScope("com.example.rel.NoSuchTest"));
+
+        assertFalse(r.isSuccess(), "a typo must not answer success: " + r.getData());
+        String error = String.valueOf(r.getError());
+        assertTrue(error.contains("com.example.rel.NoSuchTest") && error.contains("No loaded project holds"),
+            "the refusal says no project holds the name it was given: " + error);
+        assertFalse(error.contains("can be in any of them"), "it does not claim the call was merely unnamed: " + error);
+    }
+
+    @Test
+    @DisplayName("run_tests: a package that exactly one loaded project holds runs in that project with no projectKey (S19-63c)")
+    void aPackageOneProjectHoldsRunsInThatProjectWithoutAKey() throws Exception {
+        JdtServiceImpl service = helper.loadWorkspaceCopy("compile-clean", OWNER_FIXTURE);
+
+        ToolResponse r = toolOver(service).execute(packageScope("com.example.rel"));
+
+        assertTrue(r.isSuccess(), "the package is held by one project, so it runs: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        assertEquals(ownerOf(service, OWNER_FIXTURE).key(), data.get("project"), "the answer names the project that held it: " + data);
+    }
+
+    @Test
+    @DisplayName("run_tests: a package that several projects hold is refused and lists only those projects (S19-63c)")
+    void aPackageSeveralProjectsHoldListsOnlyThoseProjects() throws Exception {
+        // compile-clean and compose-clean both declare com.example; the third project declares only com.acme.lone.
+        // (The owner fixture declares com.example.rel, which is BELOW com.example, so a run of com.example would reach it too.)
+        JdtServiceImpl service = helper.loadWorkspaceCopy("compile-clean", "compose-clean", "maven-pom-no-modules");
+        LoadedWorkspace.ProjectInfo first = ownerOf(service, "compile-clean");
+        LoadedWorkspace.ProjectInfo second = ownerOf(service, "compose-clean");
+        LoadedWorkspace.ProjectInfo outsider = ownerOf(service, "maven-pom-no-modules");
+
+        ToolResponse r = toolOver(service).execute(packageScope("com.example"));
+
+        assertFalse(r.isSuccess(), "two projects hold com.example, so the call must not pick one: " + r.getData());
         String error = String.valueOf(r.getError());
         assertTrue(error.contains("projectKey"), "the refusal names the parameter that settles it: " + error);
-        for (LoadedWorkspace.ProjectInfo p : service.projects()) {
-            assertTrue(error.contains(p.key()), "the refusal lists project '" + p.key() + "': " + error);
-        }
+        assertTrue(error.contains(first.key()) && error.contains(second.key()), "it lists the projects that hold the package: " + error);
+        assertFalse(error.contains(outsider.key()), "it does not list a project that does not hold it: " + error);
     }
 
     @Test
@@ -76,6 +136,8 @@ class RunTestsNamesItsProjectTest {
         assertFalse(imported.isSuccess(), "coverage_import answered: " + imported.getData());
         assertTrue(String.valueOf(imported.getError()).contains("projectKey"),
             "coverage_import names the parameter that settles it: " + imported.getError());
+        assertFalse(String.valueOf(imported.getError()).contains("a type or a package"),
+            "coverage_import names no type or package, so the refusal must not talk about one (dogfood 2026-10-28): " + imported.getError());
 
         ObjectNode mutationArgs = new ObjectMapper().createObjectNode();
         mutationArgs.put("action", "coverage_mutation");
