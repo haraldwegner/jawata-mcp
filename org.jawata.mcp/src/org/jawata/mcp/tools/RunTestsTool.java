@@ -619,6 +619,27 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
                 .max(java.util.Comparator.comparingInt(p -> p.root().getNameCount()))
                 .orElse(null);
         }
+        // S19-63c: a type or a package is held by the projects whose own sources declare it, so when exactly one does, it is the one.
+        java.util.List<String> holders = holdersOf(workspace, scope);
+        if (holders != null && holders.size() == 1) {
+            return workspace.project(holders.get(0)).orElse(null);
+        }
+        return null;
+    }
+
+    /**
+     * The keys of the loaded projects that hold what the scope names, asked of the workspace; {@code null} when the scope names
+     * neither a type nor a package (a file is decided by its folder, not by this).
+     */
+    private static java.util.List<String> holdersOf(LoadedWorkspace workspace, JsonNode scope) {
+        String typeName = scope.has("typeName") ? scope.get("typeName").asText() : "";
+        if (!typeName.isBlank()) {
+            return workspace.projectsHoldingType(typeName);
+        }
+        String packageName = scope.has("packageName") ? scope.get("packageName").asText() : "";
+        if (!packageName.isBlank()) {
+            return workspace.projectsHoldingPackage(packageName);
+        }
         return null;
     }
 
@@ -639,16 +660,46 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
      */
     private static ToolResponse projectNotNamed(LoadedWorkspace workspace, JsonNode scope) {
         java.util.List<String> keys = workspace.projects().stream().map(LoadedWorkspace.ProjectInfo::key).sorted().toList();
-        int shown = Math.min(keys.size(), 20);
-        String listed = String.join(", ", keys.subList(0, shown)) + (keys.size() > shown ? ", … and " + (keys.size() - shown) + " more" : "");
+        java.util.List<String> holders = scope == null ? null : holdersOf(workspace, scope);
+        if (holders != null && holders.isEmpty()) {
+            // S19-63c: the workspace was asked and no project declares it, which is a typo or a project that is not loaded.
+            boolean aType = scope.has("typeName") && !scope.get("typeName").asText().isBlank();
+            String named = aType ? "type '" + scope.get("typeName").asText() + "'" : "package '" + scope.get("packageName").asText() + "'";
+            return ToolResponse.invalidParameter(aType ? "scope.typeName" : "scope.packageName",
+                "No loaded project holds the " + named + " in its own sources, so there is nothing to test. Check the spelling, or pass projectKey "
+                    + "for the project you mean (project(action=list) has the keys).");
+        }
+        if (holders != null && holders.size() > 1 && holders.size() < keys.size()) {
+            // S19-63c: the refusal lists the projects that hold it, so the one the caller means is among the few shown.
+            boolean aType = scope.has("typeName") && !scope.get("typeName").asText().isBlank();
+            String named = aType ? "type '" + scope.get("typeName").asText() + "'" : "package '" + scope.get("packageName").asText() + "'";
+            return ToolResponse.invalidParameter("projectKey",
+                holders.size() + " loaded projects hold the " + named + ": " + listed(holders) + ". Pass projectKey with the one you mean.");
+        }
         boolean aFile = scope != null && scope.has("filePath") && !scope.get("filePath").asText().isBlank();
-        String why = aFile
-            ? "The file '" + scope.get("filePath").asText() + "' is not an absolute path inside a loaded project's folder, so it does not say which project holds it."
-            : "The call does not say which project holds the tests: a type or a package can be in any of them.";
+        String why;
+        String tail;
+        if (aFile) {
+            why = "The file '" + scope.get("filePath").asText() + "' is not an absolute path inside a loaded project's folder, so it does not say which project holds it.";
+            tail = " Testing the first project would run nothing and still answer success. Pass projectKey";
+        } else if (scope == null) {
+            // coverage_import and coverage_mutation name no type, package or file: they act on one project's evidence.
+            why = "The call does not say which project this action is about.";
+            tail = " Pass projectKey";
+        } else {
+            why = "The call does not say which project holds the tests: a type or a package can be in any of them.";
+            tail = " Testing the first project would run nothing and still answer success. Pass projectKey, or scope.filePath as an absolute path inside the project";
+        }
+        int shown = Math.min(keys.size(), 20);
         return ToolResponse.invalidParameter("projectKey",
-            "This workspace holds " + keys.size() + " projects. " + why + " Testing the first project would run nothing and still answer success. "
-                + "Pass projectKey" + (aFile ? "" : ", or scope.filePath as an absolute path inside the project")
-                + ". Keys" + (keys.size() > shown ? " (the first " + shown + " in alphabetical order; project(action=list) has them all)" : "") + ": " + listed + ".");
+            "This workspace holds " + keys.size() + " projects. " + why + tail
+                + ". Keys" + (keys.size() > shown ? " (the first " + shown + " in alphabetical order; project(action=list) has them all)" : "") + ": " + listed(keys) + ".");
+    }
+
+    /** At most twenty keys, then how many more there are. */
+    private static String listed(java.util.List<String> keys) {
+        int shown = Math.min(keys.size(), 20);
+        return String.join(", ", keys.subList(0, shown)) + (keys.size() > shown ? ", … and " + (keys.size() - shown) + " more" : "");
     }
 
     /** Sprint 23 D3 — the coverage-evidence query surface. */

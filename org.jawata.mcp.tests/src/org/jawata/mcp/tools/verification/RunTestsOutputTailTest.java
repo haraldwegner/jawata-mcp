@@ -78,6 +78,32 @@ class RunTestsOutputTailTest {
         assertTrue(tail.contains("150 DEBUG/TRACE lines left out"), "the tail does not say what it left out: " + tail);
     }
 
+    @Test
+    @DisplayName("run_tests: the last line of a run survives more than a million characters of DEBUG before it (S19-30b)")
+    void theLastLineSurvivesMoreOutputThanTheCaptureHolds() throws Exception {
+        JdtServiceImpl service = helper.loadProjectCopy("runner-module-relative-file");
+        RunTestsTool tool = new RunTestsTool(() -> service, new org.jawata.mcp.java.JavaProvider(() -> service)::testRuntime);
+
+        ObjectNode args = new ObjectMapper().createObjectNode();
+        ObjectNode scope = args.putObject("scope");
+        scope.put("kind", "class");
+        scope.put("typeName", "com.example.rel.HugeNoisyOutputTest");
+        args.put("framework", "junit5");
+        args.put("timeoutSeconds", 120);
+        ToolResponse r = tool.execute(args);
+
+        assertTrue(r.isSuccess(), "got: " + r.getError());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+        String tail = String.valueOf(data.get("stdoutTail"));
+        // 16,000 DEBUG lines are about 1.7 million characters. The capture used to keep the FIRST million, so the ERROR
+        // line printed last was never read, and the tail said it was truncated over lines from the start of the run.
+        assertTrue(tail.contains("statusCode=[503] the gateway went away"), "the last line of the run was cut off the tail: " + tail);
+        assertFalse(tail.contains("DEBUG org.example.Library"), "DEBUG lines are still in the tail: " + tail);
+        assertTrue(tail.contains("16000 DEBUG/TRACE lines left out"), "the tail does not count every DEBUG line it left out: " + tail);
+        assertFalse(tail.contains("truncated"), "nothing was cut from the front of the run's end: " + tail);
+    }
+
     // ---------------------------------------------------------- the filter itself
 
     @Test

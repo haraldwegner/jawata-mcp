@@ -998,6 +998,76 @@ public class JdtServiceImpl implements IJdtService {
         return null;
     }
 
+    /**
+     * S19-63c: every loaded project that declares the type in its own sources, not the first one that can resolve it (a project also
+     * resolves the types of the projects it depends on, and those are not its own). A project that could not answer stays in the
+     * list, because "the lookup failed" must not read as "it is not there".
+     */
+    @Override
+    public List<String> projectsHoldingType(String typeName) {
+        List<String> holders = new ArrayList<>();
+        if (typeName == null || typeName.isBlank()) {
+            return holders;
+        }
+        for (LoadedProject lp : projectsByKey.values()) {
+            IJavaProject jp = lp.javaProject();
+            try {
+                IType type = lookupType(jp, typeName);
+                if (type == null && typeName.indexOf('$') >= 0) {
+                    type = lookupType(jp, typeName.replace('$', '.'));
+                }
+                if (type != null && !type.isBinary() && jp.equals(type.getJavaProject())) {
+                    holders.add(lp.projectKey());
+                }
+            } catch (JavaModelException e) {
+                holders.add(lp.projectKey());
+            }
+        }
+        holders.sort(null);
+        return holders;
+    }
+
+    /** S19-63c: every loaded project with a source package of that name, or below it, that holds at least one source file. */
+    @Override
+    public List<String> projectsHoldingPackage(String packageName) {
+        List<String> holders = new ArrayList<>();
+        if (packageName == null || packageName.isBlank()) {
+            return holders;
+        }
+        for (LoadedProject lp : projectsByKey.values()) {
+            IJavaProject jp = lp.javaProject();
+            if (jp == null || jp.getProject() == null || !jp.getProject().isOpen()) {
+                continue;
+            }
+            try {
+                if (declaresPackage(jp, packageName)) {
+                    holders.add(lp.projectKey());
+                }
+            } catch (JavaModelException e) {
+                holders.add(lp.projectKey());
+            }
+        }
+        holders.sort(null);
+        return holders;
+    }
+
+    private static boolean declaresPackage(IJavaProject jp, String packageName) throws JavaModelException {
+        for (IPackageFragmentRoot root : jp.getPackageFragmentRoots()) {
+            if (root.getKind() != IPackageFragmentRoot.K_SOURCE || !jp.equals(root.getJavaProject())) {
+                continue;
+            }
+            for (IJavaElement child : root.getChildren()) {
+                if (child instanceof IPackageFragment pkg) {
+                    String name = pkg.getElementName();
+                    if ((name.equals(packageName) || name.startsWith(packageName + ".")) && pkg.getCompilationUnits().length > 0) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     @Override
     public String getContextLine(ICompilationUnit cu, int offset) {
         try {

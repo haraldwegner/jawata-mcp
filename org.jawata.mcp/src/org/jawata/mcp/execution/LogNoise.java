@@ -26,6 +26,14 @@ public final class LogNoise {
     private LogNoise() {}
 
     /**
+     * @param line one line of a run's output, with or without its line ending
+     * @return whether it is a DEBUG or TRACE log line
+     */
+    public static boolean isNoise(String line) {
+        return DEBUG_LINE.matcher(line).matches();
+    }
+
+    /**
      * @param text a run's captured output
      * @return the text without its DEBUG and TRACE log lines and a last line saying how many were
      *     left out; the text as it came when it holds none, or when nothing else would be left
@@ -34,7 +42,7 @@ public final class LogNoise {
         List<String> kept = new ArrayList<>();
         int dropped = 0;
         for (String line : text.split("\n", -1)) {
-            if (DEBUG_LINE.matcher(line).matches()) {
+            if (isNoise(line)) {
                 dropped++;
             } else {
                 kept.add(line);
