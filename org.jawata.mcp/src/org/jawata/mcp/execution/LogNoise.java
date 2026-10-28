@@ -1,7 +1,5 @@
 package org.jawata.mcp.execution;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.regex.Pattern;
 
 /**
@@ -33,29 +31,4 @@ public final class LogNoise {
         return DEBUG_LINE.matcher(line).matches();
     }
 
-    /**
-     * @param text a run's captured output
-     * @return the text without its DEBUG and TRACE log lines and a last line saying how many were
-     *     left out; the text as it came when it holds none, or when nothing else would be left
-     */
-    public static String withoutDebug(String text) {
-        List<String> kept = new ArrayList<>();
-        int dropped = 0;
-        for (String line : text.split("\n", -1)) {
-            if (isNoise(line)) {
-                dropped++;
-            } else {
-                kept.add(line);
-            }
-        }
-        boolean somethingElse = kept.stream().anyMatch(l -> !l.isBlank());
-        if (dropped == 0 || !somethingElse) {
-            return text;
-        }
-        while (!kept.isEmpty() && kept.get(kept.size() - 1).isEmpty()) {
-            kept.remove(kept.size() - 1);
-        }
-        kept.add("[" + dropped + " DEBUG/TRACE lines left out]");
-        return String.join("\n", kept) + "\n";
-    }
 }
