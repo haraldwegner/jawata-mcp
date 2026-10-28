@@ -47,6 +47,12 @@ public final class RecallWarmUp {
                 + " itself", e.toString());
         }
         boolean meaning = false;
+        if (Thread.currentThread().isInterrupted()) {
+            // The engine that started this warm-up has stopped (S19-69). Asking for the embedder now would load it and cache it for
+            // the whole process, switched on, whatever the next engine in this JVM is configured to do.
+            log.info("Recall warm-up stopped with its engine after {} row(s); meaning not warmed", rows);
+            return new Warmed(rows, false);
+        }
         try {
             EmbeddingIndex index = EmbeddingIndex.forStore(store);
             if (index != null && index.available()) {

@@ -353,8 +353,15 @@ public class JawataEngine {
 		Thread t = new Thread(() -> org.jawata.mcp.knowledge.RecallWarmUp.run(warmed), "jawata-recall-warmup");
 		t.setDaemon(true);
 		t.setPriority(Thread.MIN_PRIORITY);
+		recallWarmUpThread = t;
 		t.start();
 	}
+
+	/**
+	 * The warm-up thread of this engine, kept so that {@link #stop()} can end it (S19-69): left running, it loaded the embedder after
+	 * its engine was gone and cached it, switched on, for the next engine in the same JVM.
+	 */
+	private volatile Thread recallWarmUpThread;
 
 	/**
 	 * Take the daily store copy when it is due: once at start, then on every hourly
@@ -403,6 +410,9 @@ public class JawataEngine {
 			// The person sees this long job in the way their host shows work: a log line headless, a background job in Eclipse.
 			try (org.jawata.spi.host.PersonChannel.Activity work = host().person()
 					.begin("Preparing the knowledge store for recall by meaning")) {
+				if (Thread.currentThread().isInterrupted()) {
+					return; // the engine stopped before this ran: do not load the embedder for the next engine (S19-69)
+				}
 				org.jawata.mcp.knowledge.EmbeddingIndex index = new org.jawata.mcp.knowledge.EmbeddingIndex(h2,
 						org.jawata.mcp.knowledge.EmbeddingService.shared());
 				if (!index.available()) {
@@ -656,6 +666,16 @@ public class JawataEngine {
 				Thread.currentThread().interrupt();
 			}
 			setEmbeddingBackfillThread(null);
+		}
+		Thread warmUp = recallWarmUpThread;
+		if (warmUp != null) {
+			warmUp.interrupt();
+			try {
+				warmUp.join(2000); // a load in flight finishes in about half a second; a moment, not the whole warm-up
+			} catch (InterruptedException ie) {
+				Thread.currentThread().interrupt();
+			}
+			recallWarmUpThread = null;
 		}
 		Thread backupSchedule = getScheduledBackupThread();
 		if (backupSchedule != null) {
