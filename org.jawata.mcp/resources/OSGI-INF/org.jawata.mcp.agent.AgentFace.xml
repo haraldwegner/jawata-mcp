@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28h D1/D3: the agent is the engine's second face, beside MCP. It is a declarative service of the engine's face slot, so the
+     engine's whiteboard tracker attaches it after the engine starts and detaches it before the engine stops. It needs no reference:
+     the engine hands it the engine API when it attaches it. -->
+<scr:component xmlns:scr="http://www.osgi.org/xmlns/scr/v1.3.0" name="org.jawata.mcp.agent.AgentFace" immediate="true">
+  <implementation class="org.jawata.mcp.agent.AgentFace"/>
+  <service>
+    <provide interface="org.jawata.mcp.engine.EngineFace"/>
+  </service>
+</scr:component>

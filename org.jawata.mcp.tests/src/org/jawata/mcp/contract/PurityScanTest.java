@@ -43,7 +43,7 @@ class PurityScanTest {
 
     /** The engine's neutral packages (rule R11). */
     private static final List<String> NEUTRAL_PACKAGES = List.of("knowledge", "execution", "learn", "transport", "protocol", "embed",
-        "domain", "field", "models", "change", "engine");
+        "domain", "field", "models", "change", "engine", "agent", "step");
 
     @Test
     @DisplayName("THE CONTROL — the scan finds the JDT type, the jawata core type and System.exit in a class that has them")

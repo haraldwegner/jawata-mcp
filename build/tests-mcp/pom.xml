@@ -48,6 +48,8 @@
                     <include>backups/*.zip</include>
                     <!-- Sprint 28k, Stage 8: the canonical engine notes (contract section 14.1) and their digests. -->
                     <include>engine-notes/*</include>
+                    <!-- Sprint 28h, S4: the recorded ACP sessions the agent face is checked against (copied from jawata-chat). -->
+                    <include>acp/*.jsonl</include>
                 </includes>
             </resource>
         </resources>
