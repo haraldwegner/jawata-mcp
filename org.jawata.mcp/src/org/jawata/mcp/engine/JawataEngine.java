@@ -640,12 +640,13 @@ public class JawataEngine {
 	public void serve(Transport transport) throws Exception {
 		setActiveTransport(transport);
 		if (transport instanceof org.jawata.mcp.transport.HttpTransport http) {
-			for (EngineFace face : whiteboard.attachedFaces()) {
+			// Heard of every face attached now and of each that attaches later, so the order of the listener and the face does not matter.
+			whiteboard.whenFaceAttaches(face -> {
 				if (face instanceof RoutedFace routed) {
 					http.mount(routed.path(), routed.handler());
 					log.info("Face '{}' answers on {}", face.name(), routed.path());
 				}
-			}
+			});
 		}
 		try {
 			transport.run(getProtocolHandler()::processMessage);

@@ -172,6 +172,24 @@ class EngineWhiteboardTest {
     }
 
     @Test
+    @DisplayName("a listener of attaching faces hears the ones attached before it asked and each one attached after, and none that failed to attach")
+    void aListenerHearsEveryAttachedFaceAndEachLaterOne() {
+        EngineWhiteboard board = new EngineWhiteboard();
+        board.started(api(new RecordingCalls()));
+        board.bindFace(new Face("early"));
+        List<String> heard = new ArrayList<>();
+
+        board.whenFaceAttaches(face -> heard.add(face.name()));
+        assertEquals(List.of("early"), heard, "a face attached before the listener asked is told at once");
+
+        board.bindFace(new Face("late"));
+        Face broken = new Face("broken");
+        broken.failOnAttach = true;
+        board.bindFace(broken);
+        assertEquals(List.of("early", "late"), heard, "a face attached afterwards is told, and one that failed to attach is not");
+    }
+
+    @Test
     @DisplayName("a face bound after the engine has started is attached at once, and one unbound while it runs is detached")
     void aFaceBoundWhileRunningIsAttachedAtOnce() {
         EngineWhiteboard board = new EngineWhiteboard();

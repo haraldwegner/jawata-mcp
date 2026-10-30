@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
@@ -26,6 +27,8 @@ final class AcpBridge {
 
     static final int USAGE = 2;
     static final int REFUSED = 3;
+    static final int STREAM_ENDED = 4;
+    private static final long DRAIN_MILLIS = 60_000;
 
     private final String base;
     private final String key;
@@ -33,6 +36,7 @@ final class AcpBridge {
     private final HttpClient http = HttpClient.newHttpClient();
     private final PrintStream out;
     private final PrintStream err;
+    private volatile boolean closing;
 
     AcpBridge(String base, String key, PrintStream out, PrintStream err) {
         this.base = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
@@ -75,7 +79,13 @@ final class AcpBridge {
                 }
             }
         }
+        closing = true;
         send("DELETE", "/acp", HttpRequest.BodyPublishers.noBody());
+        try {
+            events.join(DRAIN_MILLIS); // the resident ends the stream after it has delivered what was queued
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         return 0;
     }
 
@@ -104,10 +114,16 @@ final class AcpBridge {
                     out.flush();
                 }
             });
-        } catch (IOException e) {
+        } catch (IOException | UncheckedIOException e) {
             err.println("jawata --acp: the event stream ended: " + e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+        if (!closing) {
+            // The agent can no longer reach the host. Staying up would let the host write into a pipe nobody answers, so end loudly.
+            err.println("jawata --acp: the resident closed the event stream; ending so the host sees it");
+            err.flush();
+            Runtime.getRuntime().halt(STREAM_ENDED);
         }
     }
 

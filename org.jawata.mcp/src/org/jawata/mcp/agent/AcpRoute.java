@@ -39,6 +39,8 @@ public final class AcpRoute implements HttpHandler {
     private static final Logger log = LoggerFactory.getLogger(AcpRoute.class);
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final long KEEPALIVE_SECONDS = 15;
+    /** How long a host's closing DELETE waits for the prompt it is still waiting on. */
+    static final long FINISH_SECONDS = 300;
 
     private final AgentFace face;
     private final Supplier<AgentBrain> brains;
@@ -78,7 +80,7 @@ public final class AcpRoute implements HttpHandler {
             } else if (PATH.equals(path) && "DELETE".equals(method)) {
                 Connection ended = connections.remove(conn);
                 if (ended != null) {
-                    ended.close();
+                    ended.finish();
                 }
                 reply(exchange, 204);
             } else {
@@ -112,7 +114,7 @@ public final class AcpRoute implements HttpHandler {
         exchange.sendResponseHeaders(200, 0);
         OutputStream out = exchange.getResponseBody();
         try {
-            while (!connection.closed) {
+            while (!(connection.closed && connection.outbox.isEmpty())) {
                 String next = connection.outbox.poll(keepaliveSeconds, TimeUnit.SECONDS);
                 if (next != null && next.isEmpty()) {
                     continue; // the wake-up a closing connection leaves; the loop condition ends it
@@ -190,9 +192,28 @@ public final class AcpRoute implements HttpHandler {
             }
         }
 
+        /** The host is gone: nothing can be delivered, so work in flight is interrupted and the stream ends at once. */
         void close() {
             closed = true;
             worker.shutdownNow();
+            outbox.add("");
+        }
+
+        /**
+         * The host closed on purpose: the prompt it is waiting on finishes (up to {@link #FINISH_SECONDS}), then the stream delivers
+         * what is queued and ends, so a host that writes its last prompt and closes its input still gets the answer.
+         */
+        void finish() {
+            worker.shutdown();
+            try {
+                if (!worker.awaitTermination(FINISH_SECONDS, TimeUnit.SECONDS)) {
+                    worker.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                worker.shutdownNow();
+            }
+            closed = true;
             outbox.add("");
         }
     }

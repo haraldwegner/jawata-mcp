@@ -167,6 +167,29 @@ case "$H" in
     *) fail "embedder-loaded embedder not available in the running product" ;;
 esac
 
+# --- agent-acp (Sprint 28h, S5): the agent answers on the running product's own listener, reached the way a host reaches it ----
+# The program a host's agent setting names (`jawata.jar --acp`) is run against THIS resident under an editor's environment, and
+# plays the opening of a recorded session: the handshake, a session, a prompt. Nothing here mounts the route by hand, so it is the
+# production wiring (the engine putting the attached agent on its listener) that answers, and a wrong key is refused.
+ACP_IN="$WS/acp-in.jsonl"
+printf '%s\n' \
+    '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":1,"clientCapabilities":{}}}' \
+    '{"jsonrpc":"2.0","id":1,"method":"session/new","params":{"cwd":"/tmp","mcpServers":[]}}' > "$ACP_IN"
+ACP_OUT="$( { cat "$ACP_IN"; sleep 3; } | ELECTRON_RUN_AS_NODE=1 VSCODE_PID=1 timeout 60 java -jar "$JAR" --acp \
+    --url "http://127.0.0.1:$PORT" --key "$TOKEN" 2>/dev/null )"
+case "$ACP_OUT" in
+    *'"agentInfo":{"name":"jawata"'*'"sessionId"'*) pass "agent-acp the resident's own listener answers the handshake and opens a session through jawata.jar --acp" ;;
+    *) fail "agent-acp no handshake and session through the --acp program: $(printf '%s' "$ACP_OUT" | head -c 300)" ;;
+esac
+printf '%s\n' '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}' \
+    | timeout 60 java -jar "$JAR" --acp --url "http://127.0.0.1:$PORT" --key "not-the-key" >/dev/null 2>&1
+ACP_REFUSED=$?
+if [ "$ACP_REFUSED" = "3" ]; then
+    pass "agent-acp a wrong key is refused with status 3"
+else
+    fail "agent-acp a wrong key ended with status $ACP_REFUSED, not 3"
+fi
+
 # --- tool-count: no tool silently appeared or vanished -----------------------
 # The release-note sentence "the tool count is still N" gets its live check
 # (Sprint 28 outcome audit, F7 — the sentence had no check behind it).

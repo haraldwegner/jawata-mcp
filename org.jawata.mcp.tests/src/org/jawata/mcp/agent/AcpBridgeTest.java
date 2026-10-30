@@ -76,8 +76,8 @@ class AcpBridgeTest {
     }
 
     /** The agent face on a listener that asks for {@code key}; it answers a prompt with {@code answer}. */
-    private static HttpTransport servedBy(String key, List<String> answer) throws Exception {
-        AgentFace face = new AgentFace(List::of, () -> (prompt, chunks) -> answer.forEach(chunks));
+    private static HttpTransport servedBy(String key, AgentBrain brain) throws Exception {
+        AgentFace face = new AgentFace(List::of, () -> brain);
         face.attach((EngineApi) Proxy.newProxyInstance(EngineApi.class.getClassLoader(), new Class<?>[] {EngineApi.class},
             (proxy, method, args) -> null));
         HttpTransport transport = new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", key),
@@ -134,7 +134,7 @@ class AcpBridgeTest {
     void r1PlaysThroughTheStdioProgram() throws Exception {
         List<String> answer = recordedAnswer("R1");
         assertFalse(answer.isEmpty(), "the recording holds no answer to replay");
-        HttpTransport transport = servedBy("tok", answer);
+        HttpTransport transport = servedBy("tok", (prompt, chunks) -> answer.forEach(chunks));
         Process bridge = startBridge(transport.getActualPort(), "tok");
         try {
             BlockingQueue<String> lines = linesOf(bridge);
@@ -177,7 +177,7 @@ class AcpBridgeTest {
     @Test
     @DisplayName("CONTROL — a wrong key ends the program with the refusal status and a line saying so, and nothing reaches stdout")
     void aWrongKeyIsRefused() throws Exception {
-        HttpTransport transport = servedBy("tok", List.of("never sent"));
+        HttpTransport transport = servedBy("tok", (prompt, chunks) -> chunks.accept("never sent"));
         Process bridge = startBridge(transport.getActualPort(), "wrong");
         try {
             BlockingQueue<String> lines = linesOf(bridge);
@@ -191,6 +191,72 @@ class AcpBridgeTest {
         } finally {
             bridge.destroyForcibly();
             transport.close();
+        }
+    }
+
+    @Test
+    @DisplayName("a host that writes its last prompt and closes its input still gets the answer: the prompt in flight finishes and its reply is delivered")
+    void aHostThatClosesItsInputStillGetsTheAnswer() throws Exception {
+        HttpTransport transport = servedBy("tok", (prompt, chunks) -> {
+            try {
+                Thread.sleep(1500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return; // an interrupted prompt says nothing, which is the loss this test is here to catch
+            }
+            chunks.accept("the late answer");
+        });
+        Process bridge = startBridge(transport.getActualPort(), "tok");
+        try {
+            BlockingQueue<String> lines = linesOf(bridge);
+            OutputStream stdin = bridge.getOutputStream();
+            List<ObjectNode> sent = hostMessagesOf("R1");
+            write(stdin, sent.get(0));
+            nextMessage(lines);
+            write(stdin, sent.get(1));
+            JsonNode opened = nextMessage(lines);
+            while (!opened.has("id")) {
+                opened = nextMessage(lines);
+            }
+            ObjectNode prompt = sent.get(2).deepCopy();
+            ((ObjectNode) prompt.get("params")).put("sessionId", opened.path("result").path("sessionId").asText());
+            write(stdin, prompt);
+            stdin.close();
+
+            boolean answered = false;
+            boolean stopped = false;
+            while (!stopped) {
+                JsonNode message = nextMessage(lines);
+                answered |= "the late answer".equals(message.path("params").path("update").path("content").path("text").asText());
+                stopped = message.path("result").has("stopReason");
+            }
+            assertTrue(answered, "the answer to the prompt in flight was lost when the host closed its input");
+            assertTrue(bridge.waitFor(WAIT_SECONDS, TimeUnit.SECONDS), "the program did not end after delivering the answer");
+            assertEquals(0, bridge.exitValue());
+        } finally {
+            bridge.destroyForcibly();
+            transport.close();
+        }
+    }
+
+    @Test
+    @DisplayName("a resident that goes away ends the program with status 4 and a line saying so, instead of leaving the host writing into a pipe nobody answers")
+    void aResidentThatDropsTheStreamEndsTheProgram() throws Exception {
+        HttpTransport transport = servedBy("tok", (prompt, chunks) -> { });
+        Process bridge = startBridge(transport.getActualPort(), "tok");
+        try {
+            BlockingQueue<String> lines = linesOf(bridge);
+            write(bridge.getOutputStream(), hostMessagesOf("R1").get(0));
+            nextMessage(lines);
+
+            transport.close();
+
+            assertTrue(bridge.waitFor(WAIT_SECONDS, TimeUnit.SECONDS), "the program stayed up after its resident went away");
+            assertEquals(4, bridge.exitValue());
+            String said = new String(bridge.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            assertTrue(said.contains("closed the event stream"), "stderr does not say why: " + said);
+        } finally {
+            bridge.destroyForcibly();
         }
     }
 }

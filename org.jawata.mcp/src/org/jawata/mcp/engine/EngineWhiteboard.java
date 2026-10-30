@@ -3,6 +3,7 @@ package org.jawata.mcp.engine;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 import org.jawata.spi.lang.LanguageProvider;
 import org.slf4j.Logger;
@@ -29,6 +30,7 @@ public final class EngineWhiteboard {
 
     private final CopyOnWriteArrayList<LanguageProvider> providers = new CopyOnWriteArrayList<>();
     private final List<Runnable> providerListeners = new CopyOnWriteArrayList<>();
+    private final List<Consumer<EngineFace>> faceListeners = new CopyOnWriteArrayList<>();
 
     /** The handle faces are given, or null while the engine is not running. */
     private volatile EngineApi running;
@@ -74,9 +76,15 @@ public final class EngineWhiteboard {
         providerListeners.add(listener);
     }
 
-    /** The faces attached now, in the order they attached; the host reads it to put each routed face on its listener. */
-    public List<EngineFace> attachedFaces() {
-        return List.copyOf(attached);
+    /**
+     * Asks to be told of every face that is attached now and of each one that attaches later, so a host puts a routed face on its
+     * listener whichever of the listener and the face arrives first.
+     */
+    public synchronized void whenFaceAttaches(Consumer<EngineFace> listener) {
+        faceListeners.add(listener);
+        for (EngineFace face : attached) {
+            listener.accept(face);
+        }
     }
 
     /** The engine has started: every bound face attaches, and a face bound from now on attaches as it arrives. */
@@ -100,6 +108,9 @@ public final class EngineWhiteboard {
             face.attach(api);
             attached.add(face);
             log.info("Face '{}' attached", face.name());
+            for (Consumer<EngineFace> listener : faceListeners) {
+                listener.accept(face);
+            }
         } catch (RuntimeException e) {
             log.error("Face '{}' failed to attach; the others still attach", face.name(), e);
         }
