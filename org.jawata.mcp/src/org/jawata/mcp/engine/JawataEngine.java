@@ -639,6 +639,14 @@ public class JawataEngine {
 	 */
 	public void serve(Transport transport) throws Exception {
 		setActiveTransport(transport);
+		if (transport instanceof org.jawata.mcp.transport.HttpTransport http) {
+			for (EngineFace face : whiteboard.attachedFaces()) {
+				if (face instanceof RoutedFace routed) {
+					http.mount(routed.path(), routed.handler());
+					log.info("Face '{}' answers on {}", face.name(), routed.path());
+				}
+			}
+		}
 		try {
 			transport.run(getProtocolHandler()::processMessage);
 		} finally {

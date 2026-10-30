@@ -7,8 +7,12 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -109,6 +113,9 @@ public class HttpTransport implements Transport {
     private ScheduledExecutorService watchdog;
 
     private HttpServer server;
+    /** The routes faces asked for, behind the key, and which of them are on the live server already. */
+    private final Map<String, HttpHandler> mounted = new LinkedHashMap<>();
+    private final Set<String> live = new HashSet<>();
     private final CountDownLatch readyLatch = new CountDownLatch(1);
     private final CountDownLatch shutdownLatch = new CountDownLatch(1);
     private volatile int actualPort = -1;
@@ -187,6 +194,7 @@ public class HttpTransport implements Transport {
         }
         server.createContext("/mcp", new McpHandler(handler, token, objectMapper));
         server.createContext("/mcp/events", new EventsHandler(token, heartbeatInterval, subscribers));
+        mountPending();
         // Cached pool — POST handlers return quickly; SSE handlers hold a
         // thread for the connection lifetime. Cached scales as needed
         // without starving POSTs (an issue with fixed pools when several
@@ -242,6 +250,35 @@ public class HttpTransport implements Transport {
             ? "127.0.0.1"
             : bindAddress;
         return "http://" + (host.contains(":") ? "[" + host + "]" : host) + ":" + port + "/mcp";
+    }
+
+    /**
+     * Puts one more route on this listener, behind the same key as {@code /mcp}: a request without it is answered 401 and never reaches
+     * {@code handler}. Safe before the listener is bound (the route is added when it is) and after (it is added now).
+     */
+    public synchronized void mount(String path, HttpHandler handler) {
+        String expected = token == null ? null : "Bearer " + token;
+        mounted.put(path, exchange -> {
+            String auth = exchange.getRequestHeaders().getFirst("Authorization");
+            if (expected != null && !expected.equals(auth)) {
+                sendEmpty(exchange, 401);
+                exchange.close();
+                return;
+            }
+            handler.handle(exchange);
+        });
+        mountPending();
+    }
+
+    private synchronized void mountPending() {
+        if (server == null) {
+            return;
+        }
+        for (Map.Entry<String, HttpHandler> route : mounted.entrySet()) {
+            if (live.add(route.getKey())) {
+                server.createContext(route.getKey(), route.getValue());
+            }
+        }
     }
 
     /** The bearer token every request to this transport must carry; empty when the endpoint is keyless. */

@@ -74,6 +74,11 @@ public final class EngineWhiteboard {
         providerListeners.add(listener);
     }
 
+    /** The faces attached now, in the order they attached; the host reads it to put each routed face on its listener. */
+    public List<EngineFace> attachedFaces() {
+        return List.copyOf(attached);
+    }
+
     /** The engine has started: every bound face attaches, and a face bound from now on attaches as it arrives. */
     public synchronized void started(EngineApi api) {
         running = api;

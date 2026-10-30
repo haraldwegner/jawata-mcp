@@ -5,8 +5,10 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import org.jawata.mcp.engine.EngineApi;
-import org.jawata.mcp.engine.EngineFace;
+import org.jawata.mcp.engine.RoutedFace;
 import org.jawata.mcp.protocol.JsonRpcMessage;
+
+import com.sun.net.httpserver.HttpHandler;
 
 /**
  * jawata as an ACP agent (Sprint 28h, D1, D3): a second face of the engine beside MCP, plugged in through the engine's face slot and
@@ -15,11 +17,15 @@ import org.jawata.mcp.protocol.JsonRpcMessage;
  *
  * <p>Each host connection gets its own {@link AcpServer}; the face holds the engine they all stand on.</p>
  */
-public final class AgentFace implements EngineFace {
+public final class AgentFace implements RoutedFace {
 
     static final String NAME = "agent";
 
+    /** What a prompt is answered with until a brain is attached to the agent (plan S7a); it says so rather than staying silent. */
+    static final String NO_BRAIN = "jawata's agent has no brain attached yet.";
+
     private final Supplier<List<AdvertisedCommand>> commands;
+    private final Supplier<AgentBrain> brains;
     private volatile EngineApi engine;
 
     /** The face as the framework builds it: it advertises no command until the seats are served (plan S14). */
@@ -29,7 +35,23 @@ public final class AgentFace implements EngineFace {
 
     /** A face that advertises what {@code commands} supplies at the moment a session opens. */
     public AgentFace(Supplier<List<AdvertisedCommand>> commands) {
+        this(commands, () -> (prompt, chunks) -> chunks.accept(NO_BRAIN));
+    }
+
+    /** A face whose every connection is answered by the brain {@code brains} supplies when the connection opens. */
+    public AgentFace(Supplier<List<AdvertisedCommand>> commands, Supplier<AgentBrain> brains) {
         this.commands = commands;
+        this.brains = brains;
+    }
+
+    @Override
+    public String path() {
+        return AcpRoute.PATH;
+    }
+
+    @Override
+    public HttpHandler handler() {
+        return new AcpRoute(this, brains);
     }
 
     @Override
