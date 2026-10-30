@@ -42,11 +42,23 @@ public final class AcpRoute implements HttpHandler {
 
     private final AgentFace face;
     private final Supplier<AgentBrain> brains;
+    private final long keepaliveSeconds;
     private final Map<String, Connection> connections = new ConcurrentHashMap<>();
 
     AcpRoute(AgentFace face, Supplier<AgentBrain> brains) {
+        this(face, brains, KEEPALIVE_SECONDS);
+    }
+
+    /** A route that writes to an idle stream every {@code keepaliveSeconds}, which is also how long a gone host program goes unnoticed. */
+    AcpRoute(AgentFace face, Supplier<AgentBrain> brains, long keepaliveSeconds) {
         this.face = face;
         this.brains = brains;
+        this.keepaliveSeconds = keepaliveSeconds;
+    }
+
+    /** How many host connections are open now. */
+    int openConnections() {
+        return connections.size();
     }
 
     @Override
@@ -101,7 +113,7 @@ public final class AcpRoute implements HttpHandler {
         OutputStream out = exchange.getResponseBody();
         try {
             while (!connection.closed) {
-                String next = connection.outbox.poll(KEEPALIVE_SECONDS, TimeUnit.SECONDS);
+                String next = connection.outbox.poll(keepaliveSeconds, TimeUnit.SECONDS);
                 if (next != null && next.isEmpty()) {
                     continue; // the wake-up a closing connection leaves; the loop condition ends it
                 }
@@ -113,6 +125,12 @@ public final class AcpRoute implements HttpHandler {
             Thread.currentThread().interrupt();
         } catch (IOException e) {
             log.debug("ACP stream for {} ended: {}", conn, e.getMessage());
+        } finally {
+            // The stream is the connection's other half: when the host program is gone (a crash sends no DELETE) the next write fails
+            // and the connection, its worker thread and its queue are released here instead of living as long as the resident.
+            if (connections.remove(conn, connection)) {
+                connection.close();
+            }
         }
     }
 
