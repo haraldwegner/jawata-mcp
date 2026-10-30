@@ -1,0 +1,329 @@
+package org.jawata.mcp.execution;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcesses;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+/**
+ * The engine as an ACP client (Sprint 28h, S6, D1, D4, D28): one prompt run in a brain that speaks the Agent Client Protocol, over the
+ * brain's stdio. It is the second way a brain is hired, beside {@link HiredBrain}'s per-vendor command lines, and it answers the same
+ * {@link HiredBrain.Outcome}, so what reads an outcome does not care which way the brain was reached.
+ *
+ * <p><b>What a brain is given.</b> The resident as its one tool server, over HTTP with the resident's key, when the brain says it can
+ * attach one; and the seat's allowlist, which is enforced where ACP lets a client enforce it: every {@code session/request_permission}
+ * is answered by the allowlist, a tool the seat does not list is rejected, and an empty allowlist rejects every tool. A brain that
+ * never asks permission for a tool is not bounded by this (measured in S2: a brain under the user's own pre-tool hooks never asks),
+ * which is why the outcome names every tool call the brain made and the caller classifies them.</p>
+ *
+ * <p><b>Resume (D4).</b> Given the session id of an earlier run and a brain that advertises {@code loadSession}, the earlier session is
+ * loaded instead of a new one opened, so a second hire of the same seat knows what the first saw. The history the brain replays while
+ * loading is not collected as this run's answer. A brain that cannot load a session gets a new one, and the outcome carries the new id.</p>
+ */
+public final class AcpBrainSession {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+    private static final int STDERR_TAIL_LIMIT = 8_192;
+    private static final int METHOD_NOT_FOUND = -32601;
+
+    private AcpBrainSession() {
+    }
+
+    /**
+     * What it takes to start a brain that speaks ACP: the command line the brain's own installation defines, and the variables it needs
+     * beyond the resident's. Per brain, never per call.
+     */
+    public record Program(List<String> command, Map<String, String> environment) {
+    }
+
+    /**
+     * Runs one prompt.
+     *
+     * @param host         the process boundary
+     * @param program      how to start the brain
+     * @param base         where it runs and with what environment
+     * @param prompt       the brief
+     * @param mcp          the resident's own endpoint, or null for a brain that is given no tool server
+     * @param allowedTools the tools the seat may use, by bare name or by the name the brain shows; empty allows none
+     * @param resume       the session id of an earlier run to continue, if any
+     * @param ceilings     what the run may consume
+     */
+    public static HiredBrain.Outcome run(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
+            List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings) throws IOException, InterruptedException {
+        Map<String, String> environment = new LinkedHashMap<>(base.environment());
+        environment.putAll(program.environment());
+        Process child = host.start(new HostCommand(program.command(), base.workingDirectory(), environment,
+            ceilings.wallClock(), false, base.cleanEnvironment()));
+        StringBuilder stderrTail = new StringBuilder();
+        Thread drain = drain(child, stderrTail);
+        boolean[] reaped = {false};
+        Thread watchdog = new Thread(() -> {
+            try {
+                if (!child.waitFor(ceilings.wallClock().toMillis(), TimeUnit.MILLISECONDS)) {
+                    reaped[0] = true;
+                    HostProcesses.reap(child);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "jawata-acp-watchdog");
+        watchdog.setDaemon(true);
+        watchdog.start();
+
+        Wire wire = new Wire(child, new HashSet<>(allowedTools == null ? List.of() : allowedTools), ceilings);
+        StringBuilder said = new StringBuilder();
+        List<String> toolNames = new ArrayList<>();
+        List<ToolCall> toolCalls = new ArrayList<>();
+        OptionalDouble cost = OptionalDouble.empty();
+        String stoppedBy = null;
+        String sessionId = null;
+
+        try {
+            JsonNode init = wire.call(1, "initialize", params -> {
+                params.put("protocolVersion", 1);
+                params.putObject("clientCapabilities");
+            });
+            if (init != null) {
+                JsonNode capabilities = init.path("agentCapabilities");
+                String cwd = base.workingDirectory() == null ? "" : base.workingDirectory().toString();
+                ArrayNode servers = mcpServers(mcp, capabilities.path("mcpCapabilities").path("http").asBoolean(false));
+                if (resume.isPresent() && capabilities.path("loadSession").asBoolean(false)) {
+                    String earlier = resume.get();
+                    if (wire.call(2, "session/load", params -> {
+                        params.put("sessionId", earlier);
+                        params.put("cwd", cwd);
+                        params.set("mcpServers", servers);
+                    }) != null) {
+                        sessionId = earlier;
+                    }
+                }
+                if (sessionId == null) {
+                    JsonNode created = wire.call(2, "session/new", params -> {
+                        params.put("cwd", cwd);
+                        params.set("mcpServers", servers);
+                    });
+                    sessionId = created == null ? null : created.path("sessionId").asText(null);
+                }
+            }
+
+            if (sessionId != null) {
+                String id = sessionId;
+                wire.collect = true; // what streams from here on is this run's answer, not the history a load replayed
+                JsonNode stop = wire.call(3, "session/prompt", params -> {
+                    params.put("sessionId", id);
+                    params.putArray("prompt").addObject().put("type", "text").put("text", prompt);
+                });
+                for (JsonNode update : wire.events) {
+                    switch (update.path("sessionUpdate").asText()) {
+                        case "agent_message_chunk" -> said.append(update.path("content").path("text").asText(""));
+                        case "tool_call" -> {
+                            String name = update.path("title").asText(update.path("kind").asText("tool"));
+                            toolNames.add(name);
+                            toolCalls.add(new ToolCall(name, update.has("rawInput") ? update.get("rawInput") : JSON.createObjectNode()));
+                        }
+                        case "usage_update" -> {
+                            JsonNode amount = update.path("cost").path("amount");
+                            if (amount.isNumber()) {
+                                cost = OptionalDouble.of(amount.asDouble());
+                            }
+                        }
+                        default -> { }
+                    }
+                }
+                stoppedBy = wire.stoppedBy;
+                if (stop == null && !reaped[0] && stoppedBy == null) {
+                    said.append(said.length() == 0 ? "" : "\n").append("(the brain ended before it answered the prompt)");
+                }
+            }
+        } finally {
+            watchdog.interrupt();
+            try {
+                child.getOutputStream().close();
+            } catch (IOException ignored) {
+                // the child is already gone
+            }
+            if (!child.waitFor(5, TimeUnit.SECONDS)) {
+                HostProcesses.reap(child);
+                child.waitFor(2, TimeUnit.SECONDS);
+            }
+            drain.join(2_000);
+        }
+
+        OptionalInt exit = child.isAlive() ? OptionalInt.empty() : OptionalInt.of(child.exitValue());
+        return new HiredBrain.Outcome(said.toString(), cost, toolNames.size(), wire.unreadable, cost.isPresent(), reaped[0], exit,
+            stderrTail.toString(), Optional.ofNullable(stoppedBy), List.copyOf(toolNames), Optional.empty(), Optional.empty(),
+            List.copyOf(toolCalls), Optional.ofNullable(sessionId));
+    }
+
+    /** The resident as the brain's one tool server, or none when there is no endpoint or the brain cannot attach an HTTP one. */
+    private static ArrayNode mcpServers(SelfEndpoint mcp, boolean brainCanAttachHttp) {
+        ArrayNode servers = JSON.createArrayNode();
+        if (mcp != null && brainCanAttachHttp) {
+            ObjectNode server = servers.addObject();
+            server.put("type", "http");
+            server.put("name", SelfEndpoint.SERVER_NAME);
+            server.put("url", mcp.url());
+            ObjectNode header = server.putArray("headers").addObject();
+            header.put("name", "Authorization");
+            header.put("value", "Bearer " + mcp.token());
+        }
+        return servers;
+    }
+
+    private static Thread drain(Process child, StringBuilder tail) {
+        Thread drain = new Thread(() -> {
+            try (BufferedReader err = new BufferedReader(new InputStreamReader(child.getErrorStream(), StandardCharsets.UTF_8))) {
+                for (String line = err.readLine(); line != null; line = err.readLine()) {
+                    synchronized (tail) {
+                        if (tail.length() < STDERR_TAIL_LIMIT) {
+                            tail.append(line).append('\n');
+                        }
+                    }
+                }
+            } catch (IOException ignored) {
+                // the stream dies with the process
+            }
+        }, "jawata-acp-drain-err");
+        drain.setDaemon(true);
+        drain.start();
+        return drain;
+    }
+
+    /** The brain's stdio as JSON-RPC lines: one request at a time, the brain's own requests answered while a reply is awaited. */
+    private static final class Wire {
+
+        private final BufferedReader in;
+        private final OutputStream out;
+        private final Set<String> allowed;
+        final List<JsonNode> events = new ArrayList<>();
+        private final Process child;
+        private final HiredBrain.Ceilings ceilings;
+        private int steps;
+        private double spent;
+        int unreadable;
+        boolean collect;
+        String stoppedBy;
+
+        Wire(Process child, Set<String> allowed, HiredBrain.Ceilings ceilings) {
+            this.child = child;
+            this.in = new BufferedReader(new InputStreamReader(child.getInputStream(), StandardCharsets.UTF_8));
+            this.out = child.getOutputStream();
+            this.allowed = allowed;
+            this.ceilings = ceilings;
+        }
+
+        private void send(ObjectNode message) throws IOException {
+            out.write((message.toString() + "\n").getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        }
+
+        /** The next line the brain wrote, or null at the end of its output. Lines that are not JSON are counted. */
+        private JsonNode next() throws IOException {
+            for (String line = in.readLine(); line != null; line = in.readLine()) {
+                if (line.isBlank()) {
+                    continue;
+                }
+                try {
+                    return JSON.readTree(line);
+                } catch (IOException e) {
+                    unreadable++;
+                }
+            }
+            return null;
+        }
+
+        /** Sends a request and returns its result, or null when the brain ended or answered with an error. */
+        JsonNode call(int id, String method, Consumer<ObjectNode> fill) throws IOException {
+            ObjectNode request = JSON.createObjectNode();
+            request.put("jsonrpc", "2.0");
+            request.put("id", id);
+            request.put("method", method);
+            fill.accept(request.putObject("params"));
+            send(request);
+            for (JsonNode message = next(); message != null; message = next()) {
+                if (message.has("id") && !message.has("method")) {
+                    if (message.get("id").asInt(-1) == id) {
+                        return message.has("error") ? null : message.path("result");
+                    }
+                } else if (message.has("id")) {
+                    answerRequest(message);
+                } else if (collect && "session/update".equals(message.path("method").asText())) {
+                    JsonNode update = message.path("params").path("update");
+                    events.add(update);
+                    if (exceeded(update)) {
+                        HostProcesses.reap(child);
+                        return null;
+                    }
+                }
+            }
+            return null;
+        }
+
+        /** Counts a streamed tool call or cost against the ceilings as it arrives; true, with {@link #stoppedBy} set, once one is passed. */
+        private boolean exceeded(JsonNode update) {
+            String kind = update.path("sessionUpdate").asText();
+            if ("tool_call".equals(kind)) {
+                steps++;
+            } else if ("usage_update".equals(kind) && update.path("cost").path("amount").isNumber()) {
+                spent = update.path("cost").path("amount").asDouble();
+            }
+            if (ceilings.maxToolSteps() > 0 && steps > ceilings.maxToolSteps()) {
+                stoppedBy = "tool steps: " + steps + " over the ceiling of " + ceilings.maxToolSteps();
+            } else if (ceilings.maxCostUsd() != null && spent > ceilings.maxCostUsd()) {
+                stoppedBy = "cost: " + spent + " over the ceiling of " + ceilings.maxCostUsd();
+            }
+            return stoppedBy != null;
+        }
+
+        /** Answers a request the brain sent: a permission request by the seat's allowlist, anything else as not supported. */
+        private void answerRequest(JsonNode request) throws IOException {
+            ObjectNode reply = JSON.createObjectNode();
+            reply.put("jsonrpc", "2.0");
+            reply.set("id", request.get("id"));
+            if ("session/request_permission".equals(request.path("method").asText())) {
+                JsonNode tool = request.path("params").path("toolCall");
+                String name = tool.path("title").asText(tool.path("kind").asText(""));
+                String wanted = allowed.contains(name) || allowed.contains(RunEffects.bareName(name)) ? "allow" : "reject";
+                String chosen = null;
+                for (JsonNode option : request.path("params").path("options")) {
+                    if (option.path("kind").asText("").startsWith(wanted)) {
+                        chosen = option.path("optionId").asText();
+                        break;
+                    }
+                }
+                ObjectNode outcome = reply.putObject("result").putObject("outcome");
+                if (chosen == null) {
+                    outcome.put("outcome", "cancelled");
+                } else {
+                    outcome.put("outcome", "selected");
+                    outcome.put("optionId", chosen);
+                }
+            } else {
+                ObjectNode error = reply.putObject("error");
+                error.put("code", METHOD_NOT_FOUND);
+                error.put("message", "this client does not serve " + request.path("method").asText());
+            }
+            send(reply);
+        }
+    }
+}

@@ -1,0 +1,134 @@
+// A stand-in ACP agent for the engine's ACP client tests (Sprint 28h, S6). It is a single-file Java program, run as
+// `java FakeAcpAgent.java`, so it needs nothing but the JDK on any operating system. It speaks just enough ACP over stdio:
+//   initialize, session/new, session/load (replays one history chunk), session/prompt, and the permission request it sends to the client.
+// What a prompt does depends on its text:
+//   REMEMBER:<word>  keeps <word> for the session (a file under $FAKE_ACP_STATE)    -> "noted"
+//   RECALL           answers the word kept for the session, or "nothing"
+//   SERVERS          answers the mcpServers it was given for the session
+//   TOOL / WRITE     makes a tool call (mcp__jawata__inspect / Edit) and asks permission; answers "permission:<option chosen>"
+//   SPEND            makes five tool calls, each with a usage update that raises the cost
+//   HANG             sleeps for a minute without answering
+//   DIE              exits with status 3 without answering
+import java.io.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.regex.*;
+
+public class FakeAcpAgent {
+
+    static final Map<String, String> servers = new HashMap<>();
+    static int counter;
+    static final BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+
+    public static void main(String[] args) throws Exception {
+        Path state = Path.of(System.getenv().getOrDefault("FAKE_ACP_STATE", System.getProperty("java.io.tmpdir")));
+        for (String line = in.readLine(); line != null; line = in.readLine()) {
+            if (line.isBlank()) {
+                continue;
+            }
+            String method = field(line, "method");
+            String id = idOf(line);
+            switch (method == null ? "" : method) {
+                case "initialize" -> reply(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"mcpCapabilities\":{\"http\":true}}}");
+                case "session/new" -> {
+                    String session = "fake-" + (++counter) + "-" + Long.toHexString(System.nanoTime());
+                    servers.put(session, between(line, "\"mcpServers\":"));
+                    reply(id, "{\"sessionId\":\"" + session + "\"}");
+                }
+                case "session/load" -> {
+                    String session = field(line, "sessionId");
+                    servers.put(session, between(line, "\"mcpServers\":"));
+                    chunk(session, "HISTORY of the earlier session");
+                    reply(id, "{}");
+                }
+                case "session/prompt" -> prompt(line, id, state);
+                default -> { }
+            }
+        }
+    }
+
+    static void prompt(String line, String id, Path state) throws Exception {
+        String session = field(line, "sessionId");
+        String text = field(line, "text");
+        Path memory = state.resolve(session + ".txt");
+        if (text.startsWith("REMEMBER:")) {
+            Files.writeString(memory, text.substring("REMEMBER:".length()));
+            chunk(session, "noted");
+        } else if (text.startsWith("RECALL")) {
+            chunk(session, Files.exists(memory) ? Files.readString(memory) : "nothing");
+        } else if (text.startsWith("SERVERS")) {
+            chunk(session, servers.getOrDefault(session, "none"));
+        } else if (text.startsWith("TOOL") || text.startsWith("WRITE")) {
+            String title = text.startsWith("TOOL") ? "mcp__jawata__inspect" : "Edit";
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"" + title
+                + "\",\"kind\":\"read\",\"status\":\"pending\",\"rawInput\":{\"a\":1}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"id\":900,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"toolCall\":{\"toolCallId\":\"t1\",\"title\":\"" + title + "\"},\"options\":["
+                + "{\"optionId\":\"allow_once\",\"name\":\"Allow\",\"kind\":\"allow_once\"},"
+                + "{\"optionId\":\"reject_once\",\"name\":\"Reject\",\"kind\":\"reject_once\"}]}}");
+            String answer = in.readLine();
+            String chosen = answer == null ? "none" : field(answer, "optionId");
+            chunk(session, "permission:" + (chosen == null ? "cancelled" : chosen));
+        } else if (text.startsWith("SPEND")) {
+            for (int i = 1; i <= 5; i++) {
+                send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                    + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"s" + i
+                    + "\",\"title\":\"mcp__jawata__inspect\",\"kind\":\"read\",\"status\":\"pending\",\"rawInput\":{}}}}");
+                send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                    + "\",\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":" + (i * 100) + ",\"size\":1000,\"cost\":{\"amount\":"
+                    + (i * 0.25) + ",\"currency\":\"USD\"}}}}");
+                Thread.sleep(50);
+            }
+            chunk(session, "spent");
+        } else if (text.startsWith("HANG")) {
+            Thread.sleep(60_000);
+        } else if (text.startsWith("DIE")) {
+            System.exit(3);
+        }
+        reply(id, "{\"stopReason\":\"end_turn\"}");
+    }
+
+    static void chunk(String session, String text) {
+        send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+            + "\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}}}}");
+    }
+
+    static void reply(String id, String result) {
+        send("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":" + result + "}");
+    }
+
+    static synchronized void send(String message) {
+        System.out.println(message);
+        System.out.flush();
+    }
+
+    static String idOf(String line) {
+        Matcher m = Pattern.compile("\"id\"\\s*:\\s*(\\d+)").matcher(line);
+        return m.find() ? m.group(1) : "null";
+    }
+
+    static String field(String line, String name) {
+        Matcher m = Pattern.compile("\"" + name + "\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").matcher(line);
+        return m.find() ? m.group(1).replace("\\\"", "\"").replace("\\\\", "\\") : null;
+    }
+
+    /** The JSON value that follows {@code key}, up to the end of the array it opens. */
+    static String between(String line, String key) {
+        int at = line.indexOf(key);
+        if (at < 0) {
+            return "none";
+        }
+        int start = at + key.length();
+        int depth = 0;
+        for (int i = start; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '[') {
+                depth++;
+            } else if (c == ']' && --depth == 0) {
+                return line.substring(start, i + 1);
+            }
+        }
+        return "none";
+    }
+}

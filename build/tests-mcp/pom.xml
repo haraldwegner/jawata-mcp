@@ -50,6 +50,8 @@
                     <include>engine-notes/*</include>
                     <!-- Sprint 28h, S4: the recorded ACP sessions the agent face is checked against (copied from jawata-chat). -->
                     <include>acp/*.jsonl</include>
+                    <!-- Sprint 28h, S6: the stand-in agent the engine's ACP client is tested against (a java source, kept as text so no compiler picks it up). -->
+                    <include>acp/*.txt</include>
                 </includes>
             </resource>
         </resources>

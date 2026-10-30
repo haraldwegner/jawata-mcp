@@ -102,7 +102,7 @@ public final class HiredBrain {
     public record Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,
                           boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode,
                           String stderrTail, Optional<String> stoppedBy,
-                          List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, java.util.Optional<TokenUsage> tokens, java.util.List<ToolCall> toolCalls) {
+                          List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, java.util.Optional<TokenUsage> tokens, java.util.List<ToolCall> toolCalls, java.util.Optional<String> brainSessionId) {
 
         /** The shape every caller used before names were recorded. */
         public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,
@@ -147,6 +147,10 @@ public final class HiredBrain {
 
         public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines, boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode, String stderrTail, Optional<String> stoppedBy, List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, java.util.Optional<TokenUsage> tokens) {
             this(text, costUsd, toolSteps, unreadableLines, sawTerminalCost, timedOut, exitCode, stderrTail, stoppedBy, toolNames, toolsOffered, tokens, java.util.List.of());
+        }
+
+        public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines, boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode, String stderrTail, Optional<String> stoppedBy, List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, java.util.Optional<TokenUsage> tokens, java.util.List<ToolCall> toolCalls) {
+            this(text, costUsd, toolSteps, unreadableLines, sawTerminalCost, timedOut, exitCode, stderrTail, stoppedBy, toolNames, toolsOffered, tokens, toolCalls, java.util.Optional.empty());
         }
     }
 
