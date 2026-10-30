@@ -5,10 +5,10 @@ import java.util.logging.Logger;
 
 import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.engine.ToolNotFoundException;
-import org.jawata.mcp.learn.GateOutcome;
 import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.ResponseFacts;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.step.GateOutcome;
 
 /**
  * Runs a hired plan's declared gate by calling the real jawata tool it names (Sprint 28g S16).

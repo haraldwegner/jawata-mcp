@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.OptionalLong;
 
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.step.GateOutcome;
 
 /**
  * What a tool's own response reported about what it did — read in ONE place (Sprint 28g S16).

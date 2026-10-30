@@ -17,6 +17,8 @@ import java.util.stream.Collectors;
 
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.step.GateOutcome;
+import org.jawata.mcp.step.PlanId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

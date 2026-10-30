@@ -9,12 +9,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jawata.mcp.execution.ToolGateRunner;
-import org.jawata.mcp.learn.GateOutcome;
 import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.PrecedentLedger;
 import org.jawata.mcp.learn.ToolExperienceRecorder;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.step.GateOutcome;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

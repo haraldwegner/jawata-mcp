@@ -1,4 +1,4 @@
-package org.jawata.mcp.learn;
+package org.jawata.mcp.step;
 
 import java.util.Objects;
 import java.util.UUID;

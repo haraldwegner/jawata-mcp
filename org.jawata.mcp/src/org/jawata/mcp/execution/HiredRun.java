@@ -15,12 +15,12 @@ import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.knowledge.SeatRules;
-import org.jawata.mcp.learn.GateOutcome;
 import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.LearnerEvent;
-import org.jawata.mcp.learn.PlanId;
 import org.jawata.mcp.learn.PlanLedger;
 import org.jawata.mcp.runtime.RuntimeArtifactStore;
+import org.jawata.mcp.step.GateOutcome;
+import org.jawata.mcp.step.PlanId;
 
 /**
  * One hired run, start to finish (Sprint 28g S9a M5a): the brief is issued, the

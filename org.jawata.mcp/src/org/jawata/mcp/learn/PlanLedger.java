@@ -9,6 +9,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 
+import org.jawata.mcp.step.GateOutcome;
+import org.jawata.mcp.step.PlanId;
+
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
