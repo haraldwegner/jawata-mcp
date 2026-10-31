@@ -91,9 +91,10 @@ public final class AgentFace implements RoutedFace {
     /**
      * Opens one ACP connection: messages from the host go to the returned server, whose messages come back through {@code out}.
      *
+     * @param sideBrains supplies a fresh brain for each side thread the host opens (S9); {@code null} answers a side thread with {@code brain}
      * @throws IllegalStateException when the engine has not attached the face, or has detached it
      */
-    public AcpServer open(AgentBrain brain, Consumer<JsonRpcMessage> out) {
+    public AcpServer open(AgentBrain brain, Consumer<JsonRpcMessage> out, Supplier<AgentBrain> sideBrains) {
         EngineApi attached = engine;
         if (attached == null) {
             throw new IllegalStateException("the agent face is not attached to an engine");
@@ -101,6 +102,6 @@ public final class AgentFace implements RoutedFace {
         TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools()), new AttemptLedger(RESUMPTIONS_PER_STEP));
         String recording = attached.settings() == null ? null : attached.settings().get(AgentRecorder.SETTING).orElse(null);
         AgentRecorder recorder = new AgentRecorder(attached.tools(), AgentRecorder.Depth.of(recording));
-        return new AcpServer(brain, commands, out, boundary, recorder);
+        return new AcpServer(brain, commands, out, boundary, recorder, sideBrains);
     }
 }

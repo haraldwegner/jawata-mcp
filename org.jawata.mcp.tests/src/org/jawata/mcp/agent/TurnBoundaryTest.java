@@ -57,7 +57,7 @@ class TurnBoundaryTest {
     }
 
     private static PrincipalSession session(boolean autonomy) {
-        PrincipalSession session = new PrincipalSession("s1", "/w");
+        PrincipalSession session = new PrincipalSession("s1", "/w", false);
         session.setAutonomy(Channel.HOST, autonomy);
         return session;
     }
@@ -168,7 +168,7 @@ class TurnBoundaryTest {
                 }
                 chunks.accept(says);
             };
-            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledger, 3), AgentRecorder.off());
+            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledger, 3), AgentRecorder.off(), null);
             self[0] = server;
             server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
             session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
@@ -281,6 +281,54 @@ class TurnBoundaryTest {
     }
 
     @Test
+    @DisplayName("a side question put beside a granted main conversation is answered by its own brain and leaves the steps, the tries and the grant as they were")
+    void aSideThreadLeavesTheStepsTheTriesAndTheGrantAsTheyWere() {
+        PlanLedger ledger = ledgerWithTwoSteps();
+        List<String> mainSaw = new ArrayList<>();
+        List<String> sideSaw = new ArrayList<>();
+        List<JsonNode> said = new ArrayList<>();
+        AcpServer server = new AcpServer((prompt, chunks) -> {
+            mainSaw.add(prompt);
+            if (mainSaw.size() > 12) {
+                throw new AssertionError("the loop did not stop: " + mainSaw.size() + " prompts");
+            }
+            chunks.accept("main working");
+        }, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledger, 3), AgentRecorder.off(),
+            () -> (prompt, chunks) -> {
+                sideSaw.add(prompt);
+                chunks.accept("side answer");
+            });
+        server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+        String main = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
+        server.receive(JsonRpcMessage.request(2, "session/set_config_option",
+            JSON.createObjectNode().put("sessionId", main).put("configId", "autonomy").put("value", "on")), Channel.HOST);
+        ObjectNode sideParams = JSON.createObjectNode().put("cwd", "/w");
+        sideParams.putObject("_meta").put("jawata/side", true);
+        said.clear();
+        server.receive(JsonRpcMessage.request(3, "session/new", sideParams));
+        String side = said.stream().filter(m -> m.has("id") && m.get("id").asInt() == 3).findFirst().orElseThrow().path("result").path("sessionId").asText();
+
+        List<PlanLedger.Pending> before = ledger.pending();
+        ObjectNode ask = JSON.createObjectNode().put("sessionId", side);
+        ask.putArray("prompt").addObject().put("type", "text").put("text", "how many files did you read?");
+        said.clear();
+        server.receive(JsonRpcMessage.request(4, "session/prompt", ask), Channel.HOST);
+
+        assertEquals(List.of("how many files did you read?"), sideSaw, "the side thread's own brain was not the one asked");
+        assertEquals(List.of(), mainSaw, "the side question reached the main conversation's brain");
+        assertFalse(before.isEmpty(), "CONTROL: the ledger held nothing pending, so an unchanged ledger proves nothing");
+        assertEquals(before, ledger.pending(), "the side question moved the step ledger");
+        assertTrue(said.stream().noneMatch(m -> m.path("params").path("update").path("content").path("text").asText().contains("Autonomy ended")),
+            "a question on the side thread ended the main conversation's grant");
+
+        ObjectNode build = JSON.createObjectNode().put("sessionId", main);
+        build.putArray("prompt").addObject().put("type", "text").put("text", "build it");
+        said.clear();
+        server.receive(JsonRpcMessage.request(5, "session/prompt", build), Channel.BRAIN);
+        assertEquals(4, mainSaw.size(), "the side question spent tries or ended the grant: " + mainSaw);
+    }
+
+    @Test
     @DisplayName("the person's cancel stops a running prompt with stop reason cancelled, and the brain is not resumed on the step that still waits")
     void aCancelEndsTheRunningPrompt() throws Exception {
         List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -299,7 +347,7 @@ class TurnBoundaryTest {
                 Thread.currentThread().interrupt();
             }
         };
-        self[0] = new AcpServer(slow, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps(), 3), AgentRecorder.off());
+        self[0] = new AcpServer(slow, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps(), 3), AgentRecorder.off(), null);
         self[0].receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
         session[0] = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
         ObjectNode params = JSON.createObjectNode().put("sessionId", session[0]);

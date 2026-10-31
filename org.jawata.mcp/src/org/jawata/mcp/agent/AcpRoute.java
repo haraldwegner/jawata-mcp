@@ -137,7 +137,7 @@ public final class AcpRoute implements HttpHandler {
     }
 
     private Connection connection(String id) {
-        return connections.computeIfAbsent(id, key -> new Connection(face, brains.get()));
+        return connections.computeIfAbsent(id, key -> new Connection(face, brains));
     }
 
     private static String query(HttpExchange exchange, String name) {
@@ -170,8 +170,8 @@ public final class AcpRoute implements HttpHandler {
         final AcpServer server;
         volatile boolean closed;
 
-        Connection(AgentFace face, AgentBrain brain) {
-            this.server = face.open(brain, this::send);
+        Connection(AgentFace face, Supplier<AgentBrain> brains) {
+            this.server = face.open(brains.get(), this::send, brains);
         }
 
         void submit(JsonRpcMessage message) {

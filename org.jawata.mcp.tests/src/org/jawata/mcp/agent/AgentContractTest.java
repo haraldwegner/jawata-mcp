@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.jawata.mcp.engine.EngineApi;
@@ -90,12 +91,16 @@ class AgentContractTest {
             (proxy, method, args) -> null);
     }
 
-    /** What the agent said while the recorded host spoke, on {@code engine}. */
-    private static List<JsonNode> play(List<Line> recording, AgentBrain brain, List<AdvertisedCommand> commands, EngineApi engine) throws IOException {
+    /**
+     * What the agent said while the recorded host spoke, on {@code engine}.
+     *
+     * @param sideBrains the brains the agent answers side threads with, or {@code null} when the recording opens none
+     */
+    private static List<JsonNode> play(List<Line> recording, AgentBrain brain, List<AdvertisedCommand> commands, EngineApi engine, Supplier<AgentBrain> sideBrains) throws IOException {
         List<JsonNode> said = new ArrayList<>();
         AgentFace face = new AgentFace(() -> commands);
         face.attach(engine);
-        AcpServer server = face.open(brain, message -> said.add(JSON.valueToTree(message)));
+        AcpServer server = face.open(brain, message -> said.add(JSON.valueToTree(message)), sideBrains);
         String session = null;
         for (Line line : recording) {
             if (!line.dir().equals("send")) {
@@ -189,7 +194,7 @@ class AgentContractTest {
         List<String> answer = recordedAnswer(r1);
         assertFalse(answer.isEmpty(), "the recording holds no answer to replay");
 
-        List<JsonNode> said = play(r1, (prompt, chunks) -> answer.forEach(chunks), List.of(), anEngine());
+        List<JsonNode> said = play(r1, (prompt,chunks) -> answer.forEach(chunks), List.of(), anEngine(), null);
 
         assertEquals(List.of(), mismatches(r1, said));
     }
@@ -203,7 +208,7 @@ class AgentContractTest {
             "the recording does not hold all three groups: " + commands);
         List<String> answer = recordedAnswer(r3);
 
-        List<JsonNode> said = play(r3, (prompt, chunks) -> answer.forEach(chunks), commands, anEngine());
+        List<JsonNode> said = play(r3, (prompt,chunks) -> answer.forEach(chunks), commands, anEngine(), null);
 
         assertEquals(List.of(), mismatches(r3, said));
     }
@@ -241,7 +246,9 @@ class AgentContractTest {
                 .put("his", typed).put("agent", String.join("", recordedAnswer(r6)));
             assertTrue(experience.execute(turn).isSuccess(), "the recorded turn could not be put in the lane");
 
-            List<JsonNode> said = play(r6, (prompt, chunks) -> { }, List.of(), engineWithTranscript(experience));
+            List<JsonNode> said = play(r6, (prompt,chunks) -> {
+}
+, List.of(), engineWithTranscript(experience), null);
 
             assertEquals(List.of(), mismatches(r6, said));
             JsonNode listed = said.stream().filter(m -> m.path("result").has("sessions")).findFirst().orElseThrow();
@@ -251,11 +258,34 @@ class AgentContractTest {
             assertTrue(initialized.path("result").path("agentCapabilities").path("loadSession").asBoolean(), "loadSession is not offered");
             assertTrue(initialized.path("result").path("agentCapabilities").path("sessionCapabilities").has("list"), "session/list is not offered");
 
-            assertFalse(mismatches(r6, play(r6, (prompt, chunks) -> { }, List.of(), anEngine())).isEmpty(),
+            assertFalse(mismatches(r6, play(r6, (prompt,chunks) -> {
+}
+, List.of(), anEngine(), null)).isEmpty(),
                 "CONTROL: an agent with no recording replayed the session anyway");
         } finally {
             store.close();
         }
+    }
+
+    @Test
+    @DisplayName("R13 — a side thread opened beside a finished turn: the agent answers it from its own brain, as the recorded agent did, and the main turn stays as it was")
+    void r13TheAgentAnswersASideThreadAsTheRecordedAgentDid() throws IOException {
+        List<Line> r13 = recording("R13");
+        String mainAnswer = recordedAnswer(r13).get(0);
+        String sideAnswer = recordedAnswer(r13).get(1);
+
+        List<JsonNode> said = play(r13, (prompt, chunks) -> chunks.accept(mainAnswer), List.of(), anEngine(),
+            () -> (prompt, chunks) -> chunks.accept(sideAnswer));
+
+        assertEquals(List.of(), mismatches(r13, said));
+        long opened = said.stream().filter(m -> m.path("result").has("sessionId")).count();
+        assertEquals(2, opened, "the main session and the side thread are two sessions");
+        JsonNode sideOpened = said.stream().filter(m -> m.path("id").asInt(-1) == 3).findFirst().orElseThrow();
+        assertFalse(sideOpened.path("result").has("configOptions"),
+            "a side thread carries no autonomy switch: the grant belongs to the main conversation");
+
+        assertFalse(mismatches(r13, play(r13, (prompt, chunks) -> chunks.accept(mainAnswer), List.of(), anEngine(), null)).isEmpty(),
+            "CONTROL: with no brain of its own the side thread was answered by the main brain and the comparison did not notice");
     }
 
     @Test
@@ -265,8 +295,8 @@ class AgentContractTest {
         List<AdvertisedCommand> commands = recordedCommands(r3);
         List<String> answer = recordedAnswer(r3);
 
-        List<JsonNode> wrongText = play(r3, (prompt, chunks) -> chunks.accept("not what was recorded"), commands, anEngine());
-        List<JsonNode> noGroups = play(r3, (prompt, chunks) -> answer.forEach(chunks), List.of(), anEngine());
+        List<JsonNode> wrongText = play(r3, (prompt,chunks) -> chunks.accept("not what was recorded"), commands, anEngine(), null);
+        List<JsonNode> noGroups = play(r3, (prompt,chunks) -> answer.forEach(chunks), List.of(), anEngine(), null);
 
         assertFalse(mismatches(r3, wrongText).isEmpty(), "a wrong answer text went unnoticed");
         assertFalse(mismatches(r3, noGroups).isEmpty(), "missing command groups went unnoticed");
@@ -279,7 +309,7 @@ class AgentContractTest {
         List<JsonNode> said = new ArrayList<>();
         AgentFace face = new AgentFace();
         face.attach(anEngine());
-        AcpServer server = face.open((prompt, chunks) -> chunks.accept("never said"), message -> said.add(JSON.valueToTree(message)));
+        AcpServer server = face.open((prompt, chunks) -> chunks.accept("never said"), message -> said.add(JSON.valueToTree(message)), null);
 
         server.receive(JSON.treeToValue(JSON.readTree(
             "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"session/prompt\",\"params\":{\"sessionId\":\"nope\",\"prompt\":[]}}"),
@@ -294,9 +324,9 @@ class AgentContractTest {
     void aDetachedFaceOpensNoConnection() {
         AgentFace face = new AgentFace();
 
-        assertThrows(IllegalStateException.class, () -> face.open((prompt, chunks) -> { }, message -> { }));
+        assertThrows(IllegalStateException.class, () -> face.open((prompt, chunks) -> { }, message -> { }, null));
         face.attach(anEngine());
         face.detach();
-        assertThrows(IllegalStateException.class, () -> face.open((prompt, chunks) -> { }, message -> { }));
+        assertThrows(IllegalStateException.class, () -> face.open((prompt, chunks) -> { }, message -> { }, null));
     }
 }

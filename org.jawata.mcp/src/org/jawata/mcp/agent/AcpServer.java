@@ -45,6 +45,10 @@ public final class AcpServer {
     private final Consumer<JsonRpcMessage> out;
     private final TurnBoundary boundary;
     private final AgentRecorder recorder;
+    /** Supplies the brain a side thread is answered by; {@code null} answers it with {@link #brain}. */
+    private final Supplier<AgentBrain> sideBrains;
+    /** The brain of each side thread, made when its first question arrives and kept so the thread has a conversation of its own. */
+    private final Map<String, AgentBrain> sideBrainOf = new ConcurrentHashMap<>();
     private final Map<String, PrincipalSession> sessions = new ConcurrentHashMap<>();
     /** The thread running each session's prompt, so the person's cancel can interrupt the brain's work. */
     private final Map<String, Thread> running = new ConcurrentHashMap<>();
@@ -52,15 +56,16 @@ public final class AcpServer {
     private final java.util.Set<String> cancelled = ConcurrentHashMap.newKeySet();
 
     AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out) {
-        this(brain, commands, out, TurnBoundary.open(), AgentRecorder.off());
+        this(brain, commands, out, TurnBoundary.open(), AgentRecorder.off(), null);
     }
 
-    AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out, TurnBoundary boundary, AgentRecorder recorder) {
+    AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out, TurnBoundary boundary, AgentRecorder recorder, Supplier<AgentBrain> sideBrains) {
         this.brain = brain;
         this.commands = commands;
         this.out = out;
         this.boundary = boundary;
         this.recorder = recorder;
+        this.sideBrains = sideBrains;
     }
 
     /** Takes one message from the host, on the person's channel. A request is answered through the sink; a notification needs no answer. */
@@ -78,7 +83,7 @@ public final class AcpServer {
         }
         JsonRpcMessage response = answer(message, from);
         out.accept(response);
-        if ("session/new".equals(message.getMethod()) && response.getError() == null) {
+        if ("session/new".equals(message.getMethod()) && response.getError() == null && !isSide(message.getParams())) {
             advertiseCommands(((ObjectNode) response.getResult()).get("sessionId").asText());
         }
     }
@@ -131,12 +136,43 @@ public final class AcpServer {
 
     private ObjectNode newSession(JsonNode params) {
         String cwd = params != null && params.hasNonNull("cwd") ? params.get("cwd").asText() : "";
-        PrincipalSession session = new PrincipalSession(UUID.randomUUID().toString(), cwd);
+        PrincipalSession session = new PrincipalSession(UUID.randomUUID().toString(), cwd, isSide(params));
         sessions.put(session.id(), session);
         ObjectNode result = JSON.createObjectNode();
         result.put("sessionId", session.id());
-        result.set("configOptions", configOptions(session));
+        if (!session.side()) {
+            result.set("configOptions", configOptions(session));
+        }
         return result;
+    }
+
+    /** Whether the host opened this session as a side thread ({@code _meta["jawata/side"]}): a question beside the main conversation. */
+    private static boolean isSide(JsonNode params) {
+        return params != null && params.path("_meta").path("jawata/side").asBoolean(false);
+    }
+
+    /**
+     * A side thread's prompt (S9, contract R13): answered by the thread's own brain and by nothing else of the main conversation. The
+     * step ledger is not asked, no try is spent, the grant of autonomy is neither read nor ended, and nothing is recorded or listed.
+     */
+    private JsonRpcMessage sidePrompt(Object id, JsonNode params, PrincipalSession session) {
+        AgentBrain own = sideBrainOf.computeIfAbsent(session.id(), key -> sideBrains == null ? brain : sideBrains.get());
+        String messageId = "msg_" + UUID.randomUUID();
+        cancelled.remove(session.id());
+        running.put(session.id(), Thread.currentThread());
+        String stopReason = "end_turn";
+        try {
+            own.answer(textOf(params.get("prompt")), chunk -> update(session.id(), messageChunk("agent_message_chunk", chunk, messageId)));
+            if (cancelled.contains(session.id())) {
+                stopReason = "cancelled";
+            }
+        } finally {
+            running.remove(session.id());
+            Thread.interrupted();
+        }
+        ObjectNode result = JSON.createObjectNode();
+        result.put("stopReason", stopReason);
+        return JsonRpcMessage.successResponse(id, result);
     }
 
     /** The session's config options as ACP shows them: one select, {@code autonomy}, with the grant as its current value. */
@@ -180,6 +216,9 @@ public final class AcpServer {
         PrincipalSession session = sessionOf(params);
         if (session == null) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown session: " + textField(params, "sessionId"), null);
+        }
+        if (session.side()) {
+            return sidePrompt(id, params, session);
         }
         String messageId = "msg_" + UUID.randomUUID();
         String text = textOf(params.get("prompt"));
@@ -257,7 +296,7 @@ public final class AcpServer {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "No recorded session: " + sessionId, null);
         }
         String cwd = textField(params, "cwd");
-        PrincipalSession session = sessions.computeIfAbsent(sessionId, key -> new PrincipalSession(key, cwd == null ? "" : cwd));
+        PrincipalSession session = sessions.computeIfAbsent(sessionId, key -> new PrincipalSession(key, cwd == null ? "" : cwd, false));
         int turnNo = 0;
         for (AgentRecorder.Turn turn : turns) {
             turnNo++;

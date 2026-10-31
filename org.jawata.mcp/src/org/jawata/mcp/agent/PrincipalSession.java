@@ -17,15 +17,24 @@ public final class PrincipalSession {
 
     private final String id;
     private final String cwd;
+    private final boolean side;
     private volatile boolean autonomy;
 
     /**
      * @param id  the ACP session id
      * @param cwd the working directory the host named when it opened the session
+     * @param side whether the host opened it as a side thread: a question put to the agent beside the main conversation, answered
+     *             without touching the main conversation's steps, tries or recording
      */
-    public PrincipalSession(String id, String cwd) {
+    public PrincipalSession(String id, String cwd, boolean side) {
         this.id = Objects.requireNonNull(id, "a session with no id is not a session");
         this.cwd = Objects.requireNonNull(cwd, "a session with no working directory");
+        this.side = side;
+    }
+
+    /** Whether this is a side thread (the host's second window onto the agent) and not the main conversation. */
+    public boolean side() {
+        return side;
     }
 
     /** The ACP session id. */
