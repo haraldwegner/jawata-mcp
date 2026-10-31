@@ -36,6 +36,7 @@ import org.jawata.mcp.runtime.RuntimeArtifactStore;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * One seat hires another: the front door onto {@link HiredRun} (Sprint 28g S16, C16).
@@ -559,7 +560,39 @@ public class HireTool extends NeutralTool {
             HiredRun.writeWitness(containment, proposal.outcome().toolsOffered()));
         data.put("toolsSettableByTheHirer", dialect.toolAttachment().settableByTheHirer());
         seat.budgetReport().ifPresent(report -> data.put("budget", report));
+        // S12 (D11): a hire that did not pass its gates goes up one rung where the tree has one (a developer to the senior developer).
+        if (!proposal.complete()) {
+            hiring.escalateTo(hired).ifPresent(next -> data.put("escalation", escalate(arguments, next, proposal.plan().value())));
+        }
         return ToolResponse.success(data);
+    }
+
+    /**
+     * Hires {@code next} for the same brief and gates after a hire failed its gates (D11). The senior seat's file is the one named
+     * {@code <next>.md} beside the failed seat's own, so the caller names no second file; when there is none the answer says so and nothing
+     * is hired. The second hire is itself answered by this tool, so it carries its own record and, being the top rung, no escalation.
+     */
+    private Map<String, Object> escalate(JsonNode arguments, String next, String failedPlan) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("escalatedFrom", failedPlan);
+        row.put("to", next);
+        Path sibling = Path.of(getStringParam(arguments, "seatFile")).resolveSibling(next + ".md");
+        if (!Files.isRegularFile(sibling)) {
+            row.put("hired", false);
+            row.put("because", "there is no seat file for " + next + " beside the failed seat's own (" + sibling + ")");
+            return row;
+        }
+        ObjectNode again = (ObjectNode) arguments.deepCopy();
+        again.put("seat", next);
+        again.put("seatFile", sibling.toString());
+        ToolResponse answered = execute(again);
+        row.put("hired", answered.isSuccess());
+        if (answered.isSuccess()) {
+            row.put("hire", answered.getData());
+        } else {
+            row.put("because", answered.getError().getMessage());
+        }
+        return row;
     }
 
     /**

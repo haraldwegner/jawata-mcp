@@ -162,7 +162,6 @@ org.jawata.mcp.transport.HttpTransport#sendEvent(String,String)
 org.jawata.resident.workspace.JdtServiceImpl#addProject(Path)
 # Sprint 28h S7: the rest of the rules that decide a hire. S7a wired the principal's allowlist and S12 (slice 1) moved Hirer to the neutral execution package and wired its hierarchy rule into the hire tool (refuse, through refuseKnown: it left this file); the members below are still read by nothing in production until S12's model registry and escalation (withBrain, brainFor, escalateTo), and when the hire records are read (RoleFigures: S9). Each line leaves this file with its stage.
 org.jawata.mcp.execution.Hirer#brainFor(String)
-org.jawata.mcp.execution.Hirer#escalateTo(String)
 org.jawata.mcp.execution.Hirer#withBrain(String,Brain)
 org.jawata.mcp.agent.RoleFigures#of(Collection<HireFacts>)
 # Sprint 28h S7a: the hire records the principal brain keeps. The recorder that writes them to the transcript lane is S9, which is their first production reader.

@@ -607,6 +607,110 @@ class HireToolTest {
         assertTrue(response.isSuccess(), String.valueOf(response.getError()));
     }
 
+    /** The failing twin of the clean gate: it answers, and finds one error, so a hire that declares it cannot be complete. */
+    private static ToolRegistry aRegistryWithAFailingGate() {
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new Tool() {
+            @Override
+            public String getName() {
+                return "compile_workspace";
+            }
+
+            @Override
+            public String getDescription() {
+                return "a gate fixture that finds one error";
+            }
+
+            @Override
+            public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+
+            @Override
+            public ToolResponse execute(JsonNode arguments) {
+                return ToolResponse.success(Map.of("errorCount", 1));
+            }
+        });
+        return registry;
+    }
+
+    /** A folder holding one seat file per name, each named for its seat, as the studio keeps them side by side. */
+    private Path seatsBeside(String... names) throws Exception {
+        Path folder = Files.createTempDirectory(dir, "seats-");
+        for (String name : names) {
+            Files.writeString(folder.resolve(name + ".md"), CATALOGUER_SEAT);
+        }
+        return folder;
+    }
+
+    private ObjectNode hiringAs(String seatName, Path seatFile) {
+        ObjectNode args = (ObjectNode) hireArgs(seatFile);
+        args.put("seat", seatName);
+        return args;
+    }
+
+    @Test
+    @DisplayName("S12 (D11): a developer hire that fails its gate is answered by a senior-developer hire, from the seat file beside the developer's")
+    void aFailedDeveloperHireIsAnsweredByTheSeniorDeveloper() throws Exception {
+        Path seats = seatsBeside("developer", "senior-developer");
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithAFailingGate());
+
+        Map<String, Object> first = dataOf(hire.execute(hiringAs("developer", seats.resolve("developer.md"))));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> escalation = (Map<String, Object>) first.get("escalation");
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, first.get("complete"), "the first hire failed its gate"),
+            () -> assertEquals(first.get("plan"), escalation.get("escalatedFrom")),
+            () -> assertEquals(Boolean.TRUE, escalation.get("hired"), String.valueOf(escalation)),
+            () -> assertEquals("senior-developer", ((Map<?, ?>) escalation.get("hire")).get("hired")),
+            () -> assertTrue(!first.get("plan").equals(((Map<?, ?>) escalation.get("hire")).get("plan")),
+                "the second hire is a run of its own, with its own plan"),
+            () -> assertTrue(!((Map<?, ?>) escalation.get("hire")).containsKey("escalation"),
+                "the senior developer is the top rung: nothing escalates past it"));
+    }
+
+    @Test
+    @DisplayName("S12 (D11), the control: a developer hire that passes its gate is not escalated")
+    void aDeveloperHirePassingItsGateIsNotEscalated() throws Exception {
+        Path seats = seatsBeside("developer", "senior-developer");
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+
+        Map<String, Object> first = dataOf(hire.execute(hiringAs("developer", seats.resolve("developer.md"))));
+
+        assertAll(
+            () -> assertEquals(Boolean.TRUE, first.get("complete")),
+            () -> assertTrue(!first.containsKey("escalation"), "nothing failed, so nothing went up"));
+    }
+
+    @Test
+    @DisplayName("S12 (D11), the control: only a developer escalates; a failed cataloguer hire stays what it is")
+    void onlyADeveloperEscalates() throws Exception {
+        Path seats = seatsBeside("cataloguer", "senior-developer");
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithAFailingGate());
+
+        Map<String, Object> first = dataOf(hire.execute(hiringAs("cataloguer", seats.resolve("cataloguer.md"))));
+
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, first.get("complete")),
+            () -> assertTrue(!first.containsKey("escalation")));
+    }
+
+    @Test
+    @DisplayName("S12 (D11): with no senior-developer seat file beside the developer's, the answer says nothing was hired and why")
+    void aMissingSeniorSeatFileIsSaidNotGuessed() throws Exception {
+        Path seats = seatsBeside("developer");
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithAFailingGate());
+
+        Map<String, Object> first = dataOf(hire.execute(hiringAs("developer", seats.resolve("developer.md"))));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> escalation = (Map<String, Object>) first.get("escalation");
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, escalation.get("hired")),
+            () -> assertTrue(String.valueOf(escalation.get("because")).contains("senior-developer"), String.valueOf(escalation)));
+    }
+
     @Test
     @DisplayName("C16: the PM seat hires the cataloguer end to end, and the record names both")
     void thePmSeatHiresTheCataloguer() throws Exception {
