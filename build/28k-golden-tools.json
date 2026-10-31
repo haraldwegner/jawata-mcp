@@ -2853,6 +2853,10 @@
      },
      "type": "array"
     },
+    "observerSeatFile": {
+     "description": "Optional, with instructionsFrom. The observer seat's markdown. When given, each step of this worker that did not run as the issuer's instruction wrote it is shown to that seat, and a step it halts comes back as a correction naming the number of the instruction, in the answer's instructionScore.observer. Without it the rules still flag the steps and say they were not judged.",
+     "type": "string"
+    },
     "boardFile": {
      "description": "Optional. The sprint's ...-plan.md. When given, the plan board in it is drawn from the plan ledger as soon as this hire's gates have run, and the answer carries what was drawn or why it was not.",
      "type": "string"

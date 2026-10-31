@@ -1161,6 +1161,62 @@ class HireToolTest {
     }
 
     /**
+     * A brain with two lives, told apart by a file in the scratch folder. The first time it is started it is a worker that makes one
+     * jawata rename with the given arguments; every later start is the observer seat answering with a halt that names the instruction.
+     */
+    private HostCommand aWorkerThenAnObserverWhoHalts(String argumentsJson) throws Exception {
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        Path phase = dir.resolve("phase-" + file.getFileName());
+        String init = "{\"type\":\"system\",\"subtype\":\"init\",\"tools\":[\"mcp__jawata__rename_symbol\"]}";
+        String call = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":["
+            + "{\"type\":\"tool_use\",\"name\":\"mcp__jawata__rename_symbol\",\"input\":" + argumentsJson + "}]}}";
+        String usage = "\"total_cost_usd\":0.01,\"usage\":{\"input_tokens\":50,\"output_tokens\":10}";
+        Files.writeString(file, "#!/bin/sh\nif [ ! -f '" + phase + "' ]; then\n  touch '" + phase + "'\n"
+            + "  cat <<'JAWATA_EVENT'\n" + init + "\n" + call + "\nJAWATA_EVENT\n"
+            + "  echo '{\"type\":\"result\",\"result\":\"done\"," + usage + "}'\nelse\n"
+            + "  echo '{\"type\":\"result\",\"result\":\"VERDICT: HALT 1: you renamed to the wrong name at call #1\"," + usage + "}'\nfi\n");
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return HostCommand.of(file.toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> observedWorker(String argumentsJson) throws Exception {
+        HireTool pm = toolWith(new StandsIn(host, aBrainSayingWithTokens(PM_ANSWER, 1000, 500).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        String issuerPlan = (String) dataOf(pm.execute(hireArgs(seatFile(CATALOGUER_SEAT)))).get("plan");
+        HireTool hire = toolWith(new StandsIn(host, aWorkerThenAnObserverWhoHalts(argumentsJson).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("instructionsFrom", issuerPlan);
+        args.put("observerSeatFile", seatFile(CATALOGUER_SEAT).toString());
+        Map<String, Object> score = (Map<String, Object>) dataOf(hire.execute(args)).get("instructionScore");
+        return (Map<String, Object>) score.get("observer");
+    }
+
+    @Test
+    @DisplayName("S11, D13: a worker that deviated from the issuer's instruction is shown to the observer seat, and the correction it halts with reaches the issuer carrying the instruction's number")
+    @SuppressWarnings("unchecked")
+    void aDeviatingWorkersCorrectionReachesTheIssuerWithTheInstructionNumber() throws Exception {
+        Map<String, Object> observed = observedWorker("{\"symbol\":\"a.B#c\",\"newName\":\"SOMETHING ELSE\"}");
+
+        List<Map<String, Object>> corrections = (List<Map<String, Object>>) observed.get("corrections");
+        assertEquals(1, corrections.size(), String.valueOf(observed));
+        assertEquals(1, corrections.get(0).get("instruction"), "the correction does not carry the instruction's number");
+        assertTrue(String.valueOf(corrections.get(0).get("text")).contains("wrong name"), String.valueOf(corrections));
+        assertTrue(((List<?>) observed.get("unjudged")).isEmpty(), "the flag was reported as unjudged although the seat answered");
+    }
+
+    @Test
+    @DisplayName("S11, the control: a worker that ran the instruction as written raises no flag, so the observer seat is never hired and no correction is given")
+    void aWorkerThatRanAsWrittenGetsNoCorrection() throws Exception {
+        Map<String, Object> observed = observedWorker("{\"symbol\":\"a.B#c\",\"newName\":\"d\"}");
+
+        assertTrue(((List<?>) observed.get("flagged")).isEmpty(), String.valueOf(observed));
+        assertTrue(((List<?>) observed.get("corrections")).isEmpty(), String.valueOf(observed));
+    }
+
+    /**
      * A worker brain whose CLI offered only the jawata rename (the init event says so): it makes the right
      * call, then ATTEMPTS the CLI's own Write, which was never offered and so cannot have run.
      */
