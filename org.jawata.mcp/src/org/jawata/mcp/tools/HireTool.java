@@ -17,10 +17,12 @@ import org.jawata.mcp.execution.BrainDialect;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.HiredRun;
+import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.Instructions;
 import org.jawata.mcp.execution.Observer;
 import org.jawata.mcp.execution.RunEffects;
 import org.jawata.mcp.execution.SeatHire;
+import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.execution.ToolGateRunner;
 import org.jawata.mcp.execution.WriteContainment;
@@ -120,6 +122,9 @@ public class HireTool extends NeutralTool {
 
     /** Where the accepted rules that bind a hired seat are read from, per hire (D45). */
     private final Supplier<ExperienceStore> rules;
+
+    /** Who hires whom (Sprint 28h, S12, D9): a hire between two seats of the signed tree is refused unless the hirer is the seat's parent. */
+    private final Hirer hiring = new Hirer(SeatTree.standard(), Map.of(), Set.of());
 
     /** A hire with no endpoint of its own to hand the brain — the stdio resident's case. */
     public HireTool(HostProcesses host,
@@ -310,6 +315,12 @@ public class HireTool extends NeutralTool {
         String hirer = getStringParam(arguments, "hirer");
         String hired = getStringParam(arguments, "seat");
         String brief = getStringParam(arguments, "brief");
+
+        Optional<String> notHirable = hiring.refuseKnown(hirer, hired);
+        if (notHirable.isPresent()) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", notHirable.get(),
+                "a seat is hired by its own parent in the signed tree: the reason above names it; hire through that seat, or have the person ask for this one");
+        }
 
         SeatHire seat;
         try {

@@ -1,4 +1,4 @@
-package org.jawata.mcp.agent;
+package org.jawata.mcp.execution;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * What decides a hire (Sprint 28h, S7; D9, D11, D48): whether the hirer may hire the seat at all, which brain and budget the seat runs on,
+ * What decides a hire (Sprint 28h, S7; D9, D11, D48): whether the hirer may hire the seat at all, which brain the seat runs on,
  * where a seat that cannot do its task escalates to, and which tools it may call. It holds no process and starts nothing; the caller starts
  * the brain with what this answers, so the same answers serve any way a brain is reached.
  *
@@ -21,8 +21,11 @@ import java.util.Set;
  */
 public final class Hirer {
 
-    /** A vendor's model and what one hire of the seat may spend. */
-    public record Brain(String vendor, String model, double budgetUsd) {
+    /**
+     * A brain the studio offers: a vendor's model. What one hire may spend is the seat file's own cost ceiling ({@code Ceilings.maxCostUsd}),
+     * enforced by the hire path, and is not repeated here: a second budget beside it would be read by nothing.
+     */
+    public record Brain(String vendor, String model) {
     }
 
     private static final Set<String> BRAIN_EDITORS = Set.of("Edit", "Write", "MultiEdit");
@@ -58,6 +61,17 @@ public final class Hirer {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * The hire path's entry to {@link #refuse}: the hierarchy applies only where the tree knows both names. A seat a project defined for itself,
+     * or a hirer that is a person or a script and no seat, is outside the signed tree and is neither refused by it nor vouched for by it.
+     */
+    public Optional<String> refuseKnown(String hirer, String seat) {
+        if (hirer == null || seat == null || !tree.knows(hirer) || !tree.knows(seat)) {
+            return Optional.empty();
+        }
+        return refuse(hirer, seat);
     }
 
     /** The brain a hire of {@code seat} runs on, or none when none is configured. */

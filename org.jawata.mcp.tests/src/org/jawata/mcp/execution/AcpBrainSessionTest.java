@@ -17,8 +17,6 @@ import java.util.Optional;
 import java.util.Set;
 
 import org.jawata.core.host.HostProcesses;
-import org.jawata.mcp.agent.Hirer;
-import org.jawata.mcp.agent.SeatTree;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

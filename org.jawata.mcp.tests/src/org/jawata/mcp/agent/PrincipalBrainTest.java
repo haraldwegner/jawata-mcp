@@ -23,6 +23,8 @@ import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
+import org.jawata.mcp.execution.Hirer;
+import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;

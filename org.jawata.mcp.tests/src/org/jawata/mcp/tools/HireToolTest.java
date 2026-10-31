@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * One seat hires another, through the published tool (Sprint 28g S16, C16).
@@ -252,7 +253,7 @@ class HireToolTest {
 
     private JsonNode hireArgs(Path seat) {
         return JSON.createObjectNode()
-            .put("hirer", "pm")
+            .put("hirer", "chief-engineer")
             .put("seat", "cataloguer")
             .put("seatFile", seat.toString())
             .put("brief", "Describe every member of org.jawata.mcp.execution.")
@@ -577,6 +578,36 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("S12 (D9): a seat hired by someone other than its parent in the signed tree is refused before any brain starts")
+    void aSeatIsHiredByItsParentOnly() throws Exception {
+        StandsIn processes = new StandsIn(host, aBrainThatAnswers());
+        HireTool hire = toolWith(processes, events, aRegistryWithACleanGate());
+        ObjectNode args = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("hirer", "pm");
+
+        ToolResponse response = hire.execute(args);
+
+        assertAll(
+            () -> assertFalse(response.isSuccess(), "the pm is not the cataloguer's parent"),
+            () -> assertEquals("PRECONDITION_NOT_MET", response.getError().getCode()),
+            () -> assertTrue(response.getError().getMessage().contains("chief-engineer"),
+                "the refusal names the seat that does hire it: " + response.getError().getMessage()),
+            () -> assertTrue(processes.asked().isEmpty(), "nothing was started: " + processes.asked()));
+    }
+
+    @Test
+    @DisplayName("S12 (D9), the control: a name the signed tree does not know is neither refused nor vouched for by it")
+    void aHirerOutsideTheTreeIsNotRefusedByIt() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+        ObjectNode args = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("hirer", "a-person-at-the-keyboard");
+
+        ToolResponse response = hire.execute(args);
+
+        assertTrue(response.isSuccess(), String.valueOf(response.getError()));
+    }
+
+    @Test
     @DisplayName("C16: the PM seat hires the cataloguer end to end, and the record names both")
     void thePmSeatHiresTheCataloguer() throws Exception {
         HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events,
@@ -589,7 +620,7 @@ class HireToolTest {
         assertAll(
             // NAMED HIRER, NAMED HIRED — C16's own words, and the two a record without them
             // cannot attribute a run to anyone.
-            () -> assertEquals("pm", data.get("hirer")),
+            () -> assertEquals("chief-engineer", data.get("hirer")),
             () -> assertEquals("cataloguer", data.get("hired")),
             // NOT A SCRIPT: the stand-in spoke claude's shape and claude's reader counted it, which
             // only happens if the dialect came from the seat's own frontmatter.
@@ -1166,6 +1197,8 @@ class HireToolTest {
         HireTool hire = toolWith(new StandsIn(host, aBrainSayingWithTokens(answer, 10, 5).withSeparateStderr()), events, aRegistryWithACleanGate());
         com.fasterxml.jackson.databind.node.ObjectNode args = (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
         args.put("seat", seatName);
+        // The signed tree: the spec-auditor is hired by main, the cataloguer by the chief engineer.
+        args.put("hirer", "spec-auditor".equals(seatName) ? "main" : "chief-engineer");
         return dataOf(hire.execute(args));
     }
 

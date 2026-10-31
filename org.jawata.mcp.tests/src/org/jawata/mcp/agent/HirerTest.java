@@ -9,8 +9,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
-import org.jawata.mcp.agent.Hirer.Brain;
 import org.jawata.mcp.agent.RoleFigures.HireFacts;
+import org.jawata.mcp.execution.Hirer;
+import org.jawata.mcp.execution.SeatTree;
+import org.jawata.mcp.execution.Hirer.Brain;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -20,9 +22,9 @@ import org.junit.jupiter.api.Test;
  */
 class HirerTest {
 
-    private static final Brain CLAUDE = new Brain("anthropic", "strong", 5.0);
-    private static final Brain CHEAP = new Brain("anthropic", "small", 0.5);
-    private static final Brain OTHER_VENDOR = new Brain("openai", "strong", 5.0);
+    private static final Brain CLAUDE = new Brain("anthropic", "strong");
+    private static final Brain CHEAP = new Brain("anthropic", "small");
+    private static final Brain OTHER_VENDOR = new Brain("openai", "strong");
 
     private static final List<String> ENGINE_TOOLS = List.of("inspect", "find_references", "rename_symbol", "extract");
     private static final Set<String> CODE_CHANGING = Set.of("rename_symbol", "extract");

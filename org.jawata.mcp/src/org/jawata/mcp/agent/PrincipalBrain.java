@@ -16,6 +16,8 @@ import org.jawata.mcp.engine.EngineApi;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
+import org.jawata.mcp.execution.Hirer;
+import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.spi.host.McpEndpoint;
 
