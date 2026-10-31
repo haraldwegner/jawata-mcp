@@ -218,7 +218,10 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
 
         assertEquals(
             new TreeSet<>(Set.of("open(List)", "advanceIfGatePassed(PlanId,GateOutcome)",
-                "currentStep(PlanId)", "nextStep(PlanId)", "steps(PlanId)", "planCount()")),
+                "currentStep(PlanId)", "nextStep(PlanId)", "steps(PlanId)", "planCount()",
+                // S8: a READ (it returns copies; nothing it hands back can move a plan), added so the agent asks the ledger instead of
+                // keeping a second copy of the step state.
+                "pending()")),
             published,
             "a member ARRIVING here is how an external write gets in, so the set is pinned"
                 + " rather than merely counted — and pinned by SIGNATURE, so an overload"

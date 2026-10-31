@@ -880,6 +880,19 @@
     "precedentOverride": {
      "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
      "type": "string"
+    }
+   },
+   "required": [],
+   "type": "object"
+  },
+  "name": "plan_steps"
+ },
+ {
+  "inputSchema": {
+   "properties": {
+    "precedentOverride": {
+     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "type": "string"
     },
     "projectPath": {
      "description": "Absolute path to the project root directory containing pom.xml or build.gradle",

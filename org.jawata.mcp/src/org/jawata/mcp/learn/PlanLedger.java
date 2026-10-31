@@ -285,4 +285,23 @@ public final class PlanLedger {
     public synchronized int planCount() {
         return plans.size();
     }
+
+    /** A plan that still has a step to pass: its identity, the step it has passed, and the step whose gate comes next. */
+    public record Pending(PlanId id, int passedStep, GatedStep next) {
+    }
+
+    /**
+     * The plans that still have a step to pass, oldest first. A plan that has passed every step is not listed, and neither is one the
+     * ledger no longer holds: this is the one answer to "is a step pending?", read from the state the gates move and from nowhere else.
+     */
+    public synchronized List<Pending> pending() {
+        List<Pending> open = new ArrayList<>();
+        for (Map.Entry<PlanId, Entry> plan : plans.entrySet()) {
+            int next = plan.getValue().currentStep + 1;
+            if (next < plan.getValue().steps.size()) {
+                open.add(new Pending(plan.getKey(), plan.getValue().currentStep, plan.getValue().steps.get(next)));
+            }
+        }
+        return open;
+    }
 }

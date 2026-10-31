@@ -26,6 +26,7 @@ import org.jawata.mcp.tools.FindQualityIssueTool;
 import org.jawata.mcp.tools.GetDiagnosticsTool;
 import org.jawata.mcp.tools.HealthCheckTool;
 import org.jawata.mcp.tools.HireTool;
+import org.jawata.mcp.tools.PlanStepsTool;
 import org.jawata.mcp.tools.ProjectTool;
 import org.jawata.mcp.tools.RefactoringTool;
 import org.jawata.mcp.tools.RefreshWorkspaceTool;
@@ -180,10 +181,14 @@ public final class ShippedTools {
         // own gates run through, so the gate runner is built per call); the JOURNAL supplier may
         // answer null, because a degraded resident has no journal, and the tool is still published
         // and refuses with that reason; the third is this resident's own endpoint.
+        // The hire path opens plans and only a passing gate moves them; plan_steps reads the SAME ledger, so "is a step pending?" has one
+        // answer, held in one place (S8, D18).
+        PlanLedger planLedger = new PlanLedger();
         tools.add(new HireTool(HostProcesses.system(),
             w.runtimeArtifacts(),
-            new PlanLedger(),
+            planLedger,
             w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore));
+        tools.add(new PlanStepsTool(planLedger));
 
         tools.add(new RefreshWorkspaceTool(ports.workspace(), ports.verdict(), w.reconciler()));
         tools.add(new RefactoringTool(ports.workspace(), w.changeCache(), ports.changes(), plans::current));

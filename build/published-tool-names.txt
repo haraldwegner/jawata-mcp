@@ -94,6 +94,7 @@ move_package	retired	v1.0.0	v1.0.0
 optimize_imports_workspace	retired	v1.0.0	v4.0.3
 organize_imports	live	v1.0.0	next
 override_methods	retired	v1.0.0	v1.0.0
+plan_steps	live	next	next
 profile	live	v2.13.0	next
 project	live	v1.1.1	next
 pull_up	retired	v1.0.0	v1.0.0

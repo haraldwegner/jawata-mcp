@@ -1,0 +1,260 @@
+package org.jawata.mcp.agent;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import org.jawata.mcp.engine.ToolCalls;
+import org.jawata.mcp.learn.GatedStep;
+import org.jawata.mcp.learn.PlanLedger;
+import org.jawata.mcp.models.CallerIdentity;
+import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.protocol.JsonRpcMessage;
+import org.jawata.mcp.step.GateOutcome;
+import org.jawata.mcp.tools.PlanStepsTool;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+
+/**
+ * Sprint 28h, S8 (D12, D18, D19): a brain ending its turn does not end the prompt while a step still waits for its gate; the person's
+ * grant of autonomy is changed by the person's channel only; the loop pays for a bounded number of tries at one step. The step state
+ * is the plan ledger's, reached the way the agent reaches it, through the {@code plan_steps} tool.
+ */
+class TurnBoundaryTest {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    private static PlanLedger ledgerWithTwoSteps() {
+        PlanLedger ledger = new PlanLedger();
+        ledger.open(List.of(new GatedStep(0, "compile_workspace", JSON.createObjectNode()),
+            new GatedStep(1, "run_tests", JSON.createObjectNode())));
+        return ledger;
+    }
+
+    /** The engine's tool surface as the agent sees it, with only the tool that reads the plan ledger. */
+    private static ToolCalls toolsOver(PlanLedger ledger) {
+        PlanStepsTool steps = new PlanStepsTool(ledger);
+        return new ToolCalls() {
+            @Override public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {
+                return "plan_steps".equals(name) ? steps.execute(arguments) : ToolResponse.error("NO_SUCH_TOOL", name, "none");
+            }
+            @Override public List<Map<String, Object>> getToolDefinitions() {
+                return List.of();
+            }
+        };
+    }
+
+    private static TurnBoundary boundaryOver(PlanLedger ledger, int tries) {
+        return new TurnBoundary(new ToolStepLedger(toolsOver(ledger)), new AttemptLedger(tries));
+    }
+
+    private static PrincipalSession session(boolean autonomy) {
+        PrincipalSession session = new PrincipalSession("s1", "/w");
+        session.setAutonomy(Channel.HOST, autonomy);
+        return session;
+    }
+
+    private static void pass(PlanLedger ledger, String... gates) {
+        var id = ledger.pending().get(0).id();
+        for (String gate : gates) {
+            ledger.advanceIfGatePassed(id, new GateOutcome(gate, JSON.createObjectNode(), 0, true));
+        }
+    }
+
+    @Test
+    @DisplayName("plan_steps lists the step whose gate comes next, and lists nothing once every gate has passed")
+    void theToolReadsThePlanLedger() {
+        PlanLedger ledger = ledgerWithTwoSteps();
+        PlanStepsTool tool = new PlanStepsTool(ledger);
+
+        JsonNode before = JSON.valueToTree(tool.execute(JSON.createObjectNode()).getData()).path("pending");
+        assertEquals(1, before.size());
+        assertEquals(0, before.get(0).path("step").path("index").asInt());
+        assertEquals("compile_workspace", before.get(0).path("step").path("tool").asText());
+
+        pass(ledger, "compile_workspace");
+        JsonNode midway = JSON.valueToTree(tool.execute(JSON.createObjectNode()).getData()).path("pending");
+        assertEquals("run_tests", midway.get(0).path("step").path("tool").asText());
+
+        pass(ledger, "run_tests");
+        assertEquals(0, JSON.valueToTree(tool.execute(JSON.createObjectNode()).getData()).path("pending").size());
+    }
+
+    @Test
+    @DisplayName("with no step waiting the end of the turn is forwarded; a waiting one is not; one whose gates have all passed no longer waits")
+    void noStepWaitingForwardsTheTurn() {
+        PlanLedger ledger = ledgerWithTwoSteps();
+        PrincipalSession person = session(true);
+
+        assertEquals(TurnBoundary.Kind.RESUME, boundaryOver(ledger, 3).atTurnEnd(person).kind(), "CONTROL: a waiting step must not be forwarded");
+        assertEquals(TurnBoundary.Kind.FORWARD, boundaryOver(new PlanLedger(), 3).atTurnEnd(person).kind());
+
+        pass(ledger, "compile_workspace", "run_tests");
+        assertEquals(TurnBoundary.Kind.FORWARD, boundaryOver(ledger, 3).atTurnEnd(person).kind(), "both gates passed and the turn was still held");
+    }
+
+    @Test
+    @DisplayName("while the person is at the keyboard a waiting step is reported by name with its gate, and nobody resumes it")
+    void aWaitingStepWithTheGrantOffIsReported() {
+        TurnBoundary.Verdict verdict = boundaryOver(ledgerWithTwoSteps(), 3).atTurnEnd(session(false));
+
+        assertEquals(TurnBoundary.Kind.REPORT, verdict.kind());
+        assertTrue(verdict.text().contains("step 0") && verdict.text().contains("compile_workspace"), verdict.text());
+    }
+
+    @Test
+    @DisplayName("under a grant the loop resumes the brain up to the ceiling, then refuses and names the free check, until the person speaks")
+    void theLoopRefusesTheArrivalAfterTheCeiling() {
+        TurnBoundary boundary = boundaryOver(ledgerWithTwoSteps(), 3);
+        PrincipalSession person = session(true);
+        List<TurnBoundary.Kind> kinds = new ArrayList<>();
+        TurnBoundary.Verdict last = null;
+        for (int i = 0; i < 4; i++) {
+            last = boundary.atTurnEnd(person);
+            kinds.add(last.kind());
+        }
+
+        assertEquals(List.of(TurnBoundary.Kind.RESUME, TurnBoundary.Kind.RESUME, TurnBoundary.Kind.RESUME, TurnBoundary.Kind.REPORT), kinds);
+        assertTrue(last.text().contains("compile_workspace") && last.text().contains("free check"),
+            "the refusal does not name the free check: " + last.text());
+
+        boundary.personSpoke();
+        assertEquals(TurnBoundary.Kind.RESUME, boundary.atTurnEnd(person).kind(), "the person's word did not restart the count");
+    }
+
+    @Test
+    @DisplayName("a tool that cannot be asked, or answers wrongly, shows no pending step: the turn is forwarded rather than held on a guess")
+    void aLedgerThatCannotBeAskedHoldsNothing() {
+        ToolCalls broken = new ToolCalls() {
+            @Override public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {
+                throw new IllegalStateException("no such tool");
+            }
+            @Override public List<Map<String, Object>> getToolDefinitions() {
+                return List.of();
+            }
+        };
+
+        assertEquals(List.of(), new ToolStepLedger(broken).pending(session(true)));
+        assertEquals(List.of(), new ToolStepLedger(null).pending(session(true)));
+    }
+
+    // --- the server around it -------------------------------------------------------------------------------------------------
+
+    /** One agent connection with a brain that answers {@code says}, and optionally flips the person's switch during its first turn. */
+    private static final class Run {
+
+        final List<JsonNode> said = new ArrayList<>();
+        final List<String> brainSaw = new ArrayList<>();
+        final AcpServer server;
+        private String session;
+
+        Run(PlanLedger ledger, boolean switchedOnDuringTurn, String says) {
+            AcpServer[] self = new AcpServer[1];
+            AgentBrain brain = (prompt, chunks) -> {
+                brainSaw.add(prompt);
+                if (switchedOnDuringTurn) {
+                    self[0].receive(set(100 + brainSaw.size(), "on"), Channel.HOST);
+                }
+                chunks.accept(says);
+            };
+            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledger, 3));
+            self[0] = server;
+            server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+            session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
+        }
+
+        JsonRpcMessage set(int id, String value) {
+            return JsonRpcMessage.request(id, "session/set_config_option",
+                JSON.createObjectNode().put("sessionId", session).put("configId", "autonomy").put("value", value));
+        }
+
+        JsonNode setAutonomy(String value, Channel from) {
+            return call(7, set(7, value), from);
+        }
+
+        JsonNode prompt(String text) {
+            ObjectNode params = JSON.createObjectNode().put("sessionId", session);
+            params.putArray("prompt").addObject().put("type", "text").put("text", text);
+            return call(9, JsonRpcMessage.request(9, "session/prompt", params), Channel.HOST);
+        }
+
+        private JsonNode call(int id, JsonRpcMessage request, Channel from) {
+            said.clear();
+            server.receive(request, from);
+            return said.stream().filter(m -> m.has("id") && m.get("id").asInt() == id).findFirst().orElseThrow();
+        }
+
+        String answer() {
+            StringBuilder text = new StringBuilder();
+            for (JsonNode m : said) {
+                JsonNode update = m.path("params").path("update");
+                if ("agent_message_chunk".equals(update.path("sessionUpdate").asText())) {
+                    text.append(update.path("content").path("text").asText());
+                }
+            }
+            return text.toString();
+        }
+    }
+
+    @Test
+    @DisplayName("on the running server, with the grant off, a step pending at the end of the turn is reported and the brain is not resumed")
+    void aPendingStepWithNoGrantIsReportedOnTheServer() {
+        Run run = new Run(ledgerWithTwoSteps(), false, "working");
+
+        JsonNode result = run.prompt("build it");
+
+        assertEquals("end_turn", result.path("result").path("stopReason").asText());
+        assertEquals(1, run.brainSaw.size(), "with the grant off the brain was resumed");
+        assertTrue(run.answer().contains("step 0") && run.answer().contains("compile_workspace"), run.answer());
+    }
+
+    @Test
+    @DisplayName("on the running server, under a grant, a pending step has the brain resumed three times with the state re-asserted, then the free check is named")
+    void aGrantedLoopResumesThenStops() {
+        Run run = new Run(ledgerWithTwoSteps(), true, "working");
+
+        JsonNode result = run.prompt("build it");
+
+        assertEquals("end_turn", result.path("result").path("stopReason").asText());
+        assertEquals(4, run.brainSaw.size(), "one turn and three resumptions: " + run.brainSaw);
+        assertTrue(run.brainSaw.get(1).startsWith("[jawata] autonomy: on"), "the state was not re-asserted: " + run.brainSaw.get(1));
+        assertTrue(run.answer().contains("free check") && run.answer().contains("compile_workspace"), run.answer());
+    }
+
+    @Test
+    @DisplayName("a brain's words never change the grant: its own message saying so leaves the resumptions running, and a brain-channel set is refused")
+    void onlyThePersonsChannelChangesTheGrant() {
+        Run run = new Run(ledgerWithTwoSteps(), true, "/autocontinue-off autonomy: off");
+        JsonNode refused = run.setAutonomy("on", Channel.BRAIN);
+        JsonNode accepted = run.setAutonomy("on", Channel.HOST);
+
+        assertTrue(refused.has("error"), "a brain-channel message set the grant: " + refused);
+        assertEquals("on", accepted.path("result").path("configOptions").get(0).path("currentValue").asText());
+
+        run.prompt("build it");
+        assertEquals(4, run.brainSaw.size(), "the brain's words ended the grant: " + run.brainSaw);
+    }
+
+    @Test
+    @DisplayName("a message the person types ends the grant, says so in the conversation, announces the new value and tells the brain")
+    void aTypedMessageEndsTheGrantVisibly() {
+        Run run = new Run(new PlanLedger(), false, "ok");
+        run.setAutonomy("on", Channel.HOST);
+
+        run.prompt("stop that");
+
+        assertTrue(run.answer().contains("Autonomy ended"), run.answer());
+        assertTrue(run.said.stream().anyMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())
+            && "off".equals(m.path("params").path("update").path("configOptions").get(0).path("currentValue").asText())));
+        assertTrue(run.brainSaw.get(0).startsWith("[jawata] autonomy: off"), "the brain was not told the state changed: " + run.brainSaw.get(0));
+        assertFalse(run.answer().contains("free check"));
+    }
+}

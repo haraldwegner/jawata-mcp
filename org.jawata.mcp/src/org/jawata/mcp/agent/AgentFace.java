@@ -24,6 +24,9 @@ public final class AgentFace implements RoutedFace {
     /** What a prompt is answered with until a brain is attached to the agent (plan S7a); it says so rather than staying silent. */
     static final String NO_BRAIN = "jawata's agent has no brain attached yet.";
 
+    /** How many times the loop resumes a brain on one pending step before it needs the person's word (S8, D12). */
+    static final int RESUMPTIONS_PER_STEP = 3;
+
     private final Supplier<List<AdvertisedCommand>> commands;
     private final Supplier<AgentBrain> brains;
     private volatile EngineApi engine;
@@ -91,9 +94,11 @@ public final class AgentFace implements RoutedFace {
      * @throws IllegalStateException when the engine has not attached the face, or has detached it
      */
     public AcpServer open(AgentBrain brain, Consumer<JsonRpcMessage> out) {
-        if (engine == null) {
+        EngineApi attached = engine;
+        if (attached == null) {
             throw new IllegalStateException("the agent face is not attached to an engine");
         }
-        return new AcpServer(brain, commands, out);
+        TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools()), new AttemptLedger(RESUMPTIONS_PER_STEP));
+        return new AcpServer(brain, commands, out, boundary);
     }
 }

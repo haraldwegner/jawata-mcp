@@ -175,13 +175,19 @@ public final class AcpRoute implements HttpHandler {
         }
 
         void submit(JsonRpcMessage message) {
-            worker.execute(() -> {
+            Runnable work = () -> {
                 try {
                     server.receive(message);
                 } catch (RuntimeException e) {
                     log.error("The agent failed on {}", message.getMethod(), e);
                 }
-            });
+            };
+            if ("session/set_config_option".equals(message.getMethod())) {
+                // The person's switch must act while a prompt is running; queued behind it, the grant would arrive after the turn it was for.
+                work.run();
+            } else {
+                worker.execute(work);
+            }
         }
 
         private void send(JsonRpcMessage message) {
