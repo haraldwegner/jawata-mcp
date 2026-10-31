@@ -3525,6 +3525,14 @@
       "worked"
      ],
      "type": "string"
+    },
+    "sessions": {
+     "type": "integer",
+     "description": "recall with lane=transcript alone: the N most recently active sessions the lane holds (session id, client, first words typed, turns, first and latest time), for a host that lists and reloads the agent's sessions."
+    },
+    "full": {
+     "type": "boolean",
+     "description": "recall with lane=transcript alone and a session: every turn of that session in full (what was typed, what the agent said, one line per tool call), unclipped, for a host reloading it."
     }
    },
    "required": [

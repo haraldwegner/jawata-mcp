@@ -110,6 +110,52 @@ class TranscriptLaneTest {
             "After a compaction, before attributing to you, and on demand.")).get("appended"));
     }
 
+    // ---- Sprint 28h S9: a host lists the agent's sessions and reloads one in full ------------------------
+
+    @Test
+    void theLaneListsItsSessionsAndGivesTheTurnsOfOneBackInFull() {
+        seedDiscussion();
+        lane.append(new TranscriptStore.Turn("other-session", "k1", java.time.Instant.parse("2026-10-18T09:00:00Z"), "jawata", null,
+            "second session first words", "an answer", List.of("hire ok")));
+        ObjectNode list = json.createObjectNode();
+        list.put("kind", "recall");
+        list.putArray("lanes").add("transcript");
+        list.put("sessions", 5);
+
+        List<Map<String, Object>> sessions = rows(answer(list), "sessions");
+
+        assertEquals(2, sessions.size());
+        assertEquals("other-session", sessions.get(0).get("sessionId"), "the most recently active session is listed first");
+        assertEquals("second session first words", sessions.get(0).get("title"));
+        assertEquals(1, sessions.get(0).get("turns"));
+        assertEquals(SESSION, sessions.get(1).get("sessionId"));
+        assertEquals(3, sessions.get(1).get("turns"));
+
+        ObjectNode full = json.createObjectNode();
+        full.put("kind", "recall");
+        full.putArray("lanes").add("transcript");
+        full.put("session", SESSION);
+        full.put("full", true);
+        List<Map<String, Object>> turns = rows(answer(full), "turns");
+
+        assertEquals(3, turns.size());
+        assertEquals(List.of("Understood: I will keep the discussion in its own table."), turns.get(0).get("agent"));
+        assertEquals(List.of("Read src/notes.md ok"), turns.get(0).get("tools"));
+        assertEquals(List.of("We need the complete transcript in the store, so never forget anything after compacting."),
+            turns.get(0).get("his"));
+
+        ObjectNode otherLane = json.createObjectNode();
+        otherLane.put("kind", "recall");
+        otherLane.putArray("lanes").add("transcript").add("experience");
+        otherLane.put("sessions", 5);
+        assertTrue(!tool.execute(otherLane).isSuccess(), "CONTROL: the session list is the transcript lane alone");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> rows(Map<String, Object> answer, String key) {
+        return (List<Map<String, Object>>) answer.get(key);
+    }
+
     // ---- stored, and found again as a quote with the turn it came from -------------------
 
     @Test

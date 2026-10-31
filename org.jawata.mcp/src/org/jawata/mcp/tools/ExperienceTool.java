@@ -703,6 +703,12 @@ public final class ExperienceTool implements Tool {
         props.put("recent", Map.of("type", "integer", "description",
             "recall with lane=transcript alone: his most recent N messages, newest first, with"
                 + " the turn each came from. The thread to pick up after a compaction."));
+        props.put("sessions", Map.of("type", "integer", "description",
+            "recall with lane=transcript alone: the N most recently active sessions the lane holds (session id, client, first"
+                + " words typed, turns, first and latest time), for a host that lists and reloads the agent's sessions."));
+        props.put("full", Map.of("type", "boolean", "description",
+            "recall with lane=transcript alone and a session: every turn of that session in full (what was typed, what the agent"
+                + " said, one line per tool call), unclipped, for a host reloading it."));
         props.put(BUDGET_MILLIS, Map.of("type", "integer",
             "description", "recall/primer: the CALLER's deadline in milliseconds — state it"
                 + " when your own timeout is shorter than the 15s default, so a wedged store"
@@ -3643,6 +3649,20 @@ public final class ExperienceTool implements Tool {
             text(args, "symptom"),
             text(args, "external_system"),
             scope);
+        // Sprint 28h S9 — a host listing and reloading the agent's sessions: the sessions the lane holds, or one session's turns in
+        // full. Like `recent` these carry no cue, so they are the transcript lane ALONE.
+        boolean listSessions = args != null && args.has("sessions") && args.get("sessions").canConvertToInt();
+        boolean fullTurns = args != null && args.path("full").asBoolean(false) && text(args, "session") != null;
+        if (listSessions || fullTurns) {
+            if (!scope.contains(org.jawata.mcp.knowledge.KnowledgeLane.TRANSCRIPT)
+                    || scope.lanes().size() != 1) {
+                return ToolResponse.invalidParameter(listSessions ? "sessions" : "full",
+                    "sessions and full read the agent's sessions: name lane=transcript, and no other lane.");
+            }
+            return ToolResponse.success(listSessions
+                ? org.jawata.mcp.knowledge.TranscriptAnswer.sessions(transcript, Math.max(1, args.get("sessions").asInt()))
+                : org.jawata.mcp.knowledge.TranscriptAnswer.turns(transcript, text(args, "session")));
+        }
         // Sprint 28g S21 — the thread to pick up after a compaction: what he typed most recently,
         // newest first. It carries no cue, so it is the transcript lane ALONE.
         if (args != null && args.has("recent") && args.get("recent").canConvertToInt()) {

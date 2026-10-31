@@ -611,6 +611,98 @@ public final class TranscriptStore {
         }
     }
 
+    /**
+     * One session the lane holds.
+     *
+     * @param sessionId the session
+     * @param client the client that held it (the first turn's)
+     * @param first when its first turn ended
+     * @param last when its latest turn ended
+     * @param turns how many turns it holds
+     * @param title the first words he typed in it, clipped, or empty
+     */
+    public record SessionRow(String sessionId, String client, Instant first, Instant last, int turns, String title) {
+    }
+
+    /** The sessions held, the most recently active first; empty when the lane is off or cannot be read (logged). */
+    public List<SessionRow> sessions(int limit) {
+        if (!enabled()) {
+            purge();
+            return List.of();
+        }
+        synchronized (store) {
+            try {
+                Connection conn = store.sharedConnection();
+                List<SessionRow> rows = new ArrayList<>();
+                String sql = "SELECT session_id, MIN(client), MIN(ts), MAX(ts), COUNT(*) FROM transcript_turn"
+                    + " GROUP BY session_id ORDER BY MAX(ts) DESC LIMIT ?";
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setInt(1, Math.max(1, limit));
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            rows.add(new SessionRow(rs.getString(1), rs.getString(2), rs.getTimestamp(3).toInstant(),
+                                rs.getTimestamp(4).toInstant(), rs.getInt(5), ""));
+                        }
+                    }
+                }
+                List<SessionRow> titled = new ArrayList<>();
+                for (SessionRow row : rows) {
+                    List<TurnText> first = turnsOf(conn, row.sessionId(), 1);
+                    String title = first.isEmpty() || first.get(0).his().isEmpty() ? "" : clip(first.get(0).his().get(0), 0);
+                    titled.add(new SessionRow(row.sessionId(), row.client(), row.first(), row.last(), row.turns(), title));
+                }
+                return titled;
+            } catch (Exception e) {
+                log.error("transcript sessions failed", e);
+                return List.of();
+            }
+        }
+    }
+
+    /**
+     * One stored turn, in full.
+     *
+     * @param turnNo the turn within its session
+     * @param ts when it ended
+     * @param his what he typed, verbatim, one entry per message
+     * @param agent what the agent said, verbatim
+     * @param tools one line per tool call
+     */
+    public record TurnText(int turnNo, Instant ts, List<String> his, List<String> agent, List<String> tools) {
+    }
+
+    /** Every turn of {@code sessionId} in order, in full (not clipped); empty when the lane holds none, is off or cannot be read. */
+    public List<TurnText> turnsOf(String sessionId) {
+        if (!enabled()) {
+            return List.of();
+        }
+        synchronized (store) {
+            try {
+                return turnsOf(store.sharedConnection(), sessionId, Integer.MAX_VALUE);
+            } catch (Exception e) {
+                log.error("transcript turns failed", e);
+                return List.of();
+            }
+        }
+    }
+
+    private static List<TurnText> turnsOf(Connection conn, String sessionId, int limit) throws Exception {
+        List<TurnText> turns = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(
+                "SELECT turn_no, ts, body FROM transcript_turn WHERE session_id = ? ORDER BY turn_no LIMIT ?")) {
+            ps.setString(1, sessionId);
+            ps.setInt(2, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<Who, List<String>> segments = decode(decompress(rs.getBytes(3)));
+                    turns.add(new TurnText(rs.getInt(1), rs.getTimestamp(2).toInstant(), segments.getOrDefault(Who.HE, List.of()),
+                        segments.getOrDefault(Who.AGENT, List.of()), segments.getOrDefault(Who.TOOL, List.of())));
+                }
+            }
+        }
+        return turns;
+    }
+
     /** Turns held; {@code -1} when the count could not be read, which is never a clean zero. */
     public long count() {
         synchronized (store) {

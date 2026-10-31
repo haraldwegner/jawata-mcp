@@ -115,6 +115,64 @@ public final class TranscriptAnswer {
     }
 
     /**
+     * The sessions the lane holds, most recently active first, for a host that lists and reloads them.
+     *
+     * @return {@code sessions} (each with {@code sessionId}, {@code client}, {@code title}, {@code turns}, {@code first},
+     *     {@code updatedAt}) and, when the lane cannot answer, a {@code transcript_note} saying so in words
+     */
+    public static Map<String, Object> sessions(TranscriptStore transcript, int limit) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (transcript == null) {
+            out.put("transcript_note", "The transcript lane is NOT INSTALLED on this resident.");
+        } else if (!TranscriptStore.enabled()) {
+            out.put("transcript_note", "The transcript lane is switched OFF on this deployment.");
+        } else {
+            for (TranscriptStore.SessionRow s : transcript.sessions(limit)) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("sessionId", s.sessionId());
+                row.put("client", s.client() == null ? "" : s.client());
+                row.put("title", s.title());
+                row.put("turns", s.turns());
+                row.put("first", s.first().toString());
+                row.put("updatedAt", s.last().toString());
+                rows.add(row);
+            }
+        }
+        out.put("sessions", rows);
+        return out;
+    }
+
+    /**
+     * Every turn of one session in full, for a host reloading it.
+     *
+     * @return {@code turns} (each with {@code turnNo}, {@code ts}, {@code his}, {@code agent}, {@code tools}); a session the lane
+     *     does not hold answers an empty list
+     */
+    public static Map<String, Object> turns(TranscriptStore transcript, String sessionId) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        if (transcript == null) {
+            out.put("transcript_note", "The transcript lane is NOT INSTALLED on this resident.");
+        } else if (!TranscriptStore.enabled()) {
+            out.put("transcript_note", "The transcript lane is switched OFF on this deployment.");
+        } else {
+            for (TranscriptStore.TurnText t : transcript.turnsOf(sessionId)) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("turnNo", t.turnNo());
+                row.put("ts", t.ts().toString());
+                row.put("his", t.his());
+                row.put("agent", t.agent());
+                row.put("tools", t.tools());
+                rows.add(row);
+            }
+        }
+        out.put("session", sessionId);
+        out.put("turns", rows);
+        return out;
+    }
+
+    /**
      * Whether he said these words, with the turn that holds them.
      *
      * @return a map with {@code found} and, when found, the row; {@code checked} is false when the
