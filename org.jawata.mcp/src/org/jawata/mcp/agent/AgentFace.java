@@ -102,6 +102,7 @@ public final class AgentFace implements RoutedFace {
         TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools()), new AttemptLedger(RESUMPTIONS_PER_STEP));
         String recording = attached.settings() == null ? null : attached.settings().get(AgentRecorder.SETTING).orElse(null);
         AgentRecorder recorder = new AgentRecorder(attached.tools(), AgentRecorder.Depth.of(recording));
-        return new AcpServer(brain, commands, out, boundary, recorder, sideBrains);
+        ReviewBeforeSend.Reviewer reviewer = BrainReviewer.over(attached.settings(), java.nio.file.Path.of(System.getProperty("user.dir"))).orElse(null);
+        return new AcpServer(brain, commands, out, boundary, recorder, sideBrains, reviewer);
     }
 }
