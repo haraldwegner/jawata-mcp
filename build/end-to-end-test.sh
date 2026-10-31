@@ -157,6 +157,27 @@ no_score() {   # 27a: no similarity number in any user-facing payload
 
 echo "end-to-end test — against $JAR"
 
+# Sprint 28h, S7a: the brain the agent hires for the principal seat is named by one setting. The gate names a stand-in ACP agent (a few
+# lines of python that speak the protocol over stdio), so the production path from a host's prompt to a hired brain and back runs on the
+# real listener without any vendor's brain; that a vendor's brain does the same is the stage's live exit, run separately.
+cat > "$WS/e2e-brain.py" <<'PY'
+import json, sys
+for line in sys.stdin:
+    m = json.loads(line)
+    i, method = m.get("id"), m.get("method")
+    def reply(result):
+        print(json.dumps({"jsonrpc": "2.0", "id": i, "result": result}), flush=True)
+    if method == "initialize":
+        reply({"protocolVersion": 1, "agentCapabilities": {"loadSession": False, "mcpCapabilities": {"http": True}}})
+    elif method == "session/new":
+        reply({"sessionId": "e2e-brain-session"})
+    elif method == "session/prompt":
+        print(json.dumps({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "e2e-brain-session",
+              "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "the e2e brain answered"}}}}), flush=True)
+        reply({"stopReason": "end_turn"})
+PY
+export JAWATA_AGENT_BRAIN="{\"command\":[\"python3\",\"$WS/e2e-brain.py\"],\"env\":{}}"
+
 # ============================ lifecycle 1 ====================================
 start_resident
 
@@ -189,6 +210,41 @@ if [ "$ACP_REFUSED" = "3" ]; then
 else
     fail "agent-acp a wrong key ended with status $ACP_REFUSED, not 3"
 fi
+
+# --- agent-brain (Sprint 28h, S7a, E5): a prompt sent through the launcher is answered by the hired brain, not by the no-brain sentence ----
+BRAIN_OUT="$(python3 - "$JAR" "$PORT" "$TOKEN" <<'PY'
+import json, subprocess, sys
+jar, port, token = sys.argv[1:4]
+p = subprocess.Popen(["java", "-jar", jar, "--acp", "--url", "http://127.0.0.1:%s" % port, "--key", token],
+                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+def send(o):
+    p.stdin.write(json.dumps(o) + "\n"); p.stdin.flush()
+def until(pred):
+    for line in p.stdout:
+        m = json.loads(line)
+        if pred(m):
+            return m
+send({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"protocolVersion": 1, "clientCapabilities": {}}})
+until(lambda m: m.get("id") == 0)
+send({"jsonrpc": "2.0", "id": 1, "method": "session/new", "params": {"cwd": "/tmp", "mcpServers": []}})
+sid = until(lambda m: m.get("id") == 1)["result"]["sessionId"]
+send({"jsonrpc": "2.0", "id": 2, "method": "session/prompt", "params": {"sessionId": sid, "prompt": [{"type": "text", "text": "hello"}]}})
+text = []
+def collect(m):
+    if m.get("method") == "session/update":
+        u = m["params"]["update"]
+        if u.get("sessionUpdate") == "agent_message_chunk":
+            text.append(u["content"]["text"])
+    return m.get("id") == 2
+until(collect)
+p.stdin.close()
+print("".join(text))
+PY
+)"
+case "$BRAIN_OUT" in
+    *"the e2e brain answered"*) pass "agent-brain a prompt through the launcher is answered by the hired brain" ;;
+    *) fail "agent-brain the prompt was not answered by the hired brain: $(printf '%s' "$BRAIN_OUT" | head -c 300)" ;;
+esac
 
 # --- access-policy (Sprint 28h, S13, E11): a place the policy does not allow is refused on the running product, for any client ----
 # The resident wrote its default policy into its data folder when it started. A call naming a place no entry allows is refused

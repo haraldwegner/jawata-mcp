@@ -17,7 +17,8 @@ public final class DefaultEngineSettings implements EngineSettings {
         "jawata.data.home", "XDG_DATA_HOME",
         "jawata.project.path", "JAVA_PROJECT_PATH",
         "jawata.timeout.seconds", "JAWATA_TIMEOUT_SECONDS",
-        "jawata.absolute.paths", "JAWATA_ABSOLUTE_PATHS");
+        "jawata.absolute.paths", "JAWATA_ABSOLUTE_PATHS",
+        "jawata.agent.brain", "JAWATA_AGENT_BRAIN");
 
     @Override
     public Optional<String> get(String key) {

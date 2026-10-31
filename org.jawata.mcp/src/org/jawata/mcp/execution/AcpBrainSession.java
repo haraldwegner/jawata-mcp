@@ -67,9 +67,10 @@ public final class AcpBrainSession {
      * @param allowedTools the tools the seat may use, by bare name or by the name the brain shows; empty allows none
      * @param resume       the session id of an earlier run to continue, if any
      * @param ceilings     what the run may consume
+     * @param onText       called with each piece of the brain's answer as it arrives, or null when only the finished outcome is wanted
      */
     public static HiredBrain.Outcome run(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
-            List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings) throws IOException, InterruptedException {
+            List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText) throws IOException, InterruptedException {
         Map<String, String> environment = new LinkedHashMap<>(base.environment());
         environment.putAll(program.environment());
         Process child = host.start(new HostCommand(program.command(), base.workingDirectory(), environment,
@@ -91,6 +92,7 @@ public final class AcpBrainSession {
         watchdog.start();
 
         Wire wire = new Wire(child, new HashSet<>(allowedTools == null ? List.of() : allowedTools), ceilings);
+        wire.onText = onText;
         StringBuilder said = new StringBuilder();
         List<String> toolNames = new ArrayList<>();
         List<ToolCall> toolCalls = new ArrayList<>();
@@ -223,6 +225,8 @@ public final class AcpBrainSession {
         int unreadable;
         boolean collect;
         String stoppedBy;
+        /** Called with each piece of the answer the moment it is read, so a host sees it stream; null when nobody is listening. */
+        Consumer<String> onText;
 
         Wire(Process child, Set<String> allowed, HiredBrain.Ceilings ceilings) {
             this.child = child;
@@ -270,6 +274,9 @@ public final class AcpBrainSession {
                 } else if (collect && "session/update".equals(message.path("method").asText())) {
                     JsonNode update = message.path("params").path("update");
                     events.add(update);
+                    if (onText != null && "agent_message_chunk".equals(update.path("sessionUpdate").asText())) {
+                        onText.accept(update.path("content").path("text").asText(""));
+                    }
                     if (exceeded(update)) {
                         HostProcesses.reap(child);
                         return null;

@@ -35,7 +35,23 @@ public final class AgentFace implements RoutedFace {
 
     /** A face that advertises what {@code commands} supplies at the moment a session opens. */
     public AgentFace(Supplier<List<AdvertisedCommand>> commands) {
-        this(commands, () -> (prompt, chunks) -> chunks.accept(NO_BRAIN));
+        this(commands, null);
+    }
+
+    /**
+     * The brain a connection that asked for none is answered by (S7a): the principal seat in the brain the host setting names, once the
+     * engine is attached, and the no-brain sentence before that or when anything about the brain cannot be set up.
+     */
+    private AgentBrain principal() {
+        EngineApi attached = engine;
+        if (attached == null) {
+            return (prompt, chunks) -> chunks.accept(NO_BRAIN);
+        }
+        try {
+            return PrincipalBrain.over(attached, java.nio.file.Path.of(System.getProperty("user.dir")));
+        } catch (RuntimeException e) {
+            return (prompt, chunks) -> chunks.accept(NO_BRAIN);
+        }
     }
 
     /** A face whose every connection is answered by the brain {@code brains} supplies when the connection opens. */
@@ -51,7 +67,7 @@ public final class AgentFace implements RoutedFace {
 
     @Override
     public HttpHandler handler() {
-        return new AcpRoute(this, brains);
+        return new AcpRoute(this, brains != null ? brains : this::principal);
     }
 
     @Override

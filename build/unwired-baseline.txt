@@ -48,7 +48,6 @@ org.jawata.mcp.engine.SettingKeys#all()
 #
 # WHEN M7 LANDS, this gate reports these FIXED and asks for a re-baseline. That is the
 # ratchet working — do not carry these entries past it.
-org.jawata.mcp.execution.HiredBrain.Ceilings#of(Duration)
 org.jawata.mcp.execution.HiredRun#issue(BrainDialect,HireSite,String,Ceilings,List<GatedStep>,GateRunner)
 org.jawata.mcp.execution.SeatScheduler#start()
 org.jawata.mcp.field.FieldPile#countErrorShapes()
@@ -161,12 +160,11 @@ org.jawata.mcp.transport.HttpTransport#getActualPort()
 org.jawata.mcp.transport.HttpTransport#sendEvent(String,String)
 # 28k Stage 8: the IJdtService implementation reached by dispatch. AddProjectTool and ScopedJdtService call it through the interface, which this detector does not follow; the watcher, its one direct caller, now calls the two-argument form because it passes the source folders a member declares (contract S4).
 org.jawata.resident.workspace.JdtServiceImpl#addProject(Path)
-# Sprint 28h S6/S7: the engine as an ACP client and the rules that decide a hire. They have no production caller until S7a, which is the plan's wiring of the agent's prompt handler to a hired brain through the hirer (the S7 board row records it); each line below leaves this file when S7a lands.
-org.jawata.mcp.agent.Hirer#allowlist(String,Collection<String>)
+# Sprint 28h S7: the rest of the rules that decide a hire. S7a wired the principal's allowlist; the members below are read when a seat hires a seat (the hirer's refuse, withBrain, brainFor, escalateTo: S12) and when the hire records are read (RoleFigures: S9). Each line leaves this file with its stage.
 org.jawata.mcp.agent.Hirer#brainFor(String)
 org.jawata.mcp.agent.Hirer#escalateTo(String)
 org.jawata.mcp.agent.Hirer#refuse(String,String)
 org.jawata.mcp.agent.Hirer#withBrain(String,Brain)
 org.jawata.mcp.agent.RoleFigures#of(Collection<HireFacts>)
-org.jawata.mcp.agent.SeatTree#standard()
-org.jawata.mcp.execution.AcpBrainSession#run(HostProcesses,Program,HireSite,String,SelfEndpoint,List<String>,Optional<String>,Ceilings)
+# Sprint 28h S7a: the hire records the principal brain keeps. The recorder that writes them to the transcript lane is S9, which is their first production reader.
+org.jawata.mcp.agent.PrincipalBrain#records()
