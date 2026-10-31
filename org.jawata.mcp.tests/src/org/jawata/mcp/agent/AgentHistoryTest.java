@@ -65,7 +65,10 @@ class AgentHistoryTest {
         String session;
 
         Connection(String says, AgentRecorder.Depth depth) {
-            AgentBrain brain = (prompt, chunks) -> chunks.accept(says);
+            this((prompt, chunks) -> chunks.accept(says), depth);
+        }
+
+        Connection(AgentBrain brain, AgentRecorder.Depth depth) {
             server = new AcpServer(brain, List::of, m -> said.add(JSON.valueToTree(m)), TurnBoundary.open(),
                 new AgentRecorder(tools(), depth), null);
         }
@@ -143,6 +146,43 @@ class AgentHistoryTest {
             "CONTROL: the principal depth leaves a hired agent's conversation out");
         assertEquals(AgentRecorder.Depth.ALL, AgentRecorder.Depth.of(null), "no setting is the default, everything");
         assertEquals(AgentRecorder.Depth.OFF, AgentRecorder.Depth.of("off"));
+    }
+
+    /** A brain that reads one file in the middle of its answer, streaming the call in the two pieces a real brain streams it in. */
+    private static AgentBrain readingBrain() {
+        return new AgentBrain() {
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks) {
+                answer(prompt, chunks, call -> { });
+            }
+
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks, java.util.function.Consumer<JsonNode> toolCalls) {
+                toolCalls.accept(JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "t1")
+                    .put("title", "Read a.txt").put("status", "pending"));
+                toolCalls.accept(JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", "t1")
+                    .put("status", "completed"));
+                chunks.accept("it says one");
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("a brain's tool calls reach the host as they happen, and a later connection reloading the session sees each call as one finished line")
+    void aBrainsToolCallsReachTheHostAndReplayAsOneLine() {
+        Connection first = new Connection(readingBrain(), AgentRecorder.Depth.ALL);
+        first.open();
+        first.prompt("read a.txt");
+
+        assertEquals(List.of("tool_call", "tool_call_update", "agent_message_chunk"), first.said.stream()
+            .map(m -> m.path("params").path("update").path("sessionUpdate").asText()).filter(s -> !s.isEmpty()).toList(),
+            "the host did not see the tool call before the answer");
+
+        Connection later = new Connection("unused", AgentRecorder.Depth.ALL);
+        later.call(3, "session/load", JSON.createObjectNode().put("sessionId", first.session).put("cwd", "/w"));
+        List<String> titles = later.said.stream().map(m -> m.path("params").path("update"))
+            .filter(u -> "tool_call".equals(u.path("sessionUpdate").asText())).map(u -> u.path("title").asText()).toList();
+        assertEquals(List.of("Read a.txt — completed"), titles, "the reloaded session did not replay the call as one line: " + later.said);
     }
 
     @Test

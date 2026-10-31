@@ -60,7 +60,7 @@ class AcpBrainSessionTest {
 
     private HiredBrain.Outcome hire(String prompt, List<String> allowed, Optional<String> resume, HiredBrain.Ceilings ceilings,
             SelfEndpoint mcp) throws Exception {
-        return AcpBrainSession.run(host, agent, HireSite.in(dir), prompt, mcp, allowed, resume, ceilings, null);
+        return AcpBrainSession.run(host, agent, HireSite.in(dir), prompt, mcp, allowed, resume, ceilings, null, null);
     }
 
     private HiredBrain.Outcome hire(String prompt) throws Exception {

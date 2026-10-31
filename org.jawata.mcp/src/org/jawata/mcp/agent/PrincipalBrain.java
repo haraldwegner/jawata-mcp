@@ -131,6 +131,11 @@ public final class PrincipalBrain implements AgentBrain {
 
     @Override
     public void answer(String prompt, Consumer<String> chunks) {
+        answer(prompt, chunks, null);
+    }
+
+    @Override
+    public void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls) {
         if (program.isEmpty()) {
             chunks.accept(AgentFace.NO_BRAIN);
             return;
@@ -143,7 +148,7 @@ public final class PrincipalBrain implements AgentBrain {
                 piece -> {
                     streamed[0] = true;
                     chunks.accept(piece);
-                });
+                }, toolCalls);
         } catch (IOException e) {
             chunks.accept("jawata's agent could not start its brain: " + e.getMessage());
             return;

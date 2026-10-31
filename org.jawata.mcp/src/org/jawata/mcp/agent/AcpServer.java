@@ -239,12 +239,22 @@ public final class AcpServer {
             said.append(chunk);
             update(session.id(), messageChunk("agent_message_chunk", chunk, messageId));
         };
+        Map<String, ObjectNode> toolState = new java.util.LinkedHashMap<>();
+        Consumer<JsonNode> toolCalls = call -> {
+            update(session.id(), ((ObjectNode) call).deepCopy());
+            ObjectNode state = toolState.computeIfAbsent(call.path("toolCallId").asText(), key -> JSON.createObjectNode());
+            for (String field : List.of("title", "status")) {
+                if (call.hasNonNull(field)) {
+                    state.set(field, call.get(field));
+                }
+            }
+        };
         String stopReason = "end_turn";
         cancelled.remove(session.id());
         running.put(session.id(), Thread.currentThread());
         try {
             while (true) {
-                brain.answer(text, chunks);
+                brain.answer(text, chunks, toolCalls);
                 if (cancelled.contains(session.id())) {
                     stopReason = "cancelled";
                     break;
@@ -263,11 +273,22 @@ public final class AcpServer {
         } finally {
             running.remove(session.id());
             Thread.interrupted(); // a cancel that arrived after the brain finished must not poison the connection's worker
-            recorder.record(AgentRecorder.Level.PRINCIPAL, session, messageId, typed, said.toString(), List.of());
+            recorder.record(AgentRecorder.Level.PRINCIPAL, session, messageId, typed, said.toString(),
+                toolState.values().stream().map(AcpServer::toolLine).toList());
         }
         ObjectNode result = JSON.createObjectNode();
         result.put("stopReason", stopReason);
         return JsonRpcMessage.successResponse(id, result);
+    }
+
+    /**
+     * One tool call as the recording keeps it, a single finished line: its title and how it ended. An update that carries no title or no
+     * status (the brain streams both in pieces) leaves the missing half out rather than inventing it.
+     */
+    private static String toolLine(JsonNode call) {
+        String title = call.path("title").asText("");
+        String status = call.path("status").asText("");
+        return title.isEmpty() ? status : status.isEmpty() ? title : title + " — " + status;
     }
 
     /** {@code session/list}: the sessions the recording holds, most recently active first. */
