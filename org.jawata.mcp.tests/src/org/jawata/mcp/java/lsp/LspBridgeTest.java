@@ -37,7 +37,7 @@ class LspBridgeTest {
 
     private static HttpTransport servedBy(String key) throws Exception {
         HostCapabilities host = new HostCapabilities("test", true, true, true, List.of("java"));
-        LspFace face = new LspFace(() -> null);
+        LspFace face = new LspFace(() -> null, 300);
         face.attach((EngineApi) Proxy.newProxyInstance(EngineApi.class.getClassLoader(), new Class<?>[] {EngineApi.class},
             (proxy, method, args) -> "host".equals(method.getName()) ? host : null));
         HttpTransport transport = new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", key), new TransportFixtures.RecordingLifecycle());

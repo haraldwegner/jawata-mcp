@@ -9,9 +9,17 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.fixtures.TestProjectHelper;
+import org.jawata.mcp.models.CallerIdentity;
+import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.jawata.resident.workspace.JdtServiceImpl;
 import org.junit.jupiter.api.DisplayName;
@@ -22,8 +30,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * 28h S16a: one language-server conversation, driven by messages in memory (no stream, no HTTP): the lifecycle, the errors, and the
- * document sync that puts an editor's unsaved text into the engine's buffers. The fixture is {@code Calculator.java} of simple-maven.
+ * 28h S16a: one language-server conversation, driven by messages in memory (no stream, no HTTP): the lifecycle, the errors, the document
+ * sync that puts an editor's unsaved text into the engine's buffers, and the problems the engine finds in that text, published as the
+ * person types. The fixture is {@code Calculator.java} of simple-maven; the broken text adds a method that returns a string as an int.
  */
 class JavaLanguageServerTest {
 
@@ -31,18 +40,31 @@ class JavaLanguageServerTest {
     TestProjectHelper helper = new TestProjectHelper();
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "lsp-test-scheduler");
+        t.setDaemon(true);
+        return t;
+    });
+    private static final String BAD = "\"x\"";
 
     private JdtServiceImpl service;
     private Path calculator;
     private String saved;
-    private final List<JsonRpcMessage> sent = new ArrayList<>();
+    private final List<JsonRpcMessage> sent = new CopyOnWriteArrayList<>();
+    private final List<CallerIdentity> callers = new CopyOnWriteArrayList<>();
     private JavaLanguageServer server;
 
     private void start() throws Exception {
+        start(null);
+    }
+
+    /** @param wrap puts a layer around the engine's tools, or null for none */
+    private void start(java.util.function.UnaryOperator<ToolCalls> wrap) throws Exception {
         service = helper.loadProject("simple-maven");
         calculator = helper.getFixturePath("simple-maven").resolve("src/main/java/com/example/Calculator.java");
         saved = Files.readString(calculator);
-        server = new JavaLanguageServer(() -> service, sent::add);
+        ToolCalls tools = EditorTools.over(service, callers::add);
+        server = new JavaLanguageServer(() -> service, wrap == null ? tools : wrap.apply(tools), CallerIdentity.editor("test"), sent::add, SCHEDULER, 0);
     }
 
     private static JsonRpcMessage request(int id, String method, String paramsJson) throws Exception {
@@ -63,6 +85,70 @@ class JavaLanguageServerTest {
 
     private String textOfBuffer() throws Exception {
         return service.buffers().orElseThrow().view(unit()).orElseThrow().getSource();
+    }
+
+    private String brokenText() {
+        return saved.substring(0, saved.lastIndexOf('}')) + "    int bad() { return " + BAD + "; }\n}\n";
+    }
+
+    private void open(String text) throws Exception {
+        server.receive(notice("textDocument/didOpen", JSON.writeValueAsString(
+            Map.of("textDocument", Map.of("uri", uri(), "languageId", "java", "version", 1, "text", text)))));
+    }
+
+    private void closeFile() throws Exception {
+        server.receive(notice("textDocument/didClose", JSON.writeValueAsString(Map.of("textDocument", Map.of("uri", uri())))));
+    }
+
+    /** Replaces the characters from {@code (line, from)} to {@code (line, to)} with {@code text}, as an editor's incremental change. */
+    private void editAt(int line, int from, int to, String text) throws Exception {
+        server.receive(notice("textDocument/didChange", JSON.writeValueAsString(Map.of(
+            "textDocument", Map.of("uri", uri(), "version", 2),
+            "contentChanges", List.of(Map.of("range", Map.of("start", Map.of("line", line, "character", from),
+                "end", Map.of("line", line, "character", to)), "text", text))))));
+    }
+
+    /** The parameters of every publishDiagnostics the server has sent, in order. */
+    private List<JsonNode> published() {
+        List<JsonNode> params = new ArrayList<>();
+        for (JsonRpcMessage message : sent) {
+            if ("textDocument/publishDiagnostics".equals(message.getMethod())) {
+                params.add(message.getParams());
+            }
+        }
+        return params;
+    }
+
+    private void awaitPublished(int count) throws Exception {
+        long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
+        while (published().size() < count && System.nanoTime() < until) {
+            Thread.sleep(25);
+        }
+        assertTrue(published().size() >= count, "expected " + count + " publishDiagnostics, got " + published().size() + ": " + sent);
+    }
+
+    private static List<JsonNode> errorsOf(JsonNode published) {
+        List<JsonNode> errors = new ArrayList<>();
+        for (JsonNode diagnostic : published.path("diagnostics")) {
+            if (diagnostic.path("severity").asInt() == 1) {
+                errors.add(diagnostic);
+            }
+        }
+        return errors;
+    }
+
+    /** The zero-based line and column of the first {@code token} in {@code text}. */
+    private static int[] positionOf(String text, String token) {
+        int offset = text.indexOf(token);
+        int line = 0;
+        int lineStart = 0;
+        for (int i = 0; i < offset; i++) {
+            if (text.charAt(i) == '\n') {
+                line++;
+                lineStart = i + 1;
+            }
+        }
+        return new int[] {line, offset - lineStart};
     }
 
     @Test
@@ -111,18 +197,14 @@ class JavaLanguageServerTest {
     @DisplayName("didOpen puts the editor's text into the engine's buffers, didChange applies its edits to it, and didClose gives the saved file back")
     void documentSync() throws Exception {
         start();
-        String open = JSON.writeValueAsString(Map.of("textDocument", Map.of("uri", uri(), "languageId", "java", "version", 1, "text", saved)));
-        server.receive(notice("textDocument/didOpen", open));
+        open(saved);
         assertEquals(saved, textOfBuffer());
 
-        String change = JSON.writeValueAsString(Map.of("textDocument", Map.of("uri", uri(), "version", 2),
-            "contentChanges", List.of(Map.of("range", Map.of("start", Map.of("line", 0, "character", 0), "end", Map.of("line", 0, "character", 0)),
-                "text", "// typed\n"))));
-        server.receive(notice("textDocument/didChange", change));
+        editAt(0, 0, 0, "// typed\n");
         assertTrue(textOfBuffer().startsWith("// typed\npackage com.example;"), textOfBuffer().substring(0, 40));
         assertTrue(service.buffers().orElseThrow().isDirty(unit()));
 
-        server.receive(notice("textDocument/didClose", JSON.writeValueAsString(Map.of("textDocument", Map.of("uri", uri())))));
+        closeFile();
         assertFalse(service.buffers().orElseThrow().view(unit()).isPresent());
         assertEquals(saved, unit().getSource(), "the saved file is the text again");
     }
@@ -136,5 +218,70 @@ class JavaLanguageServerTest {
         assertTrue(server.receive(notice("textDocument/didOpen", open)));
 
         assertTrue(sent.isEmpty(), "nothing was sent: " + sent);
+    }
+
+    @Test
+    @DisplayName("the problems of the unsaved text are published at the characters they are on, follow each change, and are cleared when the file closes")
+    void problemsFollowTheText() throws Exception {
+        start();
+        String broken = brokenText();
+        int[] bad = positionOf(broken, BAD);
+
+        open(broken);
+        awaitPublished(1);
+        JsonNode first = published().get(0);
+        assertEquals(uri(), first.path("uri").asText());
+        assertEquals(1, errorsOf(first).size(), first.toString());
+        JsonNode error = errorsOf(first).get(0);
+        assertEquals("jawata", error.path("source").asText());
+        assertEquals(bad[0], error.path("range").path("start").path("line").asInt());
+        assertEquals(bad[1], error.path("range").path("start").path("character").asInt());
+        assertEquals(bad[0], error.path("range").path("end").path("line").asInt());
+        assertEquals(bad[1] + BAD.length(), error.path("range").path("end").path("character").asInt(), "the range covers the whole literal");
+        assertTrue(error.path("message").asText().contains("String"), error.path("message").asText());
+
+        editAt(bad[0], bad[1], bad[1] + BAD.length(), "1");
+        awaitPublished(2);
+        assertEquals(0, errorsOf(published().get(1)).size(), "fixed in the editor, though the file on disk never had the error");
+
+        closeFile();
+        awaitPublished(3);
+        assertEquals(0, published().get(2).path("diagnostics").size(), "a closed file shows nothing of the editor's");
+        assertTrue(callers.stream().allMatch(caller -> caller.origin() == CallerIdentity.Origin.EDITOR), "every call was the editor's: " + callers);
+    }
+
+    @Test
+    @DisplayName("an answer for text that has moved on is not published: only the answer for the text the editor now has reaches it")
+    void aStaleAnswerIsNotPublished() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        start(real -> new ToolCalls() {
+            @Override
+            public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) throws org.jawata.mcp.engine.ToolNotFoundException {
+                ToolResponse answer = real.callTool(name, arguments, caller);
+                if (calls.incrementAndGet() == 1) {
+                    try {
+                        editAt(0, 0, 0, "// moved\n"); // the person types while the first answer is on its way
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                }
+                return answer;
+            }
+
+            @Override
+            public List<Map<String, Object>> getToolDefinitions() {
+                return real.getToolDefinitions();
+            }
+        });
+        String broken = brokenText();
+        int[] bad = positionOf(broken, BAD);
+
+        open(broken);
+        awaitPublished(1);
+        Thread.sleep(500); // a stale answer, if it were published, would be here by now
+        assertEquals(1, published().size(), "only the answer for the new text: " + published());
+        assertEquals(2, calls.get());
+        assertEquals(bad[0] + 1, errorsOf(published().get(0)).get(0).path("range").path("start").path("line").asInt(),
+            "the error sits one line lower, where the typed line pushed it");
     }
 }

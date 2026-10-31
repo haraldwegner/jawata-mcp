@@ -56,7 +56,13 @@ public record CallerIdentity(String id, Origin origin) {
          * state by a null check and called it {@code "local"}, which read like a
          * session.
          */
-        IN_PROCESS
+        IN_PROCESS,
+
+        /**
+         * An editor's language client, through the engine's language server (Sprint 28h, S16a, R1). Not an agent and not a transport's
+         * anonymous bucket: its calls are what a person's typing asks for, so a reader of the ledger can tell them from an agent's steps.
+         */
+        EDITOR
     }
 
     /**
@@ -89,6 +95,12 @@ public record CallerIdentity(String id, Origin origin) {
     public static CallerIdentity minted(String channel) {
         Objects.requireNonNull(channel, "a minted identity must say which transport minted it");
         return new CallerIdentity(channel + "-anonymous", Origin.RESIDENT_MINTED);
+    }
+
+    /** The identity of one editor connection to the language server; {@code connection} tells two editors apart. */
+    public static CallerIdentity editor(String connection) {
+        Objects.requireNonNull(connection, "an editor identity must say which connection it is");
+        return new CallerIdentity("editor-" + connection, Origin.EDITOR);
     }
 
     @Override

@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.jawata.mcp.engine.EngineApi;
+import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.fixtures.TestProjectHelper;
 import org.jawata.mcp.fixtures.TransportFixtures;
 import org.jawata.mcp.transport.HttpTransport;
@@ -44,10 +45,10 @@ class LspRouteTest {
     private static final HttpClient HTTP = HttpClient.newHttpClient();
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private static EngineApi engineOn(boolean ownsWorkspace) {
+    private static EngineApi engineOn(boolean ownsWorkspace, ToolCalls tools) {
         HostCapabilities host = new HostCapabilities("test", ownsWorkspace, true, true, List.of("java"));
         return (EngineApi) Proxy.newProxyInstance(EngineApi.class.getClassLoader(), new Class<?>[] {EngineApi.class},
-            (proxy, method, args) -> "host".equals(method.getName()) ? host : null);
+            (proxy, method, args) -> "host".equals(method.getName()) ? host : "tools".equals(method.getName()) ? tools : null);
     }
 
     private static HttpTransport listenOn(LspFace face, String key) throws Exception {
@@ -95,8 +96,8 @@ class LspRouteTest {
     @Test
     @DisplayName("a request without the listener's key is refused, and an initialize with it is answered on the connection's stream")
     void theKeyIsAskedForAndInitializeIsAnswered() throws Exception {
-        LspFace face = new LspFace(() -> null);
-        face.attach(engineOn(true));
+        LspFace face = new LspFace(() -> null, 300);
+        face.attach(engineOn(true, null));
         HttpTransport transport = listenOn(face, "tok");
         try {
             int port = transport.getActualPort();
@@ -122,8 +123,8 @@ class LspRouteTest {
         Path calculator = helper.getFixturePath("simple-maven").resolve("src/main/java/com/example/Calculator.java");
         String text = Files.readString(calculator);
         ICompilationUnit unit = service.getCompilationUnit(calculator).getPrimary();
-        LspFace face = new LspFace(() -> service);
-        face.attach(engineOn(true));
+        LspFace face = new LspFace(() -> service, 300);
+        face.attach(engineOn(true, EditorTools.over(service, caller -> { })));
         HttpTransport transport = listenOn(face, "tok");
         try {
             int port = transport.getActualPort();
@@ -152,10 +153,10 @@ class LspRouteTest {
     @Test
     @DisplayName("a host that keeps the editor's buffers itself is refused with 503, and so is a face no engine has attached")
     void aHostThatOwnsNoWorkspaceIsRefused() throws Exception {
-        LspFace eclipse = new LspFace(() -> null);
-        eclipse.attach(engineOn(false));
+        LspFace eclipse = new LspFace(() -> null, 300);
+        eclipse.attach(engineOn(false, null));
         HttpTransport onEclipse = listenOn(eclipse, "tok");
-        LspFace detached = new LspFace(() -> null);
+        LspFace detached = new LspFace(() -> null, 300);
         HttpTransport onNothing = listenOn(detached, "tok");
         try {
             String initialize = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}";

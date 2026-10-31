@@ -1,5 +1,8 @@
 package org.jawata.mcp.java.lsp;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -7,6 +10,7 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.JavaBinding;
 import org.jawata.mcp.engine.EngineApi;
 import org.jawata.mcp.engine.RoutedFace;
+import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.jawata.mcp.protocol.MessageRoute;
 import org.jawata.spi.host.EngineHost;
@@ -31,18 +35,32 @@ public final class LspFace implements RoutedFace {
 
     private static final long KEEPALIVE_SECONDS = 15;
 
+    /** How long a file's text must stay as it is before its problems are asked for. */
+    private static final long DEBOUNCE_MILLIS = 300;
+
+    /** Runs the problem checks of every editor connection: one thread, because a check holds the model for as long as it takes. */
+    private static final ScheduledExecutorService DIAGNOSTICS = Executors.newSingleThreadScheduledExecutor(r -> {
+        Thread t = new Thread(r, "lsp-diagnostics");
+        t.setDaemon(true);
+        return t;
+    });
+
     private final Supplier<IJdtService> model;
+    private final long debounceMillis;
+    private final AtomicInteger connections = new AtomicInteger();
     private volatile EngineHost host;
     private volatile EngineApi engine;
 
     /** The face as the component runtime builds it: the model is whatever the host's Java binding holds at the moment of each ask. */
     public LspFace() {
         this.model = () -> host.binding(JavaBinding.class).orElseThrow().model().current();
+        this.debounceMillis = DEBOUNCE_MILLIS;
     }
 
-    /** A face over the model {@code model} supplies, for a caller that has no host. */
-    LspFace(Supplier<IJdtService> model) {
+    /** A face over the model {@code model} supplies, for a caller that has no host, asking for problems {@code debounceMillis} after a change. */
+    LspFace(Supplier<IJdtService> model, long debounceMillis) {
         this.model = model;
+        this.debounceMillis = debounceMillis;
     }
 
     /** The component runtime hands in the host the engine was built from. */
@@ -89,7 +107,8 @@ public final class LspFace implements RoutedFace {
         if (capabilities == null || !capabilities.ownsWorkspace()) {
             throw new IllegalStateException("this host keeps the editor's buffers itself");
         }
-        JavaLanguageServer server = new JavaLanguageServer(model, out);
+        CallerIdentity caller = CallerIdentity.editor("lsp-" + connections.incrementAndGet());
+        JavaLanguageServer server = new JavaLanguageServer(model, attached.tools(), caller, out, DIAGNOSTICS, debounceMillis);
         return server::receive;
     }
 }
