@@ -1,0 +1,29 @@
+{
+  "about": "The places an agent's tool call may name (Sprint 28h, D20). This file is the person's: jawata writes it once, when none exists, and never overwrites it. ${workspace} is the folders of the workspace the calling session works in, ${home} is your home folder, ${temp} is the machine's scratch folder. A place on neither list is refused; a place on \"deny\" is refused even inside an allowed one. Nothing is read from a name: a file called credentials.json is allowed here unless you list it. Add a folder to \"allow\" to let agents work there; add a path to \"deny\" to take it away. A damaged or missing file refuses every place a call names.",
+  "allow": [
+    "${workspace}",
+    "${temp}",
+    "/tmp",
+    "${home}/.claude",
+    "${home}/.cursor",
+    "${home}/.nvm",
+    "${home}/.m2",
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/lib",
+    "/lib64",
+    "/opt",
+    "/etc/alternatives",
+    "/etc/os-release",
+    "/dev/null",
+    "/System",
+    "/Library",
+    "/Applications"
+  ],
+  "deny": [
+    "${home}/.claude/settings.json",
+    "${home}/.claude/settings.local.json",
+    "${home}/.cursor/hooks.json"
+  ]
+}

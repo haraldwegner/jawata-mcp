@@ -157,6 +157,17 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         this.serverChecks = checks;
     }
 
+    /**
+     * Sprint 28h, S13 (D20): the access policy every call is put to before it is acted on. Null = not installed, which a host that has
+     * no data folder to keep the policy in is; the resident installs it, so every client's call passes it (ACL8).
+     */
+    private volatile org.jawata.mcp.access.AccessCheck accessCheck;
+
+    /** Install the access policy check (application wiring). */
+    public void setAccessCheck(org.jawata.mcp.access.AccessCheck check) {
+        this.accessCheck = check;
+    }
+
     /** Install the post-project-mutation hook (Sprint 21e). Null = no hook (tests). */
     public void setProjectsMutatedHook(Runnable hook) {
         this.projectsMutatedHook = hook;
@@ -692,6 +703,24 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
             } catch (Exception e) {
                 log.warn("Strict disk sync FAILED before {} — answers may be STALE until the"
                     + " next successful reconcile", name, e);
+            }
+        }
+
+        // Sprint 28h S13 (D20): the access policy, before anything else is decided about the call and before the in-flight ticket
+        // is taken. It fails toward refusing: a check that cannot be applied refuses the call and says so, where the advisory checks
+        // below fail open, because a policy that is skipped when it breaks is a policy that a breakage turns off.
+        org.jawata.mcp.access.AccessCheck access = accessCheck;
+        if (access != null) {
+            java.util.Optional<String> forbidden;
+            try {
+                forbidden = access.refuse(caller.id(), arguments);
+            } catch (RuntimeException e) {
+                log.error("The access policy could not be applied to {}; the call is refused", name, e);
+                forbidden = java.util.Optional.of("Access policy: it could not be applied to this call (" + e + "), so the call is refused.");
+            }
+            if (forbidden.isPresent()) {
+                return stamped(name, arguments, ToolResponse.error("ACCESS_DENIED", forbidden.get(),
+                    "Name only places the access policy allows; the person changes the policy file, or approves the call."));
             }
         }
 

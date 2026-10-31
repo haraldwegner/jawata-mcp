@@ -1,5 +1,8 @@
 package org.jawata.mcp.access;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +61,26 @@ public final class AccessCheck {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Writes the policy that ships with jawata to {@code file} when there is none, and does nothing when there is one (ACL1, ACL8): the
+     * file is the person's, so it is created once and never overwritten, and a restart cannot undo a change they made.
+     *
+     * @return whether the file was written
+     */
+    public static boolean installDefault(Path file) throws IOException {
+        if (Files.exists(file)) {
+            return false;
+        }
+        try (InputStream shipped = AccessCheck.class.getResourceAsStream("/access/access-policy.default.json")) {
+            if (shipped == null) {
+                throw new IOException("the default access policy is not among the resources of this build");
+            }
+            Files.createDirectories(file.toAbsolutePath().getParent());
+            Files.copy(shipped, file);
+            return true;
+        }
     }
 
     private String refusal(String reason) {

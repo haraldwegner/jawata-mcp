@@ -531,6 +531,20 @@ public class JawataEngine {
 		// Sprint 28g (D42): the SAME advisor is also asked on every tool response rather than by one tool of forty-odd. Nothing new
 		// is constructed here, which is what keeps D-SIX satisfied.
 		this.getToolRegistry().setExperienceAdvisor(neutral.advisor());
+		// Sprint 28h S13 (D20): the access policy. One file in the host's data folder, written once from the one that ships and never
+		// again, read on every call, applied where every client's call passes. A host with no data folder keeps no policy and installs
+		// no check; one whose file cannot be written still installs the check, which then refuses what it names (the file is missing).
+		this.host().directories().dataDir().ifPresent(data -> {
+			java.nio.file.Path policy = data.resolve("access-policy.json");
+			try {
+				org.jawata.mcp.access.AccessCheck.installDefault(policy);
+			} catch (java.io.IOException e) {
+				log.error("The default access policy could not be written to {}: calls naming a place are refused until it exists", policy, e);
+			}
+			this.getToolRegistry().setAccessCheck(new org.jawata.mcp.access.AccessCheck(policy,
+					session -> ports.workspace().get().projects().stream().map(project -> project.root()).toList(),
+					java.nio.file.Path.of(System.getProperty("user.home")), java.nio.file.Path.of(System.getProperty("java.io.tmpdir"))));
+		});
 
 		// A host that serves Java is loading until the Java provider binds; the neutral set is published now, and each language's tools
 		// when it arrives. A host that serves none waits for no language.
