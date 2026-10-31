@@ -231,6 +231,9 @@ public class HireTool extends NeutralTool {
                 + " hire carries out. The answer then reports how many ran as written (one tool, one call, the"
                 + " arguments written, no rework) and the issuer's tokens per instruction that did, read from the"
                 + " two hire records and never from either seat's report of itself."));
+        properties.put("boardFile", Map.of("type", "string",
+            "description", "Optional. The sprint's ...-plan.md. When given, the plan board in it is drawn from the plan"
+                + " ledger as soon as this hire's gates have run, and the answer carries what was drawn or why it was not."));
         properties.put("workingDirectory", Map.of("type", "string",
             "description", "Where the brain runs — REQUIRED, never defaulted. It is the hire's"
                 + " blast radius: the brain reads and may write here, so a caller states it rather"
@@ -437,6 +440,13 @@ public class HireTool extends NeutralTool {
             data.put("answerGateRefusals", proposal.answerGateRefusals());
         }
         data.put("gates", gateRows(proposal));
+        // S10 (D18): the plan board is drawn from the ledger the moment the gates have run, by the
+        // hire itself, so the plan file says what the gates say without anyone remembering to ask.
+        String boardFile = getStringParam(arguments, "boardFile");
+        if (boardFile != null && !boardFile.isBlank()) {
+            ToolResponse drawn = new PlanBoardTool(plans).execute(JSON.createObjectNode().put("file", boardFile));
+            data.put("board", drawn.isSuccess() ? drawn.getData() : "NOT DRAWN: " + drawn.getError());
+        }
         // EVERY CHANGED FILE ATTRIBUTED TO THE RUN — C16's clause, and the absence is an absence.
         // `changedFiles` is left OUT of the answer entirely when no census could be taken, rather
         // than sent as an empty list: a caller reading [] would be told the brain touched nothing

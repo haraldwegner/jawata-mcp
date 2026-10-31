@@ -106,6 +106,27 @@ class PlanBoardToolTest {
     }
 
     @Test
+    @DisplayName("the markers are the strings the sprint plan files carry, so the tool can draw into a real plan and not only into its own test frame")
+    void theMarkersAreTheOnesSprintPlansCarry() {
+        assertEquals("<!-- board:begin -->", PlanBoardTool.BEGIN);
+        assertEquals("<!-- board:end -->", PlanBoardTool.END);
+    }
+
+    @Test
+    @DisplayName("an end marker before the begin marker, or a second end marker, is refused and the file is left exactly as it was")
+    void misorderedOrDoubledEndMarkersAreRefused() throws IOException {
+        openPlan();
+        Path reversed = planFile("c-plan.md", "# Plan\n\n" + PlanBoardTool.END + "\nx\n" + PlanBoardTool.BEGIN + "\n");
+        Path twoEnds = planFile("d-plan.md", FRAME + PlanBoardTool.END + "\n");
+
+        for (Path file : List.of(reversed, twoEnds)) {
+            String before = Files.readString(file, StandardCharsets.UTF_8);
+            assertFalse(draw(file).isSuccess(), file.getFileName() + " was drawn into");
+            assertEquals(before, Files.readString(file, StandardCharsets.UTF_8), file.getFileName() + " was written despite the refusal");
+        }
+    }
+
+    @Test
     @DisplayName("a file that is not named ...-plan.md, or lacks the markers, or carries one twice, is refused and left exactly as it was")
     void aFileThatDidNotOptInIsRefusedAndUntouched() throws IOException {
         openPlan();

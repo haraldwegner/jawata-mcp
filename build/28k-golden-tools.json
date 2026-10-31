@@ -2853,6 +2853,10 @@
      },
      "type": "array"
     },
+    "boardFile": {
+     "description": "Optional. The sprint's ...-plan.md. When given, the plan board in it is drawn from the plan ledger as soon as this hire's gates have run, and the answer carries what was drawn or why it was not.",
+     "type": "string"
+    },
     "workingDirectory": {
      "description": "Where the brain runs \u2014 REQUIRED, never defaulted. It is the hire's blast radius: the brain reads and may write here, so a caller states it rather than inheriting the resident's own directory.",
      "type": "string"

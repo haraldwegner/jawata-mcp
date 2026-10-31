@@ -21,8 +21,8 @@ import com.fasterxml.jackson.databind.JsonNode;
  */
 public final class PlanBoardTool implements Tool {
 
-    static final String BEGIN = "<!-- jawata:board:begin -->";
-    static final String END = "<!-- jawata:board:end -->";
+    static final String BEGIN = "<!-- board:begin -->";
+    static final String END = "<!-- board:end -->";
 
     private final PlanLedger plans;
 
@@ -43,7 +43,7 @@ public final class PlanBoardTool implements Tool {
             USAGE: plan_board(file="<sprint>-plan.md")
 
             The file must be named ...-plan.md and must already carry the two markers on lines of their own:
-            <!-- jawata:board:begin --> and <!-- jawata:board:end -->. Whatever stands between them is replaced with one row per plan the
+            <!-- board:begin --> and <!-- board:end -->. Whatever stands between them is replaced with one row per plan the
             ledger holds, open or closed: its state, how many steps passed, and each step with the gate that moves it. A hand edit inside
             the markers is overwritten at the next call; text outside them is never touched. Answers {file, plans, closed, rewritten};
             rewritten is false when the file already said what the ledger says. Call it after a gate advances a plan.

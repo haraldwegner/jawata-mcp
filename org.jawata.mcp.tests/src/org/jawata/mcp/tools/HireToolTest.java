@@ -617,6 +617,27 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("S10 (D18): a hire given the plan file draws the board itself once its gates have run, so the file says what the ledger says without anyone calling plan_board; a hire given none touches no file")
+    void aHireDrawsTheBoardIntoThePlanFileItWasGiven() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+        Path plan = dir.resolve("s-plan.md");
+        String frame = "# Plan\n\n<!-- board:begin -->\nhand written\n<!-- board:end -->\n\nAfter.\n";
+        Files.writeString(plan, frame);
+
+        dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        assertEquals(frame, Files.readString(plan), "a hire given no plan file wrote one");
+
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            ((com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT))).put("boardFile", plan.toString());
+        Map<String, Object> data = dataOf(hire.execute(args));
+
+        String text = Files.readString(plan);
+        assertTrue(text.contains("| " + data.get("plan") + " | closed | 1 of 1 | 0 compile_workspace: passed |"), text);
+        assertTrue(text.startsWith("# Plan\n\n<!-- board:begin -->\n") && text.endsWith("<!-- board:end -->\n\nAfter.\n"), text);
+        org.junit.jupiter.api.Assertions.assertFalse(text.contains("hand written"), "the old text between the markers stayed");
+    }
+
+    @Test
     @DisplayName("C16: the result is JOURNALLED — a row is read back, not a record file inspected")
     void theRunLandsInTheJournal() throws Exception {
         // THE CLAUSE THIS CLASS COULD NOT PREVIOUSLY FAIL ON. The evidence the C16 record CITED
