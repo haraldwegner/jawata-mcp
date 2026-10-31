@@ -13,7 +13,7 @@
     {"id": "credential-name-unlisted", "acl": "ACL6", "expect": "allow", "call": {"file_path": "${workspace}/credentials.json"}, "why": "nothing is inferred from a name the policy does not list"},
     {"id": "innocuous-name-listed", "acl": "ACL6", "expect": "deny", "call": {"file_path": "${workspace}/private/readme.txt"}, "why": "a listed place is refused whatever its file is called"},
     {"id": "prose-names-forbidden-file", "acl": "ACL7", "expect": "allow", "call": {"command": "git commit -m \"see ${home}/Documents/notes.txt for the reason\""}, "why": "a sentence is one quoted word, not a path"},
-    {"id": "summary-field-names-forbidden-file", "acl": "ACL7", "expect": "allow", "call": {"kind": "record", "summary": "the file ${home}/Documents/notes.txt was read once"}, "why": "a field that is not a path names nothing"},
+    {"id": "summary-field-names-forbidden-file", "acl": "ACL7", "expect": "allow", "call": {"kind": "record", "summary": "${home}/Documents/notes.txt was read once"}, "why": "a field that is not a path names nothing"},
     {"id": "heredoc-body-names-forbidden-file", "acl": "ACL7", "expect": "allow", "call": {"command": "cat <<EOF\n${home}/Documents/notes.txt\nEOF"}, "why": "a here-document body is data"},
     {"id": "command-opens-forbidden-file", "acl": "ACL7", "expect": "deny", "call": {"command": "cat ${home}/Documents/notes.txt"}, "why": "a call that opens the file names it"},
     {"id": "redirect-target", "acl": "ACL7", "expect": "deny", "call": {"command": "echo hi > ${home}/Documents/out.txt"}, "why": "the word after a redirection is a place"},
