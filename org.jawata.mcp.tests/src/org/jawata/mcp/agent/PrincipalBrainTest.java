@@ -151,13 +151,17 @@ class PrincipalBrainTest {
 
         java.util.Set<String> derived = PrincipalBrain.codeChangingTools(published);
 
-        assertTrue(derived.containsAll(List.of("rename_symbol", "extract", "move", "change_method_signature")), derived.toString());
+        assertTrue(derived.containsAll(List.of("rename_symbol", "extract", "move", "change_method_signature", "organize_imports")),
+            derived.toString());
+        assertTrue(derived.containsAll(List.of("format", "quick_fix", "refactoring", "dependency")),
+            "a tool that changes code but carries no destructiveHint was left to the lead: " + derived);
         assertTrue(java.util.Collections.disjoint(derived, List.of("inspect", "find_references", "search_symbols", "compile_workspace", "experience")),
             "a reading or checking tool was counted as rewriting source: " + derived);
         assertEquals(java.util.Set.of("x"), PrincipalBrain.codeChangingTools(List.of(
-            Map.of("name", "x", "annotations", Map.of("destructiveHint", true)),
-            Map.of("name", "y", "annotations", Map.of("destructiveHint", false)),
-            Map.of("name", "z"))), "CONTROL: the derivation reads the annotation and nothing else");
+            Map.of("name", "x", "_meta", Map.of("jawata/changesCode", true)),
+            Map.of("name", "y", "_meta", Map.of("jawata/changesCode", false)),
+            Map.of("name", "w", "annotations", Map.of("destructiveHint", true)),
+            Map.of("name", "z"))), "CONTROL: the derivation reads the published changesCode flag and nothing else");
     }
 
     @Test

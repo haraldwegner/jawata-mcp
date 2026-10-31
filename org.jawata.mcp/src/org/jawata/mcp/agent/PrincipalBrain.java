@@ -36,15 +36,6 @@ public final class PrincipalBrain implements AgentBrain {
     /** The host setting that names the brain to hire for the principal seat. */
     public static final String SETTING = "jawata.agent.brain";
 
-    /**
-     * The engine's published tools that write source files. The principal is a lead: it carries every other tool and none of these, so
-     * the code is changed by the seats that are allowed to, never by the one that decides.
-     */
-    static final Set<String> CODE_CHANGING_TOOLS = Set.of("rename_symbol", "extract", "inline", "move", "move_in_hierarchy", "move_method",
-        "change_method_signature", "encapsulate_field", "apply_cleanup", "apply_null_annotations", "generate", "refactor_to_pattern",
-        "convert_anonymous_to_lambda", "replace_duplicates", "organize_imports", "optimize_imports_workspace", "format", "data",
-        "hierarchy", "delete_anonymous_implementation", "quick_fix", "refactoring", "dependency");
-
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /**
@@ -99,16 +90,18 @@ public final class PrincipalBrain implements AgentBrain {
     }
 
     /**
-     * The published tools that rewrite source, read from what each tool says of itself ({@code annotations.destructiveHint}) instead of
-     * from a list kept here. The principal is a lead: it carries every other tool and none of these, so the code is changed by the seats
-     * that are allowed to, never by the one that decides, and a tool added later is held back from it the day it says it rewrites source.
+     * The published tools that change code, read from the flag each tool publishes of itself ({@code _meta."jawata/changesCode"}, the
+     * engine's own answer to "did this call change code?") instead of from a list kept here. The annotations cannot answer it:
+     * {@code destructiveHint} is absent for {@code format}, {@code quick_fix}, {@code refactoring} and {@code dependency}, which change
+     * code. The principal is a lead: it carries every other tool and none of these, so the code is changed by the seats that are allowed
+     * to, never by the one that decides, and a tool added later is held back from it the day it says it changes code.
      */
     @SuppressWarnings("unchecked")
     static Set<String> codeChangingTools(List<Map<String, Object>> definitions) {
         Set<String> names = new java.util.TreeSet<>();
         for (Map<String, Object> definition : definitions) {
-            Object annotations = definition.get("annotations");
-            if (annotations instanceof Map<?, ?> hints && Boolean.TRUE.equals(((Map<String, Object>) hints).get("destructiveHint"))) {
+            Object meta = definition.get("_meta");
+            if (meta instanceof Map<?, ?> published && Boolean.TRUE.equals(((Map<String, Object>) published).get("jawata/changesCode"))) {
                 names.add(String.valueOf(definition.get("name")));
             }
         }
