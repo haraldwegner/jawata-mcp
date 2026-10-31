@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.BrainDialect;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
@@ -33,6 +34,7 @@ import org.jawata.mcp.learn.LearnerEvent;
 import org.jawata.mcp.learn.PlanLedger;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.runtime.RuntimeArtifactStore;
+import org.jawata.spi.host.EngineSettings;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -124,6 +126,14 @@ public class HireTool extends NeutralTool {
     /** Where the accepted rules that bind a hired seat are read from, per hire (D45). */
     private final Supplier<ExperienceStore> rules;
 
+    /**
+     * The host setting that names, per brain, the program that speaks ACP: {@code {"claude-code":{"command":[...],"env":{...}},...}}. A brain
+     * without an entry is started the way it always was, by its own dialect's command line.
+     */
+    public static final String BRAINS_SETTING = "jawata.agent.hireBrains";
+
+    private final Supplier<EngineSettings> settings;
+
     /** Who hires whom (Sprint 28h, S12, D9): a hire between two seats of the signed tree is refused unless the hirer is the seat's parent. */
     private final Hirer hiring = new Hirer(SeatTree.standard(), Map.of(), Set.of());
 
@@ -150,19 +160,21 @@ public class HireTool extends NeutralTool {
             RuntimeArtifactStore artifacts, PlanLedger plans,
             Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> self) {
-        this(host, artifacts, plans, journal, registry, self, () -> null);
+        this(host, artifacts, plans, journal, registry, self, () -> null, () -> key -> java.util.Optional.empty());
     }
 
     /**
      * @param rules where the accepted rules a hired seat is bound by are read (Sprint 28g D45): a
      *     SUPPLIER that may answer null, for the same reason the journal's may — a degraded resident
      *     has no store, and a hire still goes ahead without its rules.
+     * @param settings TODO
      */
     public HireTool(HostProcesses host,
             RuntimeArtifactStore artifacts, PlanLedger plans,
             Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
-            Supplier<SelfEndpoint> self, Supplier<ExperienceStore> rules) {
+            Supplier<SelfEndpoint> self, Supplier<ExperienceStore> rules, Supplier<EngineSettings> settings) {
         this.rules = rules == null ? () -> null : rules;
+        this.settings = settings == null ? () -> key -> java.util.Optional.empty() : settings;
         if (host == null || artifacts == null || plans == null || journal == null
                 || registry == null) {
             throw new IllegalArgumentException("a hire needs a host to spawn on, somewhere to put"
@@ -418,8 +430,11 @@ public class HireTool extends NeutralTool {
         HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules);
         HiredRun.Proposal proposal;
         try {
+            // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
+            Optional<AcpBrainSession.Program> acp = settings.get().get(BRAINS_SETTING)
+                .flatMap(registryText -> AcpBrainSession.programFor(registryText, dialect.name()));
             proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()),
-                hiddenTools);
+                hiddenTools, acp);
         } catch (IOException e) {
             return ToolResponse.error("INTERNAL_ERROR",
                 "the brain could not be spawned: " + e.getMessage(),

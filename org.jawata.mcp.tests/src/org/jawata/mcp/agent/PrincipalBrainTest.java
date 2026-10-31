@@ -198,12 +198,12 @@ class PrincipalBrainTest {
     @Test
     @DisplayName("the setting names the brain: a command line is read, text that is not one names none")
     void theSettingNamesTheBrain() {
-        Optional<AcpBrainSession.Program> read = PrincipalBrain.parseProgram("{\"command\":[\"agent\",\"acp\"],\"env\":{\"K\":\"v\"}}");
+        Optional<AcpBrainSession.Program> read = AcpBrainSession.parseProgram("{\"command\":[\"agent\",\"acp\"],\"env\":{\"K\":\"v\"}}");
 
         assertEquals(List.of("agent", "acp"), read.orElseThrow().command());
         assertEquals(Map.of("K", "v"), read.orElseThrow().environment());
-        assertEquals(Optional.empty(), PrincipalBrain.parseProgram("not json"));
-        assertEquals(Optional.empty(), PrincipalBrain.parseProgram("{\"command\":[]}"));
+        assertEquals(Optional.empty(), AcpBrainSession.parseProgram("not json"));
+        assertEquals(Optional.empty(), AcpBrainSession.parseProgram("{\"command\":[]}"));
     }
 
     @Test

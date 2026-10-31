@@ -9,9 +9,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.execution.AcpBrainSession.Program;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.knowledge.SeatRules;
@@ -169,6 +171,17 @@ public final class HiredRun {
      */
     public Proposal issue(SeatHire seat, HireSite base, String brief, List<GatedStep> steps,
             GateRunner gates, List<String> hiddenTools) throws IOException, InterruptedException {
+        return issue(seat, base, brief, steps, gates, hiddenTools, Optional.empty());
+    }
+
+    /**
+     * The same hire, started through the engine's ACP client when the brain has a program that speaks ACP (S12, D1): the one start path.
+     * With none the brain is started the way it always was, by its dialect's own command line.
+     *
+     * @param acp the program that starts this seat's brain over ACP, or empty
+     */
+    public Proposal issue(SeatHire seat, HireSite base, String brief, List<GatedStep> steps,
+            GateRunner gates, List<String> hiddenTools, Optional<Program> acp) throws IOException, InterruptedException {
         BrainDialect dialect = seat.dialect(self, hiddenTools);
         WriteContainment containment = dialect.writeContainment();
         if (!containment.isContained() && !seat.acceptsUncontainedWrites()) {
@@ -194,7 +207,7 @@ public final class HiredRun {
         PlanId plan = plans.open(planned);
         try {
             BrainDialect asThisHire = seat.dialect(self == null ? null : self.forSession(plan.value()), hiddenTools);
-            return conduct(asThisHire, base, seat.prompt(brief, binding), seat.tools(), seat.ceilings(), gates, planned, plan, seat.model());
+            return conduct(asThisHire, base, seat.prompt(brief, binding), seat.tools(), seat.ceilings(), gates, planned, plan, seat.model(), acp);
         } finally {
             plans.close(plan);
         }
@@ -245,7 +258,7 @@ public final class HiredRun {
         // a brain edits through its OWN tools: no gate reports those writes, no tap sees them, and
         // the brain's answer is prose. The directory before and after is the only witness.
         try {
-            return conduct(dialect, base, brief, tools, ceilings, declaredGates, planned, plan, null);
+            return conduct(dialect, base, brief, tools, ceilings, declaredGates, planned, plan, null, java.util.Optional.empty());
         } finally {
             // THE HIRE HAS ENDED, WHATEVER HOW: its plan ends with it. A plan left open after its hire finished (a gate refused, the brain
             // could not start) would be reported pending at every turn end of every session for as long as the ledger remembered it.
@@ -254,13 +267,18 @@ public final class HiredRun {
     }
 
     private Proposal conduct(BrainDialect dialect, HireSite base, String brief, List<String> tools,
-            HiredBrain.Ceilings ceilings, GateRunner declaredGates, List<GatedStep> planned, PlanId plan, String model)
+            HiredBrain.Ceilings ceilings, GateRunner declaredGates, List<GatedStep> planned, PlanId plan, String model, Optional<Program> acp)
             throws IOException, InterruptedException {
         TreeAttribution census = base.workingDirectory() == null
             ? null
             : TreeAttribution.before(host, base.workingDirectory());
 
-        HiredBrain.Outcome outcome = HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
+        // THE ONE START PATH (S12): a brain with a program that speaks ACP is run through the engine's ACP client, under this plan's own
+        // session id, with the seat's tools as its allowlist (an empty list allows none); any other brain is started by its dialect.
+        HiredBrain.Outcome outcome = acp.isPresent()
+            ? AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
+                Optional.empty(), ceilings, null, null)
+            : HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
 
         // Taken immediately, before the gates run. A gate is a jawata tool and may legitimately
         // rewrite files itself, and folding its edits into the BRAIN's attribution would blame the

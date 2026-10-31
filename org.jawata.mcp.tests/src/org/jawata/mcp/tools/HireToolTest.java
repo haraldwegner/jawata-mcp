@@ -1427,4 +1427,80 @@ class HireToolTest {
             () -> assertTrue(String.valueOf(score.get("because")).contains("holds no hired-run row")));
     }
 
+    /** The stand-in ACP agent the engine's own client tests use, copied into this test's folder; the program that starts it. */
+    private Map<String, Object> theStandInAcpProgram() throws Exception {
+        Path source = dir.resolve("FakeAcpAgent.java");
+        try (java.io.InputStream in = HireToolTest.class.getResourceAsStream("/test-resources/acp/FakeAcpAgent.java.txt")) {
+            org.junit.jupiter.api.Assertions.assertNotNull(in, "the stand-in ACP agent is not among the test resources");
+            Files.write(source, in.readAllBytes());
+        }
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        return Map.of("command", List.of(java, source.toString()), "env", Map.of("FAKE_ACP_STATE", dir.toString()));
+    }
+
+    /** A host that records every command it is asked to start and runs the real one, or refuses it when told to. */
+    private HostProcesses aHostRecording(List<List<String>> started, boolean refuse) {
+        return new HostProcesses() {
+            @Override
+            public Process start(HostCommand command) throws IOException {
+                started.add(command.argv());
+                if (refuse) {
+                    throw new IOException("no such brain on this machine");
+                }
+                return host.start(command);
+            }
+
+            @Override
+            public HostProcessOutcome run(HostCommand command) throws InterruptedException {
+                return host.run(command);
+            }
+
+            @Override
+            public List<String> executableCandidates(String base) {
+                return host.executableCandidates(base);
+            }
+
+            @Override
+            public List<String> wrapperNames(String base) {
+                return host.wrapperNames(base);
+            }
+        };
+    }
+
+    private HireTool toolWithBrainsSetting(HostProcesses processes, String registryJson) {
+        return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
+            () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
+            () -> key -> HireTool.BRAINS_SETTING.equals(key) && registryJson != null ? java.util.Optional.of(registryJson) : java.util.Optional.empty());
+    }
+
+    @Test
+    @DisplayName("S12: a brain the host setting gives an ACP program is started through the engine's ACP client, and its own command line is never run")
+    void aBrainWithAnAcpProgramIsStartedOverAcp() throws Exception {
+        Map<String, Object> program = theStandInAcpProgram();
+        List<List<String>> started = new java.util.ArrayList<>();
+        HireTool hire = toolWithBrainsSetting(aHostRecording(started, false), JSON.writeValueAsString(Map.of("claude-code", program)));
+
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(Boolean.TRUE, data.get("complete"), String.valueOf(data)),
+            () -> assertEquals(1, started.size(), "one brain was started: " + started),
+            () -> assertEquals(program.get("command"), started.get(0), "the brain started was not the ACP program: " + started));
+    }
+
+    @Test
+    @DisplayName("S12, the control: the same hire with no program for its brain is started by the brain's own dialect, so the test above sees the setting and nothing else")
+    void aBrainWithoutAnAcpProgramIsStartedByItsDialect() throws Exception {
+        Map<String, Object> program = theStandInAcpProgram();
+        List<List<String>> started = new java.util.ArrayList<>();
+        HireTool hire = toolWithBrainsSetting(aHostRecording(started, true), null);
+
+        ToolResponse response = hire.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+
+        assertAll(
+            () -> assertFalse(response.isSuccess(), "the brain's own command was refused by the host, so the hire must say it failed"),
+            () -> assertEquals(1, started.size(), String.valueOf(started)),
+            () -> assertFalse(started.get(0).equals(program.get("command")), "the ACP program was started with no setting naming it: " + started));
+    }
+
 }

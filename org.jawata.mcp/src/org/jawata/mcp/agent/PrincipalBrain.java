@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -22,7 +21,6 @@ import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.spi.host.McpEndpoint;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * What answers a host's prompt (Sprint 28h, S7a, D1): the principal seat, main, run in a hired brain through the engine's ACP client. The
@@ -37,8 +35,6 @@ public final class PrincipalBrain implements AgentBrain {
 
     /** The host setting that names the brain to hire for the principal seat. */
     public static final String SETTING = "jawata.agent.brain";
-
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     /**
      * One answered prompt, as the hire record says it.
@@ -88,7 +84,7 @@ public final class PrincipalBrain implements AgentBrain {
      * connection.
      */
     public static PrincipalBrain over(EngineApi engine, Path workingDirectory) {
-        Optional<AcpBrainSession.Program> program = engine.settings().get(SETTING).flatMap(PrincipalBrain::parseProgram);
+        Optional<AcpBrainSession.Program> program = engine.settings().get(SETTING).flatMap(AcpBrainSession::parseProgram);
         SelfEndpoint self = engine.mcp().map(PrincipalBrain::endpointOf).orElse(null);
         List<Map<String, Object>> definitions = engine.tools().getToolDefinitions();
         List<String> tools = definitions.stream().map(d -> String.valueOf(d.get("name"))).toList();
@@ -118,23 +114,6 @@ public final class PrincipalBrain implements AgentBrain {
 
     private static SelfEndpoint endpointOf(McpEndpoint endpoint) {
         return new SelfEndpoint(endpoint.url().toString(), endpoint.key().orElse(""));
-    }
-
-    /** The program a setting names, or none when the text is not a command line (a setting that is wrong names no brain). */
-    static Optional<AcpBrainSession.Program> parseProgram(String setting) {
-        try {
-            JsonNode root = JSON.readTree(setting);
-            List<String> command = new ArrayList<>();
-            root.path("command").forEach(part -> command.add(part.asText()));
-            if (command.isEmpty()) {
-                return Optional.empty();
-            }
-            Map<String, String> env = new LinkedHashMap<>();
-            root.path("env").properties().forEach(entry -> env.put(entry.getKey(), entry.getValue().asText()));
-            return Optional.of(new AcpBrainSession.Program(command, env));
-        } catch (IOException e) {
-            return Optional.empty();
-        }
     }
 
     @Override

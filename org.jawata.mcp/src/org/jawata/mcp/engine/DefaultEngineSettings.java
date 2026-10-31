@@ -21,7 +21,8 @@ public final class DefaultEngineSettings implements EngineSettings {
         "jawata.agent.brain", "JAWATA_AGENT_BRAIN",
         "jawata.agent.recording", "JAWATA_AGENT_RECORDING",
         "jawata.agent.reviewer", "JAWATA_AGENT_REVIEWER",
-        "jawata.agent.reviewerRules", "JAWATA_AGENT_REVIEWER_RULES");
+        "jawata.agent.reviewerRules", "JAWATA_AGENT_REVIEWER_RULES",
+        "jawata.agent.hireBrains", "JAWATA_AGENT_HIRE_BRAINS");
 
     @Override
     public Optional<String> get(String key) {

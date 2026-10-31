@@ -58,7 +58,7 @@ final class BrainReviewer implements ReviewBeforeSend.Reviewer {
         if (settings == null) {
             return Optional.empty();
         }
-        return settings.get(SETTING).flatMap(PrincipalBrain::parseProgram).map(program -> new BrainReviewer(HostProcesses.system(), program,
+        return settings.get(SETTING).flatMap(AcpBrainSession::parseProgram).map(program -> new BrainReviewer(HostProcesses.system(), program,
             HireSite.in(workingDirectory), () -> rulesFrom(settings.get(RULES_SETTING)), HiredBrain.Ceilings.of(Duration.ofMinutes(5))));
     }
 

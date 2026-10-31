@@ -105,7 +105,11 @@ public final class ShippedTools {
             Supplier<LearnerEventStore> learnerEvents,
             Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> selfEndpoint,
-            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn) {
+            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn, Supplier<org.jawata.spi.host.EngineSettings> settings) {
+
+        public Wiring(HostWorkspace workspace, Supplier<Boolean> projectLoaded, Supplier<Integer> toolCount, Supplier<ProjectLoadingState> loadingState, Supplier<String> loadingError, Supplier<Path> fieldDir, Supplier<InFlightCalls> inFlight, RefactoringChangeCache changeCache, ExperienceStore experienceStore, Supplier<ExperienceStore> storeSupplier, Supplier<EmbeddingIndex> embeddingIndex, RuntimeSessionRegistry runtimeSessions, Supplier<LearnerEventStore> learnerEvents, Supplier<ToolRegistry> registry, Supplier<SelfEndpoint> selfEndpoint, Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn) {
+            this(workspace, projectLoaded, toolCount, loadingState, loadingError, fieldDir, inFlight, changeCache, experienceStore, storeSupplier, embeddingIndex, runtimeSessions, learnerEvents, registry, selfEndpoint, defaultMemoryRoots, reconciler, runtimeArtifacts, coverage, debugTurn, () -> key -> java.util.Optional.empty());
+        }
     }
 
     /**
@@ -188,7 +192,7 @@ public final class ShippedTools {
         tools.add(new HireTool(HostProcesses.system(),
             w.runtimeArtifacts(),
             planLedger,
-            w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore));
+            w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore, w.settings()));
         tools.add(new PlanStepsTool(planLedger));
         // plan_board draws the same ledger into the sprint's plan file, so the file a person reads is the ledger's word (S10, D18).
         tools.add(new PlanBoardTool(planLedger));

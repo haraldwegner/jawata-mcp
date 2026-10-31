@@ -50,6 +50,39 @@ public final class AcpBrainSession {
     }
 
     /**
+     * The program a setting names: {@code {"command":[...],"env":{...}}}. None when the text is not a command line (a setting that is wrong
+     * names no brain). The one reader of that form, for the principal's brain, the reviewer's and every hired seat's.
+     */
+    public static Optional<Program> parseProgram(String setting) {
+        try {
+            JsonNode root = JSON.readTree(setting);
+            List<String> command = new ArrayList<>();
+            root.path("command").forEach(part -> command.add(part.asText()));
+            if (command.isEmpty()) {
+                return Optional.empty();
+            }
+            Map<String, String> env = new LinkedHashMap<>();
+            root.path("env").properties().forEach(entry -> env.put(entry.getKey(), entry.getValue().asText()));
+            return Optional.of(new Program(command, env));
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * The program one brain has in a registry setting: {@code {"<brain>":{"command":[...],"env":{...}},...}}, where the brain is named the
+     * way its dialect names itself. None when the text is not JSON, the brain has no entry, or its entry is not a command line.
+     */
+    public static Optional<Program> programFor(String registry, String brain) {
+        try {
+            JsonNode entry = JSON.readTree(registry).path(brain);
+            return entry.isObject() ? parseProgram(entry.toString()) : Optional.empty();
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
      * What it takes to start a brain that speaks ACP: the command line the brain's own installation defines, and the variables it needs
      * beyond the resident's. Per brain, never per call.
      */

@@ -521,7 +521,7 @@ public class JawataEngine {
 				() -> reconciler, new org.jawata.mcp.runtime.RuntimeArtifactStore(this.host().directories().runtimeDir()),
 				new org.jawata.mcp.coverage.CoverageService(
 						new org.jawata.mcp.coverage.CoverageStore(this.host().directories().coverageDir())),
-						this.host().instruments().debugTurn()),
+						this.host().instruments().debugTurn(), () -> this.host().settings()),
 				ports);
 
 		// Kept for what reads them later: the quality ledger's reach to the pre-advice surface (wired in assemble()), and the
