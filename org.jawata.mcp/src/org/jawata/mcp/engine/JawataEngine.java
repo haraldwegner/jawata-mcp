@@ -34,6 +34,9 @@ public class JawataEngine {
 	 * launched JVM with nobody left to reap it is an orphan.
 	 */
 	private RuntimeSessionRegistry runtimeSessions;
+
+	/** The one plan ledger: the hire path opens plans in it and the per-step action ceiling reads it (Sprint 28h, S12, D18), so both hold the same state. */
+	private final org.jawata.mcp.learn.PlanLedger planLedger = new org.jawata.mcp.learn.PlanLedger();
 	private ToolRegistry toolRegistry;
 	private ExperienceStore experienceStore;
 	/**
@@ -521,7 +524,7 @@ public class JawataEngine {
 				() -> reconciler, new org.jawata.mcp.runtime.RuntimeArtifactStore(this.host().directories().runtimeDir()),
 				new org.jawata.mcp.coverage.CoverageService(
 						new org.jawata.mcp.coverage.CoverageStore(this.host().directories().coverageDir())),
-						this.host().instruments().debugTurn(), () -> this.host().settings()),
+						this.host().instruments().debugTurn(), () -> this.host().settings(), this.planLedger),
 				ports);
 
 		// Kept for what reads them later: the quality ledger's reach to the pre-advice surface (wired in assemble()), and the
@@ -907,7 +910,7 @@ public class JawataEngine {
 							log.error("DEFECT FILING FAILED — the relax label is now" + " unaccompanied: {}", summary,
 									e);
 						}
-					});
+					}, org.jawata.mcp.change.OperationRegistry.theRegistry(), this.planLedger);
 			getToolRegistry().setServerChecks(serverChecks);
 			sessionLedger.setEvictionListener(serverChecks::onSessionEvicted);
 			// Sprint 26a D4 / v3.3.1: the edit-switch model is RETIRED and its

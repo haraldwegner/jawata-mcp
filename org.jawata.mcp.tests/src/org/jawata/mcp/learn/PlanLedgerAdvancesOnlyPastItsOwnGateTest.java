@@ -226,7 +226,10 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
                 // moves a step, so the one-member rule for the step still holds. view() below is its read.
                 "close(PlanId)",
                 // S10: a READ of every plan, open or closed, as copies, so the board is drawn from the ledger and from nothing else.
-                "view()")),
+                "view()",
+                // S12 slice 4 (D18): open(List,int) is open(List) with a per-step ceiling, a plan's birth and no step movement; stepBudget(String)
+                // is a READ that hands back a copy (which step, which gate, how many calls, from when), so the one-member rule for the step holds.
+                "open(List,int)", "stepBudget(String)")),
             published,
             "a member ARRIVING here is how an external write gets in, so the set is pinned"
                 + " rather than merely counted — and pinned by SIGNATURE, so an overload"

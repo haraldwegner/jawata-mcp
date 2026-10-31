@@ -232,8 +232,7 @@ class LspRouteASpikeTest {
         String brokenText = "package com.example;\nclass Broken {\n    int x = \"text\";\n}\n";
         Files.writeString(broken, brokenText);
         long loadStart = System.nanoTime();
-        JdtServiceImpl service = new JdtServiceImpl();
-        helper.disposeAfter(service);
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(copy);
         obs("maven load " + TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - loadStart) + " ms, projects=" + service.projects());
         processEvidence("maven-before");

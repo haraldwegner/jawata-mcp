@@ -127,9 +127,68 @@ public final class PlanLedger {
         /** Set when the plan's work has ended, by {@link PlanLedger#close}; a closed plan is remembered and never pending. */
         private boolean closed;
 
-        Entry(List<GatedStep> steps) {
+        /** How many engine calls one step may spend before its gate passes, or 0 for no ceiling (D18). */
+        private final int perStepCeiling;
+
+        /** When the step now being worked began: the plan's opening, then each advance. Engine calls from this moment count against the ceiling. */
+        private long stepStartedAt;
+
+        Entry(List<GatedStep> steps, int perStepCeiling, long openedAt) {
             this.steps = steps;
+            this.perStepCeiling = perStepCeiling;
+            this.stepStartedAt = openedAt;
         }
+    }
+
+    /**
+     * The step a hired session is working and what it may still spend on it (D18): which gate would move the plan, how many engine calls
+     * the step is allowed, and from when they count. Built from the ledger's own state, so the ceiling and the plan cannot disagree.
+     *
+     * @param plan    the plan, whose value is the hired brain's session id
+     * @param gate    the step whose gate has not passed yet
+     * @param ceiling engine calls the step may spend before its gate passes
+     * @param since   the clock reading at which the step began
+     */
+    public record StepBudget(PlanId plan, GatedStep gate, int ceiling, long since) {
+    }
+
+    /** The prefix of a step that gates the seat's ANSWER, not the tree: it can pass only once the brain has answered, so no ceiling applies while it is current. */
+    public static final String ANSWER_GATE_PREFIX = "answer_gate:";
+
+    private final java.util.function.LongSupplier clock;
+
+    public PlanLedger() {
+        this(System::currentTimeMillis);
+    }
+
+    /** @param clock the reading a step's start is stamped with; the same clock as the session ledger's call stamps, so a test can set both */
+    public PlanLedger(java.util.function.LongSupplier clock) {
+        this.clock = Objects.requireNonNull(clock);
+    }
+
+    /**
+     * The budget of the step this session is working, or empty when no ceiling applies: the session is no plan's, the plan is closed or has
+     * no step left, no ceiling was set, or the current step gates the seat's answer.
+     *
+     * @param sessionId the caller's session id; a hired brain's is its plan's value (S3, D30)
+     */
+    public synchronized Optional<StepBudget> stepBudget(String sessionId) {
+        if (sessionId == null) {
+            return Optional.empty();
+        }
+        for (Map.Entry<PlanId, Entry> plan : plans.entrySet()) {
+            if (!plan.getKey().value().equals(sessionId)) {
+                continue;
+            }
+            Entry entry = plan.getValue();
+            int next = entry.currentStep + 1;
+            if (entry.closed || entry.perStepCeiling <= 0 || next >= entry.steps.size()
+                    || entry.steps.get(next).tool().startsWith(ANSWER_GATE_PREFIX)) {
+                return Optional.empty();
+            }
+            return Optional.of(new StepBudget(plan.getKey(), entry.steps.get(next), entry.perStepCeiling, entry.stepStartedAt));
+        }
+        return Optional.empty();
     }
 
     private final LinkedHashMap<PlanId, Entry> plans =
@@ -152,7 +211,16 @@ public final class PlanLedger {
      *     with its own indices cannot be walked by a derived index, which is the
      *     only way this type advances
      */
-    public synchronized PlanId open(List<GatedStep> steps) {
+    public PlanId open(List<GatedStep> steps) {
+        return open(steps, 0);
+    }
+
+    /**
+     * The same, with a per-step action ceiling (D18): how many engine calls a hired session may spend on one step before that step's gate has
+     * passed. Zero means no ceiling. The count itself is read from the session ledger by {@code ServerChecks}; this class only knows where
+     * each step began.
+     */
+    public synchronized PlanId open(List<GatedStep> steps, int perStepCeiling) {
         Objects.requireNonNull(steps, "a plan with no steps is not a plan");
         if (steps.isEmpty()) {
             throw new IllegalArgumentException("a plan with no steps has nothing to gate");
@@ -166,7 +234,7 @@ public final class PlanLedger {
             }
         }
         PlanId id = PlanId.mint();
-        plans.put(id, new Entry(List.copyOf(steps)));
+        plans.put(id, new Entry(List.copyOf(steps), Math.max(0, perStepCeiling), clock.getAsLong()));
         return id;
     }
 
@@ -222,6 +290,7 @@ public final class PlanLedger {
                     + " error(s), so it did not pass");
         }
         entry.currentStep = next;
+        entry.stepStartedAt = clock.getAsLong();
         return Advance.moved(next);
     }
 

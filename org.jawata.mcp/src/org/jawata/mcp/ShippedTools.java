@@ -105,10 +105,14 @@ public final class ShippedTools {
             Supplier<LearnerEventStore> learnerEvents,
             Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> selfEndpoint,
-            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn, Supplier<org.jawata.spi.host.EngineSettings> settings) {
+            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn, Supplier<org.jawata.spi.host.EngineSettings> settings, org.jawata.mcp.learn.PlanLedger plans) {
 
         public Wiring(HostWorkspace workspace, Supplier<Boolean> projectLoaded, Supplier<Integer> toolCount, Supplier<ProjectLoadingState> loadingState, Supplier<String> loadingError, Supplier<Path> fieldDir, Supplier<InFlightCalls> inFlight, RefactoringChangeCache changeCache, ExperienceStore experienceStore, Supplier<ExperienceStore> storeSupplier, Supplier<EmbeddingIndex> embeddingIndex, RuntimeSessionRegistry runtimeSessions, Supplier<LearnerEventStore> learnerEvents, Supplier<ToolRegistry> registry, Supplier<SelfEndpoint> selfEndpoint, Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn) {
             this(workspace, projectLoaded, toolCount, loadingState, loadingError, fieldDir, inFlight, changeCache, experienceStore, storeSupplier, embeddingIndex, runtimeSessions, learnerEvents, registry, selfEndpoint, defaultMemoryRoots, reconciler, runtimeArtifacts, coverage, debugTurn, () -> key -> java.util.Optional.empty());
+        }
+
+        public Wiring(HostWorkspace workspace, Supplier<Boolean> projectLoaded, Supplier<Integer> toolCount, Supplier<ProjectLoadingState> loadingState, Supplier<String> loadingError, Supplier<Path> fieldDir, Supplier<InFlightCalls> inFlight, RefactoringChangeCache changeCache, ExperienceStore experienceStore, Supplier<ExperienceStore> storeSupplier, Supplier<EmbeddingIndex> embeddingIndex, RuntimeSessionRegistry runtimeSessions, Supplier<LearnerEventStore> learnerEvents, Supplier<ToolRegistry> registry, Supplier<SelfEndpoint> selfEndpoint, Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn, Supplier<org.jawata.spi.host.EngineSettings> settings) {
+            this(workspace, projectLoaded, toolCount, loadingState, loadingError, fieldDir, inFlight, changeCache, experienceStore, storeSupplier, embeddingIndex, runtimeSessions, learnerEvents, registry, selfEndpoint, defaultMemoryRoots, reconciler, runtimeArtifacts, coverage, debugTurn, settings, new org.jawata.mcp.learn.PlanLedger());
         }
     }
 
@@ -188,7 +192,7 @@ public final class ShippedTools {
         // and refuses with that reason; the third is this resident's own endpoint.
         // The hire path opens plans and only a passing gate moves them; plan_steps reads the SAME ledger, so "is a step pending?" has one
         // answer, held in one place (S8, D18).
-        PlanLedger planLedger = new PlanLedger();
+        PlanLedger planLedger = w.plans();
         tools.add(new HireTool(HostProcesses.system(),
             w.runtimeArtifacts(),
             planLedger,

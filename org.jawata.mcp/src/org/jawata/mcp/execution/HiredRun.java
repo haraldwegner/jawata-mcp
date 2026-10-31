@@ -204,7 +204,7 @@ public final class HiredRun {
         // a history of their own instead of the one every caller that sends no session id shares, and a check of "this session" is about
         // this brain and no other agent. The first dialect above only answered the containment question, which does not depend on it.
         List<GatedStep> planned = withAnswerGates(steps, seat.answerGates());
-        PlanId plan = plans.open(planned);
+        PlanId plan = plans.open(planned, perStepCeiling(seat.ceilings(), planned.size()));
         try {
             BrainDialect asThisHire = seat.dialect(self == null ? null : self.forSession(plan.value()), hiddenTools);
             return conduct(asThisHire, base, seat.prompt(brief, binding), seat.tools(), seat.ceilings(), gates, planned, plan, seat.model(), acp);
@@ -266,6 +266,75 @@ public final class HiredRun {
         }
     }
 
+    /**
+     * THE PLAN'S STEP MOVES WHILE THE BRAIN WORKS (Sprint 28h, S12, D18). On the ACP start path the client reports every tool call the brain
+     * makes, including its own Edit and Write that no engine gate ever sees; after each COMPLETED call of an editing kind this runs the plan's
+     * current step's gate through the same {@link GateRunner} the end-of-hire loop uses and lets the ledger rule on it, so a step whose gate
+     * passes is passed at that moment, the per-step ceiling counts from there, and the end-of-hire loop resumes at the ledger's current step
+     * instead of at the first.
+     *
+     * <p>It does nothing while the current step gates the seat's ANSWER (that gate can pass only after the answer exists), and a gate that
+     * fails is not recorded here: the end-of-hire loop runs it again and records that attempt, so a brain that edits ten times against a
+     * red gate leaves one failed row, not ten. Calls arrive one at a time on the client's read thread, so gates never run beside each other;
+     * the method is synchronized anyway so that stays true if that changes.</p>
+     */
+    private final class LiveGates implements java.util.function.Consumer<com.fasterxml.jackson.databind.JsonNode> {
+
+        private static final java.util.Set<String> EDITING = java.util.Set.of("edit", "move", "delete");
+
+        private final PlanId plan;
+        private final GateRunner gates;
+        private final Map<String, String> kinds = new java.util.HashMap<>();
+        private final List<GateOutcome> passed = new ArrayList<>();
+
+        LiveGates(PlanId plan, GateRunner gates) {
+            this.plan = plan;
+            this.gates = gates;
+        }
+
+        @Override
+        public synchronized void accept(com.fasterxml.jackson.databind.JsonNode update) {
+            String callId = update.path("toolCallId").asText("");
+            String kind = update.path("kind").asText("");
+            if (!kind.isEmpty()) {
+                kinds.put(callId, kind);
+            }
+            if (!"completed".equals(update.path("status").asText("")) || !EDITING.contains(kinds.getOrDefault(callId, ""))) {
+                return;
+            }
+            Optional<GatedStep> next = plans.nextStep(plan);
+            if (next.isEmpty() || next.get().tool().startsWith(PlanLedger.ANSWER_GATE_PREFIX)) {
+                return;
+            }
+            try {
+                GateOutcome gate = gates.run(next.get());
+                if (plans.advanceIfGatePassed(plan, gate).advanced()) {
+                    passed.add(gate);
+                }
+            } catch (RuntimeException e) {
+                // a gate that could not run is not a pass; the end-of-hire loop runs it again and says what happened
+            }
+        }
+
+        synchronized List<GateOutcome> passed() {
+            return List.copyOf(passed);
+        }
+    }
+
+    /**
+     * The per-step action ceiling for a plan (D18): the seat's own run-wide tool ceiling ({@code max_tool_steps}, which the spec names as the
+     * ceiling D18 enforces) spread over the plan's steps, rounded up, so a step cannot spend the whole run's allowance before its gate has
+     * passed and the steps together stay near the run's. Zero when the seat set no ceiling. DECIDED here because the spec gives no separate
+     * number: a new frontmatter key would be a second place a budget is set (D-SIX), the same reason the model registry's budget was dropped in
+     * slice 1.
+     */
+    static int perStepCeiling(HiredBrain.Ceilings ceilings, int stepCount) {
+        if (ceilings == null || ceilings.maxToolSteps() <= 0) {
+            return 0;
+        }
+        return (int) Math.ceil(ceilings.maxToolSteps() / (double) Math.max(1, stepCount));
+    }
+
     private Proposal conduct(BrainDialect dialect, HireSite base, String brief, List<String> tools,
             HiredBrain.Ceilings ceilings, GateRunner declaredGates, List<GatedStep> planned, PlanId plan, String model, Optional<Program> acp)
             throws IOException, InterruptedException {
@@ -275,9 +344,10 @@ public final class HiredRun {
 
         // THE ONE START PATH (S12): a brain with a program that speaks ACP is run through the engine's ACP client, under this plan's own
         // session id, with the seat's tools as its allowlist (an empty list allows none); any other brain is started by its dialect.
+        LiveGates live = acp.isPresent() ? new LiveGates(plan, declaredGates) : null;
         HiredBrain.Outcome outcome = acp.isPresent()
             ? AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                Optional.empty(), ceilings, null, null)
+                Optional.empty(), ceilings, null, live)
             : HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
 
         // Taken immediately, before the gates run. A gate is a jawata tool and may legitimately
@@ -293,10 +363,16 @@ public final class HiredRun {
         // refusal is deliberate: a plan's steps are ordered, so a step whose gate
         // did not pass makes every later verdict a statement about a tree that was
         // never reached.
-        List<GateOutcome> ran = new ArrayList<>();
+        // Steps the live gates already passed while the brain worked are in the list, in order, and the ledger holds how far the plan got:
+        // the loop resumes after that step, so none runs twice. On any other start path nothing ran live and the loop starts at the first.
+        List<GateOutcome> ran = new ArrayList<>(live == null ? List.of() : live.passed());
         List<String> answerRefusals = new ArrayList<>();
-        PlanLedger.Advance last = null;
+        int alreadyPassed = plans.currentStep(plan).orElse(-1);
+        PlanLedger.Advance last = alreadyPassed >= 0 ? new PlanLedger.Advance(true, alreadyPassed, null) : null;
         for (GatedStep step : planned) {
+            if (step.index() <= alreadyPassed) {
+                continue;
+            }
             GateOutcome gate;
             if (UpwardMessageGate.STEP.equals(step.tool())) {
                 List<String> refusals = UpwardMessageGate.refusals(outcome.text());

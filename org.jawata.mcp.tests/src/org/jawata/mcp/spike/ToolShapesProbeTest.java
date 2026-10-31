@@ -39,8 +39,7 @@ class ToolShapesProbeTest {
         Path hello = copy.resolve("src/main/java/com/example/HelloWorld.java");
         Path broken = hello.resolveSibling("Broken.java");
         Files.writeString(broken, "package com.example;\nclass Broken {\n    int x = \"text\";\n}\n");
-        JdtServiceImpl service = new JdtServiceImpl();
-        helper.disposeAfter(service);
+        JdtServiceImpl service = helper.disposeAfter(new JdtServiceImpl());
         service.loadProject(copy);
         ObjectNode at = JSON.createObjectNode().put("filePath", hello.toString()).put("line", 52).put("column", 16);
         show("hover", new GetHoverInfoTool(() -> service).execute(at));

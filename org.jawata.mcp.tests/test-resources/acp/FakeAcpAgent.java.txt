@@ -65,7 +65,21 @@ public class FakeAcpAgent {
         String session = field(line, "sessionId");
         String text = field(line, "text");
         Path memory = state.resolve(session + ".txt");
-        if (text.startsWith("REMEMBER:")) {
+        if (text.contains("EDITS:")) {
+            // the brain edits N times, each call reported as pending and then completed (an editing kind, as a real brain's own Edit is), then waits
+            // 700 ms, drops $FAKE_ACP_STATE/answered.marker and ANSWERS: a gate that ran for a step before the marker ran while the brain worked
+            int edits = Integer.parseInt(text.substring(text.indexOf("EDITS:") + "EDITS:".length()).trim().split("\\D")[0]);
+            for (int i = 1; i <= edits; i++) {
+                send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                    + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"e" + i
+                    + "\",\"title\":\"Edit\",\"kind\":\"edit\",\"status\":\"pending\",\"rawInput\":{}}}}");
+                send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                    + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"e" + i + "\",\"status\":\"completed\"}}}");
+            }
+            Thread.sleep(700);
+            Files.writeString(state.resolve("answered.marker"), "answered");
+            chunk(session, "edited");
+        } else if (text.startsWith("REMEMBER:")) {
             Files.writeString(memory, text.substring("REMEMBER:".length()));
             chunk(session, "noted");
         } else if (text.startsWith("RECALL")) {
