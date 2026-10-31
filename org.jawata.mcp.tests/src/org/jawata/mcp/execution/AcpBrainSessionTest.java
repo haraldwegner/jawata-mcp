@@ -79,6 +79,17 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("S7a: a brain that refuses a session with 'Authentication required' and lists a login method is logged in with that method and then answers, as Cursor's agent requires")
+    void aBrainThatAsksForLoginIsLoggedIn() throws Exception {
+        agent = new AcpBrainSession.Program(agent.command(), Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_LOGIN", "1"));
+
+        HiredBrain.Outcome outcome = hire("REMEMBER:bluebird");
+
+        assertEquals("noted", outcome.text(), "the brain refused the session and the client never logged in; stderr " + outcome.stderrTail());
+        assertTrue(outcome.brainSessionId().isPresent(), "no session was opened after the login");
+    }
+
+    @Test
     @DisplayName("D4: a second hire given the first one's session id answers what only the first saw, and the replayed history is not its answer")
     void aSecondHireKnowsWhatTheFirstSaw() throws Exception {
         String first = hire("REMEMBER:bluebird").brainSessionId().orElseThrow();
@@ -103,6 +114,19 @@ class AcpBrainSessionTest {
         assertTrue(outcome.text().contains("http://127.0.0.1:41234/mcp"), outcome.text());
         assertTrue(outcome.text().contains("Bearer secret-key"), outcome.text());
         assertEquals("[]", hire("SERVERS").text(), "CONTROL: a hire with no endpoint was still given a tool server");
+    }
+
+    @Test
+    @DisplayName("S3, D30: an endpoint bound to a session hands the brain that session id as a header on the tool server, and an unbound one hands none")
+    void aSessionBoundEndpointSendsItsSessionHeader() throws Exception {
+        SelfEndpoint bound = new SelfEndpoint("http://127.0.0.1:41234/mcp", "secret-key").forSession("plan-7");
+
+        String with = hire("SERVERS", List.of(), Optional.empty(), HiredBrain.Ceilings.of(Duration.ofSeconds(60)), bound).text();
+        String without = hire("SERVERS", List.of(), Optional.empty(), HiredBrain.Ceilings.of(Duration.ofSeconds(60)),
+            new SelfEndpoint("http://127.0.0.1:41234/mcp", "secret-key")).text();
+
+        assertTrue(with.contains("Mcp-Session-Id") && with.contains("plan-7"), with);
+        assertFalse(without.contains("Mcp-Session-Id"), "CONTROL: an unbound endpoint sent a session header: " + without);
     }
 
     @Test
@@ -135,6 +159,20 @@ class AcpBrainSessionTest {
         assertEquals("permission:reject_once", lead.text(), "a lead's code-changing call was allowed");
         assertEquals("permission:allow_once", developer.text(), "a developer's identical call was refused");
         assertEquals("permission:allow_once", leadReading.text(), "CONTROL: a lead's reading call was refused too");
+    }
+
+    @Test
+    @DisplayName("S7a: a tool the brain titles in Cursor's form 'jawata-<tool>: <tool>' is judged by the allowlist as that tool, and the same tool of another server is not")
+    void theAllowlistReadsCursorsTitleForTheResidentsToolsOnly() throws Exception {
+        HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(Duration.ofSeconds(60));
+
+        HiredBrain.Outcome listed = hire("CALL:jawata-inspect: inspect", List.of("inspect"), Optional.empty(), ceilings, null);
+        HiredBrain.Outcome unlisted = hire("CALL:jawata-rename_symbol: rename_symbol", List.of("inspect"), Optional.empty(), ceilings, null);
+        HiredBrain.Outcome foreign = hire("CALL:other-inspect: inspect", List.of("inspect"), Optional.empty(), ceilings, null);
+
+        assertEquals("permission:allow_once", listed.text(), "a listed tool of the resident was refused in Cursor's form");
+        assertEquals("permission:reject_once", unlisted.text(), "an unlisted tool of the resident was allowed");
+        assertEquals("permission:reject_once", foreign.text(), "a tool of another server was allowed because its name matched");
     }
 
     @Test

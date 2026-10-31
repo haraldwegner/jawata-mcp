@@ -23,6 +23,7 @@ import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
+import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.spi.host.EngineSettings;
@@ -88,6 +89,25 @@ class PrincipalBrainTest {
         assertEquals("main", record.seat());
         assertTrue(record.command().get(1).endsWith("FakeAcpAgent.java"), "the record does not name the program that ran: " + record.command());
         assertTrue(record.brainSessionId().isPresent() && record.clean(), record.toString());
+    }
+
+    @Test
+    @DisplayName("S3, D30: the principal brain presents a session id of its own to the resident, the same on every prompt of one brain and different between two brains")
+    void thePrincipalBrainPresentsItsOwnSessionId() {
+        SelfEndpoint endpoint = new SelfEndpoint("http://127.0.0.1:1/mcp", "key");
+        java.util.function.Supplier<PrincipalBrain> fresh = () -> new PrincipalBrain(HostProcesses.system(), Optional.of(fake), HireSite.in(dir), endpoint,
+            List.of("inspect"), new Hirer(SeatTree.standard(), Map.of(), java.util.Set.of()), HiredBrain.Ceilings.of(Duration.ofSeconds(60)));
+        PrincipalBrain one = fresh.get();
+        PrincipalBrain other = fresh.get();
+
+        String first = ask(one, "SERVERS", new ArrayList<>());
+        String again = ask(one, "SERVERS", new ArrayList<>());
+        String second = ask(other, "SERVERS", new ArrayList<>());
+
+        java.util.regex.Matcher id = java.util.regex.Pattern.compile("principal-[0-9a-f-]+").matcher(first);
+        assertTrue(id.find(), "the brain presented no session id of its own: " + first);
+        assertTrue(again.contains(id.group()), "a second prompt of the same brain presented another id: " + again);
+        assertFalse(second.contains(id.group()), "two brains presented the same id: " + second);
     }
 
     @Test

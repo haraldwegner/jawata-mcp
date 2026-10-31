@@ -326,6 +326,34 @@ class HiredRunProposesTest {
     }
 
     @Test
+    @DisplayName("S3, D30: a hire gives its brain the resident under the hire's own session id, which is its plan's identity, so the resident keeps that brain's calls apart from every other caller's")
+    void aHiresBrainCarriesTheHiresOwnSessionId() throws Exception {
+        HostCommand standIn = brain("""
+            echo '{"type":"result","result":"done","total_cost_usd":0.01}'
+            """);
+        RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
+        SelfEndpoint self = new SelfEndpoint("http://127.0.0.1:41234/mcp", "tok-123");
+        HiredRun run = new HiredRun(spy, artifacts, plans, events, self);
+        SeatHire seat = SeatHire.read("""
+            ---
+            name: cataloguer
+            tools: [inspect]
+            ttl_secs: 30
+            ---
+
+            You are the cataloguer seat.
+            """);
+
+        HiredRun.Proposal proposal = run.issue(seat, site(standIn), "Catalogue it.", twoSteps(), HiredRunProposesTest::passed, List.of());
+        List<String> argv = spy.asked();
+        String config = argv.get(argv.indexOf("--mcp-config") + 1);
+
+        assertTrue(config.contains("\"Mcp-Session-Id\":\"" + proposal.plan().value() + "\""),
+            "the brain was not told which session it is: " + config);
+        assertFalse(self.claudeMcpConfig().contains("Mcp-Session-Id"), "CONTROL: an endpoint bound to no session sent a session id anyway");
+    }
+
+    @Test
     @DisplayName("...and a hire with no endpoint (stdio) keeps the user's own setup and the bare names")
     void aHireWithNoEndpointLeavesTheBrainsSetupAlone() throws Exception {
         HostCommand standIn = brain("""

@@ -63,6 +63,12 @@ public final class PrincipalBrain implements AgentBrain {
     private final List<HireRecord> records = new ArrayList<>();
     private volatile Optional<String> resume = Optional.empty();
 
+    /**
+     * The session id this brain presents to the resident on every tool call (Sprint 28h, S3, D30), so the resident keeps its calls in a
+     * history of their own and not in the one shared by callers that send none. One per brain, so two connections do not share one.
+     */
+    private final String sessionKey = "principal-" + java.util.UUID.randomUUID();
+
     public PrincipalBrain(HostProcesses host, Optional<AcpBrainSession.Program> program, HireSite site, SelfEndpoint self,
             List<String> engineTools, Hirer hirer, HiredBrain.Ceilings ceilings) {
         this.host = host;
@@ -144,7 +150,8 @@ public final class PrincipalBrain implements AgentBrain {
         boolean[] streamed = {false};
         HiredBrain.Outcome outcome;
         try {
-            outcome = AcpBrainSession.run(host, program.get(), site, prompt, self, hirer.allowlist("main", engineTools), resume, ceilings,
+            outcome = AcpBrainSession.run(host, program.get(), site, prompt, self == null ? null : self.forSession(sessionKey),
+                hirer.allowlist("main", engineTools), resume, ceilings,
                 piece -> {
                     streamed[0] = true;
                     chunks.accept(piece);

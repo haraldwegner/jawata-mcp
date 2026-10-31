@@ -186,8 +186,18 @@ public final class HiredRun {
         // in this hire's text. A resident with no store, or a store that cannot be read, hires the
         // seat as before — a rule is guidance, and its absence must not stop a hire.
         List<String> binding = SeatRules.bindingOn(rules, seat.seat(), seat.activities());
-        return issue(dialect, base, seat.prompt(brief, binding), seat.tools(), seat.ceilings(),
-            steps, gates, seat.answerGates());
+        // THE BRAIN IS GIVEN THE RESIDENT UNDER THIS HIRE'S OWN SESSION ID (Sprint 28h, S3, D30): its plan's identity, which only exists once
+        // the plan is open, so the plan is opened before the brain's command line is built. The resident then keeps this brain's calls in
+        // a history of their own instead of the one every caller that sends no session id shares, and a check of "this session" is about
+        // this brain and no other agent. The first dialect above only answered the containment question, which does not depend on it.
+        List<GatedStep> planned = withAnswerGates(steps, seat.answerGates());
+        PlanId plan = plans.open(planned);
+        try {
+            BrainDialect asThisHire = seat.dialect(self == null ? null : self.forSession(plan.value()), hiddenTools);
+            return conduct(asThisHire, base, seat.prompt(brief, binding), seat.tools(), seat.ceilings(), gates, planned, plan);
+        } finally {
+            plans.close(plan);
+        }
     }
 
     /**

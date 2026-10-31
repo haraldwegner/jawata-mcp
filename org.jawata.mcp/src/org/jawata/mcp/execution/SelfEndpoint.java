@@ -19,11 +19,15 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  *
  * @param url   the {@code /mcp} URL this resident listens on
  * @param token the bearer token this resident requires
+ * @param sessionId the session id every request carries, or null for none (the stdio and anonymous cases)
  */
-public record SelfEndpoint(String url, String token) {
+public record SelfEndpoint(String url, String token, String sessionId) {
 
     /** The server name a hired brain sees; its tools are {@code mcp__jawata__<tool>}. */
     public static final String SERVER_NAME = "jawata";
+
+    /** The header the resident reads a caller's session id from; every request carrying it is that caller's own history. */
+    public static final String SESSION_HEADER = "Mcp-Session-Id";
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -42,12 +46,28 @@ public record SelfEndpoint(String url, String token) {
         ObjectNode server = root.putObject("mcpServers").putObject(SERVER_NAME);
         server.put("type", "http");
         server.put("url", url);
-        server.putObject("headers").put("Authorization", "Bearer " + token);
+        ObjectNode headers = server.putObject("headers");
+        headers.put("Authorization", "Bearer " + token);
+        if (sessionId != null) {
+            headers.put(SESSION_HEADER, sessionId);
+        }
         return root.toString();
     }
 
     /** A jawata tool's name as a brain given this server sees it. */
     public static String claudeToolName(String jawataTool) {
         return "mcp__" + SERVER_NAME + "__" + jawataTool;
+    }
+
+    public SelfEndpoint(String url, String token) {
+        this(url, token, null);
+    }
+
+    /**
+     * This endpoint as one hire's brain is given it: every request the brain sends carries {@code session}, so the resident keeps that
+     * brain's calls in a history of their own and not in the one shared by callers that send no session id (Sprint 28h, S3, D30).
+     */
+    public SelfEndpoint forSession(String session) {
+        return new SelfEndpoint(url, token, session);
     }
 }

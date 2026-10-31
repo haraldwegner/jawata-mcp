@@ -20,6 +20,9 @@ public class FakeAcpAgent {
 
     static final Map<String, String> servers = new HashMap<>();
     static int counter;
+    /** With FAKE_ACP_LOGIN set, a session is refused with "Authentication required" until the client has called authenticate. */
+    static final boolean loginRequired = System.getenv("FAKE_ACP_LOGIN") != null;
+    static boolean authenticated;
     static final BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
 
     public static void main(String[] args) throws Exception {
@@ -31,8 +34,17 @@ public class FakeAcpAgent {
             String method = field(line, "method");
             String id = idOf(line);
             switch (method == null ? "" : method) {
-                case "initialize" -> reply(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"mcpCapabilities\":{\"http\":true}}}");
+                case "initialize" -> reply(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"mcpCapabilities\":{\"http\":true}}"
+                    + (loginRequired ? ",\"authMethods\":[{\"id\":\"fake_login\",\"name\":\"Fake login\"}]" : "") + "}");
+                case "authenticate" -> {
+                    authenticated = "fake_login".equals(field(line, "methodId"));
+                    reply(id, "{}");
+                }
                 case "session/new" -> {
+                    if (loginRequired && !authenticated) {
+                        send("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":-32000,\"message\":\"Authentication required\"}}");
+                        continue;
+                    }
                     String session = "fake-" + (++counter) + "-" + Long.toHexString(System.nanoTime());
                     servers.put(session, between(line, "\"mcpServers\":"));
                     reply(id, "{\"sessionId\":\"" + session + "\"}");

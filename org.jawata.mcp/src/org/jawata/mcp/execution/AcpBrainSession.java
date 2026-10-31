@@ -123,10 +123,20 @@ public final class AcpBrainSession {
                     }
                 }
                 if (sessionId == null) {
-                    JsonNode created = wire.call(2, "session/new", params -> {
+                    Consumer<ObjectNode> newSession = params -> {
                         params.put("cwd", cwd);
                         params.set("mcpServers", servers);
-                    });
+                    };
+                    JsonNode created = wire.call(2, "session/new", newSession);
+                    if (created == null && wire.refusedForWantOfLogin() && init.path("authMethods").size() > 0) {
+                        // A brain that wants its user logged in says so on session/new and lists how (Cursor's agent: cursor_login).
+                        // Login is tried once, with the first method it listed, and only after the refusal, so a brain that never
+                        // refuses is never sent authenticate.
+                        String method = init.path("authMethods").get(0).path("id").asText();
+                        if (wire.call(4, "authenticate", params -> params.put("methodId", method)) != null) {
+                            created = wire.call(5, "session/new", newSession);
+                        }
+                    }
                     sessionId = created == null ? null : created.path("sessionId").asText(null);
                 }
             }
@@ -180,6 +190,19 @@ public final class AcpBrainSession {
             List.copyOf(toolCalls), Optional.ofNullable(sessionId));
     }
 
+    /** How Cursor's agent titles a permission request for a tool of an MCP server: "jawata-health_check: health_check" (measured against the real agent, S7a). */
+    private static final java.util.regex.Pattern RESIDENT_TITLE =
+        java.util.regex.Pattern.compile("^" + SelfEndpoint.SERVER_NAME + "[^:]*: (\\w+)$");
+
+    /**
+     * The tool name inside a permission title in the form Cursor's agent uses for a tool of the resident, or null for any other title, so a
+     * tool of another server is never taken for one of ours.
+     */
+    static String residentToolIn(String title) {
+        java.util.regex.Matcher matched = RESIDENT_TITLE.matcher(title);
+        return matched.matches() ? matched.group(1) : null;
+    }
+
     /** The resident as the brain's one tool server, or none when there is no endpoint or the brain cannot attach an HTTP one. */
     private static ArrayNode mcpServers(SelfEndpoint mcp, boolean brainCanAttachHttp) {
         ArrayNode servers = JSON.createArrayNode();
@@ -188,9 +211,15 @@ public final class AcpBrainSession {
             server.put("type", "http");
             server.put("name", SelfEndpoint.SERVER_NAME);
             server.put("url", mcp.url());
-            ObjectNode header = server.putArray("headers").addObject();
+            ArrayNode headers = server.putArray("headers");
+            ObjectNode header = headers.addObject();
             header.put("name", "Authorization");
             header.put("value", "Bearer " + mcp.token());
+            if (mcp.sessionId() != null) {
+                ObjectNode session = headers.addObject();
+                session.put("name", SelfEndpoint.SESSION_HEADER);
+                session.put("value", mcp.sessionId());
+            }
         }
         return servers;
     }
@@ -261,6 +290,14 @@ public final class AcpBrainSession {
             return null;
         }
 
+        /** The error object of the last reply the brain gave to a request, or null when that reply was a result. */
+        private JsonNode lastError;
+
+        /** Whether the last reply was a refusal that says the user must log in first. */
+        boolean refusedForWantOfLogin() {
+            return lastError != null && lastError.path("message").asText("").toLowerCase().contains("authentication required");
+        }
+
         /** Sends a request and returns its result, or null when the brain ended or answered with an error. */
         JsonNode call(int id, String method, Consumer<ObjectNode> fill) throws IOException {
             ObjectNode request = JSON.createObjectNode();
@@ -272,7 +309,8 @@ public final class AcpBrainSession {
             for (JsonNode message = next(); message != null; message = next()) {
                 if (message.has("id") && !message.has("method")) {
                     if (message.get("id").asInt(-1) == id) {
-                        return message.has("error") ? null : message.path("result");
+                        lastError = message.get("error");
+                        return lastError != null ? null : message.path("result");
                     }
                 } else if (message.has("id")) {
                     answerRequest(message);
@@ -319,7 +357,9 @@ public final class AcpBrainSession {
             if ("session/request_permission".equals(request.path("method").asText())) {
                 JsonNode tool = request.path("params").path("toolCall");
                 String name = tool.path("title").asText(tool.path("kind").asText(""));
-                String wanted = allowed.contains(name) || allowed.contains(RunEffects.bareName(name)) ? "allow" : "reject";
+                String ofTheResident = residentToolIn(name);
+                String wanted = allowed.contains(name) || allowed.contains(RunEffects.bareName(name))
+                    || ofTheResident != null && allowed.contains(ofTheResident) ? "allow" : "reject";
                 String chosen = null;
                 for (JsonNode option : request.path("params").path("options")) {
                     if (option.path("kind").asText("").startsWith(wanted)) {
