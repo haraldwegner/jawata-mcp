@@ -242,13 +242,21 @@ def collect(m):
             text.append(u["content"]["text"])
     return m.get("id") == 2
 until(collect)
+send({"jsonrpc": "2.0", "id": 3, "method": "session/list", "params": {}})
+listed = until(lambda m: m.get("id") == 3)["result"]["sessions"]
 p.stdin.close()
 print("".join(text))
+print("RECORDED:" + str(sid in [x["sessionId"] for x in listed]))
 PY
 )"
 case "$BRAIN_OUT" in
     *"the e2e brain answered"*) pass "agent-brain a prompt through the launcher is answered by the hired brain" ;;
     *) fail "agent-brain the prompt was not answered by the hired brain: $(printf '%s' "$BRAIN_OUT" | head -c 300)" ;;
+esac
+# S9 (D31): the turn just answered was written to the transcript lane, and session/list returns that session.
+case "$BRAIN_OUT" in
+    *"RECORDED:True"*) pass "agent-history the answered prompt is in the recording and session/list returns its session" ;;
+    *) fail "agent-history session/list does not return the session that was just answered: $(printf '%s' "$BRAIN_OUT" | tail -c 200)" ;;
 esac
 
 # --- access-policy (Sprint 28h, S13, E11): a place the policy does not allow is refused on the running product, for any client ----
