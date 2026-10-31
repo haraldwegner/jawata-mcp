@@ -711,7 +711,9 @@ class HireToolTest {
             () -> assertEquals(data.get("stepsPassed"), detail.path("stepsPassed").asInt(),
                 "how far the plan got"),
             () -> assertEquals(data.get("stepsDeclared"), detail.path("ofSteps").asInt(),
-                "out of how many steps"));
+                "out of how many steps"),
+            // D48: a review's row says which vendor's agent (the brain column above) and which model gave it.
+            () -> assertEquals("claude-sonnet-5", detail.path("model").asText(), "the model the seat's own file asked for"));
 
         // AND THE HIRER IS TOLD, in the answer it already reads, what the journal holds — so
         // "journalled" is something the run's answer shows rather than something a caller assumes.
@@ -1158,6 +1160,28 @@ class HireToolTest {
             () -> assertTrue(String.valueOf(score.get("notAsWritten")).contains("not with the arguments written")),
             () -> assertTrue(String.valueOf(score.get("issuerTokensPerInstruction")).startsWith("NOT COMPUTABLE"),
                 "no instruction ran as written, so there is no per-instruction figure and no zero stands in for it"));
+    }
+
+    private Map<String, Object> hiredAs(String seatName, String answer) throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainSayingWithTokens(answer, 10, 5).withSeparateStderr()), events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args = (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("seat", seatName);
+        return dataOf(hire.execute(args));
+    }
+
+    @Test
+    @DisplayName("S11, D50b: a review routed to the spec-auditor seat comes back with its verdict read out: SIGN-OFF, REFUSE, or NO VERDICT when the answer holds neither")
+    void aReviewRoutedToTheSpecAuditorComesBackWithItsVerdict() throws Exception {
+        assertEquals("REFUSE", hiredAs("spec-auditor", "The spec drops a requirement of the raw.\nVERDICT: REFUSE").get("verdict"));
+        assertEquals("SIGN-OFF", hiredAs("spec-auditor", "Every raw item is disposed.\nVERDICT: SIGN-OFF").get("verdict"));
+        assertEquals("NO VERDICT", hiredAs("spec-auditor", "I read it and it looks fine.").get("verdict"),
+            "an answer with no verdict line was taken for a sign-off");
+    }
+
+    @Test
+    @DisplayName("S11, the control: a seat that is not the spec-auditor gets no verdict field, whatever its answer says")
+    void anotherSeatGetsNoVerdictField() throws Exception {
+        org.junit.jupiter.api.Assertions.assertFalse(hiredAs("cataloguer", "Described.\nVERDICT: SIGN-OFF").containsKey("verdict"));
     }
 
     /**

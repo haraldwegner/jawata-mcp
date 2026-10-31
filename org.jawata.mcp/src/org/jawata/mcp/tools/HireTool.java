@@ -533,6 +533,11 @@ public class HireTool extends NeutralTool {
             () -> data.put("costUsd", "NOT PUBLISHED BY THIS BRAIN"));
         proposal.outcome().stoppedBy().ifPresent(why -> data.put("stoppedBy", why));
         data.put("answer", proposal.outcome().text());
+        // S11 (D50b): a review routed to the spec-auditor seat comes back with its verdict read out, SIGN-OFF or REFUSE, so the issuer
+        // acts on the verdict and not on a reading of prose. An answer with no verdict line says so and is not a sign-off.
+        if ("spec-auditor".equals(hired)) {
+            data.put("verdict", auditVerdict(proposal.outcome().text()));
+        }
         // C16's own clause: a brain that cannot be told which tools to attach is REPORTED here
         // rather than quietly left out of the count.
         data.put("toolAttachment", dialect.toolAttachment().report());
@@ -686,6 +691,18 @@ public class HireTool extends NeutralTool {
                 return Optional.empty();
             }
         };
+    }
+
+    /** The spec-auditor's verdict: SIGN-OFF or REFUSE from the last line that says so, or NO VERDICT when the answer holds neither. */
+    static String auditVerdict(String answer) {
+        String verdict = "NO VERDICT";
+        if (answer != null) {
+            java.util.regex.Matcher found = java.util.regex.Pattern.compile("(?m)^\\s*VERDICT:\\s*(SIGN-OFF|REFUSE)\\b").matcher(answer);
+            while (found.find()) {
+                verdict = found.group(1);
+            }
+        }
+        return verdict;
     }
 
     /** A row's payload as an object, or as the text it was written as when it does not parse. */

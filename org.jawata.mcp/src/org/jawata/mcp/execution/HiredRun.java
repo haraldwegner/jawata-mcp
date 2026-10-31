@@ -194,7 +194,7 @@ public final class HiredRun {
         PlanId plan = plans.open(planned);
         try {
             BrainDialect asThisHire = seat.dialect(self == null ? null : self.forSession(plan.value()), hiddenTools);
-            return conduct(asThisHire, base, seat.prompt(brief, binding), seat.tools(), seat.ceilings(), gates, planned, plan);
+            return conduct(asThisHire, base, seat.prompt(brief, binding), seat.tools(), seat.ceilings(), gates, planned, plan, seat.model());
         } finally {
             plans.close(plan);
         }
@@ -245,7 +245,7 @@ public final class HiredRun {
         // a brain edits through its OWN tools: no gate reports those writes, no tap sees them, and
         // the brain's answer is prose. The directory before and after is the only witness.
         try {
-            return conduct(dialect, base, brief, tools, ceilings, declaredGates, planned, plan);
+            return conduct(dialect, base, brief, tools, ceilings, declaredGates, planned, plan, null);
         } finally {
             // THE HIRE HAS ENDED, WHATEVER HOW: its plan ends with it. A plan left open after its hire finished (a gate refused, the brain
             // could not start) would be reported pending at every turn end of every session for as long as the ledger remembered it.
@@ -254,7 +254,7 @@ public final class HiredRun {
     }
 
     private Proposal conduct(BrainDialect dialect, HireSite base, String brief, List<String> tools,
-            HiredBrain.Ceilings ceilings, GateRunner declaredGates, List<GatedStep> planned, PlanId plan)
+            HiredBrain.Ceilings ceilings, GateRunner declaredGates, List<GatedStep> planned, PlanId plan, String model)
             throws IOException, InterruptedException {
         TreeAttribution census = base.workingDirectory() == null
             ? null
@@ -336,6 +336,9 @@ public final class HiredRun {
                 detail.put("artifactId", artifactId);
                 detail.put("stepsPassed", passed);
                 detail.put("ofSteps", planned.size());
+                // WHO ANSWERED, in the row a verdict is read back from (D48): the vendor is the row's own brain column, and the model is here,
+                // so a review's journal row says which vendor's agent and which model gave it. Null when the hire was made without a seat.
+                detail.put("model", model);
                 detail.put("tokensSpent", outcome.tokens().isPresent() ? outcome.tokens().get().spent() : null);
                 detail.put("instructions", Instructions.rows(Instructions.parse(outcome.text())));
                 journal.append(new LearnerEvent(plan.value(), LearnerEvent.KIND_HIRED_RUN,
