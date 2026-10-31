@@ -72,6 +72,9 @@ call() {   # call <tool> <json-args>
 # said exactly that, in one precise sentence, and this gate threw the sentence
 # away. A gate that discards the one answer explaining its own failure makes
 # every future failure a fresh investigation.
+# S13 (D20): a fresh resident refuses a place nobody listed, and loading this repository is naming one. Add it to the resident's access
+# policy the way a person would; the resident reads the file again on the next call.
+python3 "$ROOT/build/seed-access-policy.py" "$WORK/ws" "$ROOT" || { echo "gate: RESULT=policy-not-seeded"; exit 2; }
 call load_project "{\"projectPath\":\"$ROOT\"}" > "$WORK/load.json"
 python3 "$ROOT/build/unwired-gate-load-check.py" "$WORK/load.json"
 rc=$?

@@ -144,11 +144,6 @@ public final class AccessPolicy {
         return null;
     }
 
-    /** Whether the policy could be read; a policy that could not be read refuses every place. */
-    public boolean usable() {
-        return unusable == null;
-    }
-
     /** Whether {@code place} may be named. */
     public Decision check(Path place) {
         if (unusable != null) {

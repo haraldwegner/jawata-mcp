@@ -104,8 +104,7 @@ class AccessPolicyTest {
         assertTrue(relative.check(place).reason().contains("is not an absolute path"), relative.check(place).reason());
 
         AccessPolicy fine = read("{\"allow\":[\"${workspace}\"],\"deny\":[]}");
-        assertTrue(fine.usable() && fine.check(place).allowed(), "CONTROL: a good policy refused its own place");
-        assertFalse(missing.usable() || broken.usable() || noDeny.usable() || undefined.usable() || relative.usable());
+        assertTrue(fine.check(place).allowed(), "CONTROL: a good policy refused its own place");
     }
 
     @Test

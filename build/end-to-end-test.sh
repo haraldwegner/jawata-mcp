@@ -190,6 +190,26 @@ else
     fail "agent-acp a wrong key ended with status $ACP_REFUSED, not 3"
 fi
 
+# --- access-policy (Sprint 28h, S13, E11): a place the policy does not allow is refused on the running product, for any client ----
+# The resident wrote its default policy into its data folder when it started. A call naming a place no entry allows is refused
+# before the tool acts, and the refusal is the same for a session that identifies itself as Cursor's as for one that does not.
+# The control names a place under the scratch folder, which the default allows: it must reach the tool (which then says the file is
+# not there), or a policy that refused everything would pass this check.
+for who in "e2e-$$" "cursor-e2e-$$"; do
+    DENIED="$(curl -s --max-time 60 -X POST "http://127.0.0.1:$PORT/mcp" -H "Authorization: Bearer $TOKEN" -H "Mcp-Session-Id: $who" \
+        -H 'Content-Type: application/json' \
+        -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"validate_syntax","arguments":{"filePath":"/root/e2e-forbidden.java"}}}' | sed 's/\\"/"/g')"
+    case "$DENIED" in
+        *ACCESS_DENIED*) pass "access-policy a place outside the policy is refused for session $who" ;;
+        *) fail "access-policy a place outside the policy was not refused for session $who: $(printf '%s' "$DENIED" | head -c 300)" ;;
+    esac
+done
+ALLOWED="$(call validate_syntax "{\"filePath\":\"$WS/no-such-file-e2e.java\"}")"
+case "$ALLOWED" in
+    *ACCESS_DENIED*) fail "access-policy CONTROL: a place under the scratch folder was refused: $(printf '%s' "$ALLOWED" | head -c 300)" ;;
+    *) pass "access-policy CONTROL: a place under the scratch folder reaches the tool" ;;
+esac
+
 # --- tool-count: no tool silently appeared or vanished -----------------------
 # The release-note sentence "the tool count is still N" gets its live check
 # (Sprint 28 outcome audit, F7 — the sentence had no check behind it).
