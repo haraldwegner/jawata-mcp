@@ -8,6 +8,7 @@
 //   TOOL / WRITE     makes a tool call (mcp__jawata__inspect / Edit) and asks permission; answers "permission:<option chosen>"
 //   CALL:<title>     the same for a tool of that name
 //   SPEND            makes five tool calls, each with a usage update that raises the cost
+//   STREAM           says "first", waits one and a half seconds, then says "second" (arrival before the turn ends)
 //   HANG             sleeps for a minute without answering
 //   DIE              exits with status 3 without answering
 import java.io.*;
@@ -83,6 +84,10 @@ public class FakeAcpAgent {
                 Thread.sleep(50);
             }
             chunk(session, "spent");
+        } else if (text.startsWith("STREAM")) {
+            chunk(session, "first");
+            Thread.sleep(1500);
+            chunk(session, "second");
         } else if (text.startsWith("HANG")) {
             Thread.sleep(60_000);
         } else if (text.startsWith("DIE")) {

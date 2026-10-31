@@ -91,10 +91,28 @@ public final class PrincipalBrain implements AgentBrain {
     public static PrincipalBrain over(EngineApi engine, Path workingDirectory) {
         Optional<AcpBrainSession.Program> program = engine.settings().get(SETTING).flatMap(PrincipalBrain::parseProgram);
         SelfEndpoint self = engine.mcp().map(PrincipalBrain::endpointOf).orElse(null);
-        List<String> tools = engine.tools().getToolDefinitions().stream().map(d -> String.valueOf(d.get("name"))).toList();
-        Hirer hirer = new Hirer(SeatTree.standard(), Map.of(), CODE_CHANGING_TOOLS);
+        List<Map<String, Object>> definitions = engine.tools().getToolDefinitions();
+        List<String> tools = definitions.stream().map(d -> String.valueOf(d.get("name"))).toList();
+        Hirer hirer = new Hirer(SeatTree.standard(), Map.of(), codeChangingTools(definitions));
         return new PrincipalBrain(HostProcesses.system(), program, HireSite.in(workingDirectory), self, tools, hirer,
             HiredBrain.Ceilings.of(Duration.ofMinutes(30)));
+    }
+
+    /**
+     * The published tools that rewrite source, read from what each tool says of itself ({@code annotations.destructiveHint}) instead of
+     * from a list kept here. The principal is a lead: it carries every other tool and none of these, so the code is changed by the seats
+     * that are allowed to, never by the one that decides, and a tool added later is held back from it the day it says it rewrites source.
+     */
+    @SuppressWarnings("unchecked")
+    static Set<String> codeChangingTools(List<Map<String, Object>> definitions) {
+        Set<String> names = new java.util.TreeSet<>();
+        for (Map<String, Object> definition : definitions) {
+            Object annotations = definition.get("annotations");
+            if (annotations instanceof Map<?, ?> hints && Boolean.TRUE.equals(((Map<String, Object>) hints).get("destructiveHint"))) {
+                names.add(String.valueOf(definition.get("name")));
+            }
+        }
+        return names;
     }
 
     private static SelfEndpoint endpointOf(McpEndpoint endpoint) {

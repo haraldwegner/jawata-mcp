@@ -65,7 +65,7 @@ class PrincipalBrainTest {
 
     private PrincipalBrain brain(Optional<AcpBrainSession.Program> program) {
         return new PrincipalBrain(HostProcesses.system(), program, HireSite.in(dir), null, List.of("inspect", "rename_symbol"),
-            new Hirer(SeatTree.standard(), Map.of(), PrincipalBrain.CODE_CHANGING_TOOLS), HiredBrain.Ceilings.of(Duration.ofSeconds(60)));
+            new Hirer(SeatTree.standard(), Map.of(), java.util.Set.of("rename_symbol")), HiredBrain.Ceilings.of(Duration.ofSeconds(60)));
     }
 
     private static String ask(PrincipalBrain brain, String prompt, List<String> pieces) {
@@ -113,6 +113,51 @@ class PrincipalBrainTest {
 
         assertEquals("permission:reject_once", changing);
         assertEquals("permission:allow_once", reading);
+    }
+
+    @Test
+    @DisplayName("the answer reaches the host while the turn is still running, not all at once at its end")
+    void theAnswerArrivesBeforeTheTurnEnds() {
+        PrincipalBrain brain = brain(Optional.of(fake));
+        List<String> pieces = new ArrayList<>();
+        long[] firstAt = {0};
+
+        brain.answer("STREAM", piece -> {
+            if (firstAt[0] == 0) {
+                firstAt[0] = System.nanoTime();
+            }
+            pieces.add(piece);
+        });
+        long returnedAt = System.nanoTime();
+
+        assertEquals("firstsecond", String.join("", pieces));
+        assertTrue(firstAt[0] != 0 && Duration.ofNanos(returnedAt - firstAt[0]).toMillis() >= 1000,
+            "the first piece arrived only when the turn ended: it was held back instead of streamed");
+    }
+
+    @Test
+    @DisplayName("the tools a lead is refused are the ones the published tools say rewrite source, not a list kept beside them")
+    void theCodeChangingSetComesFromWhatToolsSay() {
+        org.jawata.mcp.change.OperationRegistry operations = org.jawata.mcp.change.OperationRegistry.theRegistry();
+        org.jawata.mcp.change.OperationRegistry.Snapshot borrowed = operations.snapshot();
+        List<Map<String, Object>> published;
+        try {
+            org.jawata.mcp.tools.ToolRegistry registry = new org.jawata.mcp.tools.ToolRegistry();
+            org.jawata.mcp.fixtures.InertShippedTools.tools().forEach(registry::register);
+            published = registry.getToolDefinitions();
+        } finally {
+            operations.restore(borrowed);
+        }
+
+        java.util.Set<String> derived = PrincipalBrain.codeChangingTools(published);
+
+        assertTrue(derived.containsAll(List.of("rename_symbol", "extract", "move", "change_method_signature")), derived.toString());
+        assertTrue(java.util.Collections.disjoint(derived, List.of("inspect", "find_references", "search_symbols", "compile_workspace", "experience")),
+            "a reading or checking tool was counted as rewriting source: " + derived);
+        assertEquals(java.util.Set.of("x"), PrincipalBrain.codeChangingTools(List.of(
+            Map.of("name", "x", "annotations", Map.of("destructiveHint", true)),
+            Map.of("name", "y", "annotations", Map.of("destructiveHint", false)),
+            Map.of("name", "z"))), "CONTROL: the derivation reads the annotation and nothing else");
     }
 
     @Test
