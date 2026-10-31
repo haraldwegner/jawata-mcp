@@ -48,7 +48,11 @@ public final class JawataBoot {
     public static void main(String[] args) throws Exception {
         // Sprint 28h, S5: --acp is the host-facing pipe to a running resident's agent; it needs no bundles and starts no framework.
         if (List.of(args).contains("--acp")) {
-            System.exit(AcpBridge.run(args, System.in, System.out, System.err));
+            System.exit(Bridge.runAcp(args, System.in, System.out, System.err));
+        }
+        // Sprint 28h, S16a: --lsp is the same pipe for an editor's language client, to the resident's /lsp route.
+        if (List.of(args).contains("--lsp")) {
+            System.exit(Bridge.runLsp(args, System.in, System.out, System.err));
         }
         Path home = Path.of(System.getProperty("jawata.boot.home",
             Path.of(JawataBoot.class.getProtectionDomain().getCodeSource()

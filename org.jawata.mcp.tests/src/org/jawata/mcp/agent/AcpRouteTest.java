@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit;
 
 import org.jawata.mcp.engine.EngineApi;
 import org.jawata.mcp.fixtures.TransportFixtures;
+import org.jawata.mcp.protocol.MessageRoute;
 import org.jawata.mcp.transport.HttpTransport;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -55,7 +56,7 @@ class AcpRouteTest {
         AgentFace face = new AgentFace(List::of);
         face.attach((EngineApi) Proxy.newProxyInstance(EngineApi.class.getClassLoader(), new Class<?>[] {EngineApi.class},
             (proxy, method, args) -> null));
-        AcpRoute route = new AcpRoute(face, () -> (prompt, chunks) -> { }, 1);
+        MessageRoute route = face.route(() -> (prompt, chunks) -> { }, 1);
         HttpTransport transport = new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", "tok"),
             new TransportFixtures.RecordingLifecycle());
         transport.mount("/acp", route);

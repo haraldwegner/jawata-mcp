@@ -7,6 +7,7 @@ import java.util.function.Supplier;
 import org.jawata.mcp.engine.EngineApi;
 import org.jawata.mcp.engine.RoutedFace;
 import org.jawata.mcp.protocol.JsonRpcMessage;
+import org.jawata.mcp.protocol.MessageRoute;
 
 import com.sun.net.httpserver.HttpHandler;
 
@@ -20,6 +21,11 @@ import com.sun.net.httpserver.HttpHandler;
 public final class AgentFace implements RoutedFace {
 
     static final String NAME = "agent";
+
+    /** The route the agent answers on; the host program's {@code --acp} posts to it and streams from {@code /acp/events}. */
+    static final String PATH = "/acp";
+
+    private static final long KEEPALIVE_SECONDS = 15;
 
     /** What a prompt is answered with until a brain is attached to the agent (plan S7a); it says so rather than staying silent. */
     static final String NO_BRAIN = "jawata's agent has no brain attached yet.";
@@ -65,12 +71,22 @@ public final class AgentFace implements RoutedFace {
 
     @Override
     public String path() {
-        return AcpRoute.PATH;
+        return PATH;
     }
 
     @Override
     public HttpHandler handler() {
-        return new AcpRoute(this, brains != null ? brains : this::principal);
+        return route(brains != null ? brains : this::principal, KEEPALIVE_SECONDS);
+    }
+
+    /** The agent's door on the listener: a connection per host program, each answered by a server over the brain {@code brains} supplies. */
+    MessageRoute route(Supplier<AgentBrain> brains, long keepaliveSeconds) {
+        return new MessageRoute(PATH, out -> open(brains.get(), out, brains)::receive, AgentFace::runsAtOnce, keepaliveSeconds);
+    }
+
+    /** The person's switch and cancel must act while a prompt is running; queued behind it, they would arrive after the turn they were for. */
+    private static boolean runsAtOnce(String method) {
+        return "session/set_config_option".equals(method) || "session/cancel".equals(method);
     }
 
     @Override

@@ -161,13 +161,8 @@ org.jawata.resident.workspace.WorkspaceManager#getSessionId()
 org.jawata.resident.workspace.WorkspaceManager#getWorkspace()
 org.jawata.resident.workspace.WorkspaceManager#projectExists(String)
 org.jawata.resident.workspace.WorkspaceManager#refresh()
-# Sprint 28h S16a (his stage, C16a): the buffer store, the Content-Length codec and the didChange applier wait for their production callers, the language server, the /lsp route and the --lsp bridge, which are S16a items 5 and 6 of the same stage. These nine rows come out of the baseline when those callers land, at C16a.
-org.jawata.core.BufferStore#change(ICompilationUnit,String)
-org.jawata.core.BufferStore#close(ICompilationUnit)
+# Sprint 28h S16a (his stage, C16a): the buffer store's open, change and close, and the didChange applier, have their production caller in the language server. These two wait for the dirty-write refusal (isDirty) and the shutdown log of open buffers (holders), the next items of the same stage; they leave the baseline at C16a.
 org.jawata.core.BufferStore#holders(ICompilationUnit)
 org.jawata.core.BufferStore#isDirty(ICompilationUnit)
-org.jawata.core.BufferStore#open(ICompilationUnit,String)
-org.jawata.mcp.java.lsp.DocumentChanges#apply(String,List<Change>)
-org.jawata.mcp.java.lsp.DocumentChanges#parse(JsonNode)
-org.jawata.mcp.java.lsp.LspFraming#read(InputStream)
-org.jawata.mcp.java.lsp.LspFraming#write(OutputStream,JsonRpcMessage)
+# Sprint 28h S16a: the number of open connections of a message route is how AcpRouteTest proves a dropped stream releases its connection (S5, 28h); it was package-private in the agent package and is public now that the route lives in the protocol package. A production reader would be a status line nobody asked for.
+org.jawata.mcp.protocol.MessageRoute#openConnections()

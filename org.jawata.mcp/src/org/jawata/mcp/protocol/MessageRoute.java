@@ -1,4 +1,4 @@
-package org.jawata.mcp.agent;
+package org.jawata.mcp.protocol;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -11,9 +11,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Supplier;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 
-import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,43 +23,59 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
 /**
- * The agent's door on the engine's HTTP listener (Sprint 28h, S5): one ACP connection is a pair of requests that carry the same
- * {@code conn} id. A host program (the launcher's {@code --acp}) POSTs each message it reads from its host to {@code /acp}, and holds a
- * GET open on {@code /acp/events} that streams every message the agent sends back as one server-sent event. {@code DELETE /acp} ends the
- * connection. The listener has already checked the key; this class holds no logic about what the messages mean.
+ * A conversation of JSON-RPC messages on the engine's HTTP listener (Sprint 28h, S5 and S16a): one connection is a pair of requests that
+ * carry the same {@code conn} id. A host program (the launcher's {@code --acp} or {@code --lsp}) POSTs each message it reads from its
+ * host to the route's path, and holds a GET open on {@code <path>/events} that streams every message the engine sends back as one
+ * server-sent event. {@code DELETE <path>} ends the connection. The listener has already checked the key; this class holds no logic
+ * about what the messages mean, so the agent's door and the language server's door are the same code with a different session behind them.
  *
- * <p>A connection is opened by whichever of the two requests arrives first, so the host program may start either one. The agent's
- * messages wait for the stream, so none is lost between the two.</p>
+ * <p>A connection is opened by whichever of the two requests arrives first, so the host program may start either one. The messages
+ * wait for the stream, so none is lost between the two.</p>
  */
-public final class AcpRoute implements HttpHandler {
+public final class MessageRoute implements HttpHandler {
 
-    static final String PATH = "/acp";
-    static final String EVENTS = "/acp/events";
+    /** How long a host's closing DELETE waits for the message it is still waiting on. */
+    public static final long FINISH_SECONDS = 300;
 
-    private static final Logger log = LoggerFactory.getLogger(AcpRoute.class);
+    /** What one connection talks to: the messages the host sends arrive here, in the order they were sent. */
+    @FunctionalInterface
+    public interface Session {
+        void receive(JsonRpcMessage message);
+    }
+
+    /** Opens the session of a new connection; what the session says goes out through {@code out}. May refuse with an IllegalStateException. */
+    @FunctionalInterface
+    public interface Opener {
+        Session open(Consumer<JsonRpcMessage> out);
+    }
+
+    private static final Logger log = LoggerFactory.getLogger(MessageRoute.class);
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final long KEEPALIVE_SECONDS = 15;
-    /** How long a host's closing DELETE waits for the prompt it is still waiting on. */
-    static final long FINISH_SECONDS = 300;
 
-    private final AgentFace face;
-    private final Supplier<AgentBrain> brains;
+    private final String path;
+    private final String eventsPath;
+    private final Opener opener;
+    private final Predicate<String> runsAtOnce;
     private final long keepaliveSeconds;
     private final Map<String, Connection> connections = new ConcurrentHashMap<>();
 
-    AcpRoute(AgentFace face, Supplier<AgentBrain> brains) {
-        this(face, brains, KEEPALIVE_SECONDS);
-    }
-
-    /** A route that writes to an idle stream every {@code keepaliveSeconds}, which is also how long a gone host program goes unnoticed. */
-    AcpRoute(AgentFace face, Supplier<AgentBrain> brains, long keepaliveSeconds) {
-        this.face = face;
-        this.brains = brains;
+    /**
+     * @param path             where the route answers, for example {@code /acp}
+     * @param opener           makes the session of each new connection
+     * @param runsAtOnce       the methods that must act while an earlier message is still being worked, such as a cancel; every other
+     *                         message is worked on the connection's one thread, in order
+     * @param keepaliveSeconds how often an idle stream is written to, which is also how long a gone host program goes unnoticed
+     */
+    public MessageRoute(String path, Opener opener, Predicate<String> runsAtOnce, long keepaliveSeconds) {
+        this.path = path;
+        this.eventsPath = path + "/events";
+        this.opener = opener;
+        this.runsAtOnce = runsAtOnce;
         this.keepaliveSeconds = keepaliveSeconds;
     }
 
     /** How many host connections are open now. */
-    int openConnections() {
+    public int openConnections() {
         return connections.size();
     }
 
@@ -71,13 +87,13 @@ public final class AcpRoute implements HttpHandler {
                 reply(exchange, 400);
                 return;
             }
-            String path = exchange.getRequestURI().getPath();
+            String requested = exchange.getRequestURI().getPath();
             String method = exchange.getRequestMethod();
-            if (PATH.equals(path) && "POST".equals(method)) {
+            if (path.equals(requested) && "POST".equals(method)) {
                 post(exchange, conn);
-            } else if (EVENTS.equals(path) && "GET".equals(method)) {
+            } else if (eventsPath.equals(requested) && "GET".equals(method)) {
                 events(exchange, conn);
-            } else if (PATH.equals(path) && "DELETE".equals(method)) {
+            } else if (path.equals(requested) && "DELETE".equals(method)) {
                 Connection ended = connections.remove(conn);
                 if (ended != null) {
                     ended.finish();
@@ -87,7 +103,7 @@ public final class AcpRoute implements HttpHandler {
                 reply(exchange, 405);
             }
         } catch (IllegalStateException e) {
-            log.warn("ACP request refused: {}", e.getMessage());
+            log.warn("A request on {} was refused: {}", path, e.getMessage());
             reply(exchange, 503);
         } finally {
             exchange.close();
@@ -126,7 +142,7 @@ public final class AcpRoute implements HttpHandler {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (IOException e) {
-            log.debug("ACP stream for {} ended: {}", conn, e.getMessage());
+            log.debug("The stream of {} on {} ended: {}", conn, path, e.getMessage());
         } finally {
             // The stream is the connection's other half: when the host program is gone (a crash sends no DELETE) the next write fails
             // and the connection, its worker thread and its queue are released here instead of living as long as the resident.
@@ -137,7 +153,7 @@ public final class AcpRoute implements HttpHandler {
     }
 
     private Connection connection(String id) {
-        return connections.computeIfAbsent(id, key -> new Connection(face, brains));
+        return connections.computeIfAbsent(id, key -> new Connection());
     }
 
     private static String query(HttpExchange exchange, String name) {
@@ -158,31 +174,31 @@ public final class AcpRoute implements HttpHandler {
         exchange.sendResponseHeaders(status, -1);
     }
 
-    /** One host connection: the agent's server, the messages waiting for the stream, and the one thread that works the host's messages in order. */
-    private static final class Connection {
+    /** One host connection: the session, the messages waiting for the stream, and the one thread that works the host's messages in order. */
+    private final class Connection {
 
         final BlockingQueue<String> outbox = new LinkedBlockingQueue<>();
         final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "acp-connection");
+            Thread t = new Thread(r, "connection" + path);
             t.setDaemon(true);
             return t;
         });
-        final AcpServer server;
+        final Session session;
         volatile boolean closed;
 
-        Connection(AgentFace face, Supplier<AgentBrain> brains) {
-            this.server = face.open(brains.get(), this::send, brains);
+        Connection() {
+            this.session = opener.open(this::send);
         }
 
         void submit(JsonRpcMessage message) {
             Runnable work = () -> {
                 try {
-                    server.receive(message);
+                    session.receive(message);
                 } catch (RuntimeException e) {
-                    log.error("The agent failed on {}", message.getMethod(), e);
+                    log.error("The session on {} failed on {}", path, message.getMethod(), e);
                 }
             };
-            if ("session/set_config_option".equals(message.getMethod()) || "session/cancel".equals(message.getMethod())) {
+            if (runsAtOnce.test(message.getMethod())) {
                 // The person's switch and cancel must act while a prompt is running; queued behind it, they would arrive after the turn
                 // they were for.
                 work.run();
@@ -195,7 +211,7 @@ public final class AcpRoute implements HttpHandler {
             try {
                 outbox.add(JSON.writeValueAsString(message));
             } catch (JsonProcessingException e) {
-                throw new IllegalStateException("an ACP message could not be written", e);
+                throw new IllegalStateException("a message could not be written", e);
             }
         }
 
@@ -207,8 +223,8 @@ public final class AcpRoute implements HttpHandler {
         }
 
         /**
-         * The host closed on purpose: the prompt it is waiting on finishes (up to {@link #FINISH_SECONDS}), then the stream delivers
-         * what is queued and ends, so a host that writes its last prompt and closes its input still gets the answer.
+         * The host closed on purpose: the message it is waiting on finishes (up to {@link #FINISH_SECONDS}), then the stream delivers
+         * what is queued and ends, so a host that writes its last message and closes its input still gets the answer.
          */
         void finish() {
             worker.shutdown();

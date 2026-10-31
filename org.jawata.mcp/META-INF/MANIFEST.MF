@@ -7,7 +7,8 @@ Bundle-Vendor: JAWATA
 Bundle-RequiredExecutionEnvironment: JavaSE-21
 Bundle-ActivationPolicy: lazy
 Service-Component: OSGI-INF/org.jawata.mcp.java.JavaProvider.xml,
- OSGI-INF/org.jawata.mcp.agent.AgentFace.xml
+ OSGI-INF/org.jawata.mcp.agent.AgentFace.xml,
+ OSGI-INF/org.jawata.mcp.java.lsp.LspFace.xml
 Export-Package: org.jawata.mcp,
  org.jawata.mcp.domain,
  org.jawata.mcp.engine;version="1.0.0",

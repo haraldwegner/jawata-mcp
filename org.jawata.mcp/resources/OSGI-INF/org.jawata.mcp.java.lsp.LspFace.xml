@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sprint 28h S16a: the Java language server is a face of the engine, beside MCP and the agent. It is a declarative service of the
+     engine's face slot, so the engine's whiteboard tracker attaches it after the engine starts and mounts it on the listener under the
+     listener's key. It asks for the engine host the way the Java provider does, to reach the Java model. -->
+<scr:component xmlns:scr="http://www.osgi.org/xmlns/scr/v1.3.0" name="org.jawata.mcp.java.lsp.LspFace" immediate="true">
+  <implementation class="org.jawata.mcp.java.lsp.LspFace"/>
+  <service>
+    <provide interface="org.jawata.mcp.engine.EngineFace"/>
+  </service>
+  <reference name="host" interface="org.jawata.spi.host.EngineHost" bind="bindHost" cardinality="1..1" policy="static"/>
+</scr:component>
