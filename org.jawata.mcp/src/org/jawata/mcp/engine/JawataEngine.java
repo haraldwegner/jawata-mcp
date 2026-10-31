@@ -545,7 +545,8 @@ public class JawataEngine {
 				log.error("The default access policy could not be written to {}: calls naming a place are refused until it exists", policy, e);
 			}
 			this.getToolRegistry().setAccessCheck(new org.jawata.mcp.access.AccessCheck(policy,
-					session -> ports.workspace().get().projects().stream().map(project -> project.root()).toList(),
+					session -> this.getToolRegistry().sessionFolders().workspaceOf(session,
+							ports.workspace().get().projects().stream().map(project -> project.root()).toList()),
 					java.nio.file.Path.of(System.getProperty("user.home")), java.nio.file.Path.of(System.getProperty("java.io.tmpdir"))));
 		});
 

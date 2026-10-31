@@ -440,7 +440,7 @@ public class HireTool extends NeutralTool {
             return ToolResponse.invalidParameter("workingDirectory", e.getMessage());
         }
 
-        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules);
+        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders());
         HiredRun.Proposal proposal;
         try {
             // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
@@ -758,7 +758,7 @@ public class HireTool extends NeutralTool {
                 List<String> hidden = observerSeat.toolsToHide(engineTools.getToolNames().stream()
                     .filter(name -> engineTools.getTool(name).map(Tool::changesCode).orElse(false))
                     .toList());
-                HiredRun judging = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules);
+                HiredRun judging = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, engineTools.sessionFolders());
                 HiredRun.Proposal verdict = judging.issue(observerSeat, base, Observer.briefFor(flag, instruction, window),
                     List.of(new GatedStep(0, "health_check", JSON.createObjectNode())), new ToolGateRunner(engineTools), hidden);
                 return Observer.verdictOf(verdict.outcome().text());

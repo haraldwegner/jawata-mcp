@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.access.SessionFolders;
 import org.jawata.mcp.execution.AcpBrainSession.Program;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
@@ -117,6 +118,9 @@ public final class HiredRun {
     /** Nullable: where the accepted rules a hired seat is bound by are read from (D45). */
     private final Supplier<ExperienceStore> rules;
 
+    /** Nullable: the folder each hired session works in, which narrows its workspace under the access policy (S13, ACL4). */
+    private final SessionFolders folders;
+
     public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
             LearnerEventStore journal) {
         this(host, artifacts, plans, journal, null);
@@ -134,6 +138,16 @@ public final class HiredRun {
      */
     public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
             LearnerEventStore journal, SelfEndpoint self, Supplier<ExperienceStore> rules) {
+        this(host, artifacts, plans, journal, self, rules, null);
+    }
+
+    /**
+     * @param folders where each hired session's working folder is recorded for the access policy (Sprint 28h S13, ACL4); nullable, and
+     *     without it a hire is held to the whole manifest as before
+     */
+    public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
+            LearnerEventStore journal, SelfEndpoint self, Supplier<ExperienceStore> rules, SessionFolders folders) {
+        this.folders = folders;
         this.host = Objects.requireNonNull(host, "a hired run needs a process boundary");
         this.artifacts = Objects.requireNonNull(artifacts, "a proposal with nowhere to land"
             + " is not a proposal");
@@ -345,10 +359,15 @@ public final class HiredRun {
         // THE ONE START PATH (S12): a brain with a program that speaks ACP is run through the engine's ACP client, under this plan's own
         // session id, with the seat's tools as its allowlist (an empty list allows none); any other brain is started by its dialect.
         LiveGates live = acp.isPresent() ? new LiveGates(plan, declaredGates) : null;
-        HiredBrain.Outcome outcome = acp.isPresent()
-            ? AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                Optional.empty(), ceilings, null, live)
-            : HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
+        // ACL4: while the brain works, its session (the plan id it presents to the resident) is concerned with the folder it was hired in,
+        // not with every project the manifest holds; the binding ends with the run.
+        HiredBrain.Outcome outcome;
+        try (SessionFolders.Binding ignored = folders == null ? null : folders.bind(plan.value(), base.workingDirectory())) {
+            outcome = acp.isPresent()
+                ? AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
+                    Optional.empty(), ceilings, null, live)
+                : HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
+        }
 
         // Taken immediately, before the gates run. A gate is a jawata tool and may legitimately
         // rewrite files itself, and folding its edits into the BRAIN's attribution would blame the

@@ -170,6 +170,17 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         this.accessCheck = check;
     }
 
+    /**
+     * Sprint 28h, S13 (D20, ACL4): the folder each hired session works in, which narrows the workspace the access policy hands that
+     * session. One per registry, shared by the engine's access wiring and the hire path.
+     */
+    private final org.jawata.mcp.access.SessionFolders sessionFolders = new org.jawata.mcp.access.SessionFolders();
+
+    /** The folders hired sessions are bound to (application wiring). */
+    public org.jawata.mcp.access.SessionFolders sessionFolders() {
+        return sessionFolders;
+    }
+
     /** Install the post-project-mutation hook (Sprint 21e). Null = no hook (tests). */
     public void setProjectsMutatedHook(Runnable hook) {
         this.projectsMutatedHook = hook;

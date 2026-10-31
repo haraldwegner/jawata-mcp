@@ -135,6 +135,30 @@ class ToolRegistryAccessTest {
     }
 
     @Test
+    @DisplayName("ACL4: through the registry's own session folders, a session bound to one project is refused a sibling project before the tool runs, and one nobody bound is not")
+    void aSessionBoundToOneProjectIsRefusedItsSiblingBeforeTheToolRuns() throws Exception {
+        Path sibling = Files.createDirectories(root.resolve("home").resolve("sibling"));
+        ToolRegistry registry = registry(null);
+        registry.setAccessCheck(new AccessCheck(policy,
+            session -> registry.sessionFolders().workspaceOf(session, List.of(project, sibling)), root.resolve("home"), root.resolve("scratch")));
+
+        ToolResponse unbound = registry.callTool("read_something", file(sibling.resolve("S.java")), CallerIdentity.supplied("a-persons-client"));
+        ToolResponse refused;
+        ToolResponse own;
+        try (var binding = registry.sessionFolders().bind("hire-1", project)) {
+            refused = registry.callTool("read_something", file(sibling.resolve("S.java")), CallerIdentity.supplied("hire-1"));
+            own = registry.callTool("read_something", file(project.resolve("A.java")), CallerIdentity.supplied("hire-1"));
+        }
+
+        assertAll(
+            () -> assertTrue(unbound.isSuccess(), "CONTROL: a session nobody bound was refused the sibling"),
+            () -> assertFalse(refused.isSuccess()),
+            () -> assertEquals("ACCESS_DENIED", refused.getError().getCode()),
+            () -> assertTrue(own.isSuccess(), "CONTROL: the bound session was refused its own project"),
+            () -> assertEquals(2, executed.get(), "the refused call must not have run the tool"));
+    }
+
+    @Test
     @DisplayName("a registry with no access check installed (a host with no data folder) runs the call, so the check is the only thing that refuses")
     void withoutTheCheckNothingIsRefused() throws Exception {
         ToolResponse response = registry(null).callTool("read_something", file(root.resolve("home").resolve("Documents").resolve("notes.txt")),
