@@ -279,6 +279,8 @@ public class FindReferencesTool extends AbstractTool {
                 int refColumn = service.getColumnNumber(cu, match.getOffset());
                 info.put("line", refLine);
                 info.put("column", refColumn);
+                // 28h S16a: the end of the reference, so it is a span and not a point.
+                org.jawata.mcp.java.JavaRanges.linesOf(cu).span(match.getOffset(), match.getLength()).putEndInto(info);
 
                 // Get context line
                 String context = service.getContextLine(cu, match.getOffset());

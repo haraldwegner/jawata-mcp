@@ -11,6 +11,7 @@ import org.eclipse.jdt.core.ISourceRange;
 import org.eclipse.jdt.core.ISourceReference;
 import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.java.JavaRanges;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.slf4j.Logger;
@@ -120,11 +121,16 @@ public class GoToDefinitionTool extends AbstractTool {
                         // Get file path
                         String defFilePath = getFilePath(element, service);
 
-                        result.put("location", Map.of(
-                            "filePath", defFilePath,
-                            "line", defLine,
-                            "column", defColumn
-                        ));
+                        // 28h S16a: the start stays where it always was (the declaration, doc comment included); the end of the
+                        // declaration and the name alone are added, because an editor wants a range and lands on the name.
+                        Map<String, Object> location = new LinkedHashMap<>();
+                        location.put("filePath", defFilePath);
+                        location.put("line", defLine);
+                        location.put("column", defColumn);
+                        JavaRanges.Lines lines = JavaRanges.linesOf(cu);
+                        lines.declaration(element).ifPresent(declaration -> declaration.putEndInto(location));
+                        lines.name(element).ifPresent(name -> location.put("nameRange", name.asMap()));
+                        result.put("location", location);
                     }
                 }
             }

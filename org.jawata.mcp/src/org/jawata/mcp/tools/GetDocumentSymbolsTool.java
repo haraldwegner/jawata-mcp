@@ -167,6 +167,7 @@ public class GetDocumentSymbolsTool extends AbstractTool {
             // Get line number
             int offset = type.getSourceRange().getOffset();
             symbol.put("line", service.getLineNumber(cu, offset));
+            putRanges(symbol, cu, type);
 
             // Get children
             List<Map<String, Object>> children = new ArrayList<>();
@@ -254,6 +255,7 @@ public class GetDocumentSymbolsTool extends AbstractTool {
 
             int offset = method.getSourceRange().getOffset();
             symbol.put("line", service.getLineNumber(cu, offset));
+            putRanges(symbol, cu, method);
 
             return symbol;
 
@@ -291,6 +293,7 @@ public class GetDocumentSymbolsTool extends AbstractTool {
 
             int offset = field.getSourceRange().getOffset();
             symbol.put("line", service.getLineNumber(cu, offset));
+            putRanges(symbol, cu, field);
 
             return symbol;
 
@@ -298,6 +301,20 @@ public class GetDocumentSymbolsTool extends AbstractTool {
             log.debug("Error creating field symbol: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 28h S16a: the column and the end of the declaration and the name alone, beside the {@code line} each symbol always carried. The
+     * line, the column and the end are the declaration's (doc comment included, as the {@code lineAnchor} says); the name range is where
+     * an editor lands.
+     */
+    private static void putRanges(Map<String, Object> symbol, ICompilationUnit cu, org.eclipse.jdt.core.IMember member) throws JavaModelException {
+        org.jawata.mcp.java.JavaRanges.Lines lines = org.jawata.mcp.java.JavaRanges.linesOf(cu);
+        lines.declaration(member).ifPresent(declaration -> {
+            symbol.put("column", declaration.column());
+            declaration.putEndInto(symbol);
+        });
+        lines.name(member).ifPresent(name -> symbol.put("nameRange", name.asMap()));
     }
 
     private List<String> getModifiers(int flags) {
