@@ -3541,5 +3541,24 @@
    "type": "object"
   },
   "name": "experience"
+ },
+ {
+  "inputSchema": {
+   "properties": {
+    "file": {
+     "description": "Path of the sprint plan file, named ...-plan.md, carrying the board markers.",
+     "type": "string"
+    },
+    "precedentOverride": {
+     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "type": "string"
+    }
+   },
+   "required": [
+    "file"
+   ],
+   "type": "object"
+  },
+  "name": "plan_board"
  }
 ]

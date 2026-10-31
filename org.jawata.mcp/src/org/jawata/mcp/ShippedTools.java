@@ -26,6 +26,7 @@ import org.jawata.mcp.tools.FindQualityIssueTool;
 import org.jawata.mcp.tools.GetDiagnosticsTool;
 import org.jawata.mcp.tools.HealthCheckTool;
 import org.jawata.mcp.tools.HireTool;
+import org.jawata.mcp.tools.PlanBoardTool;
 import org.jawata.mcp.tools.PlanStepsTool;
 import org.jawata.mcp.tools.ProjectTool;
 import org.jawata.mcp.tools.RefactoringTool;
@@ -189,6 +190,8 @@ public final class ShippedTools {
             planLedger,
             w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore));
         tools.add(new PlanStepsTool(planLedger));
+        // plan_board draws the same ledger into the sprint's plan file, so the file a person reads is the ledger's word (S10, D18).
+        tools.add(new PlanBoardTool(planLedger));
 
         tools.add(new RefreshWorkspaceTool(ports.workspace(), ports.verdict(), w.reconciler()));
         tools.add(new RefactoringTool(ports.workspace(), w.changeCache(), ports.changes(), plans::current));

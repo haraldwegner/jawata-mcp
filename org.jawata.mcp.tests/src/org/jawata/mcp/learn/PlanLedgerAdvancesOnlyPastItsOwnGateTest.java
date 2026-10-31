@@ -223,8 +223,10 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
                 // keeping a second copy of the step state.
                 "pending()",
                 // S10: a plan gets an END. close() sets a flag that stops a plan counting as pending and refuses further advances; it never
-                // moves a step, so the one-member rule for the step still holds. isClosed() is its read.
-                "close(PlanId)", "isClosed(PlanId)")),
+                // moves a step, so the one-member rule for the step still holds. view() below is its read.
+                "close(PlanId)",
+                // S10: a READ of every plan, open or closed, as copies, so the board is drawn from the ledger and from nothing else.
+                "view()")),
             published,
             "a member ARRIVING here is how an external write gets in, so the set is pinned"
                 + " rather than merely counted — and pinned by SIGNATURE, so an overload"
@@ -307,7 +309,7 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
         assertTrue(ledger.close(plan));
 
         assertAll(
-            () -> assertTrue(ledger.isClosed(plan)),
+            () -> assertTrue(ledger.view().get(0).closed()),
             () -> assertEquals(List.of(), ledger.pending(), "a closed plan was still reported pending"),
             () -> assertEquals(2, ledger.steps(plan).size(), "closing forgot the plan's steps"),
             () -> assertFalse(ledger.close(plan), "closing an already closed plan said it closed something"),

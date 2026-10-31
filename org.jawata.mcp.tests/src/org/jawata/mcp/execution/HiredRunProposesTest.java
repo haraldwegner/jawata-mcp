@@ -527,6 +527,11 @@ class HiredRunProposesTest {
                     + " send a reader to different places, which is why they are separate"));
     }
 
+    /** Whether the ledger's view shows the proposal's plan as closed. */
+    private boolean closed(HiredRun.Proposal proposal) {
+        return plans.view().stream().anyMatch(view -> view.id().equals(proposal.plan()) && view.closed());
+    }
+
     @Test
     @DisplayName("a finished hire's plan is closed whatever way the hire ended, so it no longer counts as pending")
     void aFinishedHiresPlanIsClosedWhateverHowItEnded() throws Exception {
@@ -542,8 +547,8 @@ class HiredRunProposesTest {
             step -> new GateOutcome(step.tool(), step.gateArguments(), 0, false));
 
         assertAll(
-            () -> assertTrue(plans.isClosed(passedAll.plan()), "a hire that got through left its plan open"),
-            () -> assertTrue(plans.isClosed(stoppedShort.plan()), "a hire that stopped at a refused gate left its plan open"),
+            () -> assertTrue(closed(passedAll), "a hire that got through left its plan open"),
+            () -> assertTrue(closed(stoppedShort), "a hire that stopped at a refused gate left its plan open"),
             () -> assertEquals(List.of(), plans.pending(), "a finished hire's plan is still reported pending"));
     }
 

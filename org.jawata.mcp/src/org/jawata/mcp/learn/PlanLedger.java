@@ -302,10 +302,20 @@ public final class PlanLedger {
         return true;
     }
 
-    /** Whether the plan was ended by {@link #close}; false for an unknown plan. */
-    public synchronized boolean isClosed(PlanId id) {
-        Entry entry = id == null ? null : plans.get(id);
-        return entry != null && entry.closed;
+    /**
+     * One plan as a reader of the ledger sees it: how far it got, whether its work has ended, and its steps. A copy; nothing in it can move
+     * the plan.
+     */
+    public record PlanView(PlanId id, int passedStep, boolean closed, List<GatedStep> steps) {
+    }
+
+    /** Every plan the ledger holds, open or closed, oldest first: the one answer a board is drawn from. */
+    public synchronized List<PlanView> view() {
+        List<PlanView> all = new ArrayList<>();
+        for (Map.Entry<PlanId, Entry> plan : plans.entrySet()) {
+            all.add(new PlanView(plan.getKey(), plan.getValue().currentStep, plan.getValue().closed, List.copyOf(plan.getValue().steps)));
+        }
+        return all;
     }
 
     /** How many plans this ledger currently holds. */
