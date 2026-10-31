@@ -82,6 +82,22 @@ public interface IJdtService extends org.jawata.spi.lang.LoadedWorkspace {
     ICompilationUnit getCompilationUnit(Path filePath);
 
     /**
+     * The unsaved text of the files an editor has open (Sprint 28h, S16a). Empty for a service whose host keeps editor buffers itself
+     * (the Eclipse host), where there is nothing to hold here.
+     */
+    default Optional<BufferStore> buffers() {
+        return Optional.empty();
+    }
+
+    /**
+     * The compilation unit a reader should use for {@code saved}: the working copy of the open buffer when an editor has the file open,
+     * so the reader sees the unsaved text, and {@code saved} itself otherwise.
+     */
+    default ICompilationUnit viewOf(ICompilationUnit saved) {
+        return saved == null ? null : buffers().flatMap(store -> store.view(saved)).orElse(saved);
+    }
+
+    /**
      * Get the IJavaElement at a specific position in a file.
      * Uses zero-based line and column numbers.
      *

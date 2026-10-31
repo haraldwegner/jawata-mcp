@@ -97,7 +97,13 @@ public class ScopedJdtService implements IJdtService {
     public ICompilationUnit getCompilationUnit(Path filePath) {
         IJavaProject jp = scope.javaProject();
         if (jp == null) return null;
-        return ModelLookup.lookupCompilationUnit(jp, filePath);
+        return viewOf(ModelLookup.lookupCompilationUnit(jp, filePath));
+    }
+
+    /** The one store of the service this view looks into: a one-project view sees the open buffers of its files too. */
+    @Override
+    public Optional<BufferStore> buffers() {
+        return delegate.buffers();
     }
 
     @Override

@@ -88,6 +88,21 @@ public final class JavaRanges {
             return new Range(lineOf(start), start - starts[lineOf(start)], lineOf(end), end - starts[lineOf(end)]);
         }
 
+        /**
+         * The offset of a position, the reverse of {@link #span}. A line past the last is the end of the text; a column past the end of
+         * its line is that line's end (the protocol says so too); a negative line or column is the text's or the line's start.
+         */
+        public int offsetOf(int line, int column) {
+            if (line < 0) {
+                return 0;
+            }
+            if (line >= starts.length) {
+                return length;
+            }
+            int lineEnd = line + 1 < starts.length ? starts[line + 1] - 1 : length;
+            return Math.min(starts[line] + Math.max(column, 0), lineEnd);
+        }
+
         /** The whole declaration of {@code element}, doc comment included, or empty when it has no source here. */
         public Optional<Range> declaration(IJavaElement element) {
             try {

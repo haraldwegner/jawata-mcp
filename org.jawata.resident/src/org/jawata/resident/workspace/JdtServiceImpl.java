@@ -34,6 +34,7 @@ import org.eclipse.jdt.core.IPackageFragment;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
+import org.jawata.core.BufferStore;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.core.ModelLookup;
@@ -131,6 +132,10 @@ public class JdtServiceImpl implements IJdtService {
     // sees all N classpaths at once — the expected behavior under Sprint
     // 10's port-grouped service consolidation.
     private volatile SearchService workspaceSearchService;
+
+    // The unsaved text of the files an editor has open (Sprint 28h, S16a): one store per workspace, so a face that attaches and detaches
+    // does not take the buffers with it. getCompilationUnit answers an open file's working copy from it.
+    private final BufferStore buffers = new BufferStore();
 
     public JdtServiceImpl() {
         this.workspaceManager = new WorkspaceManager();
@@ -651,6 +656,7 @@ public class JdtServiceImpl implements IJdtService {
         // the next service's resolve against deleted IProjects.
         assertNoWorkspaceRuleHeld();
         synchronized (resolveLock) {
+            buffers.discardAll(); // the open working copies go before the projects they belong to
             for (LoadedProject lp : projectsByKey.values()) {
                 deleteWorkspaceProject(lp);
             }
@@ -817,7 +823,18 @@ public class JdtServiceImpl implements IJdtService {
     // ========== New Interface Methods for Tools ==========
 
     @Override
+    public Optional<BufferStore> buffers() {
+        return Optional.of(buffers);
+    }
+
+    /** The unit a reader should use: the open buffer's working copy when an editor has the file open (its unsaved text), else the saved file's. */
+    @Override
     public ICompilationUnit getCompilationUnit(Path filePath) {
+        return viewOf(savedCompilationUnit(filePath));
+    }
+
+    /** The compilation unit of the file as it is on disk. */
+    private ICompilationUnit savedCompilationUnit(Path filePath) {
         ICompilationUnit cu = lookupAcrossWorkspace(filePath);
         if (cu != null) {
             return cu;

@@ -82,6 +82,22 @@ class JavaRangesTest {
         assertEquals(range(0, 0, 0, 0), JavaRanges.linesOf("").span(0, 0));
     }
 
+    @Test
+    @DisplayName("an offset is the reverse of a position: the position of an offset gives the offset back, and a position outside the text is moved to its edge")
+    void aPositionIsAnOffset() {
+        JavaRanges.Lines lines = JavaRanges.linesOf("ab\r\ncd\nef");
+        assertEquals(1, lines.offsetOf(0, 1));
+        assertEquals(4, lines.offsetOf(1, 0));
+        assertEquals(8, lines.offsetOf(2, 1));
+        assertEquals(3, lines.offsetOf(0, 99), "a column past the end of line 0 stops at its end, before the newline");
+        assertEquals(9, lines.offsetOf(99, 0), "a line past the last is the end of the text");
+        assertEquals(0, lines.offsetOf(-1, 5));
+        for (int offset = 0; offset <= 9; offset++) {
+            JavaRanges.Range at = lines.span(offset, 0);
+            assertEquals(offset, lines.offsetOf(at.line(), at.column()), "round trip at " + offset);
+        }
+    }
+
     // ---- the declaration and the name of an element ------------------------------------------------------------------------------
 
     @Test
