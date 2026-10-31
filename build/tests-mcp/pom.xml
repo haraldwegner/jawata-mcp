@@ -52,6 +52,8 @@
                     <include>acp/*.jsonl</include>
                     <!-- Sprint 28h, S6: the stand-in agent the engine's ACP client is tested against (a java source, kept as text so no compiler picks it up). -->
                     <include>acp/*.txt</include>
+                    <!-- Sprint 28h, S13: the access policy's shared case file, run by the Java parser and by the hook's Rust parser. -->
+                    <include>access/*.json</include>
                 </includes>
             </resource>
         </resources>
