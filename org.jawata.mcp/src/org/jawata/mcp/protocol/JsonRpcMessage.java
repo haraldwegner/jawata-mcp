@@ -17,6 +17,12 @@ public class JsonRpcMessage {
     private Object id;  // Can be String, Integer, or null
     private String method;
     private JsonNode params;
+    /**
+     * The answer. JSON-RPC requires a success response to carry this member, and for a request with nothing to answer it is {@code null}
+     * on the wire; in memory that is a {@link com.fasterxml.jackson.databind.node.NullNode}, because a Java null means "no result
+     * member" here (and is not written). A result that is not null is held and written exactly as before.
+     */
+    @com.fasterxml.jackson.databind.annotation.JsonDeserialize(using = ResultDeserializer.class)
     private Object result;
     private JsonRpcError error;
 
@@ -36,7 +42,7 @@ public class JsonRpcMessage {
     public static JsonRpcMessage successResponse(Object id, Object result) {
         JsonRpcMessage msg = new JsonRpcMessage();
         msg.id = id;
-        msg.result = result;
+        msg.result = result == null ? com.fasterxml.jackson.databind.node.NullNode.getInstance() : result;
         return msg;
     }
 
@@ -167,6 +173,31 @@ public class JsonRpcMessage {
 
         public void setData(Object data) {
             this.data = data;
+        }
+    }
+
+    /**
+     * Reads a {@code result} member as it always was read (maps, lists, scalars), except that a JSON {@code null} becomes a
+     * {@link com.fasterxml.jackson.databind.node.NullNode} and not a Java null, so a message that carries {@code "result": null} is
+     * told apart from one that carries no result.
+     */
+    static final class ResultDeserializer extends com.fasterxml.jackson.databind.deser.std.StdDeserializer<Object> {
+
+        private static final long serialVersionUID = 1L;
+
+        ResultDeserializer() {
+            super(Object.class);
+        }
+
+        @Override
+        public Object deserialize(com.fasterxml.jackson.core.JsonParser parser, com.fasterxml.jackson.databind.DeserializationContext context)
+                throws java.io.IOException {
+            return context.readValue(parser, Object.class);
+        }
+
+        @Override
+        public Object getNullValue(com.fasterxml.jackson.databind.DeserializationContext context) {
+            return com.fasterxml.jackson.databind.node.NullNode.getInstance();
         }
     }
 }
