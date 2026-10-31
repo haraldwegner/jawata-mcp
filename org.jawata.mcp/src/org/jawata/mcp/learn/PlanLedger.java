@@ -124,6 +124,9 @@ public final class PlanLedger {
          */
         private int currentStep = -1;
 
+        /** Set when the plan's work has ended, by {@link PlanLedger#close}; a closed plan is remembered and never pending. */
+        private boolean closed;
+
         Entry(List<GatedStep> steps) {
             this.steps = steps;
         }
@@ -184,6 +187,9 @@ public final class PlanLedger {
         Entry entry = id == null ? null : plans.get(id);
         if (entry == null) {
             return Advance.refused(-1, "no plan is open under that identity");
+        }
+        if (entry.closed) {
+            return Advance.refused(entry.currentStep, "the plan is closed: the work it gated has ended");
         }
         int next = entry.currentStep + 1;
         if (next >= entry.steps.size()) {
@@ -281,6 +287,27 @@ public final class PlanLedger {
         return entry == null ? List.of() : new ArrayList<>(entry.steps);
     }
 
+    /**
+     * Ends a plan: the work it gated has finished, whether every step passed or not. The plan stays remembered, so its record can still be
+     * read, but it no longer advances and no longer counts as pending.
+     *
+     * @return whether a plan that was open is now closed; false for an unknown plan and for one already closed
+     */
+    public synchronized boolean close(PlanId id) {
+        Entry entry = id == null ? null : plans.get(id);
+        if (entry == null || entry.closed) {
+            return false;
+        }
+        entry.closed = true;
+        return true;
+    }
+
+    /** Whether the plan was ended by {@link #close}; false for an unknown plan. */
+    public synchronized boolean isClosed(PlanId id) {
+        Entry entry = id == null ? null : plans.get(id);
+        return entry != null && entry.closed;
+    }
+
     /** How many plans this ledger currently holds. */
     public synchronized int planCount() {
         return plans.size();
@@ -298,7 +325,7 @@ public final class PlanLedger {
         List<Pending> open = new ArrayList<>();
         for (Map.Entry<PlanId, Entry> plan : plans.entrySet()) {
             int next = plan.getValue().currentStep + 1;
-            if (next < plan.getValue().steps.size()) {
+            if (!plan.getValue().closed && next < plan.getValue().steps.size()) {
                 open.add(new Pending(plan.getKey(), plan.getValue().currentStep, plan.getValue().steps.get(next)));
             }
         }

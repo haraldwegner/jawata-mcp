@@ -221,7 +221,10 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
                 "currentStep(PlanId)", "nextStep(PlanId)", "steps(PlanId)", "planCount()",
                 // S8: a READ (it returns copies; nothing it hands back can move a plan), added so the agent asks the ledger instead of
                 // keeping a second copy of the step state.
-                "pending()")),
+                "pending()",
+                // S10: a plan gets an END. close() sets a flag that stops a plan counting as pending and refuses further advances; it never
+                // moves a step, so the one-member rule for the step still holds. isClosed() is its read.
+                "close(PlanId)", "isClosed(PlanId)")),
             published,
             "a member ARRIVING here is how an external write gets in, so the set is pinned"
                 + " rather than merely counted — and pinned by SIGNATURE, so an overload"
@@ -293,6 +296,28 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
         assertFalse(again.advanced());
         assertEquals(0, again.currentStep(), "still on the last step it passed");
         assertTrue(again.refusedBecause().contains("all 1"), again.refusedBecause());
+    }
+
+    @Test
+    @DisplayName("a closed plan is remembered but never pending, and it does not advance; closing twice, or an unknown plan, changes nothing")
+    void aClosedPlanIsRememberedButNeverPending() {
+        PlanId plan = twoSteps();
+        assertEquals(1, ledger.pending().size(), "CONTROL: an open plan with steps left is pending");
+
+        assertTrue(ledger.close(plan));
+
+        assertAll(
+            () -> assertTrue(ledger.isClosed(plan)),
+            () -> assertEquals(List.of(), ledger.pending(), "a closed plan was still reported pending"),
+            () -> assertEquals(2, ledger.steps(plan).size(), "closing forgot the plan's steps"),
+            () -> assertFalse(ledger.close(plan), "closing an already closed plan said it closed something"),
+            () -> assertFalse(ledger.close(PlanId.mint()), "closing an unknown plan said it closed something"),
+            () -> {
+                PlanLedger.Advance refused = ledger.advanceIfGatePassed(plan,
+                    new GateOutcome("compile_workspace", json("{\"scope\":\"main\"}"), 0, true));
+                assertFalse(refused.advanced(), "a closed plan advanced");
+                assertTrue(refused.refusedBecause().contains("closed"), refused.refusedBecause());
+            });
     }
 
     @Test

@@ -528,6 +528,26 @@ class HiredRunProposesTest {
     }
 
     @Test
+    @DisplayName("a finished hire's plan is closed whatever way the hire ended, so it no longer counts as pending")
+    void aFinishedHiresPlanIsClosedWhateverHowItEnded() throws Exception {
+        HostCommand command = brain("echo \"done\"");
+        HiredRun run = new HiredRun(host, artifacts, plans, events);
+
+        HiredRun.Proposal passedAll = run.issue(
+            new ScriptDialect(command.executable(), List.of()), site(command),
+            "A change that gets through.", HiredBrain.Ceilings.of(Duration.ofSeconds(20)), twoSteps(), HiredRunProposesTest::passed);
+        HiredRun.Proposal stoppedShort = run.issue(
+            new ScriptDialect(command.executable(), List.of()), site(command),
+            "A change whose gate could not run.", HiredBrain.Ceilings.of(Duration.ofSeconds(20)), twoSteps(),
+            step -> new GateOutcome(step.tool(), step.gateArguments(), 0, false));
+
+        assertAll(
+            () -> assertTrue(plans.isClosed(passedAll.plan()), "a hire that got through left its plan open"),
+            () -> assertTrue(plans.isClosed(stoppedShort.plan()), "a hire that stopped at a refused gate left its plan open"),
+            () -> assertEquals(List.of(), plans.pending(), "a finished hire's plan is still reported pending"));
+    }
+
+    @Test
     @DisplayName("a run with no journal still proposes, and the record is unchanged by its absence")
     void aRunWithoutAJournalStillProposes() throws Exception {
         HostCommand command = brain("echo \"done\"");

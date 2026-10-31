@@ -102,6 +102,20 @@ class TurnBoundaryTest {
     }
 
     @Test
+    @DisplayName("a plan whose work has ended no longer holds the turn and no longer shows in plan_steps, though a step of it never passed")
+    void aClosedPlanNoLongerHoldsTheTurnOrShowsInPlanSteps() {
+        PlanLedger ledger = ledgerWithTwoSteps();
+        PrincipalSession person = session(true);
+        assertEquals(TurnBoundary.Kind.RESUME, boundaryOver(ledger, 3).atTurnEnd(person).kind(), "CONTROL: while open, its waiting step holds the turn");
+
+        ledger.close(ledger.pending().get(0).id());
+
+        assertEquals(TurnBoundary.Kind.FORWARD, boundaryOver(ledger, 3).atTurnEnd(person).kind(), "a closed plan still held the turn");
+        assertEquals(0, JSON.valueToTree(new PlanStepsTool(ledger).execute(JSON.createObjectNode()).getData()).path("pending").size(),
+            "a closed plan still shows in plan_steps");
+    }
+
+    @Test
     @DisplayName("while the person is at the keyboard a waiting step is reported by name with its gate, and nobody resumes it")
     void aWaitingStepWithTheGrantOffIsReported() {
         TurnBoundary.Verdict verdict = boundaryOver(ledgerWithTwoSteps(), 3).atTurnEnd(session(false));

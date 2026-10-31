@@ -234,6 +234,18 @@ public final class HiredRun {
         // changed file attributed to the run"). It has to be taken here, around the spawn, because
         // a brain edits through its OWN tools: no gate reports those writes, no tap sees them, and
         // the brain's answer is prose. The directory before and after is the only witness.
+        try {
+            return conduct(dialect, base, brief, tools, ceilings, declaredGates, planned, plan);
+        } finally {
+            // THE HIRE HAS ENDED, WHATEVER HOW: its plan ends with it. A plan left open after its hire finished (a gate refused, the brain
+            // could not start) would be reported pending at every turn end of every session for as long as the ledger remembered it.
+            plans.close(plan);
+        }
+    }
+
+    private Proposal conduct(BrainDialect dialect, HireSite base, String brief, List<String> tools,
+            HiredBrain.Ceilings ceilings, GateRunner declaredGates, List<GatedStep> planned, PlanId plan)
+            throws IOException, InterruptedException {
         TreeAttribution census = base.workingDirectory() == null
             ? null
             : TreeAttribution.before(host, base.workingDirectory());
