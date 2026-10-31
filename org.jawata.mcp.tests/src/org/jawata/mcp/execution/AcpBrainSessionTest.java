@@ -14,8 +14,11 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.agent.Hirer;
+import org.jawata.mcp.agent.SeatTree;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -116,6 +119,22 @@ class AcpBrainSessionTest {
         assertEquals("permission:reject_once", none.text(), "an empty allowlist allowed a tool");
         assertEquals(List.of("mcp__jawata__inspect"), listed.toolNames(), "the call was not named in the outcome");
         assertEquals("1", listed.toolCalls().get(0).arguments().path("a").asText(), "the call's arguments were not kept");
+    }
+
+    @Test
+    @DisplayName("E4: a lead's code-changing call is refused and a developer's identical call is not, through the allowlist the hirer builds")
+    void aLeadsCodeChangingCallIsRefusedAndADevelopersIsNot() throws Exception {
+        List<String> engineTools = List.of("inspect", "rename_symbol");
+        Hirer hirer = new Hirer(SeatTree.standard(), Map.of(), Set.of("rename_symbol"));
+        HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(Duration.ofSeconds(60));
+
+        HiredBrain.Outcome lead = hire("CALL:mcp__jawata__rename_symbol", hirer.allowlist("chief-engineer", engineTools), Optional.empty(), ceilings, null);
+        HiredBrain.Outcome developer = hire("CALL:mcp__jawata__rename_symbol", hirer.allowlist("developer", engineTools), Optional.empty(), ceilings, null);
+        HiredBrain.Outcome leadReading = hire("CALL:mcp__jawata__inspect", hirer.allowlist("chief-engineer", engineTools), Optional.empty(), ceilings, null);
+
+        assertEquals("permission:reject_once", lead.text(), "a lead's code-changing call was allowed");
+        assertEquals("permission:allow_once", developer.text(), "a developer's identical call was refused");
+        assertEquals("permission:allow_once", leadReading.text(), "CONTROL: a lead's reading call was refused too");
     }
 
     @Test

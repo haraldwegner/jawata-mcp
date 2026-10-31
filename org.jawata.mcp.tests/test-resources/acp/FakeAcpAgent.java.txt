@@ -6,6 +6,7 @@
 //   RECALL           answers the word kept for the session, or "nothing"
 //   SERVERS          answers the mcpServers it was given for the session
 //   TOOL / WRITE     makes a tool call (mcp__jawata__inspect / Edit) and asks permission; answers "permission:<option chosen>"
+//   CALL:<title>     the same for a tool of that name
 //   SPEND            makes five tool calls, each with a usage update that raises the cost
 //   HANG             sleeps for a minute without answering
 //   DIE              exits with status 3 without answering
@@ -58,8 +59,9 @@ public class FakeAcpAgent {
             chunk(session, Files.exists(memory) ? Files.readString(memory) : "nothing");
         } else if (text.startsWith("SERVERS")) {
             chunk(session, servers.getOrDefault(session, "none"));
-        } else if (text.startsWith("TOOL") || text.startsWith("WRITE")) {
-            String title = text.startsWith("TOOL") ? "mcp__jawata__inspect" : "Edit";
+        } else if (text.startsWith("TOOL") || text.startsWith("WRITE") || text.startsWith("CALL:")) {
+            String title = text.startsWith("CALL:") ? text.substring("CALL:".length())
+                : text.startsWith("TOOL") ? "mcp__jawata__inspect" : "Edit";
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"t1\",\"title\":\"" + title
                 + "\",\"kind\":\"read\",\"status\":\"pending\",\"rawInput\":{\"a\":1}}}}");
