@@ -919,9 +919,44 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
             // BEFORE the degradation stamp, so a degraded resident's warning is the LAST
             // thing appended and stays the first thing read.
             priorWork(name, arguments, response);
+            rulesOnTool(name, response);
             response.stampDegradation(ResidentDegradation.stamp());
         }
         return response;
+    }
+
+    /**
+     * Sprint 28h, S14 (D23): where the rules lane is read at the choke, so an accepted rule labelled {@code tool:<name>} rides every
+     * answer of that tool, refusals included. Null = no store, which is every test that builds a registry directly.
+     */
+    private volatile java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> ruleStore;
+
+    /** Install the store the tool-labelled rules are read from (application wiring). */
+    public void setRuleStore(java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> source) {
+        this.ruleStore = source;
+    }
+
+    /**
+     * The accepted rules that bind this tool, appended to its answer as a fact it should act on (D23). A change to a rule changes the
+     * next call's answer and no code. Never fails the call: a rule that could not be read is logged, and the tool's own answer goes out.
+     */
+    private void rulesOnTool(String name, ToolResponse response) {
+        java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> source = ruleStore;
+        if (source == null) {
+            return;
+        }
+        try {
+            org.jawata.mcp.knowledge.ExperienceStore store = source.get();
+            if (store == null) {
+                return;
+            }
+            java.util.List<String> rules = org.jawata.mcp.knowledge.SeatRules.bindingOnTool(store, name);
+            if (!rules.isEmpty()) {
+                response.appendStoreAnswer("Rules that bind " + name + ":\n- " + String.join("\n- ", rules));
+            }
+        } catch (RuntimeException e) {
+            log.warn("the rules that bind tool {} could not be read; its answer goes out without them: {}", name, e.toString());
+        }
     }
 
     /**

@@ -784,6 +784,8 @@ public class JawataEngine {
 		if (getExperienceStore() instanceof org.jawata.mcp.knowledge.RecoveringExperienceStore r) {
 			getToolRegistry().setStoreNotice(r::degradedNotice);
 		}
+		// Sprint 28h S14 (D23): the dispatch reads the rules lane. An accepted rule labelled tool:<name> rides every answer of that tool.
+		getToolRegistry().setRuleStore(this::getExperienceStore);
 
 		// Sprint 28b D1: the sanitized field recording — file-based (append-only
 		// JSONL under <workspace>/field/), independent of the store, so it works
@@ -848,6 +850,8 @@ public class JawataEngine {
 			}
 			if (getExperienceTool() != null) {
 				getExperienceTool().setQualityLedger(qualityLedger);
+				// Sprint 28h S14 (D23): a rule labelled tool:<name> is asked for by that tool, so the sweep of dead labels needs the names.
+				getExperienceTool().setToolNames(getToolRegistry()::getToolNames);
 				// Sprint 28c D9: the lane a declared shell-fallback goes to. Wired
 				// in the SAME block as the ledger and for the same reason — an
 				// unwired collaborator here would make the fallback verb refuse

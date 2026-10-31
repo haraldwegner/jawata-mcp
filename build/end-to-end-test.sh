@@ -307,6 +307,48 @@ case "$ALLOWED" in
     *) pass "access-policy CONTROL: a place under the scratch folder reaches the tool" ;;
 esac
 
+# --- tool-rules (Sprint 28h, S14, E12): a rule labelled tool:<name> rides that tool's answer on the running product ----
+# The dispatch reads the rules lane (D23). A rule recorded through the front door reaches the NEXT call of its tool with no code change,
+# amending it changes that answer, and a tool the rule does not name never carries it (the control), so a registry that attached every
+# rule to every answer would fail here.
+idof() { grep -oE '"id":"[^"]+"' | head -1 | cut -d'"' -f4; }
+RULE_SRC="$(call experience '{"kind":"record","type":"lesson","summary":"a second permission question for a release he already ordered costs him a turn","situation":"when he has said release and I am about to ask whether to push","verdict":"failed_avoid"}' | idof)"
+RULE_ID="$(call experience "{\"kind\":\"promote_rule\",\"summary\":\"E12 first wording of the tool rule\",\"situation\":\"when the gate calls health_check\",\"status\":\"accepted\",\"operation\":\"tool:health_check\",\"ids\":[\"$RULE_SRC\"]}" | idof)"
+case "$(call health_check '{}')" in
+    *"E12 first wording of the tool rule"*) pass "tool-rules a rule labelled for a tool rides that tool's next answer" ;;
+    *) fail "tool-rules the rule recorded for health_check did not ride its answer (source '$RULE_SRC', rule '$RULE_ID')" ;;
+esac
+case "$(call project '{"action":"list"}')" in
+    *"E12 first wording of the tool rule"*) fail "tool-rules CONTROL: a tool the rule does not name carried it" ;;
+    *) pass "tool-rules CONTROL: a tool the rule does not name does not carry it" ;;
+esac
+call experience "{\"kind\":\"amend_rule\",\"id\":\"$RULE_ID\",\"summary\":\"E12 second wording of the tool rule\"}" > /dev/null
+AFTER="$(call health_check '{}')"
+case "$AFTER" in
+    *"E12 second wording of the tool rule"*) pass "tool-rules amending the rule changes the next answer with no code change" ;;
+    *) fail "tool-rules the amended wording did not ride the next answer: $(printf '%s' "$AFTER" | head -c 300)" ;;
+esac
+case "$AFTER" in
+    *"E12 first wording of the tool rule"*) fail "tool-rules the superseded wording still rides the answer" ;;
+    *) pass "tool-rules the superseded wording no longer rides the answer" ;;
+esac
+# A label naming a tool the resident publishes is asked for by that tool, so the review sweep must not list it as a dead label; a label
+# naming no tool must be listed. The sweep is given a seat directory because it refuses to judge labels without one. This holds the
+# engine's wiring of the published tool names into the sweep: with that wiring gone the real label below is listed too.
+SEAT_DIR="$WS/e2e-seats"
+mkdir -p "$SEAT_DIR"
+printf -- '---\nname: worker\nbrain: claude-code\nttl_secs: 30\n---\n\nYou are the worker.\n' > "$SEAT_DIR/worker.md"
+call experience "{\"kind\":\"promote_rule\",\"summary\":\"E12 rule naming a tool that does not exist\",\"situation\":\"when the gate sweeps the labels\",\"status\":\"accepted\",\"operation\":\"tool:health_chek\",\"ids\":[\"$RULE_SRC\"]}" > /dev/null
+SWEEP="$(call experience "{\"kind\":\"review_sweep\",\"seats\":\"$SEAT_DIR\"}")"
+case "$SWEEP" in
+    *'"tool:health_chek"'*) pass "tool-rules a label naming no published tool is listed as unasked by the review sweep" ;;
+    *) fail "tool-rules the sweep did not list the label of a tool that does not exist: $(printf '%s' "$SWEEP" | head -c 400)" ;;
+esac
+case "$SWEEP" in
+    *'"tool:health_check"'*) fail "tool-rules the sweep lists the label of a PUBLISHED tool as unasked, so the tool names never reached it: $(printf '%s' "$SWEEP" | head -c 400)" ;;
+    *) pass "tool-rules a label naming a published tool is not listed as unasked" ;;
+esac
+
 # --- tool-count: no tool silently appeared or vanished -----------------------
 # The release-note sentence "the tool count is still N" gets its live check
 # (Sprint 28 outcome audit, F7 — the sentence had no check behind it).

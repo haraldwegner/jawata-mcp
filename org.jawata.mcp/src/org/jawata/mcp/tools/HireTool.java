@@ -558,6 +558,12 @@ public class HireTool extends NeutralTool {
         if (!issuedHere.isEmpty()) {
             data.put("instructionsIssued", Instructions.rows(issuedHere));
         }
+        // A block that is not a whole instruction (no TOOL: line, or ARGUMENTS that are no JSON object) is named here, so it cannot
+        // vanish from the list above without a trace (D8).
+        List<String> instructionFaults = Instructions.faults(proposal.outcome().text());
+        if (!instructionFaults.isEmpty()) {
+            data.put("instructionFaults", instructionFaults);
+        }
         // THE PM'S MEASURE, for a worker hired to carry those instructions out.
         String instructionsFrom = getStringParam(arguments, "instructionsFrom");
         if (instructionsFrom != null && !instructionsFrom.isBlank()) {

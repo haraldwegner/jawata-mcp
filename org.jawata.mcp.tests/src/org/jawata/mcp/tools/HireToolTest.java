@@ -1298,6 +1298,40 @@ class HireToolTest {
                 "no instruction ran as written, so there is no per-instruction figure and no zero stands in for it"));
     }
 
+    @Test
+    @DisplayName("S14 (D8): a lead's block that is not a whole instruction is named in the hire answer; a whole one leaves no such row")
+    void aLeadsBrokenInstructionBlockIsNamedInTheHireAnswer() throws Exception {
+        String broken = PM_ANSWER + "\nINSTRUCTION 2\nARGUMENTS: {\"symbol\":\"a.B#c\"}\n";
+
+        Map<String, Object> whole = dataOf(toolWith(new StandsIn(host, aBrainSayingWithTokens(PM_ANSWER, 10, 5).withSeparateStderr()),
+            events, aRegistryWithACleanGate()).execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        Map<String, Object> faulty = dataOf(toolWith(new StandsIn(host, aBrainSayingWithTokens(broken, 10, 5).withSeparateStderr()),
+            events, aRegistryWithACleanGate()).execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        // The journal row the hire wrote is where a later hire is scored from, so it names the fault too (HiredRun).
+        String faultyRow = hiredRunRow((String) faulty.get("plan"));
+        String wholeRow = hiredRunRow((String) whole.get("plan"));
+
+        assertAll(
+            () -> assertEquals(null, whole.get("instructionFaults"), "THE CONTROL: a whole block leaves no fault row: " + whole.get("instructionFaults")),
+            () -> assertEquals(1, ((List<?>) faulty.get("instructionsIssued")).size(), "the whole block is still issued"),
+            () -> assertTrue(String.valueOf(faulty.get("instructionFaults")).contains("instruction 2"),
+                "the block with no TOOL: line is named, not lost: " + faulty.get("instructionFaults")),
+            () -> assertTrue(faultyRow.contains("\"instructionFaults\":[\"instruction 2"),
+                "the journal row names the fault: " + faultyRow),
+            () -> assertTrue(wholeRow.contains("\"instructionFaults\":[]"),
+                "THE CONTROL: a whole block leaves the journal's fault list empty, present and empty: " + wholeRow));
+    }
+
+    /** The detail of the newest hired-run row the journal holds for a plan. */
+    private String hiredRunRow(String plan) {
+        return events.eventsOfSession(plan).orElseThrow().stream()
+            .filter(e -> org.jawata.mcp.learn.LearnerEvent.KIND_HIRED_RUN.equals(e.kind()))
+            .reduce((earlier, later) -> later)
+            .orElseThrow(() -> new AssertionError("the journal holds no hired-run row for " + plan))
+            .detailJson();
+    }
+
     private Map<String, Object> hiredAs(String seatName, String answer) throws Exception {
         HireTool hire = toolWith(new StandsIn(host, aBrainSayingWithTokens(answer, 10, 5).withSeparateStderr()), events, aRegistryWithACleanGate());
         com.fasterxml.jackson.databind.node.ObjectNode args = (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));

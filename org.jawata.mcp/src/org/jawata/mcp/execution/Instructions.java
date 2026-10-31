@@ -57,9 +57,20 @@ public final class Instructions {
     public record Instruction(int number, String tool, JsonNode arguments) {
     }
 
-    /** Every instruction block in {@code answer}, in order; empty when there are none. */
-    public static List<Instruction> parse(String answer) {
-        List<Instruction> found = new ArrayList<>();
+    /**
+     * One {@code INSTRUCTION n} header and what follows it up to the next header. The one reading of an
+     * answer that {@link #parse} and {@link #faults} both start from, so what counts as a block cannot
+     * differ between them (D8: a run shows each lead instruction as a block).
+     *
+     * @param number the number on the header
+     * @param tool   the name on its {@code TOOL:} line, or null when the block has none
+     * @param body   the text after the header, up to the next header
+     */
+    private record Block(int number, String tool, String body) {
+    }
+
+    private static List<Block> blocks(String answer) {
+        List<Block> found = new ArrayList<>();
         if (answer == null || answer.isBlank()) {
             return found;
         }
@@ -72,11 +83,39 @@ public final class Instructions {
             int bodyEnd = i + 1 < headers.size() ? headers.get(i + 1)[0] : answer.length();
             String body = answer.substring(headers.get(i)[1], bodyEnd);
             Matcher tool = TOOL.matcher(body);
-            if (tool.find()) {
-                found.add(new Instruction(headers.get(i)[2], tool.group(1), argumentsOf(body)));
+            found.add(new Block(headers.get(i)[2], tool.find() ? tool.group(1) : null, body));
+        }
+        return found;
+    }
+
+    /** Every instruction block in {@code answer}, in order; empty when there are none. */
+    public static List<Instruction> parse(String answer) {
+        List<Instruction> found = new ArrayList<>();
+        for (Block block : blocks(answer)) {
+            if (block.tool() != null) {
+                found.add(new Instruction(block.number(), block.tool(), argumentsOf(block.body())));
             }
         }
         return found;
+    }
+
+    /**
+     * What is wrong with the instruction blocks of {@code answer}, in words, one entry per block that
+     * is not a whole instruction: a header with no {@code TOOL:} line (which {@link #parse} leaves out,
+     * so it would otherwise vanish without a trace) and a block whose {@code ARGUMENTS:} are missing or
+     * not one JSON object (which {@link #parse} keeps with null arguments). Empty when every block is
+     * whole, and when there are none.
+     */
+    public static List<String> faults(String answer) {
+        List<String> faults = new ArrayList<>();
+        for (Block block : blocks(answer)) {
+            if (block.tool() == null) {
+                faults.add("instruction " + block.number() + ": no TOOL: line, so it names nothing to run and is not counted as issued");
+            } else if (argumentsOf(block.body()) == null) {
+                faults.add("instruction " + block.number() + ": ARGUMENTS missing or not one JSON object, so it has no execution");
+            }
+        }
+        return faults;
     }
 
     /** Rows for a record or an answer. */

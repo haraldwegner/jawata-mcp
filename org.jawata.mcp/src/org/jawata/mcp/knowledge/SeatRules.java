@@ -86,10 +86,40 @@ public final class SeatRules {
         for (String activity : activities) {
             carried.add(activity.strip().toLowerCase(Locale.ROOT));
         }
+        return matching(store, label -> label == null || label.isBlank()
+            || carried.contains(label.strip().toLowerCase(Locale.ROOT)));
+    }
+
+    /**
+     * Sprint 28h, S14 (D23) — the accepted rules that bind one TOOL: those anchored {@code tool:<name>}
+     * and nothing else. A rule with no label binds every seat and no tool, so it never rides a tool's
+     * answer; a rule recorded after the build reaches the next call of its tool with no code change.
+     *
+     * @param store the store the rules live in
+     * @param tool the tool's published name
+     * @return each binding rule's text, in the order the store holds them
+     */
+    public static List<String> bindingOnTool(ExperienceStore store, String tool) {
+        String own = toolLabel(tool);
+        return matching(store, label -> label != null && own.equals(label.strip().toLowerCase(Locale.ROOT)));
+    }
+
+    /** The label a rule carries to bind the tool called {@code tool}: {@code tool:<name>}. */
+    public static String toolLabel(String tool) {
+        return TOOL_PREFIX + tool.strip().toLowerCase(Locale.ROOT);
+    }
+
+    /** The prefix of a label that names one tool. */
+    private static final String TOOL_PREFIX = "tool:";
+
+    /**
+     * The one pass over the rules lane that says which rules bind: seats and tools differ only in
+     * which label they accept, so there is no second reader of the lane.
+     */
+    private static List<String> matching(ExperienceStore store, java.util.function.Predicate<String> labelBinds) {
         List<String> texts = new ArrayList<>();
         for (StoredEntry rule : acceptedRules(store)) {
-            String label = rule.operation();
-            if (label == null || label.isBlank() || carried.contains(label.strip().toLowerCase(Locale.ROOT))) {
+            if (labelBinds.test(rule.operation())) {
                 texts.add(textOf(rule));
             }
         }
@@ -146,14 +176,37 @@ public final class SeatRules {
     /** The prefix of a label that names one seat. */
     private static final String SEAT_PREFIX = "seat:";
 
+    /**
+     * The accepted rules as of one change stamp of one store. A tool's answer asks for them on every
+     * call, so the lane is read again only when the store says it changed ({@code changeStamp}); a
+     * store that cannot say (stamp null) is read every time, as it always was. The read itself is the
+     * whole lane and is never capped, so a rule is never "absent" because a page was full.
+     */
+    private record CachedRules(String stamp, List<StoredEntry> rules) {
+    }
+
+    private static final Map<ExperienceStore, CachedRules> CACHED =
+        java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+
     /** The rules that are live and accepted — what the lane serves, asked of the lane itself. */
     private static List<StoredEntry> acceptedRules(ExperienceStore store) {
+        String changed = store.changeStamp();
+        String stamp = changed == null ? null : changed + "|" + store.provenanceWorkspaceId();
+        if (stamp != null) {
+            CachedRules cached = CACHED.get(store);
+            if (cached != null && stamp.equals(cached.stamp())) {
+                return cached.rules();
+            }
+        }
         List<StoredEntry> rules = new ArrayList<>();
         for (StoredEntry e : store.all()) {
             if (KnowledgeLane.RULE_TYPE.equals(e.type()) && e.isLive()
                     && e.answersFor(store.provenanceWorkspaceId())) {
                 rules.add(e);
             }
+        }
+        if (stamp != null) {
+            CACHED.put(store, new CachedRules(stamp, List.copyOf(rules)));
         }
         return rules;
     }

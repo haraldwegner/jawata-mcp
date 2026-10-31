@@ -454,6 +454,7 @@ public final class HiredRun {
                 detail.put("model", model);
                 detail.put("tokensSpent", outcome.tokens().isPresent() ? outcome.tokens().get().spent() : null);
                 detail.put("instructions", Instructions.rows(Instructions.parse(outcome.text())));
+                detail.put("instructionFaults", Instructions.faults(outcome.text()));
                 journal.append(new LearnerEvent(plan.value(), LearnerEvent.KIND_HIRED_RUN,
                     dialect.name(), new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(detail)));
             } catch (RuntimeException | com.fasterxml.jackson.core.JsonProcessingException e) {

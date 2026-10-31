@@ -2494,6 +2494,9 @@ public final class ExperienceTool implements Tool {
         ExperienceEntry amended = ExperienceEntry.of(
                 SymbolFact.of(KnowledgeLane.RULE_TYPE, summary, Confidence.HIGH).build())
             .status(ExperienceEntry.ACCEPTED)
+            // WHO THE RULE BINDS IS PART OF IT: seat:<name>, an activity, or tool:<name> (D23). The amended version carries the label, or an
+            // amendment would silently turn a rule that binds one seat or tool into one that binds every seat and no tool.
+            .operation(current.operation())
             .situation(text(args, "situation") == null
                 ? current.facets().situation() : text(args, "situation"))
             .addLink("supersedes", id)
@@ -4029,8 +4032,21 @@ public final class ExperienceTool implements Tool {
         report.put("checked", true);
         report.put("seatsRead", asked.seatsRead());
         report.put("unreadableSeats", asked.unreadable());
-        report.put("unasked", org.jawata.mcp.knowledge.SeatRules.unaskedLabels(store, asked.labels()));
+        // A rule labelled tool:<name> is asked for by the tool of that name (D23), so only a name that is no tool is a dead label.
+        java.util.Set<String> askedFor = new java.util.LinkedHashSet<>(asked.labels());
+        for (String tool : toolNames.get()) {
+            askedFor.add(org.jawata.mcp.knowledge.SeatRules.toolLabel(tool));
+        }
+        report.put("unasked", org.jawata.mcp.knowledge.SeatRules.unaskedLabels(store, askedFor));
         return report;
+    }
+
+    /** The names of the tools this resident publishes, whose {@code tool:<name>} labels are asked for. Empty until installed. */
+    private volatile java.util.function.Supplier<java.util.Set<String>> toolNames = java.util.Set::of;
+
+    /** Install the supplier of the published tool names (application wiring), for the review sweep of dead rule labels. */
+    public void setToolNames(java.util.function.Supplier<java.util.Set<String>> names) {
+        this.toolNames = names == null ? java.util.Set::of : names;
     }
 
     /**
