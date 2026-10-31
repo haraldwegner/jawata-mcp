@@ -96,6 +96,11 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             this.spellings = List.of(spellings);
         }
 
+        /** The name the host's registry settings know this brain by: the first spelling, which is also how its dialect names itself. */
+        public String label() {
+            return spellings.get(0);
+        }
+
         /**
          * The brain a seat means by this word, or absent.
          *
@@ -284,6 +289,18 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             return asked;
         }
         return text.append("## Your brief\n\n").append(asked).toString();
+    }
+
+    /**
+     * The model the registry setting offers for this seat's brain, used only where the seat file names none: a model the seat file writes is
+     * the seat's own word and wins over the studio's default for the brain.
+     */
+    public SeatHire withRegistryModel(Hirer.Brain offered) {
+        if (model != null || offered == null || offered.model().isBlank()) {
+            return this;
+        }
+        return new SeatHire(seat, brain, offered.model(), tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
+            changesCode, readsFiles, activities, writesStore);
     }
 
     /**

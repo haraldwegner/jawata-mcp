@@ -34,7 +34,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 public final class PrincipalBrain implements AgentBrain {
 
     /** The host setting that names the brain to hire for the principal seat. */
-    public static final String SETTING = "jawata.agent.brain";
+    public static final String SETTING = Hirer.MAIN_BRAIN_SETTING;
 
     /**
      * One answered prompt, as the hire record says it.

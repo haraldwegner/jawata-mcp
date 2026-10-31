@@ -329,12 +329,6 @@ public class HireTool extends NeutralTool {
         String hired = getStringParam(arguments, "seat");
         String brief = getStringParam(arguments, "brief");
 
-        Optional<String> notHirable = hiring.refuseKnown(hirer, hired);
-        if (notHirable.isPresent()) {
-            return ToolResponse.error("PRECONDITION_NOT_MET", notHirable.get(),
-                "a seat is hired by its own parent in the signed tree: the reason above names it; hire through that seat, or have the person ask for this one");
-        }
-
         SeatHire seat;
         try {
             seat = SeatHire.read(readSeatFile(getStringParam(arguments, "seatFile")));
@@ -349,6 +343,25 @@ public class HireTool extends NeutralTool {
             return ToolResponse.error("INVALID_PARAMETER",
                 "the seat file does not describe a hireable seat: " + e.getMessage(),
                 "check its brain: field — an unknown brain is refused rather than defaulted");
+        }
+
+        // THE MODEL REGISTRY AND THE VENDOR RULE (S12, D11, D48). The registry setting offers each brain with its vendor and model; the seat file's own
+        // model wins over the registry's. The hirer decides with what is known of main's brain (its setting) and of this seat's: a hire between two
+        // seats of the signed tree is refused unless the hirer is the seat's parent, and the consultant is refused on main's own vendor. This is after
+        // the seat file is read because the vendor of the seat is the vendor of its brain, and before anything is started.
+        Optional<String> brainsRegistry = settings.get().get(BRAINS_SETTING);
+        String brainLabel = seat.brain().label();
+        Optional<Hirer.Brain> brainOffered = brainsRegistry.flatMap(text -> Hirer.brainIn(text, brainLabel));
+        seat = seat.withRegistryModel(brainOffered.orElse(null));
+        Hirer deciding = settings.get().get(Hirer.MAIN_BRAIN_SETTING).flatMap(Hirer::brainOf)
+            .map(main -> hiring.withBrain("main", main)).orElse(hiring);
+        if (brainOffered.isPresent()) {
+            deciding = deciding.withBrain(hired, brainOffered.get());
+        }
+        Optional<String> notHirable = deciding.refuseKnown(hirer, hired);
+        if (notHirable.isPresent()) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", notHirable.get(),
+                "a seat is hired by its own parent in the signed tree, and the consultant runs on another vendor than main: the reason above names which; hire through the seat that does hire it, or set the vendors in the host settings");
         }
 
         if (!seat.enabled()) {
@@ -431,7 +444,7 @@ public class HireTool extends NeutralTool {
         HiredRun.Proposal proposal;
         try {
             // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
-            Optional<AcpBrainSession.Program> acp = settings.get().get(BRAINS_SETTING)
+            Optional<AcpBrainSession.Program> acp = brainsRegistry
                 .flatMap(registryText -> AcpBrainSession.programFor(registryText, dialect.name()));
             proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()),
                 hiddenTools, acp);
@@ -453,6 +466,12 @@ public class HireTool extends NeutralTool {
         // answered is not an attribution.
         data.put("hirer", hirer);
         data.put("hired", hired);
+        // WHICH BRAIN ANSWERED (D11, D48): its name, the vendor and model the registry setting names for it, and the model the run used.
+        Map<String, Object> brainRow = new LinkedHashMap<>();
+        brainRow.put("brain", dialect.name());
+        brainRow.put("vendor", deciding.brainFor(hired).map(Hirer.Brain::vendor).filter(v -> !v.isBlank()).orElse("NOT NAMED IN THE REGISTRY SETTING"));
+        brainRow.put("model", seat.model() == null ? "THE BRAIN'S OWN DEFAULT" : seat.model());
+        data.put("brain", brainRow);
         data.put("plan", proposal.plan().value());
         // The file a human reads, and the artifact it was stored as. The RUN writes both; this call
         // points at them rather than copying them into its own answer, so the record a reader opens

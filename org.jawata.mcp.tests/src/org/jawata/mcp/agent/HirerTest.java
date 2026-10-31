@@ -73,6 +73,29 @@ class HirerTest {
     }
 
     @Test
+    @DisplayName("D11: the registry gives each brain its vendor and model, an unnamed field reads as blank, and a text that is not a registry gives none")
+    void theRegistryIsReadPerBrain() {
+        String registry = "{\"claude-code\":{\"command\":[\"x\"],\"vendor\":\"anthropic\",\"model\":\"opus\"},\"codex\":{\"command\":[\"y\"]}}";
+
+        assertEquals(Optional.of(new Brain("anthropic", "opus")), Hirer.brainIn(registry, "claude-code"));
+        assertEquals(Optional.of(new Brain("", "")), Hirer.brainIn(registry, "codex"));
+        assertEquals(Optional.empty(), Hirer.brainIn(registry, "cursor"));
+        assertEquals(Optional.empty(), Hirer.brainIn("not json", "claude-code"));
+        assertEquals(Optional.of(new Brain("anthropic", "")), Hirer.brainOf("{\"command\":[\"x\"],\"vendor\":\"anthropic\"}"));
+        assertEquals(Optional.empty(), Hirer.brainOf("[1]"));
+    }
+
+    @Test
+    @DisplayName("D48: a vendor that is not named is not a vendor that differs, so the consultant is refused on a blank vendor")
+    void aBlankVendorIsNotADifferentVendor() {
+        Hirer unnamed = hirer(Map.of("main", CLAUDE, "consultant", new Brain("", "m")));
+        Hirer unnamedMain = hirer(Map.of("main", new Brain("", ""), "consultant", OTHER_VENDOR));
+
+        assertTrue(unnamed.refuse("main", "consultant").isPresent(), "a consultant with no named vendor was hired");
+        assertTrue(unnamedMain.refuse("main", "consultant").isPresent(), "a consultant was hired against a main with no named vendor");
+    }
+
+    @Test
     @DisplayName("D11: only a developer escalates, and to the senior developer")
     void aDeveloperEscalatesToTheSeniorDeveloper() {
         Hirer hirer = hirer(Map.of());

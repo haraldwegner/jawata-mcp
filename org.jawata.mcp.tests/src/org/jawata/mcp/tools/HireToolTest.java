@@ -18,6 +18,7 @@ import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostOS;
 import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
@@ -1486,6 +1487,122 @@ class HireToolTest {
             () -> assertEquals(Boolean.TRUE, data.get("complete"), String.valueOf(data)),
             () -> assertEquals(1, started.size(), "one brain was started: " + started),
             () -> assertEquals(program.get("command"), started.get(0), "the brain started was not the ACP program: " + started));
+    }
+
+    /** A hire tool whose host settings are exactly these, by key. */
+    private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
+        return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
+            () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
+            () -> key -> java.util.Optional.ofNullable(settings.get(key)));
+    }
+
+    private static final String SEAT_WITHOUT_A_MODEL = CATALOGUER_SEAT.replace("model: claude-sonnet-5\n", "");
+
+    private static String registryOf(String vendor, String model) throws Exception {
+        Map<String, Object> entry = new java.util.LinkedHashMap<>();
+        if (vendor != null) {
+            entry.put("vendor", vendor);
+        }
+        if (model != null) {
+            entry.put("model", model);
+        }
+        return JSON.writeValueAsString(Map.of("claude-code", entry));
+    }
+
+    private static String modelOf(List<String> argv) {
+        int at = argv.indexOf("--model");
+        return at < 0 || at + 1 >= argv.size() ? null : argv.get(at + 1);
+    }
+
+    private ObjectNode consultantHireArgs() throws Exception {
+        ObjectNode args = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("hirer", "main");
+        args.put("seat", "consultant");
+        return args;
+    }
+
+    @Test
+    @DisplayName("S12 (D11): the registry setting gives a seat that names no model its brain's model, and changing the registry changes the seat's next hire")
+    void theRegistryModelIsUsedWhereTheSeatNamesNone() throws Exception {
+        StandsIn first = new StandsIn(host, aBrainThatAnswers());
+        Map<String, Object> one = dataOf(toolWithSettings(first, Map.of(HireTool.BRAINS_SETTING, registryOf("anthropic", "model-one")))
+            .execute(hireArgs(seatFile(SEAT_WITHOUT_A_MODEL))));
+        StandsIn second = new StandsIn(host, aBrainThatAnswers());
+        dataOf(toolWithSettings(second, Map.of(HireTool.BRAINS_SETTING, registryOf("anthropic", "model-two")))
+            .execute(hireArgs(seatFile(SEAT_WITHOUT_A_MODEL))));
+
+        assertAll(
+            () -> assertEquals("model-one", modelOf(first.asked()), String.valueOf(first.asked())),
+            () -> assertEquals("model-two", modelOf(second.asked()), "the registry changed and the seat's next hire did not: " + second.asked()),
+            () -> assertEquals(Map.of("brain", "claude-code", "vendor", "anthropic", "model", "model-one"), one.get("brain"), String.valueOf(one)));
+    }
+
+    @Test
+    @DisplayName("S12 (D11), the control: a model the seat file writes is the seat's own word and the registry's does not replace it; with no registry the brain's own default stands")
+    void aSeatsOwnModelWinsOverTheRegistry() throws Exception {
+        StandsIn own = new StandsIn(host, aBrainThatAnswers());
+        toolWithSettings(own, Map.of(HireTool.BRAINS_SETTING, registryOf("anthropic", "registry-model"))).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+        StandsIn none = new StandsIn(host, aBrainThatAnswers());
+        Map<String, Object> data = dataOf(toolWithSettings(none, Map.of()).execute(hireArgs(seatFile(SEAT_WITHOUT_A_MODEL))));
+
+        assertAll(
+            () -> assertEquals("claude-sonnet-5", modelOf(own.asked()), String.valueOf(own.asked())),
+            () -> assertEquals(null, modelOf(none.asked()), "a model was invented with no registry and no seat model: " + none.asked()),
+            () -> assertEquals("THE BRAIN'S OWN DEFAULT", ((Map<?, ?>) data.get("brain")).get("model")));
+    }
+
+    @Test
+    @DisplayName("S12 (D48): the consultant is refused on main's own vendor, naming the rule, before any brain starts")
+    void aConsultantOnMainsOwnVendorIsRefusedBeforeItStarts() throws Exception {
+        Map<String, String> settings = Map.of(Hirer.MAIN_BRAIN_SETTING, "{\"command\":[\"main-brain\"],\"vendor\":\"Anthropic\"}",
+            HireTool.BRAINS_SETTING, registryOf("anthropic", null));
+
+        ToolResponse response = toolWithSettings(aHostThatMustNotSpawn(), settings).execute(consultantHireArgs());
+
+        assertAll(
+            () -> assertFalse(response.isSuccess(), "a consultant on main's own vendor was hired"),
+            () -> assertEquals("PRECONDITION_NOT_MET", response.getError().getCode()),
+            () -> assertTrue(response.getError().getMessage().contains("main's own vendor"), response.getError().getMessage()));
+    }
+
+    @Test
+    @DisplayName("S12 (D48), the control: the consultant on another vendor is hired, and the answer names its vendor")
+    void aConsultantOnAnotherVendorIsHired() throws Exception {
+        Map<String, String> settings = Map.of(Hirer.MAIN_BRAIN_SETTING, "{\"command\":[\"main-brain\"],\"vendor\":\"anthropic\"}",
+            HireTool.BRAINS_SETTING, registryOf("openai", "other-model"));
+
+        ToolResponse response = toolWithSettings(new StandsIn(host, aBrainThatAnswers()), settings).execute(consultantHireArgs());
+
+        assertTrue(response.isSuccess(), String.valueOf(response.getError()));
+        assertEquals("openai", ((Map<?, ?>) dataOf(response).get("brain")).get("vendor"));
+    }
+
+    @Test
+    @DisplayName("S12 (D48): a consultant whose vendor, or main's, is not named is refused and not assumed to differ, and the refusal says where to name it")
+    void aConsultantWithAnUnnamedVendorIsRefused() throws Exception {
+        ToolResponse noRegistryVendor = toolWithSettings(aHostThatMustNotSpawn(),
+            Map.of(Hirer.MAIN_BRAIN_SETTING, "{\"command\":[\"main-brain\"],\"vendor\":\"anthropic\"}", HireTool.BRAINS_SETTING, registryOf(null, "m")))
+            .execute(consultantHireArgs());
+        ToolResponse noMainVendor = toolWithSettings(aHostThatMustNotSpawn(),
+            Map.of(Hirer.MAIN_BRAIN_SETTING, "{\"command\":[\"main-brain\"]}", HireTool.BRAINS_SETTING, registryOf("openai", null)))
+            .execute(consultantHireArgs());
+
+        assertAll(
+            () -> assertFalse(noRegistryVendor.isSuccess()),
+            () -> assertTrue(noRegistryVendor.getError().getMessage().contains(Hirer.MAIN_BRAIN_SETTING), noRegistryVendor.getError().getMessage()),
+            () -> assertFalse(noMainVendor.isSuccess()),
+            () -> assertTrue(noMainVendor.getError().getMessage().contains("hire-brains"), noMainVendor.getError().getMessage()));
+    }
+
+    @Test
+    @DisplayName("S12 (D48), the control: the vendor rule is the consultant's alone, so a working seat on main's own vendor is hired")
+    void aWorkingSeatOnMainsVendorIsNotHeldToTheConsultantRule() throws Exception {
+        Map<String, String> settings = Map.of(Hirer.MAIN_BRAIN_SETTING, "{\"command\":[\"main-brain\"],\"vendor\":\"anthropic\"}",
+            HireTool.BRAINS_SETTING, registryOf("anthropic", null));
+
+        ToolResponse response = toolWithSettings(new StandsIn(host, aBrainThatAnswers()), settings).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+
+        assertTrue(response.isSuccess(), String.valueOf(response.getError()));
     }
 
     @Test
