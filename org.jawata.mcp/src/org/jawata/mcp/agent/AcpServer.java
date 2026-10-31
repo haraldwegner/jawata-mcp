@@ -49,6 +49,8 @@ public final class AcpServer {
     private final Supplier<AgentBrain> sideBrains;
     /** The brain of each side thread, made when its first question arrives and kept so the thread has a conversation of its own. */
     private final Map<String, AgentBrain> sideBrainOf = new ConcurrentHashMap<>();
+    /** The hires the brain has made through this connection, read from its tool calls as they stream. */
+    private final HireWatch hires = new HireWatch(System::currentTimeMillis);
     private final Map<String, PrincipalSession> sessions = new ConcurrentHashMap<>();
     /** The thread running each session's prompt, so the person's cancel can interrupt the brain's work. */
     private final Map<String, Thread> running = new ConcurrentHashMap<>();
@@ -241,7 +243,12 @@ public final class AcpServer {
         };
         Map<String, ObjectNode> toolState = new java.util.LinkedHashMap<>();
         Consumer<JsonNode> toolCalls = call -> {
-            update(session.id(), ((ObjectNode) call).deepCopy());
+            ObjectNode forwarded = ((ObjectNode) call).deepCopy();
+            hires.observe(call).ifPresent(entry -> {
+                ObjectNode meta = forwarded.path("_meta").isObject() ? (ObjectNode) forwarded.get("_meta") : forwarded.putObject("_meta");
+                meta.set("jawata/hire", entry.toMeta());
+            });
+            update(session.id(), forwarded);
             ObjectNode state = toolState.computeIfAbsent(call.path("toolCallId").asText(), key -> JSON.createObjectNode());
             for (String field : List.of("title", "status")) {
                 if (call.hasNonNull(field)) {

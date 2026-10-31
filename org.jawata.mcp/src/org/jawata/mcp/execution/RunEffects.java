@@ -186,7 +186,7 @@ public final class RunEffects {
      * inherit that tool's flag — it falls through to {@code unknown}, which is where a tool
      * nobody here has classified belongs.</p>
      */
-    static String bareName(String name) {
+    public static String bareName(String name) {
         if (!name.startsWith("mcp__")) {
             return name;
         }
