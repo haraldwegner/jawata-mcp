@@ -43,6 +43,10 @@ public final class AcpServer {
     private final Consumer<JsonRpcMessage> out;
     private final TurnBoundary boundary;
     private final Map<String, PrincipalSession> sessions = new ConcurrentHashMap<>();
+    /** The thread running each session's prompt, so the person's cancel can interrupt the brain's work. */
+    private final Map<String, Thread> running = new ConcurrentHashMap<>();
+    /** Sessions whose running prompt the person cancelled; read at each turn end so a cancelled prompt is not resumed. */
+    private final java.util.Set<String> cancelled = ConcurrentHashMap.newKeySet();
 
     AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out) {
         this(brain, commands, out, TurnBoundary.open());
@@ -63,12 +67,26 @@ public final class AcpServer {
     /** Takes one message that arrived on {@code from}. The channel is a fact of how the message arrived, never of what it says. */
     public void receive(JsonRpcMessage message, Channel from) {
         if (!message.isRequest()) {
+            if (from == Channel.HOST && "session/cancel".equals(message.getMethod())) {
+                cancel(message);
+            }
             return;
         }
         JsonRpcMessage response = answer(message, from);
         out.accept(response);
         if ("session/new".equals(message.getMethod()) && response.getError() == null) {
             advertiseCommands(((ObjectNode) response.getResult()).get("sessionId").asText());
+        }
+    }
+
+    private void cancel(JsonRpcMessage message) {
+        String target = textField(message.getParams(), "sessionId");
+        if (target != null) {
+            cancelled.add(target);
+            Thread working = running.get(target);
+            if (working != null) {
+                working.interrupt();
+            }
         }
     }
 
@@ -79,7 +97,7 @@ public final class AcpServer {
             case "initialize" -> JsonRpcMessage.successResponse(id, initializeResult());
             case "session/new" -> JsonRpcMessage.successResponse(id, newSession(params));
             case "session/set_config_option" -> setConfigOption(id, params, from);
-            case "session/prompt" -> prompt(id, params);
+            case "session/prompt" -> prompt(id, params, from);
             default -> JsonRpcMessage.errorResponse(id, METHOD_NOT_FOUND, "Method not found: " + request.getMethod(), null);
         };
     }
@@ -151,36 +169,52 @@ public final class AcpServer {
         return JsonRpcMessage.successResponse(id, result);
     }
 
-    private JsonRpcMessage prompt(Object id, JsonNode params) {
+    private JsonRpcMessage prompt(Object id, JsonNode params, Channel from) {
         PrincipalSession session = sessionOf(params);
         if (session == null) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown session: " + textField(params, "sessionId"), null);
         }
         String messageId = "msg_" + UUID.randomUUID();
         String text = textOf(params.get("prompt"));
-        boundary.personSpoke();
-        if (session.autonomy()) {
-            session.setAutonomy(Channel.HOST, false);
-            update(session.id(), agentMessageChunk("Autonomy ended: you sent a message.\n\n", messageId));
-            update(session.id(), configOptionUpdate(session));
-            text = "[jawata] autonomy: off (the person typed a message, which ends it)\n" + text;
+        if (from == Channel.HOST) {
+            // Only the person's message is the person's word: it restarts the tries and ends a grant. The same call from a hired agent
+            // does neither.
+            boundary.personSpoke();
+            if (session.autonomy()) {
+                session.setAutonomy(Channel.HOST, false);
+                update(session.id(), agentMessageChunk("Autonomy ended: you sent a message.\n\n", messageId));
+                update(session.id(), configOptionUpdate(session));
+                text = "[jawata] autonomy: off (the person typed a message, which ends it)\n" + text;
+            }
         }
         Consumer<String> chunks = chunk -> update(session.id(), agentMessageChunk(chunk, messageId));
-        while (true) {
-            brain.answer(text, chunks);
-            TurnBoundary.Verdict verdict = boundary.atTurnEnd(session);
-            if (verdict.kind() == TurnBoundary.Kind.RESUME) {
-                chunks.accept("\n\n" + verdict.text() + "\n\n");
-                text = "[jawata] autonomy: " + (session.autonomy() ? "on" : "off") + "\n" + verdict.text();
-                continue;
+        String stopReason = "end_turn";
+        cancelled.remove(session.id());
+        running.put(session.id(), Thread.currentThread());
+        try {
+            while (true) {
+                brain.answer(text, chunks);
+                if (cancelled.contains(session.id())) {
+                    stopReason = "cancelled";
+                    break;
+                }
+                TurnBoundary.Verdict verdict = boundary.atTurnEnd(session);
+                if (verdict.kind() == TurnBoundary.Kind.RESUME) {
+                    chunks.accept("\n\n" + verdict.text() + "\n\n");
+                    text = "[jawata] autonomy: " + (session.autonomy() ? "on" : "off") + "\n" + verdict.text();
+                    continue;
+                }
+                if (verdict.kind() == TurnBoundary.Kind.REPORT) {
+                    chunks.accept("\n\n" + verdict.text());
+                }
+                break;
             }
-            if (verdict.kind() == TurnBoundary.Kind.REPORT) {
-                chunks.accept("\n\n" + verdict.text());
-            }
-            break;
+        } finally {
+            running.remove(session.id());
+            Thread.interrupted(); // a cancel that arrived after the brain finished must not poison the connection's worker
         }
         ObjectNode result = JSON.createObjectNode();
-        result.put("stopReason", "end_turn");
+        result.put("stopReason", stopReason);
         return JsonRpcMessage.successResponse(id, result);
     }
 

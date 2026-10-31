@@ -160,6 +160,9 @@ class TurnBoundaryTest {
             AcpServer[] self = new AcpServer[1];
             AgentBrain brain = (prompt, chunks) -> {
                 brainSaw.add(prompt);
+                if (brainSaw.size() > 12) {
+                    throw new AssertionError("the loop did not stop: the brain has been prompted " + brainSaw.size() + " times");
+                }
                 if (switchedOnDuringTurn) {
                     self[0].receive(set(100 + brainSaw.size(), "on"), Channel.HOST);
                 }
@@ -256,5 +259,61 @@ class TurnBoundaryTest {
             && "off".equals(m.path("params").path("update").path("configOptions").get(0).path("currentValue").asText())));
         assertTrue(run.brainSaw.get(0).startsWith("[jawata] autonomy: off"), "the brain was not told the state changed: " + run.brainSaw.get(0));
         assertFalse(run.answer().contains("free check"));
+    }
+
+    @Test
+    @DisplayName("a prompt that arrives on the hired agent's channel is not the person's word: it neither ends the grant nor restarts the tries")
+    void aBrainChannelPromptIsNotThePersonsWord() {
+        Run run = new Run(ledgerWithTwoSteps(), false, "working");
+        run.setAutonomy("on", Channel.HOST);
+        ObjectNode params = JSON.createObjectNode().put("sessionId", run.session);
+        params.putArray("prompt").addObject().put("type", "text").put("text", "a subagent reports back");
+
+        run.call(9, JsonRpcMessage.request(9, "session/prompt", params), Channel.BRAIN);
+
+        assertFalse(run.answer().contains("Autonomy ended"), "a hired agent's prompt ended the grant: " + run.answer());
+        assertTrue(run.said.stream().noneMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())),
+            "a hired agent's prompt changed the switch");
+        assertEquals(4, run.brainSaw.size(), "the grant stood, so the brain was resumed three times: " + run.brainSaw);
+
+        run.prompt("now the person types");
+        assertTrue(run.answer().contains("Autonomy ended"), "CONTROL: the person's own prompt must still end the grant: " + run.answer());
+    }
+
+    @Test
+    @DisplayName("the person's cancel stops a running prompt with stop reason cancelled, and the brain is not resumed on the step that still waits")
+    void aCancelEndsTheRunningPrompt() throws Exception {
+        List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
+        java.util.concurrent.CountDownLatch inBrain = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicInteger turns = new java.util.concurrent.atomic.AtomicInteger();
+        String[] session = new String[1];
+        AcpServer[] self = new AcpServer[1];
+        AgentBrain slow = (prompt, chunks) -> {
+            turns.incrementAndGet();
+            ObjectNode on = JSON.createObjectNode().put("sessionId", session[0]).put("configId", "autonomy").put("value", "on");
+            self[0].receive(JsonRpcMessage.request(50, "session/set_config_option", on), Channel.HOST);
+            inBrain.countDown();
+            try {
+                Thread.sleep(30_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+        self[0] = new AcpServer(slow, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps(), 3));
+        self[0].receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+        session[0] = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
+        ObjectNode params = JSON.createObjectNode().put("sessionId", session[0]);
+        params.putArray("prompt").addObject().put("type", "text").put("text", "build it");
+        Thread running = new Thread(() -> self[0].receive(JsonRpcMessage.request(9, "session/prompt", params)));
+        running.start();
+        assertTrue(inBrain.await(10, java.util.concurrent.TimeUnit.SECONDS), "the brain never started");
+
+        self[0].receive(JsonRpcMessage.notification("session/cancel", JSON.createObjectNode().put("sessionId", session[0])));
+        running.join(10_000);
+
+        assertFalse(running.isAlive(), "the prompt kept running after the person cancelled it");
+        assertEquals("cancelled", said.stream().filter(m -> m.has("id") && m.get("id").asInt() == 9).findFirst().orElseThrow()
+            .path("result").path("stopReason").asText());
+        assertEquals(1, turns.get(), "a cancelled prompt was resumed on the waiting step");
     }
 }

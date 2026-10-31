@@ -182,8 +182,9 @@ public final class AcpRoute implements HttpHandler {
                     log.error("The agent failed on {}", message.getMethod(), e);
                 }
             };
-            if ("session/set_config_option".equals(message.getMethod())) {
-                // The person's switch must act while a prompt is running; queued behind it, the grant would arrive after the turn it was for.
+            if ("session/set_config_option".equals(message.getMethod()) || "session/cancel".equals(message.getMethod())) {
+                // The person's switch and cancel must act while a prompt is running; queued behind it, they would arrive after the turn
+                // they were for.
                 work.run();
             } else {
                 worker.execute(work);
