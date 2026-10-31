@@ -202,6 +202,11 @@ case "$ACP_OUT" in
     *'"agentInfo":{"name":"jawata"'*'"sessionId"'*) pass "agent-acp the resident's own listener answers the handshake and opens a session through jawata.jar --acp" ;;
     *) fail "agent-acp no handshake and session through the --acp program: $(printf '%s' "$ACP_OUT" | head -c 300)" ;;
 esac
+# S8 (D19): the session offers the person's autonomy switch as the plain ACP select option, off until the person sets it.
+case "$ACP_OUT" in
+    *'"configOptions":[{"id":"autonomy"'*'"currentValue":"off"'*) pass "agent-autonomy a new session offers the autonomy select option, off" ;;
+    *) fail "agent-autonomy the new session does not offer the autonomy option set to off: $(printf '%s' "$ACP_OUT" | head -c 400)" ;;
+esac
 printf '%s\n' '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{}}' \
     | timeout 60 java -jar "$JAR" --acp --url "http://127.0.0.1:$PORT" --key "not-the-key" >/dev/null 2>&1
 ACP_REFUSED=$?
