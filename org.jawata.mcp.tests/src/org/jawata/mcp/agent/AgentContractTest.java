@@ -90,11 +90,11 @@ class AgentContractTest {
             (proxy, method, args) -> null);
     }
 
-    /** What the agent said while the recorded host spoke. */
-    private static List<JsonNode> play(List<Line> recording, AgentBrain brain, List<AdvertisedCommand> commands) throws IOException {
+    /** What the agent said while the recorded host spoke, on {@code engine}. */
+    private static List<JsonNode> play(List<Line> recording, AgentBrain brain, List<AdvertisedCommand> commands, EngineApi engine) throws IOException {
         List<JsonNode> said = new ArrayList<>();
         AgentFace face = new AgentFace(() -> commands);
-        face.attach(anEngine());
+        face.attach(engine);
         AcpServer server = face.open(brain, message -> said.add(JSON.valueToTree(message)));
         String session = null;
         for (Line line : recording) {
@@ -189,7 +189,7 @@ class AgentContractTest {
         List<String> answer = recordedAnswer(r1);
         assertFalse(answer.isEmpty(), "the recording holds no answer to replay");
 
-        List<JsonNode> said = play(r1, (prompt, chunks) -> answer.forEach(chunks), List.of());
+        List<JsonNode> said = play(r1, (prompt, chunks) -> answer.forEach(chunks), List.of(), anEngine());
 
         assertEquals(List.of(), mismatches(r1, said));
     }
@@ -203,9 +203,59 @@ class AgentContractTest {
             "the recording does not hold all three groups: " + commands);
         List<String> answer = recordedAnswer(r3);
 
-        List<JsonNode> said = play(r3, (prompt, chunks) -> answer.forEach(chunks), commands);
+        List<JsonNode> said = play(r3, (prompt, chunks) -> answer.forEach(chunks), commands, anEngine());
 
         assertEquals(List.of(), mismatches(r3, said));
+    }
+
+    /** An engine whose tool surface is the real {@code experience} tool over the given transcript lane. */
+    private static EngineApi engineWithTranscript(org.jawata.mcp.tools.ExperienceTool experience) {
+        org.jawata.mcp.engine.ToolCalls calls = new org.jawata.mcp.engine.ToolCalls() {
+            @Override public org.jawata.mcp.models.ToolResponse callTool(String name, JsonNode arguments,
+                    org.jawata.mcp.models.CallerIdentity caller) {
+                return "experience".equals(name) ? experience.execute(arguments)
+                    : org.jawata.mcp.models.ToolResponse.error("NO_SUCH_TOOL", name, "none");
+            }
+            @Override public List<java.util.Map<String, Object>> getToolDefinitions() {
+                return List.of();
+            }
+        };
+        return (EngineApi) Proxy.newProxyInstance(EngineApi.class.getClassLoader(), new Class<?>[] {EngineApi.class},
+            (proxy, method, args) -> "tools".equals(method.getName()) ? calls : null);
+    }
+
+    @Test
+    @DisplayName("R6 — session/list, then session/load replaying an earlier turn: the agent lists the session it recorded and replays it as the recorded agent did")
+    void r6TheAgentListsAndReplaysARecordedSession() throws IOException {
+        List<Line> r6 = recording("R6");
+        String recordedSession = r6.stream().filter(l -> l.dir().equals("send") && "session/load".equals(l.msg().path("method").asText()))
+            .findFirst().orElseThrow().msg().path("params").path("sessionId").asText();
+        String typed = r6.stream().map(l -> l.msg().path("params").path("update"))
+            .filter(u -> "user_message_chunk".equals(u.path("sessionUpdate").asText())).findFirst().orElseThrow()
+            .path("content").path("text").asText();
+        org.jawata.mcp.knowledge.H2ExperienceStore store = org.jawata.mcp.knowledge.H2ExperienceStore.openMemory();
+        try {
+            org.jawata.mcp.tools.ExperienceTool experience = new org.jawata.mcp.tools.ExperienceTool(() -> null, store);
+            experience.setTranscriptStore(new org.jawata.mcp.knowledge.TranscriptStore(store));
+            ObjectNode turn = JSON.createObjectNode().put("kind", "transcript_append").put("session", recordedSession).put("key", "t1")
+                .put("his", typed).put("agent", String.join("", recordedAnswer(r6)));
+            assertTrue(experience.execute(turn).isSuccess(), "the recorded turn could not be put in the lane");
+
+            List<JsonNode> said = play(r6, (prompt, chunks) -> { }, List.of(), engineWithTranscript(experience));
+
+            assertEquals(List.of(), mismatches(r6, said));
+            JsonNode listed = said.stream().filter(m -> m.path("result").has("sessions")).findFirst().orElseThrow();
+            assertEquals(recordedSession, listed.path("result").path("sessions").get(0).path("sessionId").asText());
+            assertEquals(typed, listed.path("result").path("sessions").get(0).path("title").asText());
+            JsonNode initialized = said.stream().filter(m -> m.path("result").has("agentCapabilities")).findFirst().orElseThrow();
+            assertTrue(initialized.path("result").path("agentCapabilities").path("loadSession").asBoolean(), "loadSession is not offered");
+            assertTrue(initialized.path("result").path("agentCapabilities").path("sessionCapabilities").has("list"), "session/list is not offered");
+
+            assertFalse(mismatches(r6, play(r6, (prompt, chunks) -> { }, List.of(), anEngine())).isEmpty(),
+                "CONTROL: an agent with no recording replayed the session anyway");
+        } finally {
+            store.close();
+        }
     }
 
     @Test
@@ -215,8 +265,8 @@ class AgentContractTest {
         List<AdvertisedCommand> commands = recordedCommands(r3);
         List<String> answer = recordedAnswer(r3);
 
-        List<JsonNode> wrongText = play(r3, (prompt, chunks) -> chunks.accept("not what was recorded"), commands);
-        List<JsonNode> noGroups = play(r3, (prompt, chunks) -> answer.forEach(chunks), List.of());
+        List<JsonNode> wrongText = play(r3, (prompt, chunks) -> chunks.accept("not what was recorded"), commands, anEngine());
+        List<JsonNode> noGroups = play(r3, (prompt, chunks) -> answer.forEach(chunks), List.of(), anEngine());
 
         assertFalse(mismatches(r3, wrongText).isEmpty(), "a wrong answer text went unnoticed");
         assertFalse(mismatches(r3, noGroups).isEmpty(), "missing command groups went unnoticed");

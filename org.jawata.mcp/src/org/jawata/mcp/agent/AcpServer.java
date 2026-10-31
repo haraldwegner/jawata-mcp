@@ -36,12 +36,15 @@ public final class AcpServer {
     private static final int METHOD_NOT_FOUND = -32601;
     private static final int INVALID_PARAMS = -32602;
     private static final int NOT_PERMITTED = -32003;
+    /** How many sessions {@code session/list} returns, the most recently active first. */
+    private static final int SESSIONS_LISTED = 50;
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final AgentBrain brain;
     private final Supplier<List<AdvertisedCommand>> commands;
     private final Consumer<JsonRpcMessage> out;
     private final TurnBoundary boundary;
+    private final AgentRecorder recorder;
     private final Map<String, PrincipalSession> sessions = new ConcurrentHashMap<>();
     /** The thread running each session's prompt, so the person's cancel can interrupt the brain's work. */
     private final Map<String, Thread> running = new ConcurrentHashMap<>();
@@ -49,14 +52,15 @@ public final class AcpServer {
     private final java.util.Set<String> cancelled = ConcurrentHashMap.newKeySet();
 
     AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out) {
-        this(brain, commands, out, TurnBoundary.open());
+        this(brain, commands, out, TurnBoundary.open(), AgentRecorder.off());
     }
 
-    AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out, TurnBoundary boundary) {
+    AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out, TurnBoundary boundary, AgentRecorder recorder) {
         this.brain = brain;
         this.commands = commands;
         this.out = out;
         this.boundary = boundary;
+        this.recorder = recorder;
     }
 
     /** Takes one message from the host, on the person's channel. A request is answered through the sink; a notification needs no answer. */
@@ -97,6 +101,8 @@ public final class AcpServer {
             case "initialize" -> JsonRpcMessage.successResponse(id, initializeResult());
             case "session/new" -> JsonRpcMessage.successResponse(id, newSession(params));
             case "session/set_config_option" -> setConfigOption(id, params, from);
+            case "session/list" -> listSessions(id, params);
+            case "session/load" -> loadSession(id, params);
             case "session/prompt" -> prompt(id, params, from);
             default -> JsonRpcMessage.errorResponse(id, METHOD_NOT_FOUND, "Method not found: " + request.getMethod(), null);
         };
@@ -106,7 +112,8 @@ public final class AcpServer {
         ObjectNode result = JSON.createObjectNode();
         result.put("protocolVersion", PROTOCOL_VERSION);
         ObjectNode capabilities = result.putObject("agentCapabilities");
-        capabilities.put("loadSession", false);
+        capabilities.put("loadSession", true);
+        capabilities.putObject("sessionCapabilities").putObject("list");
         ObjectNode prompt = capabilities.putObject("promptCapabilities");
         prompt.put("image", false);
         prompt.put("audio", false);
@@ -176,18 +183,23 @@ public final class AcpServer {
         }
         String messageId = "msg_" + UUID.randomUUID();
         String text = textOf(params.get("prompt"));
+        String typed = text;
         if (from == Channel.HOST) {
             // Only the person's message is the person's word: it restarts the tries and ends a grant. The same call from a hired agent
             // does neither.
             boundary.personSpoke();
             if (session.autonomy()) {
                 session.setAutonomy(Channel.HOST, false);
-                update(session.id(), agentMessageChunk("Autonomy ended: you sent a message.\n\n", messageId));
+                update(session.id(), messageChunk("agent_message_chunk", "Autonomy ended: you sent a message.\n\n", messageId));
                 update(session.id(), configOptionUpdate(session));
                 text = "[jawata] autonomy: off (the person typed a message, which ends it)\n" + text;
             }
         }
-        Consumer<String> chunks = chunk -> update(session.id(), agentMessageChunk(chunk, messageId));
+        StringBuilder said = new StringBuilder();
+        Consumer<String> chunks = chunk -> {
+            said.append(chunk);
+            update(session.id(), messageChunk("agent_message_chunk", chunk, messageId));
+        };
         String stopReason = "end_turn";
         cancelled.remove(session.id());
         running.put(session.id(), Thread.currentThread());
@@ -212,9 +224,62 @@ public final class AcpServer {
         } finally {
             running.remove(session.id());
             Thread.interrupted(); // a cancel that arrived after the brain finished must not poison the connection's worker
+            recorder.record(AgentRecorder.Level.PRINCIPAL, session, messageId, typed, said.toString(), List.of());
         }
         ObjectNode result = JSON.createObjectNode();
         result.put("stopReason", stopReason);
+        return JsonRpcMessage.successResponse(id, result);
+    }
+
+    /** {@code session/list}: the sessions the recording holds, most recently active first. */
+    private JsonRpcMessage listSessions(Object id, JsonNode params) {
+        ObjectNode result = JSON.createObjectNode();
+        ArrayNode list = result.putArray("sessions");
+        String cwd = textField(params, "cwd");
+        for (AgentRecorder.SessionInfo s : recorder.sessions(SESSIONS_LISTED)) {
+            ObjectNode row = list.addObject();
+            row.put("sessionId", s.sessionId());
+            row.put("cwd", cwd == null ? "" : cwd);
+            row.put("title", s.title());
+            row.put("updatedAt", s.updatedAt());
+        }
+        return JsonRpcMessage.successResponse(id, result);
+    }
+
+    /**
+     * {@code session/load}: replays what the recording holds of a session to the host as it was said (what was typed, the tool calls
+     * as one finished line each, what the agent answered), then answers, and the session takes prompts again under its old id.
+     */
+    private JsonRpcMessage loadSession(Object id, JsonNode params) {
+        String sessionId = textField(params, "sessionId");
+        List<AgentRecorder.Turn> turns = sessionId == null ? List.of() : recorder.turns(sessionId);
+        if (turns.isEmpty()) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "No recorded session: " + sessionId, null);
+        }
+        String cwd = textField(params, "cwd");
+        PrincipalSession session = sessions.computeIfAbsent(sessionId, key -> new PrincipalSession(key, cwd == null ? "" : cwd));
+        int turnNo = 0;
+        for (AgentRecorder.Turn turn : turns) {
+            turnNo++;
+            for (String typed : turn.his()) {
+                update(sessionId, messageChunk("user_message_chunk", typed, "replay_" + turnNo + "_u"));
+            }
+            int line = 0;
+            for (String call : turn.tools()) {
+                ObjectNode update = JSON.createObjectNode();
+                update.put("sessionUpdate", "tool_call");
+                update.put("toolCallId", "replay_" + turnNo + "_t" + (++line));
+                update.put("title", call);
+                update.put("status", "completed");
+                update(sessionId, update);
+            }
+            for (String said : turn.agent()) {
+                update(sessionId, messageChunk("agent_message_chunk", said, "replay_" + turnNo + "_a"));
+            }
+        }
+        ObjectNode result = JSON.createObjectNode();
+        result.put("sessionId", session.id());
+        result.set("configOptions", configOptions(session));
         return JsonRpcMessage.successResponse(id, result);
     }
 
@@ -247,9 +312,10 @@ public final class AcpServer {
         return update;
     }
 
-    private static ObjectNode agentMessageChunk(String text, String messageId) {
+    /** One piece of a message as an ACP update; {@code kind} says whose it is: {@code user_message_chunk} or {@code agent_message_chunk}. */
+    private static ObjectNode messageChunk(String kind, String text, String messageId) {
         ObjectNode update = JSON.createObjectNode();
-        update.put("sessionUpdate", "agent_message_chunk");
+        update.put("sessionUpdate", kind);
         update.putObject("content").put("type", "text").put("text", text);
         update.put("messageId", messageId);
         return update;

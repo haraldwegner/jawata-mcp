@@ -99,6 +99,8 @@ public final class AgentFace implements RoutedFace {
             throw new IllegalStateException("the agent face is not attached to an engine");
         }
         TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools()), new AttemptLedger(RESUMPTIONS_PER_STEP));
-        return new AcpServer(brain, commands, out, boundary);
+        String recording = attached.settings() == null ? null : attached.settings().get(AgentRecorder.SETTING).orElse(null);
+        AgentRecorder recorder = new AgentRecorder(attached.tools(), AgentRecorder.Depth.of(recording));
+        return new AcpServer(brain, commands, out, boundary, recorder);
     }
 }

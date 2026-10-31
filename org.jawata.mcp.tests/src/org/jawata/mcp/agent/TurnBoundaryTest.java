@@ -168,7 +168,7 @@ class TurnBoundaryTest {
                 }
                 chunks.accept(says);
             };
-            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledger, 3));
+            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledger, 3), AgentRecorder.off());
             self[0] = server;
             server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
             session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
@@ -299,7 +299,7 @@ class TurnBoundaryTest {
                 Thread.currentThread().interrupt();
             }
         };
-        self[0] = new AcpServer(slow, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps(), 3));
+        self[0] = new AcpServer(slow, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps(), 3), AgentRecorder.off());
         self[0].receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
         session[0] = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
         ObjectNode params = JSON.createObjectNode().put("sessionId", session[0]);
