@@ -1709,6 +1709,10 @@ public final class ExperienceRetrieval {
                     candidate.put("location", pointer.get("file") + (pointer.get("line") == null ? "" : ":" + pointer.get("line")));
                 } else if (pointer != null && Boolean.TRUE.equals(pointer.get("stale"))) {
                     candidate.put("location", "location lost");
+                } else if (pointer != null) {
+                    // The third answer (SymbolAnchors#pointer): the language could not check, which is not the symbol being gone. The row
+                    // says so, so a missing location is never read as a member that is there with nothing to show.
+                    candidate.put("location", "location not checked");
                 }
                 if (!"area".equalsIgnoreCase(String.valueOf(candidate.get("type")))) {
                     shown.add(String.valueOf(symbol));

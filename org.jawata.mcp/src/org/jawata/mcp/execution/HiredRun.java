@@ -509,7 +509,13 @@ public final class HiredRun {
     }
 
     /**
-     * Which of the members the prompt showed the run then worked in: those whose type's source file is among the files the run changed.
+     * Which of the members the prompt showed the run TOUCHED: those whose type's source file is among the files the run changed.
+     *
+     * <p><b>This is "touched", and it is not D16's "chosen".</b> D16 asks whether the injected knowledge changed what was written. The
+     * shown members come from the hirer's own brief words, so the brain would edit those files with or without the map, and this number
+     * is the same with the ground removed. It says which shown files the run changed; it does not say the map is why. The comparison
+     * D16 asks for (the same brief hired with and without the ground) needs a brain that can be told, and is not built.</p>
+     *
      * A member address is {@code pkg.Type#member}; a nested type belongs to the file of its outermost type. A run whose changes could not
      * be attributed chose none that can be named, and the answer is empty rather than every member shown.
      *

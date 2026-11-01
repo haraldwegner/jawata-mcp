@@ -1505,7 +1505,8 @@ class HireToolTest {
     private HireTool toolWithBrainsSetting(HostProcesses processes, String registryJson) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
-            () -> key -> HireTool.BRAINS_SETTING.equals(key) && registryJson != null ? java.util.Optional.of(registryJson) : java.util.Optional.empty());
+            () -> key -> HireTool.BRAINS_SETTING.equals(key) && registryJson != null ? java.util.Optional.of(registryJson) : java.util.Optional.empty(),
+            null);
     }
 
     @Test
@@ -1527,7 +1528,7 @@ class HireToolTest {
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
-            () -> key -> java.util.Optional.ofNullable(settings.get(key)));
+            () -> key -> java.util.Optional.ofNullable(settings.get(key)), null);
     }
 
     private static final String SEAT_WITHOUT_A_MODEL = CATALOGUER_SEAT.replace("model: claude-sonnet-5\n", "");

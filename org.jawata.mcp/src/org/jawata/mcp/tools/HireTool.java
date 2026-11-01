@@ -163,7 +163,7 @@ public class HireTool extends NeutralTool {
             RuntimeArtifactStore artifacts, PlanLedger plans,
             Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> self) {
-        this(host, artifacts, plans, journal, registry, self, () -> null, () -> key -> java.util.Optional.empty());
+        this(host, artifacts, plans, journal, registry, self, () -> null, () -> key -> java.util.Optional.empty(), null);
     }
 
     /**
@@ -171,15 +171,6 @@ public class HireTool extends NeutralTool {
      *     SUPPLIER that may answer null, for the same reason the journal's may — a degraded resident
      *     has no store, and a hire still goes ahead without its rules.
      * @param settings TODO
-     */
-    public HireTool(HostProcesses host,
-            RuntimeArtifactStore artifacts, PlanLedger plans,
-            Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
-            Supplier<SelfEndpoint> self, Supplier<ExperienceStore> rules, Supplier<EngineSettings> settings) {
-        this(host, artifacts, plans, journal, registry, self, rules, settings, null);
-    }
-
-    /**
      * @param area what the catalogue says about the ground a brief is about (Sprint 28h S14, D16), burned into the prompt of a seat that
      *     changes code; null for none, and a hire then carries no ground
      */

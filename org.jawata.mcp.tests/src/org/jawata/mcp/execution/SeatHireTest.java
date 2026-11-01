@@ -411,6 +411,18 @@ class SeatHireTest {
     }
 
     @Test
+    @DisplayName("S14 D16: a seat with no stance and no rules still carries its ground, before the brief")
+    void aSeatWithNeitherStanceNorRulesStillCarriesItsGround() {
+        String asked = SeatHire.read("---\nname: s\n---\n").prompt("the brief", List.of(), "JAWATA MAP — a.B#c (src/a/B.java:3) — does c");
+
+        assertAll(
+            () -> assertTrue(asked.contains("## The ground you work on"), asked),
+            () -> assertTrue(asked.contains("src/a/B.java:3"), asked),
+            () -> assertTrue(asked.indexOf("src/a/B.java:3") < asked.indexOf("## Your brief"), asked),
+            () -> assertTrue(asked.endsWith("the brief"), asked));
+    }
+
+    @Test
     @DisplayName("...a seat with no rules is asked the brief alone, and an unclosed fence holds no rules")
     void noStanceMeansTheBriefAlone() {
         assertAll(

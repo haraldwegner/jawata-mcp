@@ -561,6 +561,55 @@ class SeatAsksByMeaningTest {
         }
     }
 
+    /**
+     * S14 D16, THE LIVE LOCATION. A language answers a pointer in three ways (SymbolAnchors#pointer): resolved with where the member is
+     * now, stale because it positively found the member gone, and neither flag — it could not check. The map must say which, in words,
+     * for each shown member; an anchor with no project loaded (the other tests here) answers only the third.
+     */
+    @Test
+    @DisplayName("S14 D16: a shown member prints where it is now, 'location lost' when it is gone, and 'location not checked' when the language could not tell")
+    void the_hires_map_prints_what_the_language_says_of_each_member() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            org.jawata.mcp.knowledge.EmbeddingService.shared().available(),
+            "embedder unavailable: the jobs are reached by meaning");
+        String here = "com.example.Here#present";
+        String gone = "com.example.Gone#removed";
+        String unsure = "com.example.Unsure#unchecked";
+        recordJob(here, "Hands out the settlement window to the ledger.");
+        recordJob(gone, "Used to hand the ledger its closing balance.");
+        recordJob(unsure, "Turns a ledger line into the text a person reads.");
+        org.jawata.spi.lang.SymbolAnchors anchors = new org.jawata.spi.lang.SymbolAnchors() {
+            @Override
+            public java.util.Optional<String> anchorFor(String freeText) {
+                return java.util.Optional.empty();
+            }
+
+            @Override
+            public Map<String, Object> pointer(String symbol) {
+                Map<String, Object> answer = new java.util.LinkedHashMap<>();
+                answer.put("symbol", symbol);
+                if (symbol.equals(here)) {
+                    answer.put("resolved", true);
+                    answer.put("file", "src/com/example/Here.java");
+                    answer.put("line", 42);
+                } else if (symbol.equals(gone)) {
+                    answer.put("resolved", false);
+                    answer.put("stale", true);
+                }
+                return answer;
+            }
+        };
+        ExperienceTool anchored = ExperienceTool.withAnchors(() -> null, store, () -> List.of(), () -> anchors);
+
+        ExperienceRetrieval.AreaMap map = anchored.areaMapFor("the settlement ledger and its window");
+
+        assertTrue(map.text().contains(here + " (src/com/example/Here.java:42) — "), "a member that is there prints where: " + map.text());
+        assertTrue(map.text().contains(gone + " (location lost) — "), "a member found gone says so: " + map.text());
+        assertTrue(map.text().contains(unsure + " (location not checked) — "),
+            "a member the language could not check says that, and is not passed off as present or gone: " + map.text());
+        assertEquals(3, map.shown().size(), "and all three are among those shown: " + map.shown());
+    }
+
     @Test
     @DisplayName("S14 D16: with nothing catalogued, or no task, the hire's map says nothing is catalogued and shows no member")
     void the_hires_map_with_nothing_shows_nothing() {

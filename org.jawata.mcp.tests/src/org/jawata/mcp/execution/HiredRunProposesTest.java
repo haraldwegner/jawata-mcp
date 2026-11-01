@@ -776,6 +776,58 @@ class HiredRunProposesTest {
         assertFalse(String.join(" ", spy.asked()).contains("The ground you work on"));
     }
 
+    /** A git working tree holding these committed source files, which is the instrument that sees what a brain wrote. */
+    private Path aTreeHolding(String... sources) throws Exception {
+        Path repo = Files.createDirectory(dir.resolve("repo-" + System.nanoTime()));
+        host.run(HostCommand.of(List.of("git", "init", "-q")).in(repo));
+        for (String source : sources) {
+            Files.createDirectories(repo.resolve(source).getParent());
+            Files.writeString(repo.resolve(source), "class X {}\n");
+            host.run(HostCommand.of(List.of("git", "add", source)).in(repo));
+        }
+        host.run(HostCommand.of(List.of("git", "-c", "user.email=p@p", "-c", "user.name=probe", "commit", "-qm", "base")).in(repo));
+        return repo;
+    }
+
+    private static final org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap TWO_MEMBERS = new org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap(
+        "JAWATA MAP — what this area is for\n- org.x.Foo#go (org/x/Foo.java:1) — goes\n- org.x.Bar#stay (org/x/Bar.java:1) — stays",
+        List.of("org.x.Foo#go", "org.x.Bar#stay"));
+
+    @Test
+    @DisplayName("S14 D16: the journal row lists as chosen the shown member whose file the brain edited, and not the one it left alone")
+    void theRowNamesTheShownMemberWhoseFileTheBrainEdited() throws Exception {
+        Path repo = aTreeHolding("org/x/Foo.java", "org/x/Bar.java");
+        HostCommand standIn = brain("echo 'edited' >> '" + repo.resolve("org/x/Foo.java") + "'\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\"}'").in(repo);
+        HiredRun run = new HiredRun(new RecordsTheArgv(host, standIn), artifacts, plans, events, null, () -> store, null, brief -> TWO_MEMBERS);
+
+        HiredRun.Proposal proposal = run.issue(SeatHire.read(CODE_SEAT), site(standIn), "Make Foo go faster.", twoSteps(),
+            HiredRunProposesTest::passed, List.of());
+        JsonNode ground = json(hiredRow(proposal)).path("areaGround");
+
+        assertAll(
+            () -> assertEquals(2, ground.path("shown").size(), "both jobs were shown: " + ground),
+            () -> assertEquals(1, ground.path("chosen").size(), "one was worked in: " + ground),
+            () -> assertEquals("org.x.Foo#go", ground.path("chosen").path(0).asText(), "the one whose file the brain edited: " + ground));
+    }
+
+    @Test
+    @DisplayName("S14 D16 control: a brain that edits some other file leaves chosen empty, though both jobs were shown")
+    void aBrainThatEditsAnotherFileChoosesNothing() throws Exception {
+        Path repo = aTreeHolding("org/x/Foo.java", "org/x/Bar.java", "org/x/Elsewhere.java");
+        HostCommand standIn = brain("echo 'edited' >> '" + repo.resolve("org/x/Elsewhere.java") + "'\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\"}'").in(repo);
+        HiredRun run = new HiredRun(new RecordsTheArgv(host, standIn), artifacts, plans, events, null, () -> store, null, brief -> TWO_MEMBERS);
+
+        HiredRun.Proposal proposal = run.issue(SeatHire.read(CODE_SEAT), site(standIn), "Make Foo go faster.", twoSteps(),
+            HiredRunProposesTest::passed, List.of());
+        JsonNode ground = json(hiredRow(proposal)).path("areaGround");
+
+        assertAll(
+            () -> assertEquals(2, ground.path("shown").size(), "both jobs were shown: " + ground),
+            () -> assertTrue(ground.path("chosen").isArray() && ground.path("chosen").isEmpty(), "and none was worked in: " + ground));
+    }
+
     @Test
     @DisplayName("S14 D16: chosen is the shown members whose source file the run changed, nested types included")
     void chosenIsTheShownMembersWhoseFileTheRunChanged() {
