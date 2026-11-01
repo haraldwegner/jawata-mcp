@@ -86,6 +86,20 @@ class BufferStoreTest {
     }
 
     @Test
+    @DisplayName("a type that only the unsaved text declares is found by name while the file is open, and is gone once it is closed")
+    void aTypeOnlyTheUnsavedTextDeclaresIsFoundByName() throws Exception {
+        load();
+        ICompilationUnit unit = service.getCompilationUnit(calculator);
+        assertTrue(service.findType("com.example.Calculator.OnlyTyped") == null, "the file on disk has no such type");
+
+        store().open(unit, saved.substring(0, saved.lastIndexOf('}')) + "    static class OnlyTyped { }\n}\n");
+        assertTrue(service.findType("com.example.Calculator.OnlyTyped") != null, "the open text declares it");
+
+        store().close(unit);
+        assertTrue(service.findType("com.example.Calculator.OnlyTyped") == null, "closed, the saved file is the text again");
+    }
+
+    @Test
     @DisplayName("a second open of an open file shares the one working copy and does not replace its text; the last close discards it")
     void aSecondOpenSharesTheBuffer() throws Exception {
         load();

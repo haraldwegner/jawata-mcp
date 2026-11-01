@@ -8,7 +8,6 @@ import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.Signature;
-import org.eclipse.jdt.core.WorkingCopyOwner;
 
 /**
  * The type a name is declared to have (Sprint 28h, S16b): for a variable, a field or a parameter its declared type, for a method its
@@ -30,7 +29,7 @@ public final class JavaTypeDefinitions {
      */
     public static IType at(ICompilationUnit unit, int line, int column) throws JavaModelException {
         int offset = JavaRanges.linesOf(unit).offsetOf(line, column);
-        for (IJavaElement element : unit.codeSelect(offset, 0, org.jawata.core.BufferStore.owner())) {
+        for (IJavaElement element : unit.codeSelect(offset, 0)) {
             if (element instanceof IType type) {
                 return type;
             }
@@ -55,16 +54,15 @@ public final class JavaTypeDefinitions {
         if (name.isEmpty() || Character.isLowerCase(name.charAt(0)) && name.indexOf('.') < 0) {
             return null; // a primitive or void
         }
-        WorkingCopyOwner buffers = org.jawata.core.BufferStore.owner(); // so a type declared in unsaved text is found
-        String[][] candidates = owner.resolveType(name, buffers);
+        String[][] candidates = owner.resolveType(name);
         if (candidates != null) {
             for (String[] candidate : candidates) {
-                IType found = owner.getJavaProject().findType(candidate[0].isEmpty() ? candidate[1] : candidate[0] + "." + candidate[1], buffers);
+                IType found = owner.getJavaProject().findType(candidate[0].isEmpty() ? candidate[1] : candidate[0] + "." + candidate[1]);
                 if (found != null) {
                     return found;
                 }
             }
         }
-        return name.indexOf('.') < 0 ? null : owner.getJavaProject().findType(name, buffers);
+        return name.indexOf('.') < 0 ? null : owner.getJavaProject().findType(name);
     }
 }

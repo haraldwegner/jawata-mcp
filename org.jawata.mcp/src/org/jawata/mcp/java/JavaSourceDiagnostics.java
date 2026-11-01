@@ -82,9 +82,7 @@ public final class JavaSourceDiagnostics implements SourceDiagnostics {
         List<Row> rows = new ArrayList<>();
         try {
             // Reconcile to get AST with problems
-            // 28h S16b: the open files' owner, so what another open file holds unsaved is what this one is checked against.
-            CompilationUnit ast = unit.reconcile(AST.getJLSLatest(), ICompilationUnit.FORCE_PROBLEM_DETECTION,
-                org.jawata.core.BufferStore.owner(), null);
+            CompilationUnit ast = unit.reconcile(AST.getJLSLatest(), ICompilationUnit.FORCE_PROBLEM_DETECTION, null, null);
             if (ast == null) {
                 // Sprint 21e (item C): reconcile returns a null AST for NON-working-copies — in this headless server no file is ever a
                 // working copy, so this tool NEVER reported problems for closed files (proven 2026-07-07). Post-build PROBLEM markers are

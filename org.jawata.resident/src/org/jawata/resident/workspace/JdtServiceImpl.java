@@ -913,13 +913,12 @@ public class JdtServiceImpl implements IJdtService {
             }
 
             // Reconcile to ensure the AST is up to date
-            // 28h S16b: the open files' owner, so a name typed in one open file resolves in another
-            cu.reconcile(ICompilationUnit.NO_AST, false, org.jawata.core.BufferStore.owner(), null);
+            cu.reconcile(ICompilationUnit.NO_AST, false, null, null);
 
             int offset = getOffset(cu, line, column);
             log.debug("Looking for element at {}:{}:{} (offset {})", filePath, line, column, offset);
 
-            IJavaElement[] elements = cu.codeSelect(offset, 0, org.jawata.core.BufferStore.owner());
+            IJavaElement[] elements = cu.codeSelect(offset, 0);
             if (elements.length > 0) {
                 log.debug("Found element: {} ({})", elements[0].getElementName(), elements[0].getClass().getSimpleName());
                 return elements[0];
@@ -998,8 +997,7 @@ public class JdtServiceImpl implements IJdtService {
         // (asking a closed project anything throws; that must not read as
         // "the model could not answer").
         if (jp.getProject() != null && !jp.getProject().isOpen()) return null;
-        // 28h S16b: the buffers' owner, so a type that exists only in an editor's unsaved text is found by name as well.
-        IType type = jp.findType(typeName, org.jawata.core.BufferStore.owner());
+        IType type = jp.findType(typeName);
         if (type != null) return type;
         for (IPackageFragmentRoot root : jp.getPackageFragmentRoots()) {
             if (root.getKind() == IPackageFragmentRoot.K_SOURCE) {
