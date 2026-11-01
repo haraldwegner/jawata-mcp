@@ -101,13 +101,18 @@ SERVER="$(python3 -c 'import json,sys; print(json.dumps({"command":"java","args"
 (
     : > "$SEEN"
     peak=0
+    rivals=0
+    engines=0
     while kill -0 "$RESIDENT_PID" 2>/dev/null; do
         rss="$(awk '/VmHWM/ {print $2}' "/proc/$RESIDENT_PID/status" 2>/dev/null || echo 0)"
         [ "${rss:-0}" -gt "$peak" ] && peak="$rss"
+        # the highest count seen at any second of the run, so a server that lives only while the window is open is still counted
         rival="$(pgrep -af "$WS/profile" 2>/dev/null | grep -ciE 'redhat\.java|jdt\.ls|org\.eclipse\.jdt\.ls')"
-        engines="$(pgrep -af "$WS/dist/jawata.jar" 2>/dev/null | grep -vc -- '--lsp')"
-        echo "$peak $rival $engines" > "$SEEN"
-        sleep 1
+        [ "${rival:-0}" -gt "$rivals" ] && rivals="$rival"
+        now="$(pgrep -af "$WS/dist/jawata.jar" 2>/dev/null | grep -vc -- '--lsp')"
+        [ "${now:-0}" -gt "$engines" ] && engines="$now"
+        echo "$peak $rivals $engines" > "$SEEN"
+        sleep 0.5
     done
 ) &
 POLLER_PID=$!
@@ -117,6 +122,14 @@ POLLER_PID=$!
 if [ "${S16_PLANT_RIVAL:-0}" = "1" ]; then
     mkdir -p "$WS/profile/extensions/redhat.java-0.0.1"
     printf '{"name":"java","publisher":"redhat","version":"0.0.1","engines":{"vscode":"^1.101.0"}}\n' > "$WS/profile/extensions/redhat.java-0.0.1/package.json"
+fi
+
+# the planted break of the process-list check: with S16_PLANT_RIVAL_PROCESS=1 a process whose command line names Red Hat's Java server
+# and the window's profile lives while the window runs; the run must end red on the process count, not on the extension check
+if [ "${S16_PLANT_RIVAL_PROCESS:-0}" = "1" ]; then
+    (exec -a "java -jar $WS/profile/redhat.java/server/plugins/org.eclipse.equinox.launcher.jar" sleep 120) &
+    RIVAL_PROCESS_PID=$!
+    trap 'kill "$RIVAL_PROCESS_PID" 2>/dev/null; cleanup' EXIT
 fi
 
 cd "$EXT" || exit 2
