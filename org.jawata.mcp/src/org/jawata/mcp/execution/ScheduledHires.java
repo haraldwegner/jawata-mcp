@@ -46,7 +46,10 @@ public final class ScheduledHires implements SeatScheduler.Firing {
     private static final Logger log = Logger.getLogger(ScheduledHires.class.getName());
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** The setting that names the folder of seat files whose schedules the engine fires. The studio writes it for the engine it starts. */
+    /**
+     * The setting that names the folder of seat files whose schedules the engine fires. The studio does NOT write it yet: that is owed to S15
+     * (the plan's Stage 15 carries it), and until then only a person or a test that sets it makes seats run on a schedule.
+     */
     public static final String SEATS_SETTING = "jawata.agent.seatsDir";
 
     /** The tool a scheduled hire is gated by, because the hire tool refuses a hire with no gate. */
