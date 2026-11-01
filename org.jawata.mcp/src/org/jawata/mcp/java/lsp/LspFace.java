@@ -109,6 +109,16 @@ public final class LspFace implements RoutedFace {
         }
         CallerIdentity caller = CallerIdentity.editor("lsp-" + connections.incrementAndGet());
         JavaLanguageServer server = new JavaLanguageServer(model, attached.tools(), caller, out, DIAGNOSTICS, debounceMillis);
-        return server::receive;
+        return new MessageRoute.Session() {
+            @Override
+            public void receive(JsonRpcMessage message) {
+                server.receive(message);
+            }
+
+            @Override
+            public void closed() {
+                server.closed();
+            }
+        };
     }
 }

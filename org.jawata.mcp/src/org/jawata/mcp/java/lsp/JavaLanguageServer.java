@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -18,6 +19,7 @@ import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.BufferStore;
 import org.jawata.core.IJdtService;
+import org.jawata.core.LoadedProject;
 import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.engine.ToolNotFoundException;
 import org.jawata.mcp.java.JavaRanges;
@@ -66,6 +68,10 @@ public final class JavaLanguageServer {
     private final Set<String> openFiles = ConcurrentHashMap.newKeySet();
     private boolean shuttingDown;
     private boolean editorTakesWatchRequests;
+    private boolean editorTakesProgress;
+    private final AtomicInteger progressTokens = new AtomicInteger();
+    /** The folders the editor named when it started; loaded once it has said it is ready. */
+    private List<String> startFolders = List.of();
 
     /**
      * @param service        the engine's Java model, asked at each use because a workspace may load after the server exists
@@ -115,6 +121,22 @@ public final class JavaLanguageServer {
         return true;
     }
 
+    /**
+     * The editor's connection is gone, with or without a {@code didClose} for each file: the checks still waiting are dropped and the
+     * files the editor had open are released, so an agent is not refused a write by text nobody can save any more.
+     */
+    public void closed() {
+        pendingDiagnostics.values().forEach(pending -> pending.cancel(false));
+        pendingDiagnostics.clear();
+        for (String uri : List.copyOf(openFiles)) {
+            openFiles.remove(uri);
+            ICompilationUnit saved = savedUnit(uri);
+            if (saved != null) {
+                buffers().close(saved);
+            }
+        }
+    }
+
     private void request(JsonRpcMessage message) {
         Object id = message.getId();
         if (shuttingDown) {
@@ -126,6 +148,8 @@ public final class JavaLanguageServer {
                 JsonNode params = message.getParams();
                 editorTakesWatchRequests = params != null
                     && params.path("capabilities").path("workspace").path("didChangeWatchedFiles").path("dynamicRegistration").asBoolean(false);
+                editorTakesProgress = params != null && params.path("capabilities").path("window").path("workDoneProgress").asBoolean(false);
+                startFolders = foldersOf(params);
                 out.accept(JsonRpcMessage.successResponse(id, initializeResult()));
             }
             case "shutdown" -> {
@@ -169,7 +193,11 @@ public final class JavaLanguageServer {
                     }
                 }
             }
-            case "initialized" -> askEditorToWatchTheSources();
+            case "initialized" -> {
+                askEditorToWatchTheSources();
+                loadFolders(startFolders);
+            }
+            case "workspace/didChangeWorkspaceFolders" -> loadFolders(addedFolders(params));
             case "workspace/didChangeWatchedFiles" -> openFiles.forEach(this::askForProblems); // a file other than these changed, and may have broken them
             default -> {
                 // $/cancelRequest and other notifications: nothing to do yet, and an unknown notification is not an error
@@ -193,12 +221,101 @@ public final class JavaLanguageServer {
             Map.of("id", "jawata-watched-files", "method", "workspace/didChangeWatchedFiles", "registerOptions", Map.of("watchers", watchers)))))));
     }
 
+    // ---- workspace folders and progress -------------------------------------------------------------------------------------------------
+
+    /** The folders the editor opened with: its workspace folders, or its root when it named no folders. */
+    private static List<String> foldersOf(JsonNode params) {
+        List<String> uris = new ArrayList<>();
+        if (params != null) {
+            for (JsonNode folder : params.path("workspaceFolders")) {
+                uris.add(folder.path("uri").asText());
+            }
+            if (uris.isEmpty() && params.path("rootUri").isTextual()) {
+                uris.add(params.path("rootUri").asText());
+            }
+        }
+        return uris;
+    }
+
+    /** The folders a {@code didChangeWorkspaceFolders} adds; the ones it removes are not acted on, because the engine's projects are shared with agents. */
+    private static List<String> addedFolders(JsonNode params) {
+        List<String> uris = new ArrayList<>();
+        for (JsonNode folder : params.path("event").path("added")) {
+            uris.add(folder.path("uri").asText());
+        }
+        return uris;
+    }
+
+    /**
+     * Makes the engine hold the folders an editor has open: a folder inside a project the engine already holds is left as it is, any
+     * other is added as a project through the gate's {@code project} tool, with progress shown while it loads when the editor takes
+     * progress. A folder the engine cannot take (not a Java project) is skipped, because an editor opens folders of every kind.
+     */
+    private void loadFolders(List<String> uris) {
+        for (String uri : uris) {
+            Path folder;
+            try {
+                folder = Path.of(URI.create(uri));
+            } catch (RuntimeException e) {
+                continue; // not a file folder
+            }
+            if (holds(folder)) {
+                continue;
+            }
+            String progress = beginProgress("Loading " + folder.getFileName());
+            try {
+                ToolResponse answer = tools.callTool("project", JSON.createObjectNode().put("action", "add").put("projectPath", folder.toString()), caller);
+                if (!answer.isSuccess()) {
+                    log.debug("The engine did not take the folder {}: {}", folder, answer);
+                }
+            } catch (ToolNotFoundException | RuntimeException e) {
+                log.warn("The folder {} could not be added", folder, e);
+            } finally {
+                endProgress(progress);
+            }
+        }
+    }
+
+    /** Whether a project the engine holds contains {@code folder}, or lies inside it. */
+    private boolean holds(Path folder) {
+        IJdtService engine = service.get();
+        if (engine == null) {
+            return false;
+        }
+        Path wanted = folder.toAbsolutePath().normalize();
+        for (LoadedProject project : engine.allProjects()) {
+            Path root = project.projectRoot().toAbsolutePath().normalize();
+            if (wanted.startsWith(root) || root.startsWith(wanted)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Opens a progress report in an editor that takes progress and returns its token; null when the editor does not take progress. */
+    private String beginProgress(String title) {
+        if (!editorTakesProgress) {
+            return null;
+        }
+        String token = "jawata-" + progressTokens.incrementAndGet();
+        out.accept(JsonRpcMessage.request(token, "window/workDoneProgress/create", JSON.valueToTree(Map.of("token", token))));
+        out.accept(JsonRpcMessage.notification("$/progress", JSON.valueToTree(Map.of("token", token, "value", Map.of("kind", "begin", "title", title)))));
+        return token;
+    }
+
+    private void endProgress(String token) {
+        if (token != null) {
+            out.accept(JsonRpcMessage.notification("$/progress", JSON.valueToTree(Map.of("token", token, "value", Map.of("kind", "end")))));
+        }
+    }
+
     private static Map<String, Object> initializeResult() {
         Map<String, Object> sync = new LinkedHashMap<>();
         sync.put("openClose", true);
         sync.put("change", 2); // incremental
         Map<String, Object> capabilities = new LinkedHashMap<>();
         capabilities.put("textDocumentSync", sync);
+        capabilities.put("workspace", Map.of("workspaceFolders", Map.of("supported", true, "changeNotifications", true)));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("capabilities", capabilities);
         result.put("serverInfo", Map.of("name", "jawata"));

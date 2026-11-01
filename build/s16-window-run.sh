@@ -51,6 +51,7 @@ case "$TREE" in
     maven)
         cp -r "$SAMPLES/simple-maven" "$WS/tree"
         FILE="src/main/java/com/example/Calculator.java"
+        RENAME_SYMBOL="com.example.Calculator#add"
         LOAD_PATHS="$WS/tree"
         FOLDER="$WS/tree"
         ;;
@@ -58,6 +59,7 @@ case "$TREE" in
         mkdir -p "$WS/tree"
         cp -r "$SAMPLES/pde-bundle-a" "$SAMPLES/pde-bundle-b" "$WS/tree/"
         FILE="pde-bundle-a/src/com/example/a/Caller.java"
+        RENAME_SYMBOL="com.example.a.Caller#hello"
         LOAD_PATHS="$WS/tree/pde-bundle-b:$WS/tree/pde-bundle-a"
         FOLDER="$WS/tree"
         ;;
@@ -133,6 +135,7 @@ if [ "${S16_PLANT_RIVAL_PROCESS:-0}" = "1" ]; then
 fi
 
 cd "$EXT" || exit 2
+JAWATA_LIVE_MCP_URL="http://127.0.0.1:$PORT" JAWATA_LIVE_MCP_KEY="$TOKEN" JAWATA_LIVE_RENAME_SYMBOL="$RENAME_SYMBOL" \
 JAWATA_LIVE_WORKSPACE="$FOLDER" JAWATA_LIVE_SERVER="$SERVER" JAWATA_LIVE_FILE="$FILE" JAWATA_LIVE_OUT="$OUT" \
     JAWATA_LIVE_USER_DATA="$WS/profile" xvfb-run -a npx vscode-test --config .vscode-test.live.mjs
 STATUS=$?

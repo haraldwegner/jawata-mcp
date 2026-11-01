@@ -41,6 +41,10 @@ public final class MessageRoute implements HttpHandler {
     @FunctionalInterface
     public interface Session {
         void receive(JsonRpcMessage message);
+
+        /** The host's connection ended, on purpose or not: whatever the session holds for that host (open buffers, pending work) goes now. */
+        default void closed() {
+        }
     }
 
     /** Opens the session of a new connection; what the session says goes out through {@code out}. May refuse with an IllegalStateException. */
@@ -220,6 +224,16 @@ public final class MessageRoute implements HttpHandler {
             closed = true;
             worker.shutdownNow();
             outbox.add("");
+            endSession();
+        }
+
+        /** Tells the session its host is gone; a session that fails in releasing what it holds does not stop the connection from ending. */
+        private void endSession() {
+            try {
+                session.closed();
+            } catch (RuntimeException e) {
+                log.warn("The session on {} failed in ending", path, e);
+            }
         }
 
         /**
@@ -238,6 +252,7 @@ public final class MessageRoute implements HttpHandler {
             }
             closed = true;
             outbox.add("");
+            endSession();
         }
     }
 }

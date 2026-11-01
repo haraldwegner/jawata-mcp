@@ -78,4 +78,38 @@ class MessageRouteTest {
             transport.close();
         }
     }
+
+    @Test
+    @DisplayName("a session is told when its host ends the connection, and one that fails in hearing it does not stop the connection from ending")
+    void aSessionIsToldWhenItsHostIsGone() throws Exception {
+        CountDownLatch told = new CountDownLatch(1);
+        MessageRoute route = new MessageRoute("/echo", out -> new MessageRoute.Session() {
+            @Override
+            public void receive(JsonRpcMessage message) {
+                // the host's message is not what this test is about
+            }
+
+            @Override
+            public void closed() {
+                told.countDown();
+                throw new IllegalStateException("a session that cannot release what it holds");
+            }
+        }, method -> false, 1);
+        HttpTransport transport = new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", "tok"), new TransportFixtures.RecordingLifecycle());
+        transport.mount("/echo", route);
+        TransportFixtures.runInBackground(transport);
+        try {
+            int port = transport.getActualPort();
+            assertEquals(202, post(port, "hello"));
+
+            HttpRequest end = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/echo?conn=c"))
+                .header("Authorization", "Bearer tok").DELETE().build();
+            int status = HTTP.send(end, HttpResponse.BodyHandlers.discarding()).statusCode();
+
+            assertTrue(told.await(30, TimeUnit.SECONDS), "the session was never told its host had gone");
+            assertTrue(status < 300, "the connection ended although its session threw: " + status);
+        } finally {
+            transport.close();
+        }
+    }
 }

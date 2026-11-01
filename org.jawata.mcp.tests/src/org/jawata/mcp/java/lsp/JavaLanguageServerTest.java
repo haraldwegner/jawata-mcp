@@ -252,6 +252,20 @@ class JavaLanguageServerTest {
     }
 
     @Test
+    @DisplayName("a conversation that ends without a close for each file releases the files, so an agent is not refused a write by text nobody can save")
+    void aConversationThatEndsReleasesWhatTheEditorHadOpen() throws Exception {
+        start();
+        open(brokenText());
+        assertTrue(service.buffers().orElseThrow().isDirty(unit()), "precondition: the editor's text is unsaved");
+
+        server.closed();
+
+        assertFalse(service.buffers().orElseThrow().view(unit()).isPresent(), "the working copy is gone");
+        assertFalse(service.buffers().orElseThrow().isDirty(unit()), "and nothing is unsaved in an editor that is gone");
+        assertEquals(saved, Files.readString(calculator), "the file on disk is as it was");
+    }
+
+    @Test
     @DisplayName("an answer for text that has moved on is not published: only the answer for the text the editor now has reaches it")
     void aStaleAnswerIsNotPublished() throws Exception {
         AtomicInteger calls = new AtomicInteger();
