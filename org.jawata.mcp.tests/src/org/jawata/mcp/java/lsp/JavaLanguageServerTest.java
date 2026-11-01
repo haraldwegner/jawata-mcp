@@ -247,6 +247,7 @@ class JavaLanguageServerTest {
         closeFile();
         awaitPublished(3);
         assertEquals(0, published().get(2).path("diagnostics").size(), "a closed file shows nothing of the editor's");
+        assertFalse(callers.isEmpty(), "the problems were asked of the engine's gate: a server that answered another way would leave no call here");
         assertTrue(callers.stream().allMatch(caller -> caller.origin() == CallerIdentity.Origin.EDITOR), "every call was the editor's: " + callers);
     }
 
