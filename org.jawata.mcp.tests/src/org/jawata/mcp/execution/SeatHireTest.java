@@ -381,7 +381,7 @@ class SeatHireTest {
     @Test
     @DisplayName("4.4.1: the seat's own rules are asked of the brain ahead of the brief, and its frontmatter is not")
     void theStanceIsPartOfWhatTheBrainIsAsked() {
-        String asked = SeatHire.read(PM).prompt("Decide whether stage 3 is done.", List.of());
+        String asked = SeatHire.read(PM).prompt("Decide whether stage 3 is done.", List.of(), "");
 
         assertAll(
             () -> assertTrue(asked.startsWith("You are the PM seat."), asked),
@@ -393,15 +393,33 @@ class SeatHireTest {
     }
 
     @Test
+    @DisplayName("S14 D16: the ground sits after the rules and before the brief, and a null or blank ground adds nothing")
+    void theGroundSitsBetweenTheRulesAndTheBrief() {
+        SeatHire seat = SeatHire.read(PM);
+        String asked = seat.prompt("Do the stage.", List.of("keep it short"), "JAWATA MAP — what this code is\n  job:  a.B#c (src/a/B.java:3) — does c");
+
+        assertAll(
+            () -> assertTrue(asked.indexOf("keep it short") < asked.indexOf("## The ground you work on"), asked),
+            () -> assertTrue(asked.indexOf("## The ground you work on") < asked.indexOf("src/a/B.java:3"), asked),
+            () -> assertTrue(asked.indexOf("src/a/B.java:3") < asked.indexOf("## Your brief"), asked),
+            () -> assertTrue(asked.endsWith("Do the stage."), asked),
+            () -> assertEquals(seat.prompt("Do the stage.", List.of(), ""), seat.prompt("Do the stage.", List.of(), null),
+                "a null ground is no ground"),
+            () -> assertEquals(seat.prompt("Do the stage.", List.of(), ""), seat.prompt("Do the stage.", List.of(), "  \n"),
+                "and so is a blank one"),
+            () -> assertFalse(seat.prompt("Do the stage.", List.of(), "").contains("The ground you work on")));
+    }
+
+    @Test
     @DisplayName("...a seat with no rules is asked the brief alone, and an unclosed fence holds no rules")
     void noStanceMeansTheBriefAlone() {
         assertAll(
             () -> assertEquals("the brief",
-                SeatHire.read("---\nname: s\n---\n").prompt("the brief", List.of())),
+                SeatHire.read("---\nname: s\n---\n").prompt("the brief", List.of(), "")),
             // What follows an opening fence that never closes is frontmatter nobody finished, not
             // rules anybody wrote — sending it would hand the brain half a settings block.
             () -> assertEquals("the brief",
-                SeatHire.read("---\nname: s\nmodel: x\n").prompt("the brief", List.of())));
+                SeatHire.read("---\nname: s\nmodel: x\n").prompt("the brief", List.of(), "")));
     }
 
     @Test

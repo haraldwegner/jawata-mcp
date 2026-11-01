@@ -519,4 +519,67 @@ class SeatAsksByMeaningTest {
             "and it names which of the two it is, which is the only thing a reader cannot"
                 + " work out for themselves: " + map);
     }
+
+    /**
+     * S14, D16: THE HIRE'S MAP IS THE GUEST'S MAP WITH ONE ADDITION. A member's live location, when the loaded code has one, is
+     * printed beside its address; a row without one prints exactly as the guest hook always printed it.
+     */
+    @Test
+    @DisplayName("a map row carries its member's location when the hire resolved one, and prints as before when not")
+    void a_map_row_carries_its_location_when_it_has_one() {
+        Map<String, Object> located = new java.util.LinkedHashMap<>();
+        located.put("type", "job");
+        located.put("symbol", TARGET_SYMBOL);
+        located.put("principle", TARGET_JOB);
+        located.put("location", "src/com/example/CoverageRunner.java:42");
+        Map<String, Object> plain = new java.util.LinkedHashMap<>(located);
+        plain.remove("location");
+
+        String with = ExperienceRetrieval.renderMap(Map.of("candidates", List.of(located)));
+        String without = ExperienceRetrieval.renderMap(Map.of("candidates", List.of(plain)));
+
+        assertTrue(with.contains("  job:  " + TARGET_SYMBOL + " (src/com/example/CoverageRunner.java:42) — " + TARGET_JOB),
+            "the location sits between the address and the job: " + with);
+        assertTrue(without.contains("  job:  " + TARGET_SYMBOL + " — " + TARGET_JOB),
+            "a row with none prints as the guest hook always printed it: " + without);
+    }
+
+    @Test
+    @DisplayName("S14 D16: the hire's map names the members it shows, and every one of them is in its text")
+    void the_hires_map_names_what_it_shows() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            org.jawata.mcp.knowledge.EmbeddingService.shared().available(),
+            "embedder unavailable: the job is reached by meaning");
+        recordTheCorpus();
+
+        ExperienceRetrieval.AreaMap map = tool.areaMapFor(TASK);
+
+        assertTrue(map.text().startsWith("JAWATA MAP —"), "headed as the guest map is: " + map.text());
+        assertTrue(map.shown().contains(TARGET_SYMBOL), "the job the task is about is among those shown: " + map.shown());
+        for (String member : map.shown()) {
+            assertTrue(map.text().contains(member), "what is reported as shown is in what the seat reads: " + member);
+        }
+    }
+
+    @Test
+    @DisplayName("S14 D16: with nothing catalogued, or no task, the hire's map says nothing is catalogued and shows no member")
+    void the_hires_map_with_nothing_shows_nothing() {
+        ExperienceRetrieval.AreaMap empty = tool.areaMapFor(TASK);
+        ExperienceRetrieval.AreaMap noTask = tool.areaMapFor("  ");
+
+        assertTrue(empty.text().startsWith("JAWATA MAP — nothing") && empty.shown().isEmpty(), "an empty store: " + empty);
+        assertTrue(noTask.text().startsWith("JAWATA MAP — nothing") && noTask.shown().isEmpty(), "a blank task: " + noTask);
+    }
+
+    @Test
+    @DisplayName("S14 D16: a store that cannot answer gives a failed-lookup map, never an absence")
+    void a_store_that_cannot_answer_gives_a_failed_lookup_not_an_absence() {
+        recordTheCorpus();
+        store.close();
+
+        ExperienceRetrieval.AreaMap map = tool.areaMapFor(TASK);
+
+        assertTrue(map.text().contains("failed lookup, not an absence") && map.shown().isEmpty(),
+            "the closed store is a failed lookup and is said to be one: " + map);
+    }
 }

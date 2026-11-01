@@ -126,6 +126,9 @@ public class HireTool extends NeutralTool {
     /** Where the accepted rules that bind a hired seat are read from, per hire (D45). */
     private final Supplier<ExperienceStore> rules;
 
+    /** Nullable: the area's jobs for a brief, handed to every run this tool conducts for a seat that changes code (S14, D16). */
+    private final java.util.function.Function<String, org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap> area;
+
     /**
      * The host setting that names, per brain, the program that speaks ACP: {@code {"claude-code":{"command":[...],"env":{...}},...}}. A brain
      * without an entry is started the way it always was, by its own dialect's command line.
@@ -173,6 +176,19 @@ public class HireTool extends NeutralTool {
             RuntimeArtifactStore artifacts, PlanLedger plans,
             Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> self, Supplier<ExperienceStore> rules, Supplier<EngineSettings> settings) {
+        this(host, artifacts, plans, journal, registry, self, rules, settings, null);
+    }
+
+    /**
+     * @param area what the catalogue says about the ground a brief is about (Sprint 28h S14, D16), burned into the prompt of a seat that
+     *     changes code; null for none, and a hire then carries no ground
+     */
+    public HireTool(HostProcesses host,
+            RuntimeArtifactStore artifacts, PlanLedger plans,
+            Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
+            Supplier<SelfEndpoint> self, Supplier<ExperienceStore> rules, Supplier<EngineSettings> settings,
+            java.util.function.Function<String, org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap> area) {
+        this.area = area;
         this.rules = rules == null ? () -> null : rules;
         this.settings = settings == null ? () -> key -> java.util.Optional.empty() : settings;
         if (host == null || artifacts == null || plans == null || journal == null
@@ -440,7 +456,7 @@ public class HireTool extends NeutralTool {
             return ToolResponse.invalidParameter("workingDirectory", e.getMessage());
         }
 
-        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders());
+        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area);
         HiredRun.Proposal proposal;
         try {
             // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.

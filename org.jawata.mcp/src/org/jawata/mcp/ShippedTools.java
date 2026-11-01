@@ -196,7 +196,7 @@ public final class ShippedTools {
         tools.add(new HireTool(HostProcesses.system(),
             w.runtimeArtifacts(),
             planLedger,
-            w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore, w.settings()));
+            w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore, w.settings(), experience::areaMapFor));
         tools.add(new PlanStepsTool(planLedger));
         // plan_board draws the same ledger into the sprint's plan file, so the file a person reads is the ledger's word (S10, D18).
         tools.add(new PlanBoardTool(planLedger));

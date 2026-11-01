@@ -213,6 +213,14 @@ printf -- '---\nname: e2e-scheduled\nbrain: script\nscript: %s/e2e-sched-brain.s
 printf -- '---\nname: e2e-adhoc\nbrain: script\nscript: %s/e2e-adhoc-brain.sh\naccepts_uncontained_writes: true\nttl_secs: 30\n---\n\nYou are the ad-hoc e2e seat.\n' "$WS" > "$SCHED_DIR/e2e-adhoc.md"
 export JAWATA_AGENT_SEATS_DIR="$SCHED_DIR"
 
+# Sprint 28h, S14 (D16, E13): a stand-in for the `claude` program, first on the resident's PATH, so a seat declared as brain: claude-code is
+# started as a few lines of shell that keep the command line it was started with and answer. The promise below reads that command line.
+GROUND_BIN="$WS/e2e-ground-bin"
+mkdir -p "$GROUND_BIN"
+printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "%s/ground-argv"\necho "{\\"type\\":\\"result\\",\\"result\\":\\"done\\"}"\n' "$WS" > "$GROUND_BIN/claude"
+chmod +x "$GROUND_BIN/claude"
+export PATH="$GROUND_BIN:$PATH"
+
 # ============================ lifecycle 1 ====================================
 start_resident
 
@@ -359,6 +367,31 @@ esac
 case "$SWEEP" in
     *'"tool:health_check"'*) fail "tool-rules the sweep lists the label of a PUBLISHED tool as unasked, so the tool names never reached it: $(printf '%s' "$SWEEP" | head -c 400)" ;;
     *) pass "tool-rules a label naming a published tool is not listed as unasked" ;;
+esac
+
+# --- area-ground (Sprint 28h, S14, E13): the area's jobs are in the prompt of a seat that changes code, on the running product ----
+# A job is recorded through the front door; a seat that changes code is hired through the hire tool with a brief about that job, and the
+# command line the hired brain was started with is read back. The control is a seat that only reads, hired with the same brief: it must
+# not carry the ground, or a hire that put the map in every seat's prompt would pass.
+GROUND_JOB="$(call experience '{"kind":"record","type":"job","symbol":"com.e2e.Ground#carry","summary":"E13 the quokka ground carrier hands the settlement ledger its window"}')"
+answered "area-ground" "$GROUND_JOB"
+printf -- '---\nname: e2e-ground-code\nbrain: claude-code\nchanges_code: true\naccepts_uncontained_writes: true\nttl_secs: 30\n---\n\nYou are the e2e ground seat.\n' > "$WS/e2e-ground-code.md"
+printf -- '---\nname: e2e-ground-read\nbrain: claude-code\naccepts_uncontained_writes: true\nttl_secs: 30\n---\n\nYou are the e2e reading seat.\n' > "$WS/e2e-ground-read.md"
+GROUND_BRIEF="Change how the quokka ground carrier hands the settlement ledger its window."
+rm -f "$WS/ground-argv"
+G_CODE="$(call hire "{\"hirer\":\"e2e\",\"seat\":\"e2e-ground-code\",\"seatFile\":\"$WS/e2e-ground-code.md\",\"brief\":\"$GROUND_BRIEF\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}")"
+G_CODE_ARGV="$(cat "$WS/ground-argv" 2>/dev/null)"
+rm -f "$WS/ground-argv"
+G_READ="$(call hire "{\"hirer\":\"e2e\",\"seat\":\"e2e-ground-read\",\"seatFile\":\"$WS/e2e-ground-read.md\",\"brief\":\"$GROUND_BRIEF\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}")"
+G_READ_ARGV="$(cat "$WS/ground-argv" 2>/dev/null)"
+case "$G_CODE_ARGV" in
+    *"The ground you work on"*"E13 the quokka ground carrier"*"Your brief"*) pass "area-ground the area's job is in the prompt of a seat that changes code, before its brief" ;;
+    *) fail "area-ground the code-changing seat's prompt carries no ground: argv=$(printf '%s' "$G_CODE_ARGV" | head -c 400) answer=$(printf '%s' "$G_CODE" | head -c 400)" ;;
+esac
+answered "area-ground CONTROL" "$G_READ_ARGV"
+case "$G_READ_ARGV" in
+    *"The ground you work on"*) fail "area-ground CONTROL: a seat that only reads carried the ground" ;;
+    *) pass "area-ground CONTROL: a seat that only reads is not given the ground" ;;
 esac
 
 # --- seat-schedule (Sprint 28h, S12, D29 category C): a seat whose schedule is due is hired on the running product, nobody calling it ----

@@ -271,9 +271,13 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
      *
      * @param brief the instruction
      * @param rules the accepted rules that bind this seat, as text; none is a valid answer
+     * @param ground the catalogue's map of the area and its jobs with their live locations, set between the rules and the brief
+     *     (Sprint 28h, S14, D16); empty or null is no ground
+     * @return the text the brain is asked
      */
-    public String prompt(String brief, List<String> rules) {
+    public String prompt(String brief, List<String> rules, String ground) {
         String asked = brief == null ? "" : brief.strip();
+        String known = ground == null ? "" : ground.strip();
         StringBuilder text = new StringBuilder();
         if (!stance.isEmpty()) {
             text.append(stance).append("\n\n---\n\n");
@@ -285,7 +289,13 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             }
             text.append("\n---\n\n");
         }
-        if (stance.isEmpty() && rules.isEmpty()) {
+        // THE GROUND (Sprint 28h, S14, D16): the catalogue's description of the area and its jobs with their live locations, set after
+        // the rules and before the brief so the seat reads what the code is before what it is asked to do. It is burned into the prompt
+        // rather than offered as a tool, so the seat has no other option than to have read it.
+        if (!known.isEmpty()) {
+            text.append("## The ground you work on\n\n").append(known).append("\n\n---\n\n");
+        }
+        if (stance.isEmpty() && rules.isEmpty() && known.isEmpty()) {
             return asked;
         }
         return text.append("## Your brief\n\n").append(asked).toString();

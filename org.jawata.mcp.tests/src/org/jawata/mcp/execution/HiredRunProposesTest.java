@@ -680,6 +680,119 @@ class HiredRunProposesTest {
                 "a rule recorded AFTER the build is in the next hire, with no code change: " + workerAskedAgain));
     }
 
+    private static final String GROUND_MEMBER = "org.jawata.mcp.tools.HireTool#escalate";
+
+    private static final org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap GROUND = new org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap(
+        "JAWATA MAP — what this area is for\n- the execution area: hires one seat and records the run\n"
+            + "- " + GROUND_MEMBER + " (org.jawata.mcp/src/org/jawata/mcp/tools/HireTool.java:431) — hires the next rung for a failed hire",
+        List.of(GROUND_MEMBER));
+
+    private static final String CODE_SEAT = "---\nname: worker\nbrain: claude-code\nchanges_code: true\naccepts_uncontained_writes: true\n"
+        + "ttl_secs: 30\n---\n\nYou are the worker.\n";
+
+    private static final String READING_SEAT = "---\nname: pm\nbrain: claude-code\naccepts_uncontained_writes: true\n"
+        + "ttl_secs: 30\n---\n\nYou are the pm.\n";
+
+    private String hiredRow(HiredRun.Proposal proposal) {
+        return events.eventsOfSession(proposal.plan().value()).orElseThrow().stream()
+            .filter(e -> LearnerEvent.KIND_HIRED_RUN.equals(e.kind())).findFirst().orElseThrow().detailJson();
+    }
+
+    @Test
+    @DisplayName("S14 D16: the area's jobs are burned into a code-changing seat's prompt, asked with its brief, and the row says shown and chosen")
+    void theAreasJobsAreBurnedIntoACodeChangingSeatsPrompt() throws Exception {
+        HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
+        RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
+        List<String> asked = new java.util.ArrayList<>();
+        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store, null, brief -> {
+            asked.add(brief);
+            return GROUND;
+        });
+
+        HiredRun.Proposal proposal = run.issue(SeatHire.read(CODE_SEAT), site(standIn), "Make the hire tool escalate a failed hire.",
+            twoSteps(), HiredRunProposesTest::passed, List.of());
+        String prompt = String.join(" ", spy.asked());
+        JsonNode ground = json(hiredRow(proposal)).path("areaGround");
+
+        assertAll(
+            () -> assertEquals(List.of("Make the hire tool escalate a failed hire."), asked, "the catalogue was asked with the hirer's own words"),
+            () -> assertTrue(prompt.contains("## The ground you work on"), "the prompt has the section: " + prompt),
+            () -> assertTrue(prompt.contains("HireTool.java:431"), "with the member's live location: " + prompt),
+            () -> assertTrue(prompt.indexOf("The ground you work on") < prompt.indexOf("Your brief"), "before the brief it is asked to do"),
+            () -> assertEquals(1, ground.path("shown").size(), "one job shown: " + ground),
+            () -> assertEquals(GROUND_MEMBER, ground.path("shown").path(0).asText(), "the row names what was shown: " + ground),
+            () -> assertTrue(ground.path("chosen").isArray() && ground.path("chosen").isEmpty(),
+                "no change could be attributed in this tree, so none is counted as chosen: " + ground));
+    }
+
+    @Test
+    @DisplayName("S14 D16: a seat that only reads is not given the ground, and the catalogue is not asked for it")
+    void aSeatThatOnlyReadsIsNotGivenTheGround() throws Exception {
+        HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
+        RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
+        List<String> asked = new java.util.ArrayList<>();
+        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store, null, brief -> {
+            asked.add(brief);
+            return GROUND;
+        });
+
+        HiredRun.Proposal proposal = run.issue(SeatHire.read(READING_SEAT), site(standIn), "Judge the stage.", twoSteps(),
+            HiredRunProposesTest::passed, List.of());
+
+        assertAll(
+            () -> assertFalse(String.join(" ", spy.asked()).contains("The ground you work on"), "no ground in a reading seat's prompt"),
+            () -> assertEquals(List.of(), asked, "and the catalogue was never asked"),
+            () -> assertTrue(json(hiredRow(proposal)).path("areaGround").isMissingNode(), "and the row claims no ground it did not have"));
+    }
+
+    @Test
+    @DisplayName("S14 D16: a lookup that throws puts a failed-lookup line in the prompt and does not stop the hire")
+    void aLookupThatFailsIsSaidAndDoesNotStopTheHire() throws Exception {
+        HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
+        RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
+        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store, null, brief -> {
+            throw new IllegalStateException("the store is closed");
+        });
+
+        HiredRun.Proposal proposal = run.issue(SeatHire.read(CODE_SEAT), site(standIn), "Do the stage.", twoSteps(),
+            HiredRunProposesTest::passed, List.of());
+        String prompt = String.join(" ", spy.asked());
+
+        assertAll(
+            () -> assertTrue(Files.exists(proposal.record()), "the hire still ran"),
+            () -> assertTrue(prompt.contains("a failed lookup, not an absence"), "and the prompt says the lookup failed: " + prompt),
+            () -> assertTrue(json(hiredRow(proposal)).path("areaGround").isMissingNode(), "with nothing shown, the row claims no ground"));
+    }
+
+    @Test
+    @DisplayName("S14 D16: a hire made without the area function carries no ground, exactly as before")
+    void aHireWithoutTheAreaFunctionCarriesNoGround() throws Exception {
+        HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
+        RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
+        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store);
+
+        run.issue(SeatHire.read(CODE_SEAT), site(standIn), "Do the stage.", twoSteps(), HiredRunProposesTest::passed, List.of());
+
+        assertFalse(String.join(" ", spy.asked()).contains("The ground you work on"));
+    }
+
+    @Test
+    @DisplayName("S14 D16: chosen is the shown members whose source file the run changed, nested types included")
+    void chosenIsTheShownMembersWhoseFileTheRunChanged() {
+        List<String> shown = List.of("org.jawata.mcp.tools.HireTool#escalate", "org.jawata.mcp.tools.HireTool$Inner#go",
+            "org.jawata.mcp.knowledge.ExperienceStore#put");
+        TreeAttribution.Attribution changed = new TreeAttribution.Attribution(
+            java.util.Optional.of(List.of("org.jawata.mcp/src/org/jawata/mcp/tools/HireTool.java", "docs/readme.md")), "git status");
+        TreeAttribution.Attribution unknown = new TreeAttribution.Attribution(java.util.Optional.empty(), "NOT ATTRIBUTABLE");
+
+        assertAll(
+            () -> assertEquals(List.of("org.jawata.mcp.tools.HireTool#escalate", "org.jawata.mcp.tools.HireTool$Inner#go"),
+                HiredRun.chosenGround(shown, changed), "both members of the changed file, the nested type with its outer"),
+            () -> assertEquals(List.of(), HiredRun.chosenGround(shown, unknown), "no census means none named, not all"),
+            () -> assertEquals(List.of(), HiredRun.chosenGround(List.of("org.jawata.mcp.tools.HireToolFoo#x"), changed),
+                "a type that merely begins with the changed file's name is not it"));
+    }
+
     @Test
     @DisplayName("a reaped run's record reports NO cost rather than zero")
     void aReapedRunsRecordDoesNotInventACost() throws Exception {

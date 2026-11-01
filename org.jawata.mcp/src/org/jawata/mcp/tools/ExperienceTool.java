@@ -282,6 +282,22 @@ public final class ExperienceTool implements Tool {
         return new ExperienceTool(serviceSupplier, store, defaultRoots, null, null, anchors);
     }
 
+    /**
+     * The area's jobs for a task (Sprint 28h, S14, D16): this tool's own retrieval asked about the code lane with the task's words,
+     * so the hire path carries the same map a guest hook would show, built by one producer. A lookup that fails answers a map that
+     * says so, and never throws into a hire.
+     *
+     * @param task the hire's brief
+     */
+    public ExperienceRetrieval.AreaMap areaMapFor(String task) {
+        try {
+            return retrieval.mapFor(task, ExperienceRetrieval.RETRIEVAL_BUDGET_MILLIS);
+        } catch (RuntimeException e) {
+            return new ExperienceRetrieval.AreaMap(ExperienceRetrieval.MAP_HEADING + " unavailable. The lookup failed ("
+                + e.getClass().getSimpleName() + "); this is a failed lookup, not an absence.", List.of());
+        }
+    }
+
     private ExperienceTool(Supplier<? extends SourceUnits> serviceSupplier, ExperienceStore store,
             Supplier<List<java.nio.file.Path>> defaultRoots,
             ExperienceMaintenance.PointerResolver resolverOverride,

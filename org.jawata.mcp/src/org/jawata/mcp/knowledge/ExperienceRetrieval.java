@@ -1633,7 +1633,10 @@ public final class ExperienceRetrieval {
             String line = san(c.get("principle"));
             Object address = c.get("symbol");
             if (address != null && !String.valueOf(address).isBlank()) {
-                line = san(address) + " — " + line;
+                // A map built for a hire carries each member's live location (mapFor); a nomination alone has none.
+                Object where = c.get("location");
+                String located = where == null || String.valueOf(where).isBlank() ? "" : " (" + san(where) + ")";
+                line = san(address) + located + " — " + line;
             }
             if ("area".equalsIgnoreCase(type)) {
                 areas.add(line);
@@ -1655,6 +1658,64 @@ public final class ExperienceRetrieval {
             sb.append("\n  job:  ").append(j);
         }
         return sb.toString();
+    }
+
+    /**
+     * What a hired seat's prompt carries about the ground it works on (Sprint 28h, S14, D16): the rendered map and the members it
+     * shows, so the run's record can later say which of them the run chose ("shown, chosen").
+     *
+     * @param text  the map, headed {@link #MAP_HEADING}; an absence and a failed lookup each say which they are
+     * @param shown the fully-qualified member addresses of the jobs on the map, in the order shown
+     */
+    public record AreaMap(String text, List<String> shown) {
+    }
+
+    /**
+     * THE AREA'S JOBS, FOR A HIRE (Sprint 28h, S14, D16): the code lane asked with the task's own words, each shown member's LIVE
+     * location resolved now, rendered as the map.
+     *
+     * <p>One path produces the map: this nominates and renders through {@link #nominate} and {@link #renderMap}, the same rows a guest
+     * hook shows a person, and adds only what a hire needs beyond them — the location of each member as the loaded code has it (or the
+     * words "location lost" for a member that is gone, since a job whose subject has moved is worse than none) and the list of members
+     * shown. A lookup that failed says so and is not rendered as an absence.</p>
+     *
+     * @param task         the hire's brief, as the hirer wrote it
+     * @param budgetMillis the lookup's deadline
+     */
+    public AreaMap mapFor(String task, long budgetMillis) {
+        if (task == null || task.isBlank()) {
+            return new AreaMap(renderMap(Map.of()), List.of());
+        }
+        Map<String, Object> answer = nominate(task, LaneScope.of(KnowledgeLane.CODE), budgetMillis);
+        if (RESULT_UNAVAILABLE.equals(answer.get("result"))) {
+            return new AreaMap(MAP_HEADING + " unavailable. The lookup could not answer (" + san(answer.get("reason"))
+                + "); this is a failed lookup, not an absence.", List.of());
+        }
+        List<String> shown = new ArrayList<>();
+        Object rows = answer.get("candidates");
+        if (rows instanceof List<?> listed) {
+            for (Object row : listed) {
+                if (!(row instanceof Map<?, ?>)) {
+                    continue;
+                }
+                @SuppressWarnings("unchecked")
+                Map<String, Object> candidate = (Map<String, Object>) row;
+                Object symbol = candidate.get("symbol");
+                if (symbol == null || String.valueOf(symbol).isBlank()) {
+                    continue;
+                }
+                Map<String, Object> pointer = resolvePointer(String.valueOf(symbol));
+                if (pointer != null && Boolean.TRUE.equals(pointer.get("resolved")) && pointer.get("file") != null) {
+                    candidate.put("location", pointer.get("file") + (pointer.get("line") == null ? "" : ":" + pointer.get("line")));
+                } else if (pointer != null && Boolean.TRUE.equals(pointer.get("stale"))) {
+                    candidate.put("location", "location lost");
+                }
+                if (!"area".equalsIgnoreCase(String.valueOf(candidate.get("type")))) {
+                    shown.add(String.valueOf(symbol));
+                }
+            }
+        }
+        return new AreaMap(renderMap(answer), List.copyOf(shown));
     }
 
     /**

@@ -10,11 +10,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.access.SessionFolders;
 import org.jawata.mcp.execution.AcpBrainSession.Program;
+import org.jawata.mcp.knowledge.ExperienceRetrieval;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.knowledge.SeatRules;
@@ -121,6 +123,9 @@ public final class HiredRun {
     /** Nullable: the folder each hired session works in, which narrows its workspace under the access policy (S13, ACL4). */
     private final SessionFolders folders;
 
+    /** Nullable: the area's jobs for a brief, burned into the prompt of a seat that changes code (S14, D16). */
+    private final Function<String, ExperienceRetrieval.AreaMap> area;
+
     public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
             LearnerEventStore journal) {
         this(host, artifacts, plans, journal, null);
@@ -147,6 +152,17 @@ public final class HiredRun {
      */
     public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
             LearnerEventStore journal, SelfEndpoint self, Supplier<ExperienceStore> rules, SessionFolders folders) {
+        this(host, artifacts, plans, journal, self, rules, folders, null);
+    }
+
+    /**
+     * @param area what the catalogue says about the ground a brief is about (Sprint 28h S14, D16): the task's words in, the map of the area's
+     *     jobs with their live locations out; nullable, and without it a hire carries no ground, exactly as before
+     */
+    public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
+            LearnerEventStore journal, SelfEndpoint self, Supplier<ExperienceStore> rules, SessionFolders folders,
+            Function<String, ExperienceRetrieval.AreaMap> area) {
+        this.area = area;
         this.folders = folders;
         this.host = Objects.requireNonNull(host, "a hired run needs a process boundary");
         this.artifacts = Objects.requireNonNull(artifacts, "a proposal with nowhere to land"
@@ -221,7 +237,11 @@ public final class HiredRun {
         PlanId plan = plans.open(planned, perStepCeiling(seat.ceilings(), planned.size()));
         try {
             BrainDialect asThisHire = seat.dialect(self == null ? null : self.forSession(plan.value()), hiddenTools);
-            return conduct(asThisHire, base, seat.prompt(brief, binding), seat.tools(), seat.ceilings(), gates, planned, plan, seat.model(), acp);
+            // THE GROUND (S14, D16): only a seat that changes code is bound to the area's jobs. The map is the catalogue's own rows for the
+            // brief, asked now, so a job described after the build is in this hire's prompt; a lookup that failed says so in the text.
+            ExperienceRetrieval.AreaMap ground = area == null || !seat.changesCode() ? null : groundFor(brief);
+            return conduct(asThisHire, base, seat.prompt(brief, binding, ground == null ? "" : ground.text()), seat.tools(), seat.ceilings(), gates,
+                planned, plan, seat.model(), acp, ground == null ? List.of() : ground.shown());
         } finally {
             plans.close(plan);
         }
@@ -272,7 +292,7 @@ public final class HiredRun {
         // a brain edits through its OWN tools: no gate reports those writes, no tap sees them, and
         // the brain's answer is prose. The directory before and after is the only witness.
         try {
-            return conduct(dialect, base, brief, tools, ceilings, declaredGates, planned, plan, null, java.util.Optional.empty());
+            return conduct(dialect, base, brief, tools, ceilings, declaredGates, planned, plan, null, java.util.Optional.empty(), List.of());
         } finally {
             // THE HIRE HAS ENDED, WHATEVER HOW: its plan ends with it. A plan left open after its hire finished (a gate refused, the brain
             // could not start) would be reported pending at every turn end of every session for as long as the ledger remembered it.
@@ -350,7 +370,8 @@ public final class HiredRun {
     }
 
     private Proposal conduct(BrainDialect dialect, HireSite base, String brief, List<String> tools,
-            HiredBrain.Ceilings ceilings, GateRunner declaredGates, List<GatedStep> planned, PlanId plan, String model, Optional<Program> acp)
+            HiredBrain.Ceilings ceilings, GateRunner declaredGates, List<GatedStep> planned, PlanId plan, String model, Optional<Program> acp,
+            List<String> shownGround)
             throws IOException, InterruptedException {
         TreeAttribution census = base.workingDirectory() == null
             ? null
@@ -455,6 +476,14 @@ public final class HiredRun {
                 detail.put("tokensSpent", outcome.tokens().isPresent() ? outcome.tokens().get().spent() : null);
                 detail.put("instructions", Instructions.rows(Instructions.parse(outcome.text())));
                 detail.put("instructionFaults", Instructions.faults(outcome.text()));
+                // SHOWN, CHOSEN (28f D8, S14 D16): the area's jobs the prompt carried, and which of them the run then worked in. A hire that
+                // was shown none writes no entry, so the row never claims a ground the prompt did not have.
+                if (!shownGround.isEmpty()) {
+                    java.util.Map<String, Object> ground = new LinkedHashMap<>();
+                    ground.put("shown", shownGround);
+                    ground.put("chosen", chosenGround(shownGround, changed));
+                    detail.put("areaGround", ground);
+                }
                 journal.append(new LearnerEvent(plan.value(), LearnerEvent.KIND_HIRED_RUN,
                     dialect.name(), new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(detail)));
             } catch (RuntimeException | com.fasterxml.jackson.core.JsonProcessingException e) {
@@ -463,6 +492,47 @@ public final class HiredRun {
         }
         return new Proposal(plan, artifactId, record, outcome, List.copyOf(ran), passed, changed,
             List.copyOf(answerRefusals));
+    }
+
+    /**
+     * The area's map for this brief, or a map that says the lookup failed: a hire is never stopped by the catalogue being unreadable,
+     * and the prompt never reads a failure as "nothing is catalogued here".
+     */
+    private ExperienceRetrieval.AreaMap groundFor(String brief) {
+        try {
+            ExperienceRetrieval.AreaMap map = area.apply(brief);
+            return map == null ? new ExperienceRetrieval.AreaMap("", List.of()) : map;
+        } catch (RuntimeException e) {
+            return new ExperienceRetrieval.AreaMap("JAWATA MAP — unavailable. The lookup failed (" + e.getClass().getSimpleName()
+                + "); this is a failed lookup, not an absence.", List.of());
+        }
+    }
+
+    /**
+     * Which of the members the prompt showed the run then worked in: those whose type's source file is among the files the run changed.
+     * A member address is {@code pkg.Type#member}; a nested type belongs to the file of its outermost type. A run whose changes could not
+     * be attributed chose none that can be named, and the answer is empty rather than every member shown.
+     *
+     * @param shown   the members the prompt showed
+     * @param changed what the run changed, or that it could not be told
+     * @return the shown members whose file the run changed, in the order shown
+     */
+    static List<String> chosenGround(List<String> shown, TreeAttribution.Attribution changed) {
+        List<String> files = changed.changed().orElse(List.of());
+        List<String> chosen = new ArrayList<>();
+        for (String address : shown) {
+            int hash = address.indexOf('#');
+            String type = hash < 0 ? address : address.substring(0, hash);
+            int nested = type.indexOf('$');
+            String source = "/" + (nested < 0 ? type : type.substring(0, nested)).replace('.', '/') + ".java";
+            for (String file : files) {
+                if (("/" + file.replace('\\', '/')).endsWith(source)) {
+                    chosen.add(address);
+                    break;
+                }
+            }
+        }
+        return List.copyOf(chosen);
     }
 
     /**
