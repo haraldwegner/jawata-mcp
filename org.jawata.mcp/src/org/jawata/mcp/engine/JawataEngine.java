@@ -664,11 +664,8 @@ public class JawataEngine {
 			log.info("No seats folder is set ({}), so no seat is scheduled", org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING);
 			return;
 		}
+		// A folder that does not exist needs no guard here: ScheduledHires reports a folder it cannot list, by name, and starts nothing.
 		Path seats = Path.of(folder);
-		if (!java.nio.file.Files.isDirectory(seats)) {
-			log.warn("The seats folder {} does not exist, so no seat is scheduled", seats);
-			return;
-		}
 		java.util.Optional<Path> workingDirectory = host().directories().workspaceRoot();
 		if (workingDirectory.isEmpty()) {
 			log.warn("The host gave the engine no workspace folder to run a hire in, so no seat is scheduled");
