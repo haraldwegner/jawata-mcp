@@ -645,6 +645,36 @@ public class JawataEngine {
 	public void start() {
 		installWorkspaceIdentity();
 		whiteboard.started(api());
+		startSeatScheduler();
+	}
+
+	/**
+	 * The seat scheduler of this engine, kept so that {@link #stop()} can end it. Sprint 28h S12 (D29 category C): the schedules the studio's
+	 * runner kept in Rust run here, each firing a hire through the engine's own tool door.
+	 */
+	private volatile org.jawata.mcp.execution.SeatScheduler seatScheduler;
+
+	/**
+	 * Starts the schedules of the seat files in the folder {@code jawata.agent.seatsDir} names. With no folder set, or no workspace folder to
+	 * run a hire in, nothing is scheduled and the log says which, so a silence is never mistaken for a schedule that ran.
+	 */
+	void startSeatScheduler() {
+		String folder = host().settings().get(org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING).map(String::trim).orElse("");
+		if (folder.isEmpty()) {
+			log.info("No seats folder is set ({}), so no seat is scheduled", org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING);
+			return;
+		}
+		Path seats = Path.of(folder);
+		if (!java.nio.file.Files.isDirectory(seats)) {
+			log.warn("The seats folder {} does not exist, so no seat is scheduled", seats);
+			return;
+		}
+		java.util.Optional<Path> workingDirectory = host().directories().workspaceRoot();
+		if (workingDirectory.isEmpty()) {
+			log.warn("The host gave the engine no workspace folder to run a hire in, so no seat is scheduled");
+			return;
+		}
+		seatScheduler = org.jawata.mcp.execution.ScheduledHires.start(seats, workingDirectory.get(), getToolRegistry()).orElse(null);
 	}
 
 	/**
@@ -708,6 +738,11 @@ public class JawataEngine {
 		if (backupSchedule != null) {
 			backupSchedule.interrupt();
 			setScheduledBackupThread(null);
+		}
+		org.jawata.mcp.execution.SeatScheduler seats = seatScheduler;
+		if (seats != null) {
+			seats.close(); // interrupts the loop and does not wait for a hire in flight
+			seatScheduler = null;
 		}
 		Transport transport = getActiveTransport();
 		if (transport != null) {

@@ -44,7 +44,6 @@ org.jawata.mcp.engine.SettingKeys#all()
 # WHEN M7 LANDS, this gate reports these FIXED and asks for a re-baseline. That is the
 # ratchet working — do not carry these entries past it.
 org.jawata.mcp.execution.HiredRun#issue(BrainDialect,HireSite,String,Ceilings,List<GatedStep>,GateRunner)
-org.jawata.mcp.execution.SeatScheduler#start()
 org.jawata.mcp.field.FieldPile#countErrorShapes()
 org.jawata.mcp.knowledge.AnalogyPolicy#nominate(Map<String,Double>)
 org.jawata.mcp.knowledge.CatalogueAddresses#resolves(String)

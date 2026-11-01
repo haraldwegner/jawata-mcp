@@ -201,6 +201,18 @@ for line in sys.stdin:
 PY
 export JAWATA_AGENT_REVIEWER="{\"command\":[\"python3\",\"$WS/e2e-reviewer.py\"],\"env\":{}}"
 
+# Sprint 28h, S12 (D29 category C): the folder of seat files whose schedules the engine fires. One seat declares a schedule that is due every
+# minute and a brain that leaves a marker; the control has the same kind of brain and no schedule. The check further down waits for the
+# marker, so a resident that never starts the scheduler, or never hires a due seat through the hire tool, fails there.
+SCHED_DIR="$WS/e2e-sched-seats"
+mkdir -p "$SCHED_DIR"
+printf '#!/bin/sh\ntouch "%s/sched-fired"\necho "the scheduled e2e brain ran"\n' "$WS" > "$WS/e2e-sched-brain.sh"
+printf '#!/bin/sh\ntouch "%s/adhoc-fired"\necho "the ad-hoc e2e brain ran"\n' "$WS" > "$WS/e2e-adhoc-brain.sh"
+chmod +x "$WS/e2e-sched-brain.sh" "$WS/e2e-adhoc-brain.sh"
+printf -- '---\nname: e2e-scheduled\nbrain: script\nscript: %s/e2e-sched-brain.sh\naccepts_uncontained_writes: true\nschedule: "* * * * *"\nttl_secs: 30\n---\n\nYou are the scheduled e2e seat.\n' "$WS" > "$SCHED_DIR/e2e-scheduled.md"
+printf -- '---\nname: e2e-adhoc\nbrain: script\nscript: %s/e2e-adhoc-brain.sh\naccepts_uncontained_writes: true\nttl_secs: 30\n---\n\nYou are the ad-hoc e2e seat.\n' "$WS" > "$SCHED_DIR/e2e-adhoc.md"
+export JAWATA_AGENT_SEATS_DIR="$SCHED_DIR"
+
 # ============================ lifecycle 1 ====================================
 start_resident
 
@@ -348,6 +360,21 @@ case "$SWEEP" in
     *'"tool:health_check"'*) fail "tool-rules the sweep lists the label of a PUBLISHED tool as unasked, so the tool names never reached it: $(printf '%s' "$SWEEP" | head -c 400)" ;;
     *) pass "tool-rules a label naming a published tool is not listed as unasked" ;;
 esac
+
+# --- seat-schedule (Sprint 28h, S12, D29 category C): a seat whose schedule is due is hired on the running product, nobody calling it ----
+# The resident reads the seat files of jawata.agent.seatsDir at its start and fires each due seat as a call of the hire tool. The brain
+# of the due seat leaves a marker; the seat with no schedule (the control) must not have run, or a scheduler firing every seat would pass.
+for _ in $(seq 1 130); do [ -e "$WS/sched-fired" ] && break; sleep 1; done
+if [ -e "$WS/sched-fired" ]; then
+    pass "seat-schedule the seat whose schedule is due was hired by the running resident with nobody calling it"
+else
+    fail "seat-schedule no hire fired within 130 seconds; scheduler log: $(grep -i -E -A2 'seat|schedul' "$LOG" | tail -9 | cut -c1-400)"
+fi
+if [ -e "$WS/adhoc-fired" ]; then
+    fail "seat-schedule CONTROL: the seat with no schedule was hired"
+else
+    pass "seat-schedule CONTROL: the seat with no schedule was not hired"
+fi
 
 # --- tool-count: no tool silently appeared or vanished -----------------------
 # The release-note sentence "the tool count is still N" gets its live check
