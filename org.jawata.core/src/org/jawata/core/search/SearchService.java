@@ -227,10 +227,11 @@ public class SearchService {
 
     /**
      * Get type hierarchy for a type.
-     * Fast because it uses the index.
+     * Fast because it uses the index. The open files' working copies take precedence over their saved files, so a subtype or a supertype
+     * the person has typed and not saved is in it.
      */
     public ITypeHierarchy getTypeHierarchy(IType type) throws CoreException {
-        return type.newTypeHierarchy(new NullProgressMonitor());
+        return type.newTypeHierarchy(org.jawata.core.BufferStore.owner(), new NullProgressMonitor());
     }
 
     /**

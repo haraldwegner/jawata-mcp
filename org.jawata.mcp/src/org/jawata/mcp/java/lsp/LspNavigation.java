@@ -90,6 +90,12 @@ final class LspNavigation {
                     highlights.add(Map.of("range", rangeOf(reference), "kind", HIGHLIGHT_TEXT));
                 }
             }
+            // the references do not include the declaration, which an editor marks with the uses
+            JsonNode definition = ask("go_to_definition", at(params));
+            JsonNode place = definition == null ? null : definition.path("location");
+            if (place != null && place.isObject() && here.equals(fileOf(place.path("filePath").asText()))) {
+                highlights.add(Map.of("range", rangeOf(place), "kind", HIGHLIGHT_TEXT));
+            }
         }
         return highlights;
     }
