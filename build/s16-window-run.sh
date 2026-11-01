@@ -135,13 +135,17 @@ if [ "${S16_PLANT_RIVAL_PROCESS:-0}" = "1" ]; then
 fi
 
 cd "$EXT" || exit 2
-JAWATA_LIVE_MCP_URL="http://127.0.0.1:$PORT" JAWATA_LIVE_MCP_KEY="$TOKEN" JAWATA_LIVE_RENAME_SYMBOL="$RENAME_SYMBOL" \
+JAWATA_LIVE_TREE="$TREE" JAWATA_LIVE_MCP_URL="http://127.0.0.1:$PORT" JAWATA_LIVE_MCP_KEY="$TOKEN" JAWATA_LIVE_RENAME_SYMBOL="$RENAME_SYMBOL" \
 JAWATA_LIVE_WORKSPACE="$FOLDER" JAWATA_LIVE_SERVER="$SERVER" JAWATA_LIVE_FILE="$FILE" JAWATA_LIVE_OUT="$OUT" \
     JAWATA_LIVE_USER_DATA="$WS/profile" xvfb-run -a npx vscode-test --config .vscode-test.live.mjs
 STATUS=$?
 sleep 2
 
 [ -f "$OUT" ] || { echo "the window run wrote no numbers (exit $STATUS)" >&2; exit 1; }
+# 28h S16b: the navigation test writes the milliseconds each feature took; a run without them did not show the features
+NAV="$OUT.navigation.$TREE.json"
+[ -f "$NAV" ] || { echo "the window run wrote no navigation numbers (exit $STATUS)" >&2; exit 1; }
+echo "measured navigation (tree $TREE, milliseconds): $(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$NAV")"
 read -r PEAK RIVAL ENGINES < "$SEEN"
 echo "measured (tree $TREE): $(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$OUT")"
 echo "measured: engine memory at its highest ${PEAK} kB; processes of the window holding a Red Hat Java server: ${RIVAL}; engine processes: ${ENGINES}"
@@ -149,4 +153,4 @@ if [ "$STATUS" -ne 0 ] || [ "${RIVAL:-1}" -ne 0 ] || [ "${ENGINES:-0}" -ne 1 ]; 
     echo "FAIL  the window test exited $STATUS, rival servers $RIVAL (expected 0), engine processes $ENGINES (expected 1)" >&2
     exit 1
 fi
-echo "ok    the window showed the error at its characters, and the process list holds one engine and no second Java server"
+echo "ok    the window showed the error at its characters and every navigation feature over the typed text, and the process list holds one engine and no second Java server"
