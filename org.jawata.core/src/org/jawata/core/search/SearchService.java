@@ -37,11 +37,13 @@ public class SearchService {
     private static final Logger log = LoggerFactory.getLogger(SearchService.class);
 
     private final IJavaProject project;
+    private final SearchEngine engine;
     private final IJavaSearchScope scope;
     private final IJavaSearchScope sourceScope;
 
     public SearchService(IJavaProject project) {
         this.project = project;
+        this.engine = new SearchEngine();
         this.scope = SearchEngine.createJavaSearchScope(new IJavaElement[]{ project });
         this.sourceScope = SearchEngine.createJavaSearchScope(
             new IJavaElement[]{ project }, IJavaSearchScope.SOURCES);
@@ -66,6 +68,7 @@ public class SearchService {
                 "Workspace SearchService requires at least one project");
         }
         this.project = projects[0];
+        this.engine = new SearchEngine();
         this.scope = SearchEngine.createJavaSearchScope((IJavaElement[]) projects);
         this.sourceScope = SearchEngine.createJavaSearchScope(
             (IJavaElement[]) projects, IJavaSearchScope.SOURCES);
@@ -115,7 +118,7 @@ public class SearchService {
 
         CollectingSearchRequestor requestor = new CollectingSearchRequestor(maxResults);
 
-        engine().search(
+        engine.search(
             jdtPattern,
             new SearchParticipant[] { SearchEngine.getDefaultSearchParticipant() },
             searchScope,
@@ -162,7 +165,7 @@ public class SearchService {
 
         CollectingSearchRequestor requestor = new CollectingSearchRequestor(maxResults);
 
-        engine().search(
+        engine.search(
             pattern,
             new SearchParticipant[] { SearchEngine.getDefaultSearchParticipant() },
             scope,
@@ -214,7 +217,7 @@ public class SearchService {
 
         CollectingSearchRequestor requestor = new CollectingSearchRequestor(maxResults);
 
-        engine().search(
+        engine.search(
             pattern,
             new SearchParticipant[] { SearchEngine.getDefaultSearchParticipant() },
             scope,
@@ -227,8 +230,7 @@ public class SearchService {
 
     /**
      * Get type hierarchy for a type.
-     * Fast because it uses the index. The open files are primary working copies, so a subtype or a supertype the person has typed and not
-     * saved is in it.
+     * Fast because it uses the index.
      */
     public ITypeHierarchy getTypeHierarchy(IType type) throws CoreException {
         return type.newTypeHierarchy(new NullProgressMonitor());
@@ -281,7 +283,7 @@ public class SearchService {
 
         IJavaSearchScope subtypeScope = SearchEngine.createJavaSearchScope(subtypes);
 
-        engine().search(
+        engine.search(
             pattern,
             new SearchParticipant[] { SearchEngine.getDefaultSearchParticipant() },
             subtypeScope,
@@ -383,7 +385,7 @@ public class SearchService {
 
         CollectingSearchRequestor requestor = new CollectingSearchRequestor(maxResults);
 
-        engine().search(
+        engine.search(
             pattern,
             new SearchParticipant[] { SearchEngine.getDefaultSearchParticipant() },
             scope,
@@ -394,14 +396,6 @@ public class SearchService {
         log.debug("Fine-grain search for {} (type={}) found {} results",
             typeName, referenceType, requestor.getMatches().size());
         return requestor.getMatches();
-    }
-
-    /**
-     * A search engine that looks at the open files' working copies, which are the editor's unsaved texts, in place of the saved
-     * files. The engine takes its list of working copies when it is made, so one is made for each search.
-     */
-    private SearchEngine engine() {
-        return new SearchEngine(org.eclipse.jdt.core.JavaCore.getWorkingCopies(null)); // null names the primary owner, whose copies the open files are
     }
 
     /**
