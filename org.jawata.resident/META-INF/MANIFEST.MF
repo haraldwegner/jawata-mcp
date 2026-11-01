@@ -33,6 +33,7 @@ Import-Package: org.jawata.spi.host;version="[1.0,2.0)",
  org.eclipse.jdt.core,
  org.eclipse.jdt.core.dom,
  org.eclipse.jdt.core.search,
+ org.eclipse.ltk.core.refactoring,
  org.osgi.framework;version="1.10.0",
  org.osgi.service.prefs,
  org.slf4j;version="2.0.0"

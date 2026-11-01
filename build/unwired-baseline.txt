@@ -98,7 +98,6 @@ org.jawata.mcp.models.ResponseMeta#getTruncated()
 org.jawata.mcp.models.ToolResponse#getMeta()
 org.jawata.mcp.models.ToolResponse#securityViolation(String)
 org.jawata.mcp.protocol.JsonRpcMessage#isResponse()
-org.jawata.mcp.protocol.JsonRpcMessage#request(Object,String,JsonNode)
 org.jawata.mcp.protocol.JsonRpcMessage#setError(JsonRpcError)
 org.jawata.mcp.protocol.JsonRpcMessage#setId(Object)
 org.jawata.mcp.protocol.JsonRpcMessage#setJsonrpc(String)
@@ -160,8 +159,7 @@ org.jawata.resident.workspace.WorkspaceManager#getSessionId()
 org.jawata.resident.workspace.WorkspaceManager#getWorkspace()
 org.jawata.resident.workspace.WorkspaceManager#projectExists(String)
 org.jawata.resident.workspace.WorkspaceManager#refresh()
-# Sprint 28h S16a (his stage, C16a): the buffer store's open, change and close, and the didChange applier, have their production caller in the language server. These two wait for the dirty-write refusal (isDirty) and the shutdown log of open buffers (holders), the next items of the same stage; they leave the baseline at C16a.
+# Sprint 28h S16a (his stage, C16a): the buffer store has its production callers in the language server (open, change, close) and in the headless writes (isDirty). The holder count waits for the shutdown log of open buffers, the next item of the same stage; it leaves the baseline at C16a.
 org.jawata.core.BufferStore#holders(ICompilationUnit)
-org.jawata.core.BufferStore#isDirty(ICompilationUnit)
 # Sprint 28h S16a: the number of open connections of a message route is how AcpRouteTest proves a dropped stream releases its connection (S5, 28h); it was package-private in the agent package and is public now that the route lives in the protocol package. A production reader would be a status line nobody asked for.
 org.jawata.mcp.protocol.MessageRoute#openConnections()

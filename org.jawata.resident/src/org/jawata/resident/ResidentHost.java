@@ -55,9 +55,10 @@ public final class ResidentHost implements EngineHost {
         this.reconciler = reconciler;
         this.writes = writes;
         this.person = person;
-        // This host serves the one language it was handed a binding for, and it runs nothing on the engine's behalf and checks no
-        // unsaved text: it owns its workspace, and only the agent ever debugs here.
-        this.capabilities = new HostCapabilities("headless", true, false, false,
+        // This host serves the one language it was handed a binding for, and it runs nothing on the engine's behalf: it owns its
+        // workspace, and only the agent ever debugs here. It does check unsaved text: the language server keeps an editor's open files
+        // in the engine, and its writes refuse a change over one (S16a).
+        this.capabilities = new HostCapabilities("headless", true, false, true,
             javaBinding == null ? List.of() : List.of("java"));
     }
 

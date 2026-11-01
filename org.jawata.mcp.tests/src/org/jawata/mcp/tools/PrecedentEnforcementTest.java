@@ -208,6 +208,22 @@ class PrecedentEnforcementTest {
     }
 
     @Test
+    @DisplayName("S16a R1: an editor is never charged for a surfaced precedent, the same sequence that refuses an agent")
+    void an_editor_is_never_charged_for_a_surfaced_precedent() throws Exception {
+        boolean[] ran = {false};
+        ToolRegistry reg = registryWarningAbout("extract", ran);
+        CallerIdentity editor = CallerIdentity.editor("lsp-1");
+        ToolResponse warned = reg.callTool("analyze", json("{\"typeName\":\"com.foo.Bar\"}"), editor);
+        assertTrue(warned.getMeta().getSteering().contains("⚠ PRECEDENT"),
+            "precondition: the negative precedent was surfaced to the editor, so an agent would now owe a reason");
+
+        ToolResponse ok = reg.callTool("extract", json("{\"symbol\":\"com.foo.Bar\"}"), editor);
+
+        assertTrue(ran[0], "an editor cannot write a reason, so the tool runs");
+        assertTrue(ok.isSuccess(), "and the call succeeds");
+    }
+
+    @Test
     void the_charge_is_scoped_to_the_warned_target() throws Exception {
         boolean[] ran = {false};
         ToolRegistry reg = registryWarningAbout("extract", ran);

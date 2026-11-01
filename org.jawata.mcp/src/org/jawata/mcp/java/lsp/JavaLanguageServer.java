@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -61,7 +62,10 @@ public final class JavaLanguageServer {
     private final ScheduledExecutorService scheduler;
     private final long debounceMillis;
     private final Map<String, ScheduledFuture<?>> pendingDiagnostics = new ConcurrentHashMap<>();
+    /** The files this editor has open and the model holds: what is checked again when something else on disk changes. */
+    private final Set<String> openFiles = ConcurrentHashMap.newKeySet();
     private boolean shuttingDown;
+    private boolean editorTakesWatchRequests;
 
     /**
      * @param service        the engine's Java model, asked at each use because a workspace may load after the server exists
@@ -118,7 +122,12 @@ public final class JavaLanguageServer {
             return;
         }
         switch (message.getMethod()) {
-            case "initialize" -> out.accept(JsonRpcMessage.successResponse(id, initializeResult()));
+            case "initialize" -> {
+                JsonNode params = message.getParams();
+                editorTakesWatchRequests = params != null
+                    && params.path("capabilities").path("workspace").path("didChangeWatchedFiles").path("dynamicRegistration").asBoolean(false);
+                out.accept(JsonRpcMessage.successResponse(id, initializeResult()));
+            }
             case "shutdown" -> {
                 shuttingDown = true;
                 out.accept(JsonRpcMessage.successResponse(id, null));
@@ -136,6 +145,7 @@ public final class JavaLanguageServer {
                 ICompilationUnit saved = savedUnit(uri);
                 if (saved != null) {
                     buffers().open(saved, document.path("text").asText(""));
+                    openFiles.add(uri);
                     askForProblems(uri);
                 }
             }
@@ -153,15 +163,34 @@ public final class JavaLanguageServer {
                 ICompilationUnit saved = savedUnit(uri);
                 if (saved != null) {
                     cancelPending(uri);
+                    openFiles.remove(uri);
                     if (buffers().close(saved)) {
                         publish(uri, List.of()); // a closed file has no problems of the editor's to show
                     }
                 }
             }
+            case "initialized" -> askEditorToWatchTheSources();
+            case "workspace/didChangeWatchedFiles" -> openFiles.forEach(this::askForProblems); // a file other than these changed, and may have broken them
             default -> {
-                // initialized, $/cancelRequest, workspace notifications: nothing to do yet, and an unknown notification is not an error
+                // $/cancelRequest and other notifications: nothing to do yet, and an unknown notification is not an error
             }
         }
+    }
+
+    /**
+     * Asks the editor to tell the server when a Java file or a build file changes on disk, when the editor says it can be asked. Files
+     * the person changes in another program are then noticed, instead of only the ones open in this editor.
+     */
+    private void askEditorToWatchTheSources() {
+        if (!editorTakesWatchRequests) {
+            return;
+        }
+        List<Map<String, Object>> watchers = new ArrayList<>();
+        for (String glob : List.of("**/*.java", "**/pom.xml", "**/build.gradle*", "**/.classpath")) {
+            watchers.add(Map.of("globPattern", glob));
+        }
+        out.accept(JsonRpcMessage.request("jawata-watched-files", "client/registerCapability", JSON.valueToTree(Map.of("registrations", List.of(
+            Map.of("id", "jawata-watched-files", "method", "workspace/didChangeWatchedFiles", "registerOptions", Map.of("watchers", watchers)))))));
     }
 
     private static Map<String, Object> initializeResult() {

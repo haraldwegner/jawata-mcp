@@ -742,7 +742,10 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         // using the tool anyway costs a written reason — refused BEFORE dispatch,
         // because the signed D2 body says the steer is "not an optional hint the
         // agent may ignore". v3.3.0 worded the cost but never charged it.
-        ToolResponse unpaid = precedentCharge(caller, name, arguments);
+        // Sprint 28h S16a (R1): an editor cannot write a reason when it asks for a hover or the problems of a file it is typing in, so a
+        // call whose caller is an editor is never charged. The access policy and the disk sync above still apply to it.
+        boolean editor = caller.origin() == CallerIdentity.Origin.EDITOR;
+        ToolResponse unpaid = editor ? null : precedentCharge(caller, name, arguments);
         if (unpaid != null) {
             return stamped(name, arguments, unpaid);
         }
@@ -760,7 +763,7 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         // would leak it, and the `finally` that releases it calls a leaked ticket
         // a FALSE HANG in its own comment. `precedentCharge` above returns a
         // refusal from this same position, which is what proves the position safe.
-        if (serverChecks != null && eventTap != null) {
+        if (!editor && serverChecks != null && eventTap != null) {
             ToolResponse refused = serverChecks.acceptance(caller, name, arguments,
                 eventTap.ledger());
             if (refused != null) {

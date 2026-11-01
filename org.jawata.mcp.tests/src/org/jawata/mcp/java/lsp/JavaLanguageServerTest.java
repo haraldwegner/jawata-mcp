@@ -284,4 +284,38 @@ class JavaLanguageServerTest {
         assertEquals(bad[0] + 1, errorsOf(published().get(0)).get(0).path("range").path("start").path("line").asInt(),
             "the error sits one line lower, where the typed line pushed it");
     }
+
+    @Test
+    @DisplayName("an editor that can be asked to watch files is asked to watch Java and build files; an editor that cannot is not asked")
+    void watchedFilesAreRequestedOnlyOfAnEditorThatCanBeAsked() throws Exception {
+        start();
+        server.receive(request(1, "initialize", "{\"capabilities\":{\"workspace\":{\"didChangeWatchedFiles\":{\"dynamicRegistration\":true}}}}"));
+        server.receive(notice("initialized", "{}"));
+
+        JsonRpcMessage asked = sent.stream().filter(message -> "client/registerCapability".equals(message.getMethod())).findFirst().orElseThrow();
+        JsonNode registration = asked.getParams().path("registrations").get(0);
+        assertEquals("workspace/didChangeWatchedFiles", registration.path("method").asText());
+        assertTrue(registration.path("registerOptions").path("watchers").toString().contains("**/*.java"), registration.toString());
+        assertTrue(registration.path("registerOptions").path("watchers").toString().contains("**/pom.xml"), registration.toString());
+
+        sent.clear();
+        server.receive(request(2, "initialize", "{}"));
+        server.receive(notice("initialized", "{}"));
+        assertTrue(sent.stream().noneMatch(message -> "client/registerCapability".equals(message.getMethod())),
+            "an editor that did not say it can be asked is not asked: " + sent);
+    }
+
+    @Test
+    @DisplayName("when a watched file changes on disk, the problems of the files the editor has open are asked for again")
+    void aChangeOnDiskChecksTheOpenFilesAgain() throws Exception {
+        start();
+        open(brokenText());
+        awaitPublished(1);
+
+        server.receive(notice("workspace/didChangeWatchedFiles", "{\"changes\":[{\"uri\":\"file:///elsewhere/Other.java\",\"type\":2}]}"));
+
+        awaitPublished(2);
+        assertEquals(uri(), published().get(1).path("uri").asText());
+        assertEquals(1, errorsOf(published().get(1)).size(), "the open file still has its error");
+    }
 }
