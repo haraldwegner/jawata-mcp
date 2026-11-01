@@ -162,7 +162,8 @@ class JavaLanguageServerTest {
         assertEquals(1, sent.get(0).getId());
         assertTrue(result.path("capabilities").path("textDocumentSync").path("openClose").asBoolean());
         assertEquals(2, result.path("capabilities").path("textDocumentSync").path("change").asInt(), "incremental");
-        assertFalse(result.path("capabilities").has("hoverProvider"), "only what is answered is advertised");
+        assertTrue(result.path("capabilities").has("hoverProvider"), "what is answered is advertised");
+        assertFalse(result.path("capabilities").has("renameProvider"), "only what is answered is advertised");
     }
 
     @Test

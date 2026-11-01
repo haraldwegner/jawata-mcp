@@ -7,6 +7,7 @@ import java.util.Optional;
 
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.JavaModelException;
+import org.eclipse.jdt.core.WorkingCopyOwner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,9 +16,9 @@ import org.slf4j.LoggerFactory;
  * has the file open, so a tool, the language server and a hired agent's tool call all read the same text and none of them reads a
  * stale saved file while the person is typing.
  *
- * <p>The working copies belong to JDT's PRIMARY owner on purpose. JDT's search and its type resolution see the primary owner's
- * working copies of every other file, so a reference found in one file sees an unsaved rename made in another; a private owner
- * would make each buffer visible to its own file only.</p>
+ * <p>The working copies share ONE owner, {@link #owner()}, on purpose. JDT's name resolution (a reconcile) sees the other working
+ * copies of the same owner, and a search made with the owner sees them in place of the saved files, so a reference found in one
+ * file sees an unsaved rename made in another. A copy made without an owner gets a private one that nothing else can find.</p>
  *
  * <p>Holders are counted. The first open of a file makes the working copy from the text given; a later open of the same file
  * shares it and does not replace the text, because the first holder's text may be newer than what the second one read from disk.
@@ -41,6 +42,19 @@ public final class BufferStore {
         }
     }
 
+    /**
+     * The one owner of every working copy this store makes. {@code ICompilationUnit.getWorkingCopy(monitor)} makes a copy with a
+     * private owner that nothing else can find; a copy made with this shared owner is seen by a search given the owner and by the
+     * name resolution of every other open file, which is what lets an unsaved edit of one file show in the answers about another.
+     */
+    private static final WorkingCopyOwner OWNER = new WorkingCopyOwner() {
+    };
+
+    /** The owner a search or a reconcile must be given to see the open files' unsaved text. */
+    public static WorkingCopyOwner owner() {
+        return OWNER;
+    }
+
     private final Map<String, Entry> open = new HashMap<>();
 
     private static String keyOf(ICompilationUnit saved) {
@@ -56,7 +70,7 @@ public final class BufferStore {
     public synchronized ICompilationUnit open(ICompilationUnit saved, String text) throws JavaModelException {
         Entry entry = open.get(keyOf(saved));
         if (entry == null) {
-            ICompilationUnit copy = saved.getWorkingCopy(null);
+            ICompilationUnit copy = saved.getWorkingCopy(OWNER, null);
             copy.getBuffer().setContents(text);
             copy.reconcile(ICompilationUnit.NO_AST, false, null, null); // the types and methods a reader walks follow the text only after this
             entry = new Entry(copy);

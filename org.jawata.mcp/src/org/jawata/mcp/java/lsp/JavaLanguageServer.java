@@ -246,6 +246,17 @@ public final class JavaLanguageServer {
     /** The requests this server answers, each with the capability that tells the editor it may ask. */
     private void registerRequests() {
         requests.register("textDocument/completion", "completionProvider", Map.of("triggerCharacters", List.of(".")), this::complete);
+        LspNavigation navigation = new LspNavigation(tools, caller, service);
+        requests.register("textDocument/hover", "hoverProvider", true, navigation::hover);
+        requests.register("textDocument/definition", "definitionProvider", true, navigation::definition);
+        requests.register("textDocument/declaration", "declarationProvider", true, navigation::definition);
+        requests.register("textDocument/references", "referencesProvider", true, navigation::references);
+        requests.register("textDocument/implementation", "implementationProvider", true, navigation::implementations);
+        requests.register("textDocument/documentHighlight", "documentHighlightProvider", true, navigation::documentHighlight);
+        requests.register("textDocument/documentSymbol", "documentSymbolProvider", true, navigation::documentSymbol);
+        requests.register("workspace/symbol", "workspaceSymbolProvider", true, navigation::workspaceSymbol);
+        requests.register("textDocument/signatureHelp", "signatureHelpProvider",
+            Map.of("triggerCharacters", List.of("(", ",")), navigation::signatureHelp);
     }
 
     /** What could be typed at the position: JDT code assist on the editor's text, unsaved or not. */
