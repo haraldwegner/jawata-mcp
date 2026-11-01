@@ -311,12 +311,15 @@ public abstract class AbstractRefactoringTool extends AbstractTool {
         boolean autoApply = getBooleanParam(arguments, "auto_apply", true);
         if (!autoApply) {
             List<String> files = ChangeEngine.affectedFilePaths(change, org.jawata.mcp.java.JavaChange.contextFor(service));
-            String changeId = changeCache.put(
-                RefactoringChangeCache.Kind.STAGED, change, summary, diff, files);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("operation", operationLabel);
             data.put("applied", false);
-            data.put("changeId", changeId);
+            if (org.jawata.mcp.tools.shared.StagedEdits.requested(arguments)) {
+                // An editor applies these to its own buffers, so nothing is kept for a later apply.
+                data.put("edits", org.jawata.mcp.tools.shared.StagedEdits.of(change, org.jawata.mcp.java.JavaChange.contextFor(service)));
+            } else {
+                data.put("changeId", changeCache.put(RefactoringChangeCache.Kind.STAGED, change, summary, diff, files));
+            }
             view.putInto(data);
             view.putUnshownInto(data, files);
             putStagedUnverified(data);

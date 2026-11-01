@@ -146,6 +146,12 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", Map.of(
+            "edits", Map.of(
+                "type", "boolean",
+                "description", "With auto_apply false: return the edits the rename would make, file by file with their positions "
+                    + "({ edits: [{ filePath, edits: [{ line, column, endLine, endColumn, newText }] }] }), for an editor to apply "
+                    + "to its own buffers. The change is not kept, so there is no changeId."
+            ),
             "filePath", Map.of(
                 "type", "string",
                 "description", "Path to source file containing the symbol"
@@ -275,6 +281,12 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
                 && type.getCompilationUnit() != null
                 && (oldName + ".java").equals(type.getCompilationUnit().getElementName())) {
             extras.put("fileRenamed", oldName + ".java -> " + newName + ".java");
+            // The same rename as places on disk, for an editor that applies the edits itself and must also rename the file.
+            org.eclipse.core.resources.IResource unitFile = type.getCompilationUnit().getResource();
+            if (unitFile != null && unitFile.getLocation() != null) {
+                Path from = unitFile.getLocation().toFile().toPath();
+                extras.put("fileRenames", List.of(Map.of("from", from.toString(), "to", from.resolveSibling(newName + ".java").toString())));
+            }
         }
 
         String summary = "rename " + symbolKind + " '" + oldName + "' -> '" + newName + "'";

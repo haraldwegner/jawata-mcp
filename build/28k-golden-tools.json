@@ -993,6 +993,10 @@
      "description": "Zero-based column number",
      "type": "integer"
     },
+    "edits": {
+     "description": "With auto_apply false: return the edits the rename would make, file by file with their positions ({ edits: [{ filePath, edits: [{ line, column, endLine, endColumn, newText }] }] }), for an editor to apply to its own buffers. The change is not kept, so there is no changeId.",
+     "type": "boolean"
+    },
     "filePath": {
      "description": "Path to source file containing the symbol",
      "type": "string"

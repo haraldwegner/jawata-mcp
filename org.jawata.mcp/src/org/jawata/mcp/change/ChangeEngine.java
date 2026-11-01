@@ -84,6 +84,90 @@ public final class ChangeEngine {
         }
     }
 
+    /** One edit of a text file: {@code length} characters from {@code offset} of the text the change starts from become {@code text}. */
+    public record SpanEdit(int offset, int length, String text) {}
+
+    /**
+     * What a change does to one text file: its edits in the offsets of {@code content}, the text the change starts from. {@code file} is
+     * the file's place on disk, or null when the change does not name one.
+     */
+    public record FileEdits(String path, java.nio.file.Path file, String content, List<SpanEdit> edits) {}
+
+    /**
+     * The edits a change would make, file by file, without applying it: the leaves of each text change's own edit tree, so one edit
+     * per place the refactoring touches. This is what an editor applies in place of the engine writing the files. A file whose edit tree
+     * holds an edit that moves or copies text (not a replace, insert or delete) is answered as one edit replacing the whole file, which
+     * is exact if less fine.
+     */
+    public static List<FileEdits> textEdits(Change change, org.jawata.mcp.change.ChangeContext context) {
+        List<FileEdits> sink = new ArrayList<>();
+        collectTextEdits(change, context.paths(), sink);
+        return sink;
+    }
+
+    private static void collectTextEdits(Change change, ChangePaths paths, List<FileEdits> sink) {
+        if (change == null) {
+            return;
+        }
+        if (change instanceof TextChange textChange) {
+            try {
+                String content = textChange.getCurrentContent(new NullProgressMonitor());
+                List<SpanEdit> edits = new ArrayList<>();
+                if (!leavesOf(textChange.getEdit(), edits)) {
+                    edits = List.of(new SpanEdit(0, content.length(), textChange.getPreviewContent(new NullProgressMonitor())));
+                }
+                sink.add(new FileEdits(diffPathOf(textChange, paths), locationOf(textChange, paths), content, edits));
+            } catch (CoreException e) {
+                log.debug("Edits failed for '{}': {}", change.getName(), e.getMessage());
+            }
+        }
+        if (change instanceof CompositeChange composite) {
+            for (Change child : composite.getChildren()) {
+                collectTextEdits(child, paths, sink);
+            }
+        }
+    }
+
+    /** Adds the replace, insert and delete edits under {@code edit}; false when there is one of another kind, which this cannot express. */
+    private static boolean leavesOf(org.eclipse.text.edits.TextEdit edit, List<SpanEdit> into) {
+        if (edit == null) {
+            return true;
+        }
+        if (edit instanceof MultiTextEdit) {
+            for (org.eclipse.text.edits.TextEdit child : edit.getChildren()) {
+                if (!leavesOf(child, into)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (edit instanceof org.eclipse.text.edits.ReplaceEdit replace) {
+            into.add(new SpanEdit(replace.getOffset(), replace.getLength(), replace.getText()));
+            return true;
+        }
+        if (edit instanceof org.eclipse.text.edits.InsertEdit insert) {
+            into.add(new SpanEdit(insert.getOffset(), 0, insert.getText()));
+            return true;
+        }
+        if (edit instanceof org.eclipse.text.edits.DeleteEdit delete) {
+            into.add(new SpanEdit(delete.getOffset(), delete.getLength(), ""));
+            return true;
+        }
+        return false;
+    }
+
+    private static java.nio.file.Path locationOf(TextChange textChange, ChangePaths paths) {
+        IFile file;
+        if (textChange instanceof TextFileChange tfc) {
+            file = tfc.getFile();
+        } else if (textChange.getModifiedElement() instanceof IFile modified) {
+            file = modified;
+        } else {
+            file = paths.fileOf(textChange.getModifiedElement()).orElse(null);
+        }
+        return file == null || file.getLocation() == null ? null : file.getLocation().toFile().toPath();
+    }
+
     /**
      * Wrap per-file JDT text edits into a performable Change: one
      * {@link TextFileChange} per file (edits under a {@link MultiTextEdit}
