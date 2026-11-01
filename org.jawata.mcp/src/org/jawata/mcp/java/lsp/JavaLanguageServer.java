@@ -22,6 +22,7 @@ import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
 import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.engine.ToolNotFoundException;
+import org.jawata.mcp.java.JavaCompletions;
 import org.jawata.mcp.java.JavaRanges;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
@@ -67,6 +68,7 @@ public final class JavaLanguageServer {
     /** The files this editor has open and the model holds: what is checked again when something else on disk changes. */
     private final Set<String> openFiles = ConcurrentHashMap.newKeySet();
     private boolean shuttingDown;
+    private final LspRequests requests;
     private boolean editorTakesWatchRequests;
     private boolean editorTakesProgress;
     private final AtomicInteger progressTokens = new AtomicInteger();
@@ -89,6 +91,8 @@ public final class JavaLanguageServer {
         this.out = out;
         this.scheduler = scheduler;
         this.debounceMillis = debounceMillis;
+        this.requests = new LspRequests(out);
+        registerRequests();
     }
 
     /**
@@ -104,6 +108,7 @@ public final class JavaLanguageServer {
         if ("exit".equals(method)) {
             pendingDiagnostics.values().forEach(pending -> pending.cancel(false));
             pendingDiagnostics.clear();
+            requests.closeAll();
             return false;
         }
         try {
@@ -128,6 +133,7 @@ public final class JavaLanguageServer {
     public void closed() {
         pendingDiagnostics.values().forEach(pending -> pending.cancel(false));
         pendingDiagnostics.clear();
+        requests.closeAll();
         for (String uri : List.copyOf(openFiles)) {
             openFiles.remove(uri);
             ICompilationUnit saved = savedUnit(uri);
@@ -150,13 +156,23 @@ public final class JavaLanguageServer {
                     && params.path("capabilities").path("workspace").path("didChangeWatchedFiles").path("dynamicRegistration").asBoolean(false);
                 editorTakesProgress = params != null && params.path("capabilities").path("window").path("workDoneProgress").asBoolean(false);
                 startFolders = foldersOf(params);
-                out.accept(JsonRpcMessage.successResponse(id, initializeResult()));
+                Map<String, Object> result = initializeResult();
+                @SuppressWarnings("unchecked")
+                Map<String, Object> capabilities = (Map<String, Object>) result.get("capabilities");
+                capabilities.putAll(requests.capabilities());
+                out.accept(JsonRpcMessage.successResponse(id, result));
             }
             case "shutdown" -> {
                 shuttingDown = true;
                 out.accept(JsonRpcMessage.successResponse(id, null));
             }
-            default -> out.accept(JsonRpcMessage.errorResponse(id, METHOD_NOT_FOUND, "method not found: " + message.getMethod(), null));
+            default -> {
+                if (requests.handles(message.getMethod())) {
+                    requests.dispatch(message);
+                } else {
+                    out.accept(JsonRpcMessage.errorResponse(id, METHOD_NOT_FOUND, "method not found: " + message.getMethod(), null));
+                }
+            }
         }
     }
 
@@ -169,6 +185,7 @@ public final class JavaLanguageServer {
                 ICompilationUnit saved = savedUnit(uri);
                 if (saved != null) {
                     buffers().open(saved, document.path("text").asText(""));
+                    requests.textChanged(uri);
                     openFiles.add(uri);
                     askForProblems(uri);
                 }
@@ -179,6 +196,7 @@ public final class JavaLanguageServer {
                 if (saved != null && buffers().view(saved).isPresent()) {
                     String text = buffers().view(saved).get().getSource();
                     buffers().change(saved, DocumentChanges.apply(text, DocumentChanges.parse(params.get("contentChanges"))));
+                    requests.textChanged(uri);
                     askForProblems(uri);
                 }
             }
@@ -187,12 +205,14 @@ public final class JavaLanguageServer {
                 ICompilationUnit saved = savedUnit(uri);
                 if (saved != null) {
                     cancelPending(uri);
+                    requests.textChanged(uri);
                     openFiles.remove(uri);
                     if (buffers().close(saved)) {
                         publish(uri, List.of()); // a closed file has no problems of the editor's to show
                     }
                 }
             }
+            case "$/cancelRequest" -> requests.cancel(params.path("id"));
             case "initialized" -> {
                 askEditorToWatchTheSources();
                 loadFolders(startFolders);
@@ -219,6 +239,27 @@ public final class JavaLanguageServer {
         }
         out.accept(JsonRpcMessage.request("jawata-watched-files", "client/registerCapability", JSON.valueToTree(Map.of("registrations", List.of(
             Map.of("id", "jawata-watched-files", "method", "workspace/didChangeWatchedFiles", "registerOptions", Map.of("watchers", watchers)))))));
+    }
+
+    // ---- requests -----------------------------------------------------------------------------------------------------------------------
+
+    /** The requests this server answers, each with the capability that tells the editor it may ask. */
+    private void registerRequests() {
+        requests.register("textDocument/completion", "completionProvider", Map.of("triggerCharacters", List.of(".")), this::complete);
+    }
+
+    /** What could be typed at the position: JDT code assist on the editor's text, unsaved or not. */
+    private Object complete(JsonNode params) throws JavaModelException {
+        ICompilationUnit unit = viewOf(params.path("textDocument").path("uri").asText());
+        List<Map<String, Object>> items = unit == null ? List.of()
+            : JavaCompletions.at(unit, params.path("position").path("line").asInt(), params.path("position").path("character").asInt());
+        return Map.of("isIncomplete", false, "items", items);
+    }
+
+    /** The unit a request reads: the open buffer's working copy when the editor has the file open, else the saved unit; null for a file the model does not hold. */
+    private ICompilationUnit viewOf(String uri) {
+        ICompilationUnit saved = savedUnit(uri);
+        return saved == null ? null : buffers().view(saved).orElse(saved);
     }
 
     // ---- workspace folders and progress -------------------------------------------------------------------------------------------------
