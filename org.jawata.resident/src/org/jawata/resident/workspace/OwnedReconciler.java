@@ -251,7 +251,7 @@ public class OwnedReconciler implements Reconciler {
      * {@code INCREMENTAL_BUILD} by default (fast — the common method-body edit); a
      * clean {@code FULL_BUILD} only when incremental is unsafe or unreliable:
      * <ul>
-     *   <li>a {@code .java} file was added or deleted — the type universe changed,
+     *   <li>a source file (one whose suffix a language declared) was added or deleted — the type universe changed,
      *       and the incremental builder lags fresh additions in this headless
      *       runtime (the Sprint 21d finding: an added file produced no markers);</li>
      *   <li>the project's previous build was RED — recover from a possibly
@@ -259,8 +259,10 @@ public class OwnedReconciler implements Reconciler {
      *       compile" rule).</li>
      * </ul>
      * A modify-only, green pass takes the fast incremental path. A changed build file ({@code pom.xml},
-     * {@code MANIFEST.MF}, …) is NOT a reason here, because the scan behind this sees Java source files only and never learns
-     * of one (28k ledger C2b-16; 28h answer E has each language say which files count). (The remaining
+     * {@code build.gradle}, {@code MANIFEST.MF}, …) is NOT a reason here: the scan looks for the suffixes the languages declare
+     * for their source files, none of which names a build file, and a build over the files already imported could not apply
+     * such an edit anyway, because the classpath comes from the importer (28k ledger C2b-16; 28h D15 built the source suffixes
+     * only, and the plan's S14 row says why the build-file names were not built). (The remaining
      * refinement — escalating a modify whose DECLARATION surface changed, to catch
      * signature edits that silently stale consumers, {@code bugs.md #8} — needs a
      * per-file declaration-hash cache and is a deliberate follow-up, kept out of this

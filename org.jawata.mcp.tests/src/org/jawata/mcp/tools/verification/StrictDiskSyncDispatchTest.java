@@ -204,6 +204,22 @@ class StrictDiskSyncDispatchTest {
     }
 
     @Test
+    @DisplayName("28h D15: the plain form of the sync names no suffix either, so a caller that names no language gets no file reconciled")
+    void the_plain_sync_names_no_suffix_and_reconciles_no_file() throws Exception {
+        wire(helper.loadProjectCopy("simple-maven"));
+        OwnedReconciler sync = new OwnedReconciler(() -> service);
+        sync.syncBeforeCall();   // prime: the root is known
+
+        Path fresh = projectRoot().resolve("src/main/java/com/brandnew/PlainFormAsked.java");
+        Files.createDirectories(fresh.getParent());
+        Files.writeString(fresh, "package com.brandnew;\npublic class PlainFormAsked {\n}\n");
+
+        SyncReport report = sync.syncBeforeCall();
+        assertEquals(0, report.refreshedFiles(), "the plain form carries no suffix, so the new Java file is not looked at: " + report);
+        assertFalse(report.reconciled(), "and nothing was reconciled: " + report);
+    }
+
+    @Test
     @DisplayName("guard crash: the tool call proceeds (WARN-and-proceed, never a switch)")
     void guard_crash_warns_and_the_tool_call_proceeds() throws Exception {
         wire(helper.loadProjectCopy("simple-maven"));

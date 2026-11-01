@@ -50,4 +50,51 @@ class JawataEngineSourceExtensionsTest {
         assertFalse(host.fakeReconciler().extensionSets().isEmpty(),
             "the host was asked to sync with a set of suffixes: the engine's reconciler is the language-aware one");
     }
+
+    /** The stand-in language of the engine tests, with one answer replaced: the suffix of its source files. */
+    private static org.jawata.spi.lang.LanguageProvider declaring(String suffix) {
+        org.jawata.standin.FakeLanguageProvider standIn = new org.jawata.standin.FakeLanguageProvider();
+        return (org.jawata.spi.lang.LanguageProvider) java.lang.reflect.Proxy.newProxyInstance(
+            org.jawata.spi.lang.LanguageProvider.class.getClassLoader(), new Class<?>[] {org.jawata.spi.lang.LanguageProvider.class},
+            (proxy, method, args) -> {
+                switch (method.getName()) {
+                    case "sourceExtensions":
+                        return java.util.Set.of(suffix);
+                    case "equals":
+                        return proxy == args[0];
+                    case "hashCode":
+                        return System.identityHashCode(proxy);
+                    default:
+                        try {
+                            return method.invoke(standIn, args);
+                        } catch (java.lang.reflect.InvocationTargetException e) {
+                            throw e.getCause();
+                        }
+                }
+            });
+    }
+
+    @Test
+    @DisplayName("the suffix a language bound on the engine's own whiteboard declares is the one the host is told, and it stops being told when the language leaves")
+    void theHostIsToldTheSuffixOfTheLanguageBoundOnTheEngine() throws Exception {
+        FakeHost host = new FakeHost(scratch.resolve("engine"), Map.of(
+            SettingKeys.EXPERIENCE_STORE.name(), "memory",
+            SettingKeys.EMBED_DISABLED.name(), "true"));
+        engine = JawataEngine.assemble(host);
+        engine.start();
+        org.jawata.spi.lang.LanguageProvider language = declaring(".zzlang");
+
+        engine.whiteboard().bindProvider(language);
+        engine.getToolRegistry().callTool("health_check", new ObjectMapper().createObjectNode());
+        java.util.List<java.util.Set<String>> whileBound = host.fakeReconciler().extensionSets();
+
+        engine.whiteboard().unbindProvider(language);
+        engine.getToolRegistry().callTool("health_check", new ObjectMapper().createObjectNode());
+        java.util.List<java.util.Set<String>> afterwards = host.fakeReconciler().extensionSets();
+
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.Set.of(".zzlang"), whileBound.get(whileBound.size() - 1),
+            "the engine asked the providers bound on ITS whiteboard, and the host got exactly the suffix this one declared");
+        org.junit.jupiter.api.Assertions.assertEquals(java.util.Set.<String>of(), afterwards.get(afterwards.size() - 1),
+            "the language left, so the next call names no suffix");
+    }
 }

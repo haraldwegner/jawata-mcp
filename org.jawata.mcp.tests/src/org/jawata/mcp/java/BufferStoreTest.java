@@ -130,8 +130,10 @@ class BufferStoreTest {
         ICompilationUnit unit = service.getCompilationUnit(calculator);
         store().open(unit, unsaved);
 
-        new OwnedReconciler(() -> service).syncBeforeCall();
+        org.jawata.spi.host.SyncReport pass = new org.jawata.mcp.engine.LanguageAwareReconciler(new OwnedReconciler(() -> service),
+            () -> java.util.List.of(new JavaProvider())).syncBeforeCall();
 
+        assertTrue(pass.reconciled(), "the sync did reconcile the project from disk, so what is checked next survived a real sync: " + pass);
         assertTrue(store().view(unit).isPresent(), "the working copy is still open");
         assertTrue(namesInFile().contains("negate"), "and still holds the unsaved text");
         store().close(unit);

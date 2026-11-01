@@ -33,7 +33,7 @@ import java.util.Set;
  * tracks {@code workspace.json} project MEMBERSHIP — this guard tracks the projects'
  * source CONTENT; the two compose and do not overlap.)
  *
- * <p>Thread-safety: {@link #scan(Collection)} is {@code synchronized} — the MCP HTTP
+ * <p>Thread-safety: {@link #scan(Collection, Set)} is {@code synchronized} — the MCP HTTP
  * transport dispatches tool calls on a cached thread pool, so concurrent calls must
  * not race the snapshot.
  */
@@ -202,10 +202,13 @@ public final class DiskSyncGuard {
         return out;
     }
 
-    /** True when the file name ends in one of the suffixes the languages declared; an empty set names no file. */
+    /**
+     * True when the file name ends in one of the suffixes the languages declared; an empty set names no file, and an empty
+     * suffix names none either (every name ends in the empty string, so honouring it would mean scanning every file).
+     */
     private static boolean hasSourceExtension(String fileName, Set<String> sourceExtensions) {
         for (String extension : sourceExtensions) {
-            if (fileName.endsWith(extension)) {
+            if (!extension.isEmpty() && fileName.endsWith(extension)) {
                 return true;
             }
         }

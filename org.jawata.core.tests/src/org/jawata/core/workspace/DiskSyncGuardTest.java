@@ -45,6 +45,28 @@ class DiskSyncGuardTest {
         assertTrue(r.added().get(0).toString().endsWith("b.cpp"), r.toString());
     }
 
+    @Test
+    void an_empty_suffix_names_no_file(@TempDir Path dir) throws IOException {
+        write(dir, "src/a/A.java", "class A {}");
+        DiskSyncGuard guard = new DiskSyncGuard();
+        guard.scan(List.of(dir), java.util.Set.of(""));
+        write(dir, "src/a/B.java", "class B {}");
+        write(dir, "pom.xml", "<project/>");
+        DiskSyncGuard.ScanResult r = guard.scan(List.of(dir), java.util.Set.of(""));
+        assertTrue(r.isEmpty(), "every name ends in the empty string, so honouring it would scan every file: " + r);
+    }
+
+    @Test
+    void the_files_of_a_suffix_no_language_declares_any_more_are_reported_deleted(@TempDir Path dir) throws IOException {
+        write(dir, "src/a/a.cpp", "int a;");
+        write(dir, "src/a/A.java", "class A {}");
+        DiskSyncGuard guard = new DiskSyncGuard();
+        guard.scan(List.of(dir), java.util.Set.of(".java", ".cpp"));
+        DiskSyncGuard.ScanResult r = guard.scan(List.of(dir), java.util.Set.of(".java"));
+        assertEquals(1, r.deleted().size(), "the language that left takes its files out of the baseline: " + r);
+        assertTrue(r.deleted().get(0).toString().endsWith("a.cpp"), r.toString());
+    }
+
     private Path write(Path dir, String rel, String content) throws IOException {
         Path f = dir.resolve(rel);
         Files.createDirectories(f.getParent());

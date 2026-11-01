@@ -59,7 +59,25 @@ class StrictDiskSyncStoreTest {
         try {
             ToolRegistry registry = new ToolRegistry();
             registry.register(ExperienceTool.withAnchors(() -> new org.jawata.mcp.java.JavaSourceUnits(service), store, java.util.List::of, new org.jawata.mcp.java.JavaProvider(() -> service).memoryAnchors()));
-            registry.setReconciler(new OwnedReconciler(() -> service));
+            // The engine's reconciler: the disk sync told which suffixes the bound languages declare. A recorder keeps what each
+            // pass reconciled, so the test can say the sync did the work and not merely that the verdicts came out right.
+            org.jawata.spi.host.Reconciler real = new org.jawata.mcp.engine.LanguageAwareReconciler(new OwnedReconciler(() -> service),
+                () -> java.util.List.of(new org.jawata.mcp.java.JavaProvider()));
+            java.util.List<org.jawata.spi.host.SyncReport> passes = new java.util.ArrayList<>();
+            registry.setReconciler(new org.jawata.spi.host.Reconciler() {
+                @Override
+                public org.jawata.spi.host.SyncReport syncBeforeCall() throws org.eclipse.core.runtime.CoreException {
+                    org.jawata.spi.host.SyncReport pass = real.syncBeforeCall();
+                    passes.add(pass);
+                    return pass;
+                }
+
+                @Override
+                public java.util.Set<String> rebuild(org.jawata.spi.host.BuildScope scope, org.jawata.spi.host.BuildKind kind,
+                        org.eclipse.core.runtime.IProgressMonitor monitor) throws org.eclipse.core.runtime.CoreException {
+                    return real.rebuild(scope, kind, monitor);
+                }
+            });
 
             // Prime the guard: the first call reconciles the new root once.
             ObjectNode stats = mapper.createObjectNode();
@@ -82,6 +100,8 @@ class StrictDiskSyncStoreTest {
             refresh.put("kind", "refresh");
             ToolResponse r = registry.callTool("experience", refresh);
             assertTrue(r.isSuccess(), "got: " + r.getError());
+            assertTrue(passes.stream().anyMatch(p -> p.refreshedFiles() >= 1 && p.builtProjects() >= 1),
+                "the disk sync before the refresh call reconciled the added and deleted files and rebuilt the project: " + passes);
 
             assertEquals(ExperienceEntry.ACCEPTED, statusOf(store, idNew),
                 "the NEW-name anchor resolves against reconciled disk — NOT mis-superseded");

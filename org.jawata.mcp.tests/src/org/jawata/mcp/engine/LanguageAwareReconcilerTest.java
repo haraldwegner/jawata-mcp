@@ -80,4 +80,46 @@ class LanguageAwareReconcilerTest {
 
         assertEquals(List.of(Set.of(".rs")), host.extensionSets());
     }
+
+    /** A host that knows only the plain sync, as an Eclipse host does: it waits for its own build and ignores any suffix. */
+    private static final class PlainSyncOnly implements org.jawata.spi.host.Reconciler {
+        final org.jawata.spi.host.SyncReport answer = new org.jawata.spi.host.SyncReport(true, 0, 0, 0, 0, 7L, false);
+        int plainSyncs;
+        org.jawata.spi.host.BuildKind rebuiltAs;
+
+        @Override
+        public org.jawata.spi.host.SyncReport syncBeforeCall() {
+            plainSyncs++;
+            return answer;
+        }
+
+        @Override
+        public Set<String> rebuild(org.jawata.spi.host.BuildScope scope, org.jawata.spi.host.BuildKind kind,
+                org.eclipse.core.runtime.IProgressMonitor monitor) {
+            rebuiltAs = kind;
+            return Set.of("rebuilt");
+        }
+    }
+
+    @Test
+    @DisplayName("a host that implements only the plain sync is still synced through the wrapper, and its answer is the one that comes back")
+    void aHostThatKnowsOnlyThePlainSyncIsStillSynced() throws Exception {
+        PlainSyncOnly host = new PlainSyncOnly();
+
+        org.jawata.spi.host.SyncReport told = new LanguageAwareReconciler(host, () -> List.of(new JavaProvider())).syncBeforeCall();
+
+        assertEquals(1, host.plainSyncs, "the suffixes it was handed fell through the default to the plain form, which ran once");
+        org.junit.jupiter.api.Assertions.assertSame(host.answer, told, "and what it answered is what the caller gets");
+    }
+
+    @Test
+    @DisplayName("a rebuild is the host's: the wrapper hands it on as asked and returns what the host built")
+    void aRebuildIsHandedToTheHost() throws Exception {
+        PlainSyncOnly host = new PlainSyncOnly();
+
+        Set<String> built = new LanguageAwareReconciler(host, List::of).rebuild(null, org.jawata.spi.host.BuildKind.FULL, null);
+
+        assertEquals(Set.of("rebuilt"), built);
+        assertEquals(org.jawata.spi.host.BuildKind.FULL, host.rebuiltAs);
+    }
 }
