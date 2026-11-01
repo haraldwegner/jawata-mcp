@@ -98,7 +98,14 @@ public class OwnedReconciler implements Reconciler {
      * concurrent tool calls must not overlap refreshLocal/build or race the snapshot.
      */
     @Override
-    public synchronized SyncReport syncBeforeCall() throws CoreException {
+    public SyncReport syncBeforeCall() throws CoreException {
+        // A caller that names no language names no source suffix, so no file is scanned: the suffixes come from the language
+        // providers (28h D15), never from a list kept here.
+        return syncBeforeCall(Set.of());
+    }
+
+    @Override
+    public synchronized SyncReport syncBeforeCall(Set<String> sourceExtensions) throws CoreException {
         long t0 = System.nanoTime();
         IJdtService s = service.get();
         if (s == null) {
@@ -113,7 +120,7 @@ public class OwnedReconciler implements Reconciler {
         for (LoadedProject lp : projects) {
             byRoot.put(lp.projectRoot().toAbsolutePath().normalize(), lp);
         }
-        DiskSyncGuard.ScanResult scan = guard.scan(byRoot.keySet());
+        DiskSyncGuard.ScanResult scan = guard.scan(byRoot.keySet(), sourceExtensions);
 
         NullProgressMonitor monitor = new NullProgressMonitor();
         Set<IProject> toBuild = new LinkedHashSet<>();
@@ -131,8 +138,7 @@ public class OwnedReconciler implements Reconciler {
         for (Path p : scan.changed()) {
             int r = refreshExisting(byRoot, p, toBuild, monitor);
             refreshed += r;
-            if (r > 0 && refreshedPaths.size() < MAX_REPORTED_PATHS
-                    && p.toString().endsWith(".java")) {
+            if (r > 0 && refreshedPaths.size() < MAX_REPORTED_PATHS) {
                 refreshedPaths.add(p.toString());
             }
         }
@@ -142,8 +148,7 @@ public class OwnedReconciler implements Reconciler {
         for (Path p : scan.added()) {
             int r = refreshAdded(byRoot, p, toBuild, monitor);
             refreshed += r;
-            if (r > 0 && refreshedPaths.size() < MAX_REPORTED_PATHS
-                    && p.toString().endsWith(".java")) {
+            if (r > 0 && refreshedPaths.size() < MAX_REPORTED_PATHS) {
                 refreshedPaths.add(p.toString());
             }
         }

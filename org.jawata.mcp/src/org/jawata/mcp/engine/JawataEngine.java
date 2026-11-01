@@ -478,7 +478,8 @@ public class JawataEngine {
 	void registerTools() {
 		// Sprint 21d: strict disk sync — every tool call reconciles external edits
 		// before executing; the unchanged-tree fast path is the only skip.
-		org.jawata.spi.host.Reconciler reconciler = this.host().reconciler();
+		// Sprint 28h S14 (D15): the scan's source suffixes are asked of the bound languages on every call, not written in the scan.
+		org.jawata.spi.host.Reconciler reconciler = new LanguageAwareReconciler(this.host().reconciler(), whiteboard::providers);
 		this.getToolRegistry().setReconciler(reconciler);
 
 		// Sprint 21e (item A): tool-initiated project mutations refresh + backfill the

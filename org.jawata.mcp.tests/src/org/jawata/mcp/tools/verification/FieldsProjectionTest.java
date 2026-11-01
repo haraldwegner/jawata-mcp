@@ -229,7 +229,8 @@ class FieldsProjectionTest {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
         ToolRegistry registry = new ToolRegistry();
         registry.register(new GetDiagnosticsTool(() -> service, () -> new org.jawata.mcp.java.JavaSourceDiagnostics()));
-        registry.setReconciler(new OwnedReconciler(() -> service));
+        registry.setReconciler(new org.jawata.mcp.engine.LanguageAwareReconciler(new OwnedReconciler(() -> service),
+            () -> java.util.List.of(new org.jawata.mcp.java.JavaProvider())));
 
         // Prime the guard, write a broken file externally, let the builder see it
         // (the GetDiagnosticsMarkersTest recipe — real markers, no synthetic rows).

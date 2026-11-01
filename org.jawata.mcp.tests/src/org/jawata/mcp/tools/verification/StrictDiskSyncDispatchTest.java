@@ -49,7 +49,9 @@ class StrictDiskSyncDispatchTest {
         registry.register(new GetDiagnosticsTool(() -> service, () -> new org.jawata.mcp.java.JavaSourceDiagnostics()));
         registry.register(
             new RenameSymbolTool(() -> service, new RefactoringChangeCache(), () -> null));
-        registry.setReconciler(new OwnedReconciler(() -> service));
+        // 28h D15: the scan's suffixes come from the language, so the registry is given the language-aware reconciler, as the engine does.
+        registry.setReconciler(new org.jawata.mcp.engine.LanguageAwareReconciler(new OwnedReconciler(() -> service),
+            () -> java.util.List.of(new org.jawata.mcp.java.JavaProvider())));
     }
 
     private Path projectRoot() {
@@ -154,7 +156,8 @@ class StrictDiskSyncDispatchTest {
     @DisplayName("unchanged tree: the second sync does zero work (the only legitimate skip)")
     void unchanged_tree_second_sync_does_zero_work() throws Exception {
         wire(helper.loadProjectCopy("simple-maven"));
-        Reconciler sync = new OwnedReconciler(() -> service);
+        Reconciler sync = new org.jawata.mcp.engine.LanguageAwareReconciler(new OwnedReconciler(() -> service),
+            () -> java.util.List.of(new org.jawata.mcp.java.JavaProvider()));
 
         SyncReport first = sync.syncBeforeCall();
         assertEquals(1, first.newProjects(), "first pass reconciles the new root once");
@@ -169,7 +172,8 @@ class StrictDiskSyncDispatchTest {
     @DisplayName("two-project workspace: edits in BOTH projects are reconciled by one pass")
     void two_project_workspace_edits_in_both_are_reconciled() throws Exception {
         wire(helper.loadWorkspaceCopy("pde-bundle-a", "pde-bundle-b"));
-        Reconciler sync = new OwnedReconciler(() -> service);
+        Reconciler sync = new org.jawata.mcp.engine.LanguageAwareReconciler(new OwnedReconciler(() -> service),
+            () -> java.util.List.of(new org.jawata.mcp.java.JavaProvider()));
         assertEquals(2, sync.syncBeforeCall().newProjects(), "both roots primed");
 
         int i = 0;
@@ -181,6 +185,22 @@ class StrictDiskSyncDispatchTest {
         SyncReport report = sync.syncBeforeCall();
         assertEquals(2, report.refreshedFiles(), "one added file per project reconciled");
         assertEquals(2, report.builtProjects());
+    }
+
+    @Test
+    @DisplayName("28h D15: a reconciler told no suffix reconciles no file, so the suffixes it is given are the ones the scan uses")
+    void a_reconciler_told_no_suffix_reconciles_no_file() throws Exception {
+        wire(helper.loadProjectCopy("simple-maven"));
+        OwnedReconciler sync = new OwnedReconciler(() -> service);
+        sync.syncBeforeCall(java.util.Set.of());   // prime: the root is known, no suffix was asked for, so no file is in the baseline
+
+        Path fresh = projectRoot().resolve("src/main/java/com/brandnew/NoSuffixAsked.java");
+        Files.createDirectories(fresh.getParent());
+        Files.writeString(fresh, "package com.brandnew;\npublic class NoSuffixAsked {\n}\n");
+
+        SyncReport report = sync.syncBeforeCall(java.util.Set.of());
+        assertEquals(0, report.refreshedFiles(), "nothing asked for, nothing looked at: the new file is not reconciled");
+        assertTrue(sync.syncBeforeCall(java.util.Set.of(".java")).refreshedFiles() >= 1, "asked for, the Java files are looked at and reconciled");
     }
 
     @Test

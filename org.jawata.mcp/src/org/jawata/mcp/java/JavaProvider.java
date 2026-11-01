@@ -109,6 +109,12 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
         return "java";
     }
 
+    /** The suffix of the files Java owns: the one the engine's per-call disk-sync scan looks for, because a language declares its own (28h D15). */
+    @Override
+    public java.util.Set<String> sourceExtensions() {
+        return java.util.Set.of(".java");
+    }
+
     /**
      * The cure table and the coverage declaration describe Java's refactoring doors, so they are checked here, against what the engine
      * publishes, and not by the engine, which then asks every bound language and knows none of them.

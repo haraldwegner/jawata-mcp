@@ -18,6 +18,15 @@ public interface Reconciler {
     SyncReport syncBeforeCall() throws CoreException;
 
     /**
+     * The same reconcile, told which source-file suffixes to look for: the union of what the languages the engine serves declare
+     * ({@code LanguageProvider#sourceExtensions}), asked at the moment of the call (28h D15). A host that learns of changes by other
+     * means (Eclipse, which waits for its own build) keeps this default and ignores the suffixes.
+     */
+    default SyncReport syncBeforeCall(Set<String> sourceExtensions) throws CoreException {
+        return syncBeforeCall();
+    }
+
+    /**
      * Refresh the scope's projects from disk and build them the way {@code kind} says, so their problem markers describe the
      * files as they are now. A host that builds on its own (Eclipse) still answers only once that build has run.
      *

@@ -35,6 +35,15 @@ public interface LanguageProvider {
         return Optional.empty();
     }
 
+    /**
+     * The file-name suffixes its source files carry (".java"), which the engine's per-call disk-sync scan asks of every language the host
+     * serves so that a change on disk reaches the language that owns the file; a language that names none has its files left unscanned,
+     * and a scan names no suffix of its own (28h D15).
+     */
+    default java.util.Set<String> sourceExtensions() {
+        return java.util.Set.of();
+    }
+
     /** The errors and warnings it finds in a source file without a build; empty when the language has no such check. */
     default Optional<SourceDiagnostics> diagnostics(ProviderContext context) {
         return Optional.empty();

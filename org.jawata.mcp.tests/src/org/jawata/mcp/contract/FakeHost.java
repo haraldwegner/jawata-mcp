@@ -257,11 +257,23 @@ public final class FakeHost implements EngineHost {
     public static final class Counting implements Reconciler {
         private int syncs;
         private int rebuilds;
+        private final List<Set<String>> extensionSets = new ArrayList<>();
 
         @Override
         public synchronized SyncReport syncBeforeCall() {
             syncs++;
             return new SyncReport(true, 0, 0, 0, 0L, 0L, false);
+        }
+
+        @Override
+        public synchronized SyncReport syncBeforeCall(Set<String> sourceExtensions) {
+            extensionSets.add(Set.copyOf(sourceExtensions));
+            return syncBeforeCall();
+        }
+
+        /** @return the source suffixes the engine named at each sync, in order: what the languages declared at that moment (28h D15) */
+        public synchronized List<Set<String>> extensionSets() {
+            return List.copyOf(extensionSets);
         }
 
         @Override

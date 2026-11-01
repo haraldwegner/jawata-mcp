@@ -75,14 +75,15 @@ public final class DiskSyncGuard {
     private long lastScanStartMillis = -1;
 
     /**
-     * Compare the {@code .java} files under {@code roots} against the last scan.
+     * Compare the files under {@code roots} whose names end in one of {@code sourceExtensions} against the last scan; the suffixes
+     * are asked of the language providers by the caller (28h D15), and this scan names none of its own: no suffix, no files.
      * A root seen for the FIRST time is reported in {@code newRoots} and its files
      * enter the baseline without change reports — the caller reconciles the whole
      * root once, closing the blind window between model load and first guard pass.
      * Files under roots no longer passed are dropped silently — the workspace no
      * longer owns them, they are not edits.
      */
-    public synchronized ScanResult scan(Collection<Path> roots) {
+    public synchronized ScanResult scan(Collection<Path> roots, Set<String> sourceExtensions) {
         long startNanos = System.nanoTime();
         long scanStartMillis = System.currentTimeMillis();
 
@@ -101,7 +102,7 @@ public final class DiskSyncGuard {
             }
         }
 
-        Map<Path, Sig> current = collect(normRoots);
+        Map<Path, Sig> current = collect(normRoots, sourceExtensions);
 
         List<Path> changed = new ArrayList<>();
         List<Path> added = new ArrayList<>();
@@ -163,7 +164,7 @@ public final class DiskSyncGuard {
             List.copyOf(newRoots), System.nanoTime() - startNanos, hashed);
     }
 
-    private static Map<Path, Sig> collect(List<Path> roots) {
+    private static Map<Path, Sig> collect(List<Path> roots, Set<String> sourceExtensions) {
         Map<Path, Sig> out = new HashMap<>();
         for (Path root : roots) {
             if (!Files.isDirectory(root)) {
@@ -182,7 +183,7 @@ public final class DiskSyncGuard {
 
                     @Override
                     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
-                        if (attrs.isRegularFile() && file.getFileName().toString().endsWith(".java")) {
+                        if (attrs.isRegularFile() && hasSourceExtension(file.getFileName().toString(), sourceExtensions)) {
                             out.put(file.toAbsolutePath().normalize(),
                                 new Sig(attrs.lastModifiedTime().toMillis(), attrs.size()));
                         }
@@ -199,6 +200,16 @@ public final class DiskSyncGuard {
             }
         }
         return out;
+    }
+
+    /** True when the file name ends in one of the suffixes the languages declared; an empty set names no file. */
+    private static boolean hasSourceExtension(String fileName, Set<String> sourceExtensions) {
+        for (String extension : sourceExtensions) {
+            if (fileName.endsWith(extension)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String sha256(Path file) {

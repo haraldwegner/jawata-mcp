@@ -46,7 +46,9 @@ class JavaLanguageServerDependentsTest {
     /** The engine's gate reads the disk before every call; the test's stand-in does the same, so a change another program made is seen. */
     private static ToolCalls readingTheDiskFirst(JdtServiceImpl service) {
         ToolCalls tools = EditorTools.over(service, call -> { });
-        OwnedReconciler disk = new OwnedReconciler(() -> service);
+        // 28h D15: the scan's suffixes come from the language, so the stand-in reconciles through the language-aware one, as the engine does.
+        org.jawata.spi.host.Reconciler disk = new org.jawata.mcp.engine.LanguageAwareReconciler(new OwnedReconciler(() -> service),
+            () -> List.of(new org.jawata.mcp.java.JavaProvider()));
         return new ToolCalls() {
             @Override
             public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) throws ToolNotFoundException {

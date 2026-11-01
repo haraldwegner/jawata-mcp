@@ -42,7 +42,9 @@ class StrictDiskSyncBuildKindTest {
     @DisplayName("a body-only modify stays INCREMENTAL and still surfaces the error")
     void bodyModify_incremental_surfacesError() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
-        Reconciler sync = new OwnedReconciler(() -> service);
+        // 28h D15: the scan's suffixes come from the language, so the host reconciler is asked through the language-aware one, as the engine does.
+        Reconciler sync = new org.jawata.mcp.engine.LanguageAwareReconciler(new OwnedReconciler(() -> service),
+            () -> java.util.List.of(new org.jawata.mcp.java.JavaProvider()));
         Path root = service.getProjectRoot();
 
         // Prime: establish the root as known + green.
@@ -63,7 +65,9 @@ class StrictDiskSyncBuildKindTest {
     @DisplayName("adding a .java escalates to a clean FULL build")
     void addFile_escalatesToFull() throws Exception {
         JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
-        Reconciler sync = new OwnedReconciler(() -> service);
+        // 28h D15: the scan's suffixes come from the language, so the host reconciler is asked through the language-aware one, as the engine does.
+        Reconciler sync = new org.jawata.mcp.engine.LanguageAwareReconciler(new OwnedReconciler(() -> service),
+            () -> java.util.List.of(new org.jawata.mcp.java.JavaProvider()));
         Path root = service.getProjectRoot();
 
         sync.syncBeforeCall();   // prime, green
