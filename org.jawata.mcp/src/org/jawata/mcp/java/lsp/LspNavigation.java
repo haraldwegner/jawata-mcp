@@ -280,9 +280,12 @@ final class LspNavigation {
         return items;
     }
 
-    /** The names of the tools the gate publishes: the commands an editor may run. */
+    /** The names of the tools the gate publishes: the commands an editor may run; none when the engine has no gate to ask. */
     List<String> commands() {
         List<String> names = new ArrayList<>();
+        if (tools == null) {
+            return names;
+        }
         for (Map<String, Object> definition : tools.getToolDefinitions()) {
             names.add(String.valueOf(definition.get("name")));
         }
