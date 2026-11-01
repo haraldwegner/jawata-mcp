@@ -72,7 +72,7 @@ public final class BufferStore {
         if (entry == null) {
             ICompilationUnit copy = saved.getWorkingCopy(OWNER, null);
             copy.getBuffer().setContents(text);
-            copy.reconcile(ICompilationUnit.NO_AST, false, null, null); // the types and methods a reader walks follow the text only after this
+            copy.reconcile(ICompilationUnit.NO_AST, false, OWNER, null); // the types and methods a reader walks follow the text only after this
             entry = new Entry(copy);
             open.put(keyOf(saved), entry);
         }
@@ -91,7 +91,7 @@ public final class BufferStore {
             throw new IllegalStateException("not open: " + keyOf(saved));
         }
         entry.copy.getBuffer().setContents(text);
-        entry.copy.reconcile(ICompilationUnit.NO_AST, false, null, null); // so the structure a tool reads is the new text's
+        entry.copy.reconcile(ICompilationUnit.NO_AST, false, OWNER, null); // so the structure a tool reads is the new text's
     }
 
     /**

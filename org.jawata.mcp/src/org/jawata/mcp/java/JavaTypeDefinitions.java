@@ -30,7 +30,7 @@ public final class JavaTypeDefinitions {
      */
     public static IType at(ICompilationUnit unit, int line, int column) throws JavaModelException {
         int offset = JavaRanges.linesOf(unit).offsetOf(line, column);
-        for (IJavaElement element : unit.codeSelect(offset, 0)) {
+        for (IJavaElement element : unit.codeSelect(offset, 0, org.jawata.core.BufferStore.owner())) {
             if (element instanceof IType type) {
                 return type;
             }

@@ -913,12 +913,13 @@ public class JdtServiceImpl implements IJdtService {
             }
 
             // Reconcile to ensure the AST is up to date
-            cu.reconcile(ICompilationUnit.NO_AST, false, null, null);
+            // 28h S16b: the open files' owner, so a name typed in one open file resolves in another
+            cu.reconcile(ICompilationUnit.NO_AST, false, org.jawata.core.BufferStore.owner(), null);
 
             int offset = getOffset(cu, line, column);
             log.debug("Looking for element at {}:{}:{} (offset {})", filePath, line, column, offset);
 
-            IJavaElement[] elements = cu.codeSelect(offset, 0);
+            IJavaElement[] elements = cu.codeSelect(offset, 0, org.jawata.core.BufferStore.owner());
             if (elements.length > 0) {
                 log.debug("Found element: {} ({})", elements[0].getElementName(), elements[0].getClass().getSimpleName());
                 return elements[0];

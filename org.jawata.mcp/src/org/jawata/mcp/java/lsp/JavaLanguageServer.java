@@ -197,7 +197,7 @@ public final class JavaLanguageServer {
                     String text = buffers().view(saved).get().getSource();
                     buffers().change(saved, DocumentChanges.apply(text, DocumentChanges.parse(params.get("contentChanges"))));
                     requests.textChanged(uri);
-                    askForProblems(uri);
+                    openFiles.forEach(this::askForProblems); // the other open files may use what changed, and the buffers share one owner, so they see it
                 }
             }
             case "textDocument/didClose" -> {

@@ -48,7 +48,7 @@ public final class JavaCompletions {
             public void accept(CompletionProposal proposal) {
                 proposals.add(proposal);
             }
-        });
+        }, org.jawata.core.BufferStore.owner()); // the open files' owner: a type typed in another open file is proposed too
         proposals.sort((a, b) -> Integer.compare(b.getRelevance(), a.getRelevance()));
         List<Map<String, Object>> items = new ArrayList<>();
         int rank = 0;

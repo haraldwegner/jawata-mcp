@@ -89,6 +89,30 @@ class JavaLanguageServerDependentsTest {
         awaitErrors(sent, caller, 1);
     }
 
+    @Test
+    @DisplayName("an unsaved edit to one open file makes the problems of another open file that uses it show, though that file did not change")
+    void anUnsavedEditChecksTheOpenFileThatUsesIt() throws Exception {
+        JdtServiceImpl service = helper.loadProject("simple-maven");
+        Path sources = helper.getFixturePath("simple-maven").resolve("src/main/java/com/example");
+        Path functions = sources.resolve("ReadingFunctions.java");
+        Path caller = sources.resolve("ReadingCaller.java");
+        String functionsText = Files.readString(functions);
+        List<JsonRpcMessage> sent = new CopyOnWriteArrayList<>();
+        JavaLanguageServer server = new JavaLanguageServer(() -> service, EditorTools.over(service, call -> { }),
+            CallerIdentity.editor("dependents-test"), sent::add, SCHEDULER, 0);
+        open(server, caller, Files.readString(caller));
+        open(server, functions, functionsText);
+        awaitErrors(sent, caller, 0);
+
+        // the person renames the function in the editor, without saving: the file that calls it did not change
+        server.receive(JsonRpcMessage.notification("textDocument/didChange", JSON.valueToTree(Map.of(
+            "textDocument", Map.of("uri", functions.toUri().toString(), "version", 2),
+            "contentChanges", List.of(Map.of("text", functionsText.replace("baseCharge", "renamedWithoutTheCallers")))))));
+
+        awaitErrors(sent, caller, 1);
+        org.junit.jupiter.api.Assertions.assertEquals(functionsText, Files.readString(functions), "the file on disk is as it was");
+    }
+
     private static void open(JavaLanguageServer server, Path file, String text) {
         server.receive(JsonRpcMessage.notification("textDocument/didOpen", JSON.valueToTree(Map.of("textDocument",
             Map.of("uri", file.toUri().toString(), "languageId", "java", "version", 1, "text", text)))));
