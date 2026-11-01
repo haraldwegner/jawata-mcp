@@ -1,6 +1,8 @@
 package org.jawata.mcp.protocol;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.jawata.mcp.engine.ToolCalls;
@@ -33,9 +35,17 @@ public class McpProtocolHandler {
      *  null until the application wires it. */
     private org.jawata.mcp.field.ClientDirectory clientDirectory;
 
+    /** Sprint 28h S14 (D21): where {@code prompts/list} and {@code prompts/get} get the seats; null until the engine wires it. */
+    private volatile org.jawata.mcp.engine.PromptSource prompts;
+
     public McpProtocolHandler(ToolCalls toolRegistry) {
         this.objectMapper = new ObjectMapper();
         this.tools = toolRegistry;
+    }
+
+    /** Sprint 28h S14 (D21): install the prompt source (application wiring). With none, the prompt methods are not found. */
+    public void setPromptSource(org.jawata.mcp.engine.PromptSource source) {
+        this.prompts = source;
     }
 
     /** Sprint 28b D1: install the client directory (application wiring). */
@@ -118,6 +128,8 @@ public class McpProtocolHandler {
                 case "initialized" -> handleInitialized();
                 case "tools/list" -> handleToolsList();
                 case "tools/call" -> handleToolsCall(params, caller);
+                case "prompts/list" -> handlePromptsList();
+                case "prompts/get" -> handlePromptsGet(params);
                 case "shutdown" -> handleShutdown();
                 default -> throw new MethodNotFoundException("Method not found: " + method);
             };
@@ -258,6 +270,12 @@ public class McpProtocolHandler {
         // Capabilities
         Map<String, Object> capabilities = new LinkedHashMap<>();
         capabilities.put("tools", Map.of());  // We support tools
+        // Sprint 28h S14 (D21): prompts are advertised only while a seat is there to offer, so a client is never told of a list that is empty.
+        // The seat folder is asked again on every call, so a seat written after this handshake is found by a client that asks anyway.
+        org.jawata.mcp.engine.PromptSource source = prompts;
+        if (source != null && !source.list().isEmpty()) {
+            capabilities.put("prompts", Map.of("listChanged", false));
+        }
         result.put("capabilities", capabilities);
 
         // Sprint 22 (MCP injector): the protocol-level guide — "use JAWATA, not grep".
@@ -307,6 +325,60 @@ public class McpProtocolHandler {
     private Object handleToolsList() {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tools", tools.getToolDefinitions());
+        return result;
+    }
+
+    /**
+     * Handle prompts/list - the seats on offer now (Sprint 28h S14, D21). Not found while no prompt source is wired, the answer a client gets
+     * from a server that has no prompts.
+     */
+    private Object handlePromptsList() throws MethodNotFoundException {
+        org.jawata.mcp.engine.PromptSource source = prompts;
+        if (source == null) {
+            throw new MethodNotFoundException("Method not found: prompts/list");
+        }
+        List<Map<String, Object>> listed = new ArrayList<>();
+        for (org.jawata.mcp.engine.PromptSource.Prompt prompt : source.list()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("name", prompt.name());
+            row.put("title", prompt.title());
+            row.put("description", prompt.description());
+            listed.add(row);
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("prompts", listed);
+        return result;
+    }
+
+    /**
+     * Handle prompts/get - one seat's text as the single user message of the prompt. A name no seat has is an invalid parameter, as the
+     * protocol says, so a host sees the difference between "no such prompt" and "no such method".
+     */
+    private Object handlePromptsGet(JsonNode params) throws InvalidParamsException, MethodNotFoundException {
+        org.jawata.mcp.engine.PromptSource source = prompts;
+        if (source == null) {
+            throw new MethodNotFoundException("Method not found: prompts/get");
+        }
+        JsonNode nameNode = params == null ? null : params.get("name");
+        if (nameNode == null || !nameNode.isTextual()) {
+            throw new InvalidParamsException("Missing or invalid 'name' parameter");
+        }
+        String name = nameNode.asText();
+        String text = source.text(name)
+            .orElseThrow(() -> new InvalidParamsException("Unknown prompt: " + name));
+        String description = source.list().stream()
+            .filter(prompt -> prompt.name().equals(name))
+            .map(org.jawata.mcp.engine.PromptSource.Prompt::description)
+            .findFirst().orElse("");
+        Map<String, Object> content = new LinkedHashMap<>();
+        content.put("type", "text");
+        content.put("text", text);
+        Map<String, Object> message = new LinkedHashMap<>();
+        message.put("role", "user");
+        message.put("content", content);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("description", description);
+        result.put("messages", List.of(message));
         return result;
     }
 

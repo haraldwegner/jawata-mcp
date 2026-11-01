@@ -1,6 +1,5 @@
 package org.jawata.mcp.execution;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -11,7 +10,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.logging.Logger;
-import java.util.stream.Stream;
 
 import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.models.ToolResponse;
@@ -95,28 +93,18 @@ public final class ScheduledHires implements SeatScheduler.Firing {
     public static Reading read(Path seatsDirectory) {
         List<SeatScheduler.ScheduledSeat> seats = new ArrayList<>();
         Map<String, Path> files = new LinkedHashMap<>();
-        List<String> unreadable = new ArrayList<>();
-        List<Path> candidates;
-        try (Stream<Path> listing = Files.list(seatsDirectory)) {
-            candidates = listing.filter(p -> p.getFileName().toString().endsWith(".md")).sorted().toList();
-        } catch (IOException e) {
-            return new Reading(List.of(), Map.of(), List.of(seatsDirectory + ": " + e.getMessage()));
-        }
-        for (Path file : candidates) {
+        SeatFiles.Listing listing = SeatFiles.read(seatsDirectory);
+        List<String> unreadable = new ArrayList<>(listing.unreadable());
+        for (SeatFiles.SeatFile seat : listing.seats()) {
             try {
-                Map<String, String> front = Frontmatter.frontmatter(Files.readString(file));
-                String schedule = Frontmatter.emptyToNull(front.get("schedule"));
-                if (schedule == null || !Frontmatter.readSwitch("enabled", front.get("enabled"), true)) {
+                String schedule = Frontmatter.emptyToNull(seat.front().get("schedule"));
+                if (schedule == null || !Frontmatter.readSwitch("enabled", seat.front().get("enabled"), true)) {
                     continue;
                 }
-                String name = Frontmatter.emptyToNull(front.get("name"));
-                if (name == null) {
-                    name = file.getFileName().toString().replaceFirst("\\.md$", "");
-                }
-                seats.add(new SeatScheduler.ScheduledSeat(name, schedule, BRIEF));
-                files.put(name, file);
-            } catch (IOException | RuntimeException e) {
-                unreadable.add(file.getFileName() + ": " + e.getMessage());
+                seats.add(new SeatScheduler.ScheduledSeat(seat.name(), schedule, BRIEF));
+                files.put(seat.name(), seat.file());
+            } catch (RuntimeException e) {
+                unreadable.add(seat.file().getFileName() + ": " + e.getMessage());
             }
         }
         return new Reading(seats, files, unreadable);

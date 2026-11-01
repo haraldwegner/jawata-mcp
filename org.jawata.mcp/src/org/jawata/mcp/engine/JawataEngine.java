@@ -656,17 +656,26 @@ public class JawataEngine {
 	private volatile org.jawata.mcp.execution.SeatScheduler seatScheduler;
 
 	/**
+	 * The folder of seat files {@code jawata.agent.seatsDir} names, asked of the settings at each call so a setting changed since is seen.
+	 * The scheduler and the prompt list read the same folder through this one question.
+	 */
+	java.util.Optional<Path> seatsFolder() {
+		return host().settings().get(org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING).map(String::trim)
+			.filter(folder -> !folder.isEmpty()).map(Path::of);
+	}
+
+	/**
 	 * Starts the schedules of the seat files in the folder {@code jawata.agent.seatsDir} names. With no folder set, or no workspace folder to
 	 * run a hire in, nothing is scheduled and the log says which, so a silence is never mistaken for a schedule that ran.
 	 */
 	void startSeatScheduler() {
-		String folder = host().settings().get(org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING).map(String::trim).orElse("");
+		java.util.Optional<Path> folder = seatsFolder();
 		if (folder.isEmpty()) {
 			log.info("No seats folder is set ({}), so no seat is scheduled", org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING);
 			return;
 		}
 		// A folder that does not exist needs no guard here: ScheduledHires reports a folder it cannot list, by name, and starts nothing.
-		Path seats = Path.of(folder);
+		Path seats = folder.get();
 		java.util.Optional<Path> workingDirectory = host().directories().workspaceRoot();
 		if (workingDirectory.isEmpty()) {
 			log.warn("The host gave the engine no workspace folder to run a hire in, so no seat is scheduled");
@@ -981,6 +990,8 @@ public class JawataEngine {
 		setProtocolHandler(new McpProtocolHandler(getToolRegistry()));
 		// Sprint 28b D1: session → client attribution for the field recording.
 		getProtocolHandler().setClientDirectory(clientDirectory);
+		// Sprint 28h S14 (D21): the seats of the folder the scheduler reads are offered as MCP prompts. The folder is asked for on every call.
+		getProtocolHandler().setPromptSource(new org.jawata.mcp.execution.SeatPrompts(this::seatsFolder));
 
 		log.info("Registered {} tools; the rest arrive with the languages", getToolRegistry().getToolCount());
 

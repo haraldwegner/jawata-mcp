@@ -147,6 +147,14 @@ tool_names() {   # every registered tool name, space-separated — so a count
         | grep -oE '"name":"[a-z_]+"' | cut -d'"' -f4 | sort -u | tr '\n' ' '
 }
 
+rpc() {   # rpc <method> <json-params> -> the raw JSON-RPC answer, UNESCAPED like call (a method that is not a tool call)
+    curl -s --max-time 60 -X POST "http://127.0.0.1:$PORT/mcp" \
+        -H "Authorization: Bearer $TOKEN" -H "Mcp-Session-Id: e2e-$$" \
+        -H 'Content-Type: application/json' \
+        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$1\",\"params\":$2}" \
+        | sed 's/\\"/"/g'
+}
+
 no_score() {   # 27a: no similarity number in any user-facing payload
     if printf '%s' "$2" | grep -qE '0\.[0-9]{2}'; then
         fail "no-similarity-number $1 leaked a similarity number"
@@ -367,6 +375,43 @@ esac
 case "$SWEEP" in
     *'"tool:health_check"'*) fail "tool-rules the sweep lists the label of a PUBLISHED tool as unasked, so the tool names never reached it: $(printf '%s' "$SWEEP" | head -c 400)" ;;
     *) pass "tool-rules a label naming a published tool is not listed as unasked" ;;
+esac
+
+# --- seat-prompts (Sprint 28h, S14, E12): the seat files of the seats folder are served as MCP prompts on the running product ----
+# The folder is the one the scheduler reads (JAWATA_AGENT_SEATS_DIR above). A seat with a command is offered under that command, a seat
+# switched off is not (the control), the text is the seat's stance, and a seat written AFTER the engine started is offered on the next
+# call with no restart, which is the host-needs-no-change property. The capability is advertised while seats exist.
+INIT="$(rpc initialize '{}')"
+answered "seat-prompts" "$INIT"
+case "$INIT" in
+    *'"prompts":{'*) pass "seat-prompts the handshake advertises the prompts capability while seats exist" ;;
+    *) fail "seat-prompts the handshake does not advertise prompts although the seats folder holds seats: $(printf '%s' "$INIT" | head -c 300)" ;;
+esac
+printf -- '---\nname: e2e-prompt\ncommand: e2e-go\npurpose: The e2e seat served as a prompt.\n---\n\nYou are the e2e prompt seat, quokka-prompt-stance.\n' > "$SCHED_DIR/e2e-prompt.md"
+printf -- '---\nname: e2e-off\ncommand: e2e-off\nenabled: false\n---\n\nYou are the switched-off e2e seat.\n' > "$SCHED_DIR/e2e-off.md"
+PLIST="$(rpc prompts/list '{}')"
+answered "seat-prompts" "$PLIST"
+case "$PLIST" in
+    *'"name":"e2e-go"'*'"title":"e2e-prompt (/e2e-go)"'*'The e2e seat served as a prompt.'*) pass "seat-prompts a seat written after the engine started is listed under its command, with its name in the title and its purpose" ;;
+    *) fail "seat-prompts the seat is not listed under its command: $(printf '%s' "$PLIST" | head -c 500)" ;;
+esac
+case "$PLIST" in
+    *'"name":"e2e-adhoc"'*'"name":"e2e-scheduled"'*) pass "seat-prompts the seats the folder already held are listed under their names" ;;
+    *) fail "seat-prompts the folder's own seats are not listed: $(printf '%s' "$PLIST" | head -c 500)" ;;
+esac
+case "$PLIST" in
+    *e2e-off*) fail "seat-prompts CONTROL: a seat switched off with enabled: false is listed" ;;
+    *) pass "seat-prompts CONTROL: a seat switched off is not listed" ;;
+esac
+PGET="$(rpc prompts/get '{"name":"e2e-go"}')"
+answered "seat-prompts" "$PGET"
+case "$PGET" in
+    *'"role":"user"'*'quokka-prompt-stance'*) pass "seat-prompts prompts/get returns the seat's stance as the user message" ;;
+    *) fail "seat-prompts prompts/get did not return the stance: $(printf '%s' "$PGET" | head -c 400)" ;;
+esac
+case "$(rpc prompts/get '{"name":"e2e-off"}')" in
+    *'"code":-32602'*) pass "seat-prompts CONTROL: prompts/get of a switched-off seat is an invalid-parameters error" ;;
+    *) fail "seat-prompts CONTROL: the switched-off seat can be fetched" ;;
 esac
 
 # --- area-ground (Sprint 28h, S14, E13): the area's jobs are in the prompt of a seat that changes code, on the running product ----
