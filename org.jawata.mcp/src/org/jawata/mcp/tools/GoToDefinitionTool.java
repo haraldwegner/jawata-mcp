@@ -110,29 +110,11 @@ public class GoToDefinitionTool extends AbstractTool {
             result.put("kind", getElementKind(element));
 
             // Get location of the declaration
-            if (element instanceof ISourceReference sourceRef) {
-                ISourceRange range = sourceRef.getSourceRange();
-                if (range != null) {
-                    ICompilationUnit cu = (ICompilationUnit) element.getAncestor(IJavaElement.COMPILATION_UNIT);
-                    if (cu != null) {
-                        int defLine = service.getLineNumber(cu, range.getOffset());
-                        int defColumn = service.getColumnNumber(cu, range.getOffset());
-
-                        // Get file path
-                        String defFilePath = getFilePath(element, service);
-
-                        // 28h S16a: the start stays where it always was (the declaration, doc comment included); the end of the
-                        // declaration and the name alone are added, because an editor wants a range and lands on the name.
-                        Map<String, Object> location = new LinkedHashMap<>();
-                        location.put("filePath", defFilePath);
-                        location.put("line", defLine);
-                        location.put("column", defColumn);
-                        JavaRanges.Lines lines = JavaRanges.linesOf(cu);
-                        lines.declaration(element).ifPresent(declaration -> declaration.putEndInto(location));
-                        lines.name(element).ifPresent(name -> location.put("nameRange", name.asMap()));
-                        result.put("location", location);
-                    }
-                }
+            // 28h S16a/S16b: the start stays where it always was (the declaration, doc comment included); the end of the
+            // declaration and the name alone ride with it, from the one place that says where an element is declared.
+            Map<String, Object> location = org.jawata.mcp.tools.shared.ElementLocations.of(element, service);
+            if (location != null) {
+                result.put("location", location);
             }
 
             // Add containing type info

@@ -49,7 +49,9 @@ class JavaLanguageServerNavigationTest {
         return t;
     });
     private static final String SUM_LINE = "    int typedSum() { int s = add(1, 2); return s + lastResult; }\n";
-    private static final String CALL_LINE = "    int typedCall() { return add(1, 2); }\n";
+    private static final String SHAPE_LINES = "    interface Shape { }\n    static class Square implements Shape { }\n"
+        + "    Shape typedShape;\n    String typedName;\n";
+    private static final String CALL_LINE ="    int typedCall() { return add(1, 2); }\n";
 
     private final List<JsonRpcMessage> sent = new CopyOnWriteArrayList<>();
     private JavaLanguageServer server;
@@ -63,6 +65,7 @@ class JavaLanguageServerNavigationTest {
             "go_to_definition", new GoToDefinitionTool(() -> service),
             "find_references", new FindRefsTool(() -> service),
             "inspect", new InspectTool(() -> service),
+            "get_call_hierarchy", new org.jawata.mcp.tools.GetCallHierarchyTool(() -> service),
             "search_symbols", new SearchSymbolsTool(() -> service));
         return new ToolCalls() {
             @Override
@@ -76,7 +79,9 @@ class JavaLanguageServerNavigationTest {
 
             @Override
             public List<Map<String, Object>> getToolDefinitions() {
-                return List.of();
+                List<Map<String, Object>> definitions = new ArrayList<>();
+                byName.keySet().forEach(name -> definitions.add(Map.of("name", name)));
+                return definitions;
             }
         };
     }
@@ -85,7 +90,7 @@ class JavaLanguageServerNavigationTest {
         JdtServiceImpl service = helper.loadProject("simple-maven");
         calculator = helper.getFixturePath("simple-maven").resolve("src/main/java/com/example/Calculator.java");
         saved = Files.readString(calculator);
-        unsaved = saved.substring(0, saved.lastIndexOf('}')) + SUM_LINE + CALL_LINE + "}\n";
+        unsaved = saved.substring(0, saved.lastIndexOf('}')) + SUM_LINE + CALL_LINE + SHAPE_LINES + "}\n";
         server = new JavaLanguageServer(() -> service, doors(service), CallerIdentity.editor("navigation-test"), sent::add, SCHEDULER, 0);
         server.receive(JsonRpcMessage.notification("textDocument/didOpen", JSON.valueToTree(Map.of("textDocument",
             Map.of("uri", uri(), "languageId", "java", "version", 1, "text", unsaved)))));
@@ -142,7 +147,8 @@ class JavaLanguageServerNavigationTest {
         JsonNode capabilities = ask(1, "initialize", Map.of()).path("capabilities");
         for (String provider : List.of("hoverProvider", "definitionProvider", "declarationProvider", "referencesProvider",
                 "implementationProvider", "documentHighlightProvider", "documentSymbolProvider", "workspaceSymbolProvider",
-                "signatureHelpProvider", "completionProvider")) {
+                "signatureHelpProvider", "completionProvider", "typeDefinitionProvider", "callHierarchyProvider", "typeHierarchyProvider",
+                "executeCommandProvider")) {
             assertTrue(capabilities.has(provider), provider + " in " + capabilities);
         }
     }
@@ -227,6 +233,93 @@ class JavaLanguageServerNavigationTest {
             names.add(symbol.path("name").asText());
         }
         assertTrue(names.contains("Calculator"), "found " + names);
+    }
+
+    @Test
+    @DisplayName("implementations of an interface declared in the unsaved text include the class that implements it, found only there")
+    void implementationsOnUnsavedText() throws Exception {
+        startWithUnsavedText();
+        Map<String, Object> at = Map.of("textDocument", Map.of("uri", uri()),
+            "position", position(lineOf(unsaved, "interface Shape"), at("interface Shape", "Shape", 1)));
+        JsonNode implementations = ask(10, "textDocument/implementation", at);
+        List<Integer> lines = new ArrayList<>();
+        for (JsonNode implementation : implementations) {
+            lines.add(implementation.path("range").path("start").path("line").asInt());
+        }
+        assertTrue(lines.contains(lineOf(unsaved, "class Square")), "implementation lines " + lines);
+    }
+
+    /** A request at the name of the declaration that holds {@code lineMarker}. */
+    private Map<String, Object> onDeclaration(String lineMarker, String name) {
+        return Map.of("textDocument", Map.of("uri", uri()), "position", position(lineOf(unsaved, lineMarker), at(lineMarker, name, 1)));
+    }
+
+    /** The names of the items of an answer; {@code side} names the member that holds the item when each answer wraps one. */
+    private static List<String> namesOf(JsonNode answers, String side) {
+        List<String> names = new ArrayList<>();
+        for (JsonNode answer : answers) {
+            names.add((side.isEmpty() ? answer : answer.path(side)).path("name").asText());
+        }
+        return names;
+    }
+
+    @Test
+    @DisplayName("type definition of a field declared with a type of the unsaved text is that type's declaration, found only there")
+    void typeDefinitionOnUnsavedText() throws Exception {
+        startWithUnsavedText();
+        JsonNode definition = ask(11, "textDocument/typeDefinition", onDeclaration("Shape typedShape", "typedShape"));
+        assertEquals(lineOf(unsaved, "interface Shape"), definition.path("range").path("start").path("line").asInt(), definition.toString());
+    }
+
+    @Test
+    @DisplayName("the callers of a method include the unsaved method that calls it, and the callees of that method include it")
+    void callHierarchyOnUnsavedText() throws Exception {
+        startWithUnsavedText();
+        JsonNode added = ask(12, "textDocument/prepareCallHierarchy", onDeclaration("public int add(", "add"));
+        assertEquals("add", added.get(0).path("name").asText(), added.toString());
+        JsonNode incoming = ask(13, "callHierarchy/incomingCalls", Map.of("item", JSON.convertValue(added.get(0), Map.class)));
+        assertTrue(namesOf(incoming, "from").contains("typedSum"), "callers " + incoming);
+        JsonNode typed = ask(14, "textDocument/prepareCallHierarchy", onDeclaration("int typedSum", "typedSum"));
+        JsonNode outgoing = ask(15, "callHierarchy/outgoingCalls", Map.of("item", JSON.convertValue(typed.get(0), Map.class)));
+        assertTrue(namesOf(outgoing, "to").contains("add"), "callees " + outgoing);
+    }
+
+    @Test
+    @DisplayName("the supertypes of a class of the unsaved text include its interface, and the subtypes of the interface include the class")
+    void typeHierarchyOnUnsavedText() throws Exception {
+        startWithUnsavedText();
+        JsonNode square = ask(16, "textDocument/prepareTypeHierarchy", onDeclaration("static class Square", "Square"));
+        assertEquals("Square", square.get(0).path("name").asText(), square.toString());
+        JsonNode supertypes = ask(17, "typeHierarchy/supertypes", Map.of("item", JSON.convertValue(square.get(0), Map.class)));
+        assertTrue(namesOf(supertypes, "").contains("Shape"), "supertypes " + supertypes);
+        JsonNode shape = ask(18, "textDocument/prepareTypeHierarchy", onDeclaration("interface Shape", "Shape"));
+        JsonNode subtypes = ask(19, "typeHierarchy/subtypes", Map.of("item", JSON.convertValue(shape.get(0), Map.class)));
+        assertTrue(namesOf(subtypes, "").contains("Square"), "subtypes " + subtypes);
+    }
+
+    @Test
+    @DisplayName("a command is a tool of the gate: running search_symbols answers the symbols it finds")
+    void executeCommandRunsATool() throws Exception {
+        startWithUnsavedText();
+        JsonNode capabilities = ask(20, "initialize", Map.of()).path("capabilities");
+        assertTrue(capabilities.path("executeCommandProvider").path("commands").toString().contains("search_symbols"), capabilities.toString());
+        JsonNode result = ask(21, "workspace/executeCommand", Map.of("command", "search_symbols", "arguments", List.of(Map.of("query", "Calculator"))));
+        List<String> names = new ArrayList<>();
+        for (JsonNode hit : result.path("results")) {
+            names.add(hit.path("name").asText());
+        }
+        assertTrue(names.contains("Calculator"), "found " + names);
+    }
+
+    @Test
+    @DisplayName("the definition of a library class is an address that names no file, and its source is asked at that address")
+    void libraryClassContent() throws Exception {
+        startWithUnsavedText();
+        JsonNode definition = ask(22, "textDocument/definition", onDeclaration("String typedName", "String"));
+        String address = definition.path("uri").asText();
+        assertTrue(address.startsWith("jdt://"), definition.toString());
+        String source = ask(23, "java/classFileContents", Map.of("uri", address)).asText();
+        assertTrue(source.contains("class String"), "the source of " + address + " starts " + source.substring(0, Math.min(200, source.length())));
     }
 
     @Test

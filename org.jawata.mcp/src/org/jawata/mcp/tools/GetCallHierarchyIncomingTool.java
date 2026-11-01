@@ -219,6 +219,8 @@ public class GetCallHierarchyIncomingTool extends AbstractTool {
                     int callColumn = service.getColumnNumber(cu, match.getOffset());
                     info.put("line", callLine);
                     info.put("column", callColumn);
+                    // 28h S16b: the end of the call site, so an editor can mark what is called and not only where it starts.
+                    org.jawata.mcp.java.JavaRanges.linesOf(cu).span(match.getOffset(), match.getLength()).putEndInto(info);
 
                     // Get context line
                     String context = service.getContextLine(cu, match.getOffset());
@@ -232,6 +234,11 @@ public class GetCallHierarchyIncomingTool extends AbstractTool {
                 if (callerMethod != null) {
                     info.put("callerMethod", callerMethod.getElementName());
                     info.put("callerSignature", buildMethodSignature(callerMethod));
+                    // 28h S16b: where the caller is declared, so an editor can show it as an item of a hierarchy.
+                    Map<String, Object> callerLocation = org.jawata.mcp.tools.shared.ElementLocations.of(callerMethod, service);
+                    if (callerLocation != null) {
+                        info.put("callerLocation", callerLocation);
+                    }
 
                     IType callerType = callerMethod.getDeclaringType();
                     if (callerType != null) {

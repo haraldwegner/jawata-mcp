@@ -209,6 +209,8 @@ public class GetTypeHierarchyTool extends AbstractTool {
                 int offset = type.getSourceRange().getOffset();
                 int lineNum = service.getLineNumber(cu, offset);
                 info.put("line", lineNum);
+                // 28h S16b: the whole location, name range included, so an editor can land on the type's name.
+                info.put("location", org.jawata.mcp.tools.shared.ElementLocations.of(type, service));
             }
         } catch (Exception e) {
             info.put("external", true);

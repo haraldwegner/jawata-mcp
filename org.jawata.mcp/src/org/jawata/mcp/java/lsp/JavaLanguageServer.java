@@ -257,6 +257,15 @@ public final class JavaLanguageServer {
         requests.register("workspace/symbol", "workspaceSymbolProvider", true, navigation::workspaceSymbol);
         requests.register("textDocument/signatureHelp", "signatureHelpProvider",
             Map.of("triggerCharacters", List.of("(", ",")), navigation::signatureHelp);
+        requests.register("textDocument/typeDefinition", "typeDefinitionProvider", true, navigation::typeDefinition);
+        requests.register("textDocument/prepareCallHierarchy", "callHierarchyProvider", true, navigation::prepareCallHierarchy);
+        requests.register("callHierarchy/incomingCalls", null, null, navigation::incomingCalls);
+        requests.register("callHierarchy/outgoingCalls", null, null, navigation::outgoingCalls);
+        requests.register("textDocument/prepareTypeHierarchy", "typeHierarchyProvider", true, navigation::prepareTypeHierarchy);
+        requests.register("typeHierarchy/supertypes", null, null, navigation::supertypes);
+        requests.register("typeHierarchy/subtypes", null, null, navigation::subtypes);
+        requests.register("workspace/executeCommand", "executeCommandProvider", Map.of("commands", navigation.commands()), navigation::executeCommand);
+        requests.register("java/classFileContents", null, null, navigation::classFileContents);
     }
 
     /** What could be typed at the position: JDT code assist on the editor's text, unsaved or not. */

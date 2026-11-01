@@ -997,7 +997,8 @@ public class JdtServiceImpl implements IJdtService {
         // (asking a closed project anything throws; that must not read as
         // "the model could not answer").
         if (jp.getProject() != null && !jp.getProject().isOpen()) return null;
-        IType type = jp.findType(typeName);
+        // 28h S16b: the buffers' owner, so a type that exists only in an editor's unsaved text is found by name as well.
+        IType type = jp.findType(typeName, org.jawata.core.BufferStore.owner());
         if (type != null) return type;
         for (IPackageFragmentRoot root : jp.getPackageFragmentRoots()) {
             if (root.getKind() == IPackageFragmentRoot.K_SOURCE) {

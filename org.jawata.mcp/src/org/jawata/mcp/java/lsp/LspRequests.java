@@ -69,12 +69,15 @@ final class LspRequests {
     /**
      * Makes {@code method} a request the server answers.
      *
-     * @param capability the key of the server capabilities that tells the editor it may ask, such as {@code completionProvider}
+     * @param capability the key of the server capabilities that tells the editor it may ask, such as {@code completionProvider};
+     *                   null for a request the protocol does not know, which an editor's extension asks by name
      * @param value      what that capability holds, such as {@code true} or an options map
      */
     void register(String method, String capability, Object value, Handler handler) {
         handlers.put(method, handler);
-        capabilities.put(capability, value);
+        if (capability != null) {
+            capabilities.put(capability, value);
+        }
     }
 
     boolean handles(String method) {

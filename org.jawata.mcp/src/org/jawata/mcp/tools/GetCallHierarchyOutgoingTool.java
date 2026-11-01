@@ -289,6 +289,8 @@ public class GetCallHierarchyOutgoingTool extends AbstractTool {
         callee.put("callType", callType);
         callee.put("isFromSource", binding.getDeclaringClass().isFromSource());
         callee.put("callLocation", buildCallLocation(node, ast, filePath, service));
+        // 28h S16b: where the callee is declared (absent for a library method), so an editor can show it as an item of a hierarchy.
+        callee.put("declaration", org.jawata.mcp.tools.shared.ElementLocations.of(binding.getJavaElement(), service));
         callees.add(callee);
     }
 
@@ -303,6 +305,8 @@ public class GetCallHierarchyOutgoingTool extends AbstractTool {
         callee.put("callType", "SUPER_METHOD");
         callee.put("isFromSource", binding.getDeclaringClass().isFromSource());
         callee.put("callLocation", buildCallLocation(node, ast, filePath, service));
+        // 28h S16b: where the callee is declared (absent for a library method), so an editor can show it as an item of a hierarchy.
+        callee.put("declaration", org.jawata.mcp.tools.shared.ElementLocations.of(binding.getJavaElement(), service));
         callees.add(callee);
     }
 
@@ -317,6 +321,8 @@ public class GetCallHierarchyOutgoingTool extends AbstractTool {
         callee.put("callType", "CONSTRUCTOR");
         callee.put("isFromSource", binding.getDeclaringClass().isFromSource());
         callee.put("callLocation", buildCallLocation(node, ast, filePath, service));
+        // 28h S16b: where the callee is declared (absent for a library method), so an editor can show it as an item of a hierarchy.
+        callee.put("declaration", org.jawata.mcp.tools.shared.ElementLocations.of(binding.getJavaElement(), service));
         callees.add(callee);
     }
 
@@ -330,6 +336,8 @@ public class GetCallHierarchyOutgoingTool extends AbstractTool {
         callee.put("callType", "THIS_CONSTRUCTOR");
         callee.put("isFromSource", binding.getDeclaringClass().isFromSource());
         callee.put("callLocation", buildCallLocation(node, ast, filePath, service));
+        // 28h S16b: where the callee is declared (absent for a library method), so an editor can show it as an item of a hierarchy.
+        callee.put("declaration", org.jawata.mcp.tools.shared.ElementLocations.of(binding.getJavaElement(), service));
         callees.add(callee);
     }
 
@@ -343,6 +351,8 @@ public class GetCallHierarchyOutgoingTool extends AbstractTool {
         callee.put("callType", "SUPER_CONSTRUCTOR");
         callee.put("isFromSource", binding.getDeclaringClass().isFromSource());
         callee.put("callLocation", buildCallLocation(node, ast, filePath, service));
+        // 28h S16b: where the callee is declared (absent for a library method), so an editor can show it as an item of a hierarchy.
+        callee.put("declaration", org.jawata.mcp.tools.shared.ElementLocations.of(binding.getJavaElement(), service));
         callees.add(callee);
     }
 

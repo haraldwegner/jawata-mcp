@@ -33,6 +33,10 @@ final class LspNavigation {
 
     private static final int HIGHLIGHT_TEXT = 1;
 
+    /** The address of a library class: it names no file, and {@code java/classFileContents} answers its source. */
+    private static final String LIBRARY_PREFIX = "jdt://contents/";
+    private static final String LIBRARY_SUFFIX = ".java";
+
     private final ToolCalls tools;
     private final CallerIdentity caller;
     private final Supplier<IJdtService> service;
@@ -57,7 +61,13 @@ final class LspNavigation {
     Object definition(JsonNode params) throws ToolNotFoundException {
         JsonNode data = ask("go_to_definition", at(params));
         JsonNode place = data == null ? null : data.path("location");
-        return place == null || place.isMissingNode() ? null : locationOf(place);
+        if (place != null && !place.isMissingNode()) {
+            return locationOf(place);
+        }
+        // No source of ours: a library type (or a member of one) is answered with the address its class is read at.
+        String library = data == null ? "" : data.has("package") ? data.path("package").asText() + "." + data.path("symbol").asText()
+            : data.path("containingType").asText("");
+        return library.isBlank() || library.startsWith(".") ? null : libraryLocation(library);
     }
 
     Object references(JsonNode params) throws ToolNotFoundException {
@@ -202,6 +212,168 @@ final class LspNavigation {
         }
         int nameLine = (int) text.substring(0, start).chars().filter(c -> c == '\n').count();
         return new int[] {nameLine, start - (text.lastIndexOf('\n', start - 1) + 1), commas, start, end};
+    }
+
+    // ---- type definition, hierarchies, commands, library classes ------------------------------------------------------------------------
+
+    /** The declaration of the type the name under the cursor is declared to have; a library type is answered with the address its source is asked at. */
+    Object typeDefinition(JsonNode params) throws Exception {
+        var unit = service.get().getCompilationUnit(pathOf(params.path("textDocument").path("uri").asText()));
+        var type = unit == null ? null : org.jawata.mcp.java.JavaTypeDefinitions.at(unit,
+            params.path("position").path("line").asInt(), params.path("position").path("character").asInt());
+        if (type == null) {
+            return null;
+        }
+        var where = org.jawata.mcp.tools.shared.ElementLocations.of(type, service.get());
+        return where == null ? libraryLocation(type.getFullyQualifiedName()) : locationOf(JSON.valueToTree(where));
+    }
+
+    Object prepareCallHierarchy(JsonNode params) throws ToolNotFoundException {
+        JsonNode data = ask("go_to_definition", at(params));
+        if (data == null || !"Method".equals(data.path("kind").asText()) || !data.path("location").isObject()) {
+            return null;
+        }
+        return List.of(callItem(data.path("location"), data.path("symbol").asText(), data.path("containingType").asText("")));
+    }
+
+    Object incomingCalls(JsonNode params) throws ToolNotFoundException {
+        JsonNode data = ask("get_call_hierarchy", callArguments("incoming", params.path("item")));
+        return data == null ? List.of() : callsOf(data.path("callers"), "callerLocation", "callerMethod", "callerClass", "", "from");
+    }
+
+    Object outgoingCalls(JsonNode params) throws ToolNotFoundException {
+        JsonNode data = ask("get_call_hierarchy", callArguments("outgoing", params.path("item")));
+        return data == null ? List.of() : callsOf(data.path("callees"), "declaration", "method", "declaringClass", "callLocation", "to");
+    }
+
+    Object prepareTypeHierarchy(JsonNode params) throws ToolNotFoundException {
+        JsonNode type = ask("get_at_position", at(params).put("kind", "type"));
+        JsonNode hierarchy = type == null ? null : hierarchyOf(type.path("qualifiedName").asText(""));
+        JsonNode row = hierarchy == null ? null : hierarchy.path("type");
+        return row == null || !row.path("location").isObject() ? null : List.of(typeItem(row));
+    }
+
+    /** The door answers every supertype, the nearest first, not only the direct ones; the editor is shown them all. */
+    Object supertypes(JsonNode params) throws ToolNotFoundException {
+        JsonNode hierarchy = hierarchyOf(params.path("item").path("data").path("qualifiedName").asText(""));
+        List<Object> items = new ArrayList<>();
+        if (hierarchy != null) {
+            addTypeItems(items, hierarchy.path("superclasses"));
+            addTypeItems(items, hierarchy.path("interfaces"));
+        }
+        return items;
+    }
+
+    /** The door answers every subtype, not only the direct ones; the editor is shown them all. */
+    Object subtypes(JsonNode params) throws ToolNotFoundException {
+        JsonNode hierarchy = hierarchyOf(params.path("item").path("data").path("qualifiedName").asText(""));
+        List<Object> items = new ArrayList<>();
+        if (hierarchy != null) {
+            addTypeItems(items, hierarchy.path("subtypes"));
+        }
+        return items;
+    }
+
+    /** The names of the tools the gate publishes: the commands an editor may run. */
+    List<String> commands() {
+        List<String> names = new ArrayList<>();
+        for (Map<String, Object> definition : tools.getToolDefinitions()) {
+            names.add(String.valueOf(definition.get("name")));
+        }
+        return names;
+    }
+
+    /** A command is a tool of the gate, run as the editor's own caller; its first argument holds the tool's arguments. */
+    Object executeCommand(JsonNode params) throws Exception {
+        String command = params.path("command").asText();
+        JsonNode argument = params.path("arguments").path(0);
+        ObjectNode arguments = argument.isObject() ? ((ObjectNode) argument).deepCopy() : JSON.createObjectNode();
+        ToolResponse response = tools.callTool(command, arguments, caller);
+        if (!response.isSuccess()) {
+            throw new IllegalStateException("The command " + command + " failed: " + response);
+        }
+        return response.getData();
+    }
+
+    /** The source of a library class, asked at the address a definition answered; the editor shows it read-only. */
+    Object classFileContents(JsonNode params) throws ToolNotFoundException {
+        String uri = params.path("uri").asText();
+        if (!uri.startsWith(LIBRARY_PREFIX) || !uri.endsWith(LIBRARY_SUFFIX)) {
+            return null;
+        }
+        JsonNode data = ask("inspect", JSON.createObjectNode().put("kind", "source")
+            .put("typeName", uri.substring(LIBRARY_PREFIX.length(), uri.length() - LIBRARY_SUFFIX.length())));
+        return data == null ? null : data.path("source").asText(null);
+    }
+
+    private JsonNode hierarchyOf(String typeName) throws ToolNotFoundException {
+        // a nested type is named with '$' by the door that found it, and with '.' by the lookup the hierarchy door asks
+        return typeName.isEmpty() ? null
+            : ask("inspect", JSON.createObjectNode().put("kind", "type_hierarchy").put("typeName", typeName.replace('$', '.')));
+    }
+
+    private void addTypeItems(List<Object> items, JsonNode rows) {
+        for (JsonNode row : rows) {
+            if (row.path("location").isObject()) { // a library type has no file of ours to show
+                items.add(typeItem(row));
+            }
+        }
+    }
+
+    private Map<String, Object> typeItem(JsonNode row) {
+        JsonNode location = row.path("location");
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("name", row.path("name").asText());
+        item.put("kind", kindOf(row.path("kind").asText()));
+        item.put("uri", locationOf(location).get("uri"));
+        item.put("range", rangeOf(withoutName(location)));
+        item.put("selectionRange", rangeOf(location));
+        item.put("data", Map.of("qualifiedName", row.path("qualifiedName").asText()));
+        return item;
+    }
+
+    /** An item of a call hierarchy; its data holds where the name is, so the next question can be put at it. */
+    private Map<String, Object> callItem(JsonNode location, String name, String detail) {
+        JsonNode span = location.path("nameRange").isObject() ? location.path("nameRange") : location;
+        String uri = (String) locationOf(location).get("uri");
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("name", name);
+        item.put("kind", kindOf("Method"));
+        item.put("detail", detail);
+        item.put("uri", uri);
+        item.put("range", rangeOf(withoutName(location)));
+        item.put("selectionRange", rangeOf(location));
+        item.put("data", Map.of("uri", uri, "line", span.path("line").asInt(), "character", span.path("column").asInt()));
+        return item;
+    }
+
+    private static ObjectNode callArguments(String direction, JsonNode item) {
+        JsonNode data = item.path("data");
+        return JSON.createObjectNode().put("direction", direction).put("filePath", pathOf(data.path("uri").asText()).toString())
+            .put("line", data.path("line").asInt()).put("column", data.path("character").asInt());
+    }
+
+    /** The rows of a call hierarchy grouped by the method they name, each with every range it is called at. */
+    private List<Object> callsOf(JsonNode rows, String locationField, String nameField, String detailField, String rangeField, String side) {
+        Map<String, Object> items = new LinkedHashMap<>();
+        Map<String, List<Object>> ranges = new LinkedHashMap<>();
+        for (JsonNode row : rows) {
+            JsonNode where = row.path(locationField);
+            if (where.isObject()) { // a library method has no file of ours to show
+                String key = where.toString();
+                items.computeIfAbsent(key, k -> callItem(where, row.path(nameField).asText(), row.path(detailField).asText("")));
+                ranges.computeIfAbsent(key, k -> new ArrayList<>()).add(rangeOf(rangeField.isEmpty() ? row : row.path(rangeField)));
+            }
+        }
+        List<Object> calls = new ArrayList<>();
+        items.forEach((key, item) -> calls.add(Map.of(side, item, "fromRanges", ranges.get(key))));
+        return calls;
+    }
+
+    /** Where the source of a library class is asked: the address {@link #classFileContents} understands. */
+    private static Map<String, Object> libraryLocation(String qualifiedName) {
+        Map<String, Object> start = Map.of("line", 0, "character", 0);
+        return Map.of("uri", LIBRARY_PREFIX + qualifiedName + LIBRARY_SUFFIX, "range", Map.of("start", start, "end", start));
     }
 
     // ---- asking the gate ----------------------------------------------------------------------------------------------------------------
