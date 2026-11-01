@@ -238,7 +238,7 @@ class JavaLanguageServerTest {
         assertEquals(bad[1], error.path("range").path("start").path("character").asInt());
         assertEquals(bad[0], error.path("range").path("end").path("line").asInt());
         assertEquals(bad[1] + BAD.length(), error.path("range").path("end").path("character").asInt(), "the range covers the whole literal");
-        assertTrue(error.path("message").asText().contains("String"), error.path("message").asText());
+        assertEquals("Type mismatch: cannot convert from String to int", error.path("message").asText());
 
         editAt(bad[0], bad[1], bad[1] + BAD.length(), "1");
         awaitPublished(2);

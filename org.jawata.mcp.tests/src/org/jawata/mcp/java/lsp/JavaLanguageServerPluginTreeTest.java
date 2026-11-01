@@ -2,7 +2,6 @@ package org.jawata.mcp.java.lsp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -60,7 +59,7 @@ class JavaLanguageServerPluginTreeTest {
         JsonNode error = awaitFirstError(sent);
         int line = lineOf(broken, "int bad");
         int from = broken.split("\n")[line].indexOf(CALL);
-        assertTrue(error.path("message").asText().contains("String"), error.toString());
+        assertEquals("Type mismatch: cannot convert from String to int", error.path("message").asText());
         assertEquals(line, error.path("range").path("start").path("line").asInt(), "the line of the faulty statement");
         assertEquals(from, error.path("range").path("start").path("character").asInt(), "starts where the call starts");
         assertEquals(from + CALL.length(), error.path("range").path("end").path("character").asInt(), "ends where the call ends");
