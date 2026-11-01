@@ -1,17 +1,12 @@
 package org.jawata.mcp.tools;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import org.eclipse.core.runtime.IPath;
-import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.IField;
-import org.eclipse.jdt.core.ISourceRange;
-import org.eclipse.jdt.core.ISourceReference;
 import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.IJdtService;
-import org.jawata.mcp.java.JavaRanges;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.slf4j.Logger;
@@ -162,20 +157,5 @@ public class GoToDefinitionTool extends AbstractTool {
             case IJavaElement.TYPE_PARAMETER -> "TypeParameter";
             default -> "Unknown";
         };
-    }
-
-    private String getFilePath(IJavaElement element, IJdtService service) {
-        try {
-            ICompilationUnit cu = (ICompilationUnit) element.getAncestor(IJavaElement.COMPILATION_UNIT);
-            if (cu != null && cu.getResource() != null) {
-                IPath location = cu.getResource().getLocation();
-                if (location != null) {
-                    return service.getPathUtils().formatPath(location.toOSString());
-                }
-            }
-        } catch (Exception e) {
-            log.debug("Error getting file path: {}", e.getMessage());
-        }
-        return "";
     }
 }
