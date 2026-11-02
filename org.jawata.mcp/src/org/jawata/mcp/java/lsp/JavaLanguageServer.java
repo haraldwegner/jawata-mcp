@@ -266,6 +266,22 @@ public final class JavaLanguageServer {
         requests.register("typeHierarchy/subtypes", null, null, navigation::subtypes);
         requests.register("workspace/executeCommand", "executeCommandProvider", Map.of("commands", navigation.commands()), navigation::executeCommand);
         requests.register("java/classFileContents", null, null, navigation::classFileContents);
+        LspEditing editing = new LspEditing(tools, caller, this::viewOf, this::hasUnsavedText);
+        requests.register("textDocument/prepareRename", "renameProvider", Map.of("prepareProvider", true), editing::prepareRename);
+        requests.register("textDocument/rename", "renameProvider", Map.of("prepareProvider", true), editing::rename);
+    }
+
+    /** Whether the editor has this file open with text that is not saved. */
+    private boolean hasUnsavedText(String uri) {
+        ICompilationUnit saved = savedUnit(uri);
+        if (saved == null || !openFiles.contains(uri)) {
+            return false;
+        }
+        try {
+            return buffers().isDirty(saved);
+        } catch (JavaModelException e) {
+            throw new IllegalStateException("whether " + uri + " has unsaved text could not be read: " + e.getMessage(), e);
+        }
     }
 
     /** What could be typed at the position: JDT code assist on the editor's text, unsaved or not. */

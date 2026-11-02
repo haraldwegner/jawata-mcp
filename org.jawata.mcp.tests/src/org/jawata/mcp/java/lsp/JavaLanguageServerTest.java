@@ -152,7 +152,7 @@ class JavaLanguageServerTest {
     }
 
     @Test
-    @DisplayName("initialize answers the capabilities the server has: incremental document sync, nothing it cannot answer yet")
+    @DisplayName("initialize answers the capabilities the server has: incremental document sync, and what it answers, rename included")
     void initializeAnswersCapabilities() throws Exception {
         start();
 
@@ -163,7 +163,7 @@ class JavaLanguageServerTest {
         assertTrue(result.path("capabilities").path("textDocumentSync").path("openClose").asBoolean());
         assertEquals(2, result.path("capabilities").path("textDocumentSync").path("change").asInt(), "incremental");
         assertTrue(result.path("capabilities").has("hoverProvider"), "what is answered is advertised");
-        assertFalse(result.path("capabilities").has("renameProvider"), "only what is answered is advertised");
+        assertTrue(result.path("capabilities").path("renameProvider").path("prepareProvider").asBoolean(), "rename, with its prepare step, is answered");
     }
 
     @Test

@@ -12,6 +12,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
@@ -21,6 +22,7 @@ import org.jawata.mcp.tools.GetAtPositionTool;
 import org.jawata.mcp.tools.GetCallHierarchyTool;
 import org.jawata.mcp.tools.GoToDefinitionTool;
 import org.jawata.mcp.tools.InspectTool;
+import org.jawata.mcp.tools.RenameSymbolTool;
 import org.jawata.mcp.tools.SearchSymbolsTool;
 import org.jawata.mcp.tools.Tool;
 import org.jawata.resident.workspace.JdtServiceImpl;
@@ -58,7 +60,8 @@ final class LspSession {
             "find_references", new FindRefsTool(() -> service),
             "inspect", new InspectTool(() -> service),
             "get_call_hierarchy", new GetCallHierarchyTool(() -> service),
-            "search_symbols", new SearchSymbolsTool(() -> service));
+            "search_symbols", new SearchSymbolsTool(() -> service),
+            "rename_symbol", new RenameSymbolTool(() -> service, new RefactoringChangeCache(), () -> null));
         return new ToolCalls() {
             @Override
             public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {
@@ -86,15 +89,27 @@ final class LspSession {
 
     /** Puts a request and returns the result of its answer; an answer that is an error fails the row. */
     JsonNode ask(String method, Map<String, Object> params) throws Exception {
+        JsonNode answer = answerTo(method, params);
+        assertTrue(answer.path("error").isMissingNode() || answer.path("error").isNull(), answer.toString());
+        return answer.path("result");
+    }
+
+    /** Puts a request that is expected to be refused and returns the message of the error it was answered with. */
+    String refusalOf(String method, Map<String, Object> params) throws Exception {
+        JsonNode answer = answerTo(method, params);
+        assertTrue(answer.path("error").isObject(), "the request was expected to be refused: " + answer);
+        return answer.path("error").path("message").asText();
+    }
+
+    /** Puts a request and waits for the whole answer to it, result or error. */
+    private JsonNode answerTo(String method, Map<String, Object> params) throws Exception {
         int id = ids.incrementAndGet();
         server.receive(JsonRpcMessage.request(id, method, JSON.valueToTree(params)));
         long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(30);
         while (System.nanoTime() < until) {
             for (JsonRpcMessage message : sent) {
                 if (message.getMethod() == null && Integer.valueOf(id).equals(message.getId())) {
-                    JsonNode answer = JSON.valueToTree(message);
-                    assertTrue(answer.path("error").isMissingNode() || answer.path("error").isNull(), answer.toString());
-                    return answer.path("result");
+                    return JSON.valueToTree(message);
                 }
             }
             Thread.sleep(25);
