@@ -335,6 +335,7 @@ class JavaLanguageServerRenameTest {
         JsonNode changes = edit.path("changes");
         String moved = applied(Files.readString(calculator), changes.get(calculator.toUri().toString()));
         assertTrue(moved.contains("package com.example.util;"), moved);
+        assertTrue(changes.size() > 1, "the files that use Calculator change too, or the loop below checks nothing: " + edit);
         changes.fieldNames().forEachRemaining(uri -> {
             if (!uri.equals(calculator.toUri().toString())) {
                 try {
