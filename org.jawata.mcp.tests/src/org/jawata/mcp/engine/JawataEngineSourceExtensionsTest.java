@@ -51,6 +51,29 @@ class JawataEngineSourceExtensionsTest {
             "the host was asked to sync with a set of suffixes: the engine's reconciler is the language-aware one");
     }
 
+    @Test
+    @DisplayName("an engine that stopped leaves no identity check behind: the next identity is not told STILL LOADING by a workspace that is gone")
+    void stoppingTheEngineTakesItsIdentityChecksBack() throws Exception {
+        FakeHost host = new FakeHost(scratch.resolve("engine"), Map.of(
+            SettingKeys.EXPERIENCE_STORE.name(), "memory",
+            SettingKeys.EMBED_DISABLED.name(), "true"));
+        engine = JawataEngine.assemble(host);
+        engine.start();
+        engine.stop();
+        engine = null;
+        EngineState.current().reset();
+        try {
+            org.jawata.mcp.models.WorkspaceIdentity.install("probe-workspace", java.util.List.of(Path.of("simple-maven")));
+
+            String described = org.jawata.mcp.models.WorkspaceIdentity.describe();
+
+            org.junit.jupiter.api.Assertions.assertFalse(described.contains("STILL LOADING"),
+                "the stopped engine's load check still answers for it: " + described);
+        } finally {
+            org.jawata.mcp.models.WorkspaceIdentity.install(null, java.util.List.of());
+        }
+    }
+
     /** The stand-in language of the engine tests, with one answer replaced: the suffix of its source files. */
     private static org.jawata.spi.lang.LanguageProvider declaring(String suffix) {
         org.jawata.standin.FakeLanguageProvider standIn = new org.jawata.standin.FakeLanguageProvider();

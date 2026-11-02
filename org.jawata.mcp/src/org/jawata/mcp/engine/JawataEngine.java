@@ -751,6 +751,7 @@ public class JawataEngine {
 			seats.close(); // interrupts the loop and does not wait for a hire in flight
 			seatScheduler = null;
 		}
+		removeWorkspaceIdentity();
 		Transport transport = getActiveTransport();
 		if (transport != null) {
 			transport.close();
@@ -803,6 +804,20 @@ public class JawataEngine {
 		} catch (RuntimeException e) {
 			log.warn("Workspace identity not installed: {}", e.getMessage());
 		}
+	}
+
+	/**
+	 * Takes back what {@link #installWorkspaceIdentity()} put on the process-wide identity: the name, the roots and the five checks. They
+	 * read this engine's host and state, so one left behind after the engine stops answers for an engine that is gone (a later engine,
+	 * or a test in the same JVM, would be told "STILL LOADING" by a check about a workspace that no longer exists).
+	 */
+	private void removeWorkspaceIdentity() {
+		org.jawata.mcp.models.WorkspaceIdentity.install(null, java.util.List.of());
+		org.jawata.mcp.models.WorkspaceIdentity.installLiveKeys(null);
+		org.jawata.mcp.models.WorkspaceIdentity.installLoadFailure(null);
+		org.jawata.mcp.models.WorkspaceIdentity.installLoadPending(null);
+		org.jawata.mcp.models.WorkspaceIdentity.installSiblings(null);
+		org.jawata.mcp.models.WorkspaceIdentity.installPeek(null);
 	}
 
 	public void assemble() {
