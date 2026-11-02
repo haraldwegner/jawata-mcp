@@ -10,11 +10,16 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.text.edits.DeleteEdit;
+import org.eclipse.text.edits.InsertEdit;
+import org.eclipse.text.edits.ReplaceEdit;
+import org.eclipse.text.edits.TextEdit;
 import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.engine.ToolNotFoundException;
 import org.jawata.mcp.java.JavaRanges;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.SourceFormatting;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -125,6 +130,64 @@ final class LspEditing {
         // a file renamed with its type: the text is edited where it is, then the file is renamed
         documents.addAll(renames);
         return Map.of("documentChanges", documents);
+    }
+
+    /** The edits that lay the whole document out as the project's formatter settings say; none when it is laid out already. */
+    Object formatting(JsonNode params) {
+        return formatted(params.path("textDocument").path("uri").asText(), null);
+    }
+
+    /** The same for the lines the editor selected: only the text in the range is touched. */
+    Object rangeFormatting(JsonNode params) {
+        return formatted(params.path("textDocument").path("uri").asText(), params.path("range"));
+    }
+
+    private List<Object> formatted(String uri, JsonNode range) {
+        ICompilationUnit unit = unitOf.apply(uri);
+        if (unit == null) {
+            return List.of();
+        }
+        try {
+            String text = unit.getSource();
+            JavaRanges.Lines lines = JavaRanges.linesOf(text);
+            int from = range == null ? 0 : lines.offsetOf(range.path("start").path("line").asInt(), range.path("start").path("character").asInt());
+            int to = range == null ? text.length() : lines.offsetOf(range.path("end").path("line").asInt(), range.path("end").path("character").asInt());
+            TextEdit edit = SourceFormatting.editFor(unit, text, from, to - from, text.contains("\r\n") ? "\r\n" : "\n");
+            List<Object> edits = new ArrayList<>();
+            if (edit != null) {
+                collect(edit, text, lines, edits);
+            }
+            return edits;
+        } catch (Exception e) {
+            throw new IllegalStateException("the document could not be formatted: " + e.getMessage(), e);
+        }
+    }
+
+    /** The leaves of a formatter edit tree as protocol edits, in the text they were computed on; a leaf that changes nothing is left out. */
+    private static void collect(TextEdit edit, String text, JavaRanges.Lines lines, List<Object> out) {
+        if (edit.hasChildren()) {
+            for (TextEdit child : edit.getChildren()) {
+                collect(child, text, lines, out);
+            }
+            return;
+        }
+        if (edit instanceof ReplaceEdit replace) {
+            add(out, text, lines, replace.getOffset(), replace.getLength(), replace.getText());
+        } else if (edit instanceof InsertEdit insert) {
+            add(out, text, lines, insert.getOffset(), 0, insert.getText());
+        } else if (edit instanceof DeleteEdit delete) {
+            add(out, text, lines, delete.getOffset(), delete.getLength(), "");
+        }
+    }
+
+    private static void add(List<Object> out, String text, JavaRanges.Lines lines, int offset, int length, String newText) {
+        if (text.startsWith(newText, offset) && newText.length() == length) {
+            return;
+        }
+        JavaRanges.Range span = lines.span(offset, length);
+        out.add(Map.of("range", Map.of("start", Map.of("line", span.line(), "character", span.column()),
+                "end", Map.of("line", span.endLine(), "character", span.endColumn())),
+            "newText", newText));
     }
 
     private static Map<String, Object> rangeOf(JsonNode edit) {

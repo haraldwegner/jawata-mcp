@@ -22,8 +22,9 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
- * 28h S16c: the rename requests, one row per request, over the plain Maven tree. The edit set is the one the engine stages for
- * {@code rename_symbol}, so each row checks the set against what the engine finds, and applies it to the text to see the result.
+ * 28h S16c: the editing requests, one row per request, over the plain Maven tree: rename, and formatting of a whole document and of a
+ * range. A rename's edit set is the one the engine stages for {@code rename_symbol}, so each rename row checks the set against what the
+ * engine finds; every row applies the answered edits to the text to see the result.
  */
 class JavaLanguageServerRenameTest {
 
@@ -156,5 +157,55 @@ class JavaLanguageServerRenameTest {
         assertTrue(rename != null, "the rename operation is among the document changes: " + edit);
         assertTrue(rename.path("oldUri").asText().endsWith("HelloWorld.java"), rename.toString());
         assertTrue(rename.path("newUri").asText().endsWith("Greeting.java"), rename.toString());
+    }
+
+    private static final String ADD_AS_TYPED = "lastResult   =   a+b ;";
+
+    /** The fixture file's text with the statements of add and multiply written badly, as an editor holds it after typing and before saving. */
+    private static String typedBadly(String saved) {
+        return saved.replace("lastResult = a + b;", ADD_AS_TYPED).replace("lastResult = a * b;", "lastResult=a*b;");
+    }
+
+    private static Map<String, Object> formattingOf(Path file) {
+        return Map.of("textDocument", Map.of("uri", file.toUri().toString()), "options", Map.of("tabSize", 4, "insertSpaces", true));
+    }
+
+    @Test
+    @DisplayName("formatting lays out the text the editor holds, saved or not, and answers nothing for text that is laid out already")
+    void formattingLaysOutTheUnsavedText() throws Exception {
+        start();
+        Path calculator = source("Calculator.java");
+        String saved = Files.readString(calculator);
+        String typed = typedBadly(saved);
+        session.open(calculator, typed);
+
+        JsonNode edits = session.ask("textDocument/formatting", formattingOf(calculator));
+
+        assertTrue(edits.size() > 0, "the typed text is not laid out: " + edits);
+        String after = applied(typed, edits);
+        assertTrue(after.contains("lastResult = a + b;") && after.contains("lastResult = a * b;"), after);
+        assertTrue(!after.contains("a+b") && !after.contains("a*b"), after);
+        assertEquals(saved, Files.readString(calculator), "the file on disk is as it was");
+        start();
+        session.open(calculator, after);
+        assertEquals(0, session.ask("textDocument/formatting", formattingOf(calculator)).size(), "text that is laid out asks for no edit");
+    }
+
+    @Test
+    @DisplayName("range formatting lays out the lines asked for and leaves the rest as typed")
+    void rangeFormattingTouchesOnlyTheRange() throws Exception {
+        start();
+        Path calculator = source("Calculator.java");
+        String typed = typedBadly(Files.readString(calculator));
+        session.open(calculator, typed);
+        int line = lineOf(typed, ADD_AS_TYPED);
+        Map<String, Object> params = new HashMap<>(formattingOf(calculator));
+        params.put("range", Map.of("start", Map.of("line", line, "character", 0), "end", Map.of("line", line + 1, "character", 0)));
+
+        JsonNode edits = session.ask("textDocument/rangeFormatting", params);
+
+        String after = applied(typed, edits);
+        assertTrue(after.contains("lastResult = a + b;"), after);
+        assertTrue(after.contains("lastResult=a*b;"), "the multiply line is outside the range and stays as typed: " + after);
     }
 }

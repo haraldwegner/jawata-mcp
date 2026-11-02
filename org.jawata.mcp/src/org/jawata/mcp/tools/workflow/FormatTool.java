@@ -7,9 +7,7 @@ import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IJavaProject;
 import org.eclipse.jdt.core.IPackageFragment;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
-import org.eclipse.jdt.core.formatter.CodeFormatter;
 import org.eclipse.jdt.core.formatter.DefaultCodeFormatterConstants;
-import org.eclipse.jdt.core.ToolFactory;
 import org.eclipse.jface.text.Document;
 import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
@@ -17,6 +15,7 @@ import org.jawata.core.LoadedProject;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.AbstractTool;
+import org.jawata.mcp.tools.shared.SourceFormatting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -168,13 +167,8 @@ public class FormatTool extends AbstractTool {
 
             for (ICompilationUnit cu : targets) {
                 String source = cu.getSource();
-                CodeFormatter formatter = ToolFactory.createCodeFormatter(
-                    cu.getJavaProject().getOptions(true));
-                String lineSeparator = System.lineSeparator();
-                TextEdit edit = formatter.format(
-                    CodeFormatter.K_COMPILATION_UNIT | CodeFormatter.F_INCLUDE_COMMENTS,
-                    source, 0, source.length(), 0, lineSeparator);
-                if (edit == null || !edit.hasChildren()) {
+                TextEdit edit = SourceFormatting.editFor(cu, source, 0, source.length(), System.lineSeparator());
+                if (edit == null) {
                     filesUnchanged++;
                     continue;
                 }
