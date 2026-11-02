@@ -337,7 +337,6 @@ final class LspEditing {
             Path from = pathOf(oldUri);
             Path to = pathOf(pair.path("newUri").asText());
             ICompilationUnit unit = from.toString().endsWith(".java") && to.toString().endsWith(".java") ? unitOf.apply(oldUri) : null;
-            log.info("willRenameFiles: {} to {}", from, to);
             if (unit != null) {
                 addChangeFor(unit, from, to, changes);
             } else if (from.toString().endsWith(".java")) {
@@ -355,8 +354,7 @@ final class LspEditing {
         try {
             org.eclipse.jdt.core.IType type = primaryTypeOf(unit);
             if (type == null) {
-                log.warn("willRenameFiles: {} has no primary type in the model (exists {}, working copy {}, file on disk {}, text of {} characters, types {}), so no code is changed along with it",
-                    from, unit.exists(), unit.isWorkingCopy(), java.nio.file.Files.exists(from), unit.getSource().length(), unit.getTypes().length);
+                log.warn("willRenameFiles: the model holds no type for {}, so no code is changed along with it", from);
                 return;
             }
             org.eclipse.jdt.core.ISourceRange name = type.getNameRange();
