@@ -269,6 +269,8 @@ public final class JavaLanguageServer {
         LspEditing editing = new LspEditing(tools, caller, this::viewOf, this::hasUnsavedText);
         requests.register("textDocument/prepareRename", "renameProvider", Map.of("prepareProvider", true), editing::prepareRename);
         requests.register("textDocument/rename", "renameProvider", Map.of("prepareProvider", true), editing::rename);
+        requests.register("textDocument/codeAction", "codeActionProvider",
+            Map.of("codeActionKinds", List.of("quickfix", "source.organizeImports")), editing::codeAction);
         requests.register("textDocument/formatting", "documentFormattingProvider", true, editing::formatting);
         requests.register("textDocument/rangeFormatting", "documentRangeFormattingProvider", true, editing::rangeFormatting);
     }

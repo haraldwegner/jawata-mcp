@@ -61,7 +61,9 @@ final class LspSession {
             "inspect", new InspectTool(() -> service),
             "get_call_hierarchy", new GetCallHierarchyTool(() -> service),
             "search_symbols", new SearchSymbolsTool(() -> service),
-            "rename_symbol", new RenameSymbolTool(() -> service, new RefactoringChangeCache(), () -> null));
+            "rename_symbol", new RenameSymbolTool(() -> service, new RefactoringChangeCache(), () -> null),
+            "quick_fix", new org.jawata.mcp.tools.QuickFixTool(() -> service),
+            "organize_imports", new org.jawata.mcp.tools.OrganizeImportsTool(() -> service, new RefactoringChangeCache()));
         return new ToolCalls() {
             @Override
             public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {

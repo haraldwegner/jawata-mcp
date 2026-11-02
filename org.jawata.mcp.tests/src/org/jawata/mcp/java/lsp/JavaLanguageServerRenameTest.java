@@ -22,8 +22,8 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
- * 28h S16c: the editing requests, one row per request, over the plain Maven tree: rename, and formatting of a whole document and of a
- * range. A rename's edit set is the one the engine stages for {@code rename_symbol}, so each rename row checks the set against what the
+ * 28h S16c: the editing requests, one row per request, over the plain Maven tree: rename, formatting of a whole document and of a
+ * range, and the code actions (quick fixes and organize imports). A rename's edit set is the one the engine stages for {@code rename_symbol}, so each rename row checks the set against what the
  * engine finds; every row applies the answered edits to the text to see the result.
  */
 class JavaLanguageServerRenameTest {
@@ -59,6 +59,7 @@ class JavaLanguageServerRenameTest {
         }
         List<JsonNode> ordered = new ArrayList<>();
         edits.forEach(ordered::add);
+        java.util.Collections.reverse(ordered); // edits at one position: the later one first, so an insert and a delete there land in the order sent
         ordered.sort(Comparator.<JsonNode>comparingInt(e -> e.path("range").path("start").path("line").asInt())
             .thenComparingInt(e -> e.path("range").path("start").path("character").asInt()).reversed());
         StringBuilder result = new StringBuilder(text);
@@ -207,5 +208,87 @@ class JavaLanguageServerRenameTest {
         String after = applied(typed, edits);
         assertTrue(after.contains("lastResult = a + b;"), after);
         assertTrue(after.contains("lastResult=a*b;"), "the multiply line is outside the range and stays as typed: " + after);
+    }
+
+    private static final String PROBLEM_FILE = """
+        package com.example;
+
+        import java.util.List;
+
+        public class HasAProblem {
+            Object made = new ArrayList<String>();
+        }
+        """;
+
+    /** A copy of the tree with a file that has an import nothing uses and a name nothing imports. */
+    private Path withAProblemFile() throws Exception {
+        service = helper.loadProjectCopy("simple-maven");
+        session = new LspSession(service, "code-action-test");
+        Path file = service.getProjectRoot().resolve("src/main/java/com/example/HasAProblem.java");
+        Files.writeString(file, PROBLEM_FILE);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        return file;
+    }
+
+    private static Map<String, Object> codeActionsAt(Path file, int line, List<String> only) {
+        Map<String, Object> context = new HashMap<>();
+        context.put("diagnostics", List.of());
+        if (!only.isEmpty()) {
+            context.put("only", only);
+        }
+        return Map.of("textDocument", Map.of("uri", file.toUri().toString()),
+            "range", Map.of("start", Map.of("line", line, "character", 0), "end", Map.of("line", line, "character", 0)),
+            "context", context);
+    }
+
+    /** The first action of the answer of this kind whose title holds {@code titled}; null when there is none. */
+    private static JsonNode actionOfKind(JsonNode answer, String kind, String titled) {
+        for (JsonNode candidate : answer) {
+            if (kind.equals(candidate.path("kind").asText()) && candidate.path("title").asText().contains(titled)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    @Test
+    @DisplayName("code actions offer the import for a name nothing imports, as the edit that adds it, and organize imports as the edit that tidies the block")
+    void codeActionsOfferTheFixesOfTheLine() throws Exception {
+        Path file = withAProblemFile();
+
+        JsonNode actions = session.ask("textDocument/codeAction", codeActionsAt(file, lineOf(PROBLEM_FILE, "new ArrayList"), List.of()));
+
+        JsonNode fix = actionOfKind(actions, "quickfix", "java.util");
+        assertTrue(fix != null, "the unresolved name has an import fix: " + actions);
+        String fixed = applied(PROBLEM_FILE, fix.path("edit").path("changes").get(file.toUri().toString()));
+        assertTrue(fixed.contains("import java.util.ArrayList;"), fixed);
+        JsonNode organize = actionOfKind(actions, "source.organizeImports", "Organize");
+        assertTrue(organize != null, "imports that are not organized have an action: " + actions);
+        String organized = applied(PROBLEM_FILE, organize.path("edit").path("changes").get(file.toUri().toString()));
+        assertTrue(!organized.contains("import java.util.List;"), organized);
+    }
+
+    @Test
+    @DisplayName("code actions answer only the kinds the editor names")
+    void codeActionsAnswerTheKindsAskedFor() throws Exception {
+        Path file = withAProblemFile();
+        int line = lineOf(PROBLEM_FILE, "new ArrayList");
+
+        JsonNode quickOnly = session.ask("textDocument/codeAction", codeActionsAt(file, line, List.of("quickfix")));
+        JsonNode sourceOnly = session.ask("textDocument/codeAction", codeActionsAt(file, line, List.of("source")));
+
+        assertTrue(actionOfKind(quickOnly, "quickfix", "") != null && actionOfKind(quickOnly, "source.organizeImports", "") == null, quickOnly.toString());
+        assertTrue(actionOfKind(sourceOnly, "source.organizeImports", "") != null && actionOfKind(sourceOnly, "quickfix", "") == null, sourceOnly.toString());
+    }
+
+    @Test
+    @DisplayName("a file with unsaved editor text is offered no code action, because the gate reads the saved text")
+    void noCodeActionOverUnsavedText() throws Exception {
+        Path file = withAProblemFile();
+        session.open(file, PROBLEM_FILE + "\n// typed and not saved\n");
+
+        JsonNode actions = session.ask("textDocument/codeAction", codeActionsAt(file, lineOf(PROBLEM_FILE, "new ArrayList"), List.of()));
+
+        assertEquals(0, actions.size(), actions.toString());
     }
 }

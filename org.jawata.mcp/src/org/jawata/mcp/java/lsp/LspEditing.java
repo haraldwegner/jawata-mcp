@@ -190,6 +190,101 @@ final class LspEditing {
             "newText", newText));
     }
 
+    private static final int MOST_QUICK_FIXES = 8;
+
+    /**
+     * The fixes the editor can offer at the cursor: the quick fixes of its line, each as the edits the gate computes for it, and the
+     * import organizer when it would change the file. A file with unsaved editor text is offered none, because the gate reads the saved
+     * text and its positions would not fit the typed one.
+     */
+    Object codeAction(JsonNode params) throws ToolNotFoundException {
+        String uri = params.path("textDocument").path("uri").asText();
+        ICompilationUnit unit = unitOf.apply(uri);
+        List<Object> actions = new ArrayList<>();
+        if (unit == null || unsaved.test(uri)) {
+            return actions;
+        }
+        JsonNode only = params.path("context").path("only");
+        String filePath = pathOf(uri).toString();
+        if (wanted(only, "quickfix")) {
+            quickFixes(uri, filePath, unit, params.path("range").path("start").path("line").asInt(), actions);
+        }
+        if (wanted(only, "source.organizeImports")) {
+            organizeImports(filePath, actions);
+        }
+        return actions;
+    }
+
+    /** Whether the editor asked for this kind of action, or for every kind. */
+    private static boolean wanted(JsonNode only, String kind) {
+        if (!only.isArray() || only.isEmpty()) {
+            return true;
+        }
+        for (JsonNode asked : only) {
+            if (kind.equals(asked.asText()) || kind.startsWith(asked.asText() + ".")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void quickFixes(String uri, String filePath, ICompilationUnit unit, int line, List<Object> actions) throws ToolNotFoundException {
+        ToolResponse listed = tools.callTool("quick_fix",
+            JSON.createObjectNode().put("action", "list").put("filePath", filePath).put("line", line), caller);
+        if (!listed.isSuccess()) {
+            return;
+        }
+        String text;
+        try {
+            text = unit.getSource();
+        } catch (Exception e) {
+            throw new IllegalStateException("the text of the document could not be read: " + e.getMessage(), e);
+        }
+        JavaRanges.Lines lines = JavaRanges.linesOf(text);
+        int offered = 0;
+        for (JsonNode fix : JSON.valueToTree(listed.getData()).path("fixes")) {
+            if (offered == MOST_QUICK_FIXES) {
+                break;
+            }
+            ToolResponse applied = tools.callTool("quick_fix", JSON.createObjectNode().put("action", "apply").put("filePath", filePath)
+                .put("fixId", fix.path("fixId").asText()).put("line", line), caller);
+            if (!applied.isSuccess()) {
+                continue;
+            }
+            List<Object> edits = new ArrayList<>();
+            for (JsonNode edit : JSON.valueToTree(applied.getData()).path("edits")) {
+                int start = edit.has("offset") ? edit.path("offset").asInt() : edit.path("startOffset").asInt();
+                int end = edit.has("endOffset") ? edit.path("endOffset").asInt() : start;
+                add(edits, text, lines, start, end - start, edit.path("newText").asText(""));
+            }
+            if (!edits.isEmpty()) {
+                actions.add(Map.of("title", fix.path("label").asText(), "kind", "quickfix", "edit", Map.of("changes", Map.of(uri, edits))));
+                offered++;
+            }
+        }
+    }
+
+    private void organizeImports(String filePath, List<Object> actions) throws ToolNotFoundException {
+        ToolResponse staged = tools.callTool("organize_imports",
+            JSON.createObjectNode().put("scope", "file").put("filePath", filePath).put("auto_apply", false).put("edits", true), caller);
+        if (!staged.isSuccess()) {
+            return;
+        }
+        Map<String, List<Object>> changes = new LinkedHashMap<>();
+        for (JsonNode file : JSON.valueToTree(staged.getData()).path("edits")) {
+            List<Object> edits = new ArrayList<>();
+            for (JsonNode edit : file.path("edits")) {
+                edits.add(Map.of("range", rangeOf(edit), "newText", edit.path("newText").asText()));
+            }
+            if (!edits.isEmpty()) {
+                changes.put(Path.of(file.path("filePath").asText()).toUri().toString(), edits);
+            }
+        }
+        if (!changes.isEmpty()) {
+            actions.add(Map.of("title", "Organize imports", "kind", "source.organizeImports", "edit", Map.of("changes", changes)));
+        }
+    }
+
     private static Map<String, Object> rangeOf(JsonNode edit) {
         return Map.of("start", Map.of("line", edit.path("line").asInt(), "character", edit.path("column").asInt()),
             "end", Map.of("line", edit.path("endLine").asInt(), "character", edit.path("endColumn").asInt()));
