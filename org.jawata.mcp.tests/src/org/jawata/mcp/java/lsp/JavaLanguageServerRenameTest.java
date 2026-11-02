@@ -336,15 +336,12 @@ class JavaLanguageServerRenameTest {
         String moved = applied(Files.readString(calculator), changes.get(calculator.toUri().toString()));
         assertTrue(moved.contains("package com.example.util;"), moved);
         assertTrue(changes.size() > 1, "the files that use Calculator change too, or the loop below checks nothing: " + edit);
-        changes.fieldNames().forEachRemaining(uri -> {
-            if (!uri.equals(calculator.toUri().toString())) {
-                try {
-                    assertTrue(applied(Files.readString(Path.of(java.net.URI.create(uri))), changes.get(uri)).contains("com.example.util.Calculator"), uri);
-                } catch (java.io.IOException e) {
-                    throw new java.io.UncheckedIOException(e);
-                }
-            }
-        });
+        List<String> others = new ArrayList<>();
+        changes.fieldNames().forEachRemaining(others::add);
+        others.remove(calculator.toUri().toString());
+        for (String uri : others) {
+            assertTrue(applied(Files.readString(Path.of(java.net.URI.create(uri))), changes.get(uri)).contains("com.example.util.Calculator"), uri);
+        }
     }
 
     @Test
