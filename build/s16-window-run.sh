@@ -163,6 +163,10 @@ echo "measured navigation (tree $TREE, milliseconds): $(python3 -c 'import json,
 REF="$OUT.refactoring.$TREE.json"
 [ -f "$REF" ] || { echo "the window run wrote no refactoring numbers (exit $STATUS)" >&2; exit 1; }
 echo "measured refactoring (tree $TREE, milliseconds): $(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$REF")"
+# 28h S16d: the structure test writes the milliseconds folding, selection, tokens, hints and lenses took
+STRUCT="$OUT.structure.$TREE.json"
+[ -f "$STRUCT" ] || { echo "the window run wrote no structure numbers (exit $STATUS)" >&2; exit 1; }
+echo "measured structure (tree $TREE, milliseconds): $(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$STRUCT")"
 read -r PEAK RIVAL ENGINES < "$SEEN"
 echo "measured (tree $TREE): $(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$OUT")"
 echo "measured: engine memory at its highest ${PEAK} kB; processes of the window holding a Red Hat Java server: ${RIVAL}; engine processes: ${ENGINES}"

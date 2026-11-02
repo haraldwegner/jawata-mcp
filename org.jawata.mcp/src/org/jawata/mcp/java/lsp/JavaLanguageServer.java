@@ -276,6 +276,17 @@ public final class JavaLanguageServer {
             Map.of("firstTriggerCharacter", "}", "moreTriggerCharacter", List.of(";", "\n")), editing::onTypeFormatting);
         requests.register("textDocument/formatting", "documentFormattingProvider", true, editing::formatting);
         requests.register("textDocument/rangeFormatting", "documentRangeFormattingProvider", true, editing::rangeFormatting);
+        LspStructure structure = new LspStructure(this::viewOf);
+        requests.register("textDocument/foldingRange", "foldingRangeProvider", true, structure::foldingRange);
+        requests.register("textDocument/selectionRange", "selectionRangeProvider", true, structure::selectionRange);
+        LspColour colour = new LspColour(this::viewOf);
+        requests.register("textDocument/semanticTokens/full", "semanticTokensProvider",
+            Map.of("legend", LspColour.legend(), "full", true, "range", true), colour::full);
+        requests.register("textDocument/semanticTokens/range", null, null, colour::range);
+        LspHints hints = new LspHints(tools, caller, this::viewOf);
+        requests.register("textDocument/inlayHint", "inlayHintProvider", true, hints::inlayHint);
+        requests.register("textDocument/codeLens", "codeLensProvider", Map.of("resolveProvider", true), hints::codeLens);
+        requests.register("codeLens/resolve", null, null, hints::resolveLens);
     }
 
     /** Whether the editor has this file open with text that is not saved. */
