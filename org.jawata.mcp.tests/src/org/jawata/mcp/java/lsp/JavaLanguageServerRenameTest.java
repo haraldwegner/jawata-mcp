@@ -158,6 +158,14 @@ class JavaLanguageServerRenameTest {
         assertTrue(rename != null, "the rename operation is among the document changes: " + edit);
         assertTrue(rename.path("oldUri").asText().endsWith("HelloWorld.java"), rename.toString());
         assertTrue(rename.path("newUri").asText().endsWith("Greeting.java"), rename.toString());
+        String declared = null;
+        for (JsonNode change : documents) {
+            if (change.path("textDocument").path("uri").asText().equals(hello.toUri().toString())) {
+                declared = applied(text, change.path("edits"));
+            }
+        }
+        assertTrue(declared != null && declared.contains("public class Greeting") && declared.contains("public Greeting()"),
+            "the type and its constructors take the new name in the file the editor then renames: " + declared);
     }
 
     private static final String ADD_AS_TYPED = "lastResult   =   a+b ;";
@@ -290,5 +298,73 @@ class JavaLanguageServerRenameTest {
         JsonNode actions = session.ask("textDocument/codeAction", codeActionsAt(file, lineOf(PROBLEM_FILE, "new ArrayList"), List.of()));
 
         assertEquals(0, actions.size(), actions.toString());
+    }
+
+    /** A copy of the tree this test is free to change, with a session over it; the folder of the example package. */
+    private Path copiedTree() throws Exception {
+        service = helper.loadProjectCopy("simple-maven");
+        session = new LspSession(service, "file-operation-test");
+        return service.getProjectRoot().resolve("src/main/java/com/example");
+    }
+
+    private static Map<String, Object> willRename(Path from, Path to) {
+        return Map.of("files", List.of(Map.of("oldUri", from.toUri().toString(), "newUri", to.toUri().toString())));
+    }
+
+    @Test
+    @DisplayName("renaming a Java file in its folder answers the rename of its type, and no rename of the file, which the editor does itself")
+    void renamingAFileRenamesItsType() throws Exception {
+        Path folder = copiedTree();
+        Path hello = folder.resolve("HelloWorld.java");
+
+        JsonNode edit = session.ask("workspace/willRenameFiles", willRename(hello, folder.resolve("Greeting.java")));
+
+        String after = applied(Files.readString(hello), edit.path("changes").get(hello.toUri().toString()));
+        assertTrue(after.contains("class Greeting"), after);
+        assertTrue(!edit.has("documentChanges"), "the editor renames the file itself: " + edit);
+    }
+
+    @Test
+    @DisplayName("moving a Java file to another folder of its source root answers the package change, and the imports of the files that use it")
+    void movingAFileMovesItsType() throws Exception {
+        Path folder = copiedTree();
+        Path calculator = folder.resolve("Calculator.java");
+
+        JsonNode edit = session.ask("workspace/willRenameFiles", willRename(calculator, folder.resolve("util").resolve("Calculator.java")));
+
+        JsonNode changes = edit.path("changes");
+        String moved = applied(Files.readString(calculator), changes.get(calculator.toUri().toString()));
+        assertTrue(moved.contains("package com.example.util;"), moved);
+        changes.fieldNames().forEachRemaining(uri -> {
+            if (!uri.equals(calculator.toUri().toString())) {
+                try {
+                    assertTrue(applied(Files.readString(Path.of(java.net.URI.create(uri))), changes.get(uri)).contains("com.example.util.Calculator"), uri);
+                } catch (java.io.IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("a file operation that would change a file with unsaved editor text is refused, naming that file")
+    void aFileOperationOverUnsavedTextIsRefused() throws Exception {
+        Path folder = copiedTree();
+        Path calculator = folder.resolve("Calculator.java");
+        session.open(calculator, Files.readString(calculator) + "\n// typed and not saved\n");
+
+        String message = session.refusalOf("workspace/willRenameFiles", willRename(calculator, folder.resolve("util").resolve("Calculator.java")));
+
+        assertTrue(message.contains("Calculator.java") && message.contains("unsaved"), message);
+    }
+
+    @Test
+    @DisplayName("a file that is not Java changes no code")
+    void aFileThatIsNotJavaChangesNoCode() throws Exception {
+        Path folder = copiedTree();
+
+        JsonNode edit = session.ask("workspace/willRenameFiles", willRename(folder.resolve("notes.txt"), folder.resolve("memo.txt")));
+
+        assertTrue(edit.isNull(), edit.toString());
     }
 }

@@ -104,30 +104,20 @@ final class LspEditing {
         }
         JsonNode data = JSON.valueToTree(response.getData());
         Map<String, List<Object>> changes = new LinkedHashMap<>();
-        List<Object> documents = new ArrayList<>();
-        for (JsonNode file : data.path("edits")) {
-            Path path = Path.of(file.path("filePath").asText());
-            String uri = path.toUri().toString();
-            if (unsaved.test(uri)) {
-                throw new IllegalStateException("The rename changes " + path.getFileName() + ", which has unsaved text in the editor: "
-                    + "save or close it first. Nothing was changed.");
-            }
-            List<Object> textEdits = new ArrayList<>();
-            for (JsonNode edit : file.path("edits")) {
-                textEdits.add(Map.of("range", rangeOf(edit), "newText", edit.path("newText").asText()));
-            }
-            changes.put(uri, textEdits);
-            documents.add(Map.of("textDocument", Map.of("uri", uri), "edits", textEdits));
-        }
+        addStaged(response, changes, "rename");
         List<Object> renames = new ArrayList<>();
         for (JsonNode rename : data.path("fileRenames")) {
-            renames.add(Map.of("kind", "rename", "oldUri", Path.of(rename.path("from").asText()).toUri().toString(),
-                "newUri", Path.of(rename.path("to").asText()).toUri().toString()));
+            Path from = Path.of(rename.path("from").asText());
+            Path to = Path.of(rename.path("to").asText());
+            addDeclarationEdits(from, to, changes, "rename");
+            renames.add(Map.of("kind", "rename", "oldUri", from.toUri().toString(), "newUri", to.toUri().toString()));
         }
         if (renames.isEmpty()) {
             return Map.of("changes", changes);
         }
         // a file renamed with its type: the text is edited where it is, then the file is renamed
+        List<Object> documents = new ArrayList<>();
+        changes.forEach((uri, edits) -> documents.add(Map.of("textDocument", Map.of("uri", uri), "edits", edits)));
         documents.addAll(renames);
         return Map.of("documentChanges", documents);
     }
@@ -282,6 +272,158 @@ final class LspEditing {
         }
         if (!changes.isEmpty()) {
             actions.add(Map.of("title", "Organize imports", "kind", "source.organizeImports", "edit", Map.of("changes", changes)));
+        }
+    }
+
+    /**
+     * What the editor changes before it renames or moves Java files, so the code still compiles afterwards: a file renamed in its folder
+     * renames its type, and a file moved to another folder of its source root moves its type to the package that folder names. The
+     * editor performs the file operation itself, so the answer carries the text edits only. A change to a file with unsaved editor text
+     * is refused, naming that file.
+     */
+    Object willRenameFiles(JsonNode params) throws ToolNotFoundException {
+        Map<String, List<Object>> changes = new LinkedHashMap<>();
+        for (JsonNode pair : params.path("files")) {
+            String oldUri = pair.path("oldUri").asText();
+            Path from = pathOf(oldUri);
+            Path to = pathOf(pair.path("newUri").asText());
+            ICompilationUnit unit = from.toString().endsWith(".java") && to.toString().endsWith(".java") ? unitOf.apply(oldUri) : null;
+            if (unit != null) {
+                addChangeFor(unit, from, to, changes);
+            }
+        }
+        return changes.isEmpty() ? null : Map.of("changes", changes);
+    }
+
+    /**
+     * Adds to {@code changes} what moving {@code from} to {@code to} does to the code: the gate's staged edits for the other files, and
+     * the edits to the file itself that its own rename or move would make but the editor's does not.
+     */
+    private void addChangeFor(ICompilationUnit unit, Path from, Path to, Map<String, List<Object>> changes) throws ToolNotFoundException {
+        try {
+            org.eclipse.jdt.core.IType type = unit.findPrimaryType();
+            if (type == null) {
+                return;
+            }
+            org.eclipse.jdt.core.ISourceRange name = type.getNameRange();
+            JavaRanges.Range at = JavaRanges.linesOf(unit.getSource()).span(name.getOffset(), name.getLength());
+            ObjectNode arguments = JSON.createObjectNode().put("filePath", from.toString()).put("line", at.line()).put("column", at.column())
+                .put("auto_apply", false).put("edits", true);
+            if (from.getParent().equals(to.getParent())) {
+                String newName = to.getFileName().toString().replaceFirst("\\.java$", "");
+                if (newName.equals(type.getElementName())) {
+                    return;
+                }
+                addStaged(stagedBy("rename_symbol", arguments.put("newName", newName), from), changes, "file operation");
+                addDeclarationEdits(from, to, changes, "file operation");
+            } else {
+                String target = packageOf(unit, to.getParent());
+                if (target == null) {
+                    return;
+                }
+                addStaged(stagedBy("move", arguments.put("kind", "class").put("targetPackage", target), from), changes, "file operation");
+                addPackageEdit(unit, from, target, changes);
+            }
+        } catch (org.eclipse.jdt.core.JavaModelException e) {
+            throw new IllegalStateException("the file could not be read: " + e.getMessage(), e);
+        }
+    }
+
+    private ToolResponse stagedBy(String tool, ObjectNode arguments, Path file) throws ToolNotFoundException {
+        ToolResponse staged = tools.callTool(tool, arguments, caller);
+        if (!staged.isSuccess()) {
+            throw new IllegalStateException("The code for " + file.getFileName() + " could not be changed along with it: " + staged);
+        }
+        return staged;
+    }
+
+    /**
+     * A file renamed with its type: the type and its constructors take the new name. The engine's own rename leaves these to the file
+     * rename, which renames the type itself; the editor's file rename does not, so the edits are made here, in the file as it is.
+     */
+    private void addDeclarationEdits(Path from, Path to, Map<String, List<Object>> changes, String what) {
+        String uri = from.toUri().toString();
+        ICompilationUnit unit = unitOf.apply(uri);
+        if (unit == null) {
+            return;
+        }
+        refuseIfUnsaved(uri, from, what);
+        try {
+            org.eclipse.jdt.core.IType type = unit.findPrimaryType();
+            if (type == null) {
+                return;
+            }
+            String newName = to.getFileName().toString().replaceFirst("\\.java$", "");
+            String text = unit.getSource();
+            JavaRanges.Lines lines = JavaRanges.linesOf(text);
+            List<Object> edits = changes.computeIfAbsent(uri, key -> new ArrayList<>());
+            org.eclipse.jdt.core.ISourceRange name = type.getNameRange();
+            add(edits, text, lines, name.getOffset(), name.getLength(), newName);
+            for (org.eclipse.jdt.core.IMethod method : type.getMethods()) {
+                if (method.isConstructor()) {
+                    org.eclipse.jdt.core.ISourceRange at = method.getNameRange();
+                    add(edits, text, lines, at.getOffset(), at.getLength(), newName);
+                }
+            }
+        } catch (org.eclipse.jdt.core.JavaModelException e) {
+            throw new IllegalStateException("the file could not be read: " + e.getMessage(), e);
+        }
+    }
+
+    /** A file moved to another package folder: its package declaration names the new package, which the editor's file move leaves as it was. */
+    private void addPackageEdit(ICompilationUnit unit, Path from, String target, Map<String, List<Object>> changes) {
+        String uri = from.toUri().toString();
+        refuseIfUnsaved(uri, from, "file operation");
+        try {
+            String text = unit.getSource();
+            JavaRanges.Lines lines = JavaRanges.linesOf(text);
+            List<Object> edits = changes.computeIfAbsent(uri, key -> new ArrayList<>());
+            org.eclipse.jdt.core.IPackageDeclaration[] declared = unit.getPackageDeclarations();
+            if (declared.length == 0) {
+                add(edits, text, lines, 0, 0, "package " + target + ";\n\n");
+                return;
+            }
+            org.eclipse.jdt.core.ISourceRange declaration = declared[0].getSourceRange();
+            int name = text.indexOf(declared[0].getElementName(), declaration.getOffset() + "package".length());
+            add(edits, text, lines, name, declared[0].getElementName().length(), target);
+        } catch (org.eclipse.jdt.core.JavaModelException e) {
+            throw new IllegalStateException("the file could not be read: " + e.getMessage(), e);
+        }
+    }
+
+    /** Refuses a change to a file the editor holds unsaved text for, naming the file, because the positions answered are in the saved text. */
+    private void refuseIfUnsaved(String uri, Path file, String what) {
+        if (unsaved.test(uri)) {
+            throw new IllegalStateException("The " + what + " changes " + file.getFileName() + ", which has unsaved text in the editor: "
+                + "save or close it first. Nothing was changed.");
+        }
+    }
+
+    /** The package a folder names under the unit's source root; null when the folder is outside that root or is the root itself. */
+    private static String packageOf(ICompilationUnit unit, Path folder) {
+        org.eclipse.jdt.core.IJavaElement root = unit.getAncestor(org.eclipse.jdt.core.IJavaElement.PACKAGE_FRAGMENT_ROOT);
+        if (root == null || root.getResource() == null || root.getResource().getLocation() == null) {
+            return null;
+        }
+        Path rootPath = root.getResource().getLocation().toFile().toPath();
+        if (!folder.startsWith(rootPath) || folder.equals(rootPath)) {
+            return null;
+        }
+        List<String> names = new ArrayList<>();
+        rootPath.relativize(folder).forEach(part -> names.add(part.toString()));
+        return String.join(".", names);
+    }
+
+    /** Adds the staged edits of a change to the edits answered, refusing when one of the files has unsaved editor text. */
+    private void addStaged(ToolResponse staged, Map<String, List<Object>> changes, String what) {
+        for (JsonNode file : JSON.valueToTree(staged.getData()).path("edits")) {
+            Path path = Path.of(file.path("filePath").asText());
+            String uri = path.toUri().toString();
+            refuseIfUnsaved(uri, path, what);
+            List<Object> edits = changes.computeIfAbsent(uri, key -> new ArrayList<>());
+            for (JsonNode edit : file.path("edits")) {
+                edits.add(Map.of("range", rangeOf(edit), "newText", edit.path("newText").asText()));
+            }
         }
     }
 

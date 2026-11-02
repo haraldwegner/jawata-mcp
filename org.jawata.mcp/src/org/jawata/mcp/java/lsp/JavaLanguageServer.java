@@ -271,6 +271,7 @@ public final class JavaLanguageServer {
         requests.register("textDocument/rename", "renameProvider", Map.of("prepareProvider", true), editing::rename);
         requests.register("textDocument/codeAction", "codeActionProvider",
             Map.of("codeActionKinds", List.of("quickfix", "source.organizeImports")), editing::codeAction);
+        requests.register("workspace/willRenameFiles", null, null, editing::willRenameFiles); // announced under workspace.fileOperations, which initializeResult owns
         requests.register("textDocument/formatting", "documentFormattingProvider", true, editing::formatting);
         requests.register("textDocument/rangeFormatting", "documentRangeFormattingProvider", true, editing::rangeFormatting);
     }
@@ -396,7 +397,9 @@ public final class JavaLanguageServer {
         sync.put("change", 2); // incremental
         Map<String, Object> capabilities = new LinkedHashMap<>();
         capabilities.put("textDocumentSync", sync);
-        capabilities.put("workspace", Map.of("workspaceFolders", Map.of("supported", true, "changeNotifications", true)));
+        capabilities.put("workspace", Map.of(
+            "workspaceFolders", Map.of("supported", true, "changeNotifications", true),
+            "fileOperations", Map.of("willRename", Map.of("filters", List.of(Map.of("pattern", Map.of("glob", "**/*.java")))))));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("capabilities", capabilities);
         result.put("serverInfo", Map.of("name", "jawata"));
