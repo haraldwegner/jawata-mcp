@@ -54,6 +54,8 @@ case "$TREE" in
         RENAME_SYMBOL="com.example.Calculator#add"
         LOAD_PATHS="$WS/tree"
         FOLDER="$WS/tree"
+        SCRATCH_DIR="src/main/java/com/example"
+        SCRATCH_PACKAGE="com.example"
         ;;
     plugins)
         mkdir -p "$WS/tree"
@@ -62,9 +64,18 @@ case "$TREE" in
         RENAME_SYMBOL="com.example.a.Caller#hello"
         LOAD_PATHS="$WS/tree/pde-bundle-b:$WS/tree/pde-bundle-a"
         FOLDER="$WS/tree"
+        SCRATCH_DIR="pde-bundle-a/src/com/example/a"
+        SCRATCH_PACKAGE="com.example.a"
         ;;
     *) echo "unknown tree '$TREE': maven or plugins" >&2; exit 2 ;;
 esac
+
+# 28h S16c: the files the refactoring window test works on, written into the scratch copy before the engine loads it, so the engine holds them:
+# one with an unresolved name and an import nothing uses (code actions), one to rename and one to move (file operations)
+SCRATCH="$FOLDER/$SCRATCH_DIR"
+printf 'package %s;\n\nimport java.util.List;\n\npublic class HasAProblem {\n    Object made = new ArrayList<String>();\n}\n' "$SCRATCH_PACKAGE" > "$SCRATCH/HasAProblem.java"
+printf 'package %s;\n\npublic class Scratch {\n    public Scratch() {\n    }\n}\n' "$SCRATCH_PACKAGE" > "$SCRATCH/Scratch.java"
+printf 'package %s;\n\npublic class Mover {\n}\n' "$SCRATCH_PACKAGE" > "$SCRATCH/Mover.java"
 
 VECTOR=""
 java --add-modules jdk.incubator.vector -version >/dev/null 2>&1 && VECTOR="--add-modules jdk.incubator.vector"
@@ -137,6 +148,7 @@ fi
 cd "$EXT" || exit 2
 JAWATA_LIVE_TREE="$TREE" JAWATA_LIVE_MCP_URL="http://127.0.0.1:$PORT" JAWATA_LIVE_MCP_KEY="$TOKEN" JAWATA_LIVE_RENAME_SYMBOL="$RENAME_SYMBOL" \
 JAWATA_LIVE_WORKSPACE="$FOLDER" JAWATA_LIVE_SERVER="$SERVER" JAWATA_LIVE_FILE="$FILE" JAWATA_LIVE_OUT="$OUT" \
+JAWATA_LIVE_SCRATCH_DIR="$SCRATCH_DIR" JAWATA_LIVE_SCRATCH_PACKAGE="$SCRATCH_PACKAGE" \
     JAWATA_LIVE_USER_DATA="$WS/profile" xvfb-run -a npx vscode-test --config .vscode-test.live.mjs
 STATUS=$?
 sleep 2
@@ -146,6 +158,10 @@ sleep 2
 NAV="$OUT.navigation.$TREE.json"
 [ -f "$NAV" ] || { echo "the window run wrote no navigation numbers (exit $STATUS)" >&2; exit 1; }
 echo "measured navigation (tree $TREE, milliseconds): $(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$NAV")"
+# 28h S16c: the refactoring test writes the milliseconds rename, formatting, code actions and file operations took
+REF="$OUT.refactoring.$TREE.json"
+[ -f "$REF" ] || { echo "the window run wrote no refactoring numbers (exit $STATUS)" >&2; exit 1; }
+echo "measured refactoring (tree $TREE, milliseconds): $(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$REF")"
 read -r PEAK RIVAL ENGINES < "$SEEN"
 echo "measured (tree $TREE): $(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))))' "$OUT")"
 echo "measured: engine memory at its highest ${PEAK} kB; processes of the window holding a Red Hat Java server: ${RIVAL}; engine processes: ${ENGINES}"
@@ -153,4 +169,4 @@ if [ "$STATUS" -ne 0 ] || [ "${RIVAL:-1}" -ne 0 ] || [ "${ENGINES:-0}" -ne 1 ]; 
     echo "FAIL  the window test exited $STATUS, rival servers $RIVAL (expected 0), engine processes $ENGINES (expected 1)" >&2
     exit 1
 fi
-echo "ok    the window showed the error at its characters and every navigation feature over the typed text, and the process list holds one engine and no second Java server"
+echo "ok    the window showed the error at its characters, every navigation feature over the typed text, and rename, formatting, code actions and file operations applied by the editor, and the process list holds one engine and no second Java server"
