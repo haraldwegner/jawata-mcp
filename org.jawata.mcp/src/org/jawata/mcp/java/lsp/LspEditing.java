@@ -132,6 +132,18 @@ final class LspEditing {
         return formatted(params.path("textDocument").path("uri").asText(), params.path("range"));
     }
 
+    /** The layout of the line just typed: the line a closing brace or a semicolon ends, or the one a new line follows. */
+    Object onTypeFormatting(JsonNode params) {
+        int line = params.path("position").path("line").asInt();
+        if ("\n".equals(params.path("ch").asText()) && line > 0) {
+            line--;
+        }
+        ObjectNode range = JSON.createObjectNode();
+        range.putObject("start").put("line", line).put("character", 0);
+        range.putObject("end").put("line", line + 1).put("character", 0);
+        return formatted(params.path("textDocument").path("uri").asText(), range);
+    }
+
     private List<Object> formatted(String uri, JsonNode range) {
         ICompilationUnit unit = unitOf.apply(uri);
         if (unit == null) {

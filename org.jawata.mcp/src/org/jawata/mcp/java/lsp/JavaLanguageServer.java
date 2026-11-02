@@ -272,6 +272,8 @@ public final class JavaLanguageServer {
         requests.register("textDocument/codeAction", "codeActionProvider",
             Map.of("codeActionKinds", List.of("quickfix", "source.organizeImports")), editing::codeAction);
         requests.register("workspace/willRenameFiles", null, null, editing::willRenameFiles); // announced under workspace.fileOperations, which initializeResult owns
+        requests.register("textDocument/onTypeFormatting", "documentOnTypeFormattingProvider",
+            Map.of("firstTriggerCharacter", "}", "moreTriggerCharacter", List.of(";", "\n")), editing::onTypeFormatting);
         requests.register("textDocument/formatting", "documentFormattingProvider", true, editing::formatting);
         requests.register("textDocument/rangeFormatting", "documentRangeFormattingProvider", true, editing::rangeFormatting);
     }

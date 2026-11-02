@@ -218,6 +218,25 @@ class JavaLanguageServerRenameTest {
         assertTrue(after.contains("lastResult=a*b;"), "the multiply line is outside the range and stays as typed: " + after);
     }
 
+    @Test
+    @DisplayName("on-type formatting lays out the line just typed and leaves the other lines as typed")
+    void onTypeFormattingTouchesOnlyTheLineJustTyped() throws Exception {
+        start();
+        Path calculator = source("Calculator.java");
+        String typed = typedBadly(Files.readString(calculator));
+        session.open(calculator, typed);
+        int line = lineOf(typed, ADD_AS_TYPED);
+        Map<String, Object> params = new HashMap<>(formattingOf(calculator));
+        params.put("position", Map.of("line", line, "character", typed.split("\n", -1)[line].length()));
+        params.put("ch", ";");
+
+        JsonNode edits = session.ask("textDocument/onTypeFormatting", params);
+
+        String after = applied(typed, edits);
+        assertTrue(after.contains("lastResult = a + b;"), after);
+        assertTrue(after.contains("lastResult=a*b;"), "the multiply line was not just typed and stays as typed: " + after);
+    }
+
     private static final String PROBLEM_FILE = """
         package com.example;
 
