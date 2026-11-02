@@ -270,7 +270,7 @@ public final class JavaLanguageServer {
         requests.register("textDocument/prepareRename", "renameProvider", Map.of("prepareProvider", true), editing::prepareRename);
         requests.register("textDocument/rename", "renameProvider", Map.of("prepareProvider", true), editing::rename);
         requests.register("textDocument/codeAction", "codeActionProvider",
-            Map.of("codeActionKinds", List.of("quickfix", "source.organizeImports")), editing::codeAction);
+            Map.of("codeActionKinds", List.of("quickfix", "source.organizeImports", "refactor.extract")), editing::codeAction);
         requests.register("workspace/willRenameFiles", null, null, editing::willRenameFiles); // announced under workspace.fileOperations, which initializeResult owns
         requests.register("textDocument/onTypeFormatting", "documentOnTypeFormattingProvider",
             Map.of("firstTriggerCharacter", "}", "moreTriggerCharacter", List.of(";", "\n")), editing::onTypeFormatting);

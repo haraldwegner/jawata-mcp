@@ -292,7 +292,14 @@ class JavaLanguageServerRenameTest {
         JsonNode organize = actionOfKind(actions, "source.organizeImports", "Organize");
         assertTrue(organize != null, "imports that are not organized have an action: " + actions);
         String organized = applied(PROBLEM_FILE, organize.path("edit").path("changes").get(file.toUri().toString()));
-        assertTrue(!organized.contains("import java.util.List;"), organized);
+        assertTrue(!organized.contains("import java.util.List;") && organized.contains("import java.util.ArrayList;"), organized);
+        Files.writeString(file, fixed);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        JsonNode compiled = mapper.valueToTree(new org.jawata.mcp.tools.CompileWorkspaceTool(() -> service,
+            () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service))
+            .execute(mapper.createObjectNode()).getData());
+        assertEquals(0, compiled.path("errorCount").asInt(), "the file with the fix compiles: " + compiled);
     }
 
     @Test
@@ -383,5 +390,70 @@ class JavaLanguageServerRenameTest {
         JsonNode edit = session.ask("workspace/willRenameFiles", willRename(folder.resolve("notes.txt"), folder.resolve("memo.txt")));
 
         assertTrue(edit.isNull(), edit.toString());
+    }
+
+    @Test
+    @DisplayName("formatting answers what the format tool writes: the editor's formatted text is the file the tool formats from the same text")
+    void formattingEqualsWhatTheFormatToolWrites() throws Exception {
+        Path folder = copiedTree();
+        Path calculator = folder.resolve("Calculator.java");
+        String typed = typedBadly(Files.readString(calculator));
+        Files.writeString(calculator, typed);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode arguments = mapper.createObjectNode();
+        arguments.putObject("scope").put("kind", "file").put("filePath", calculator.toString());
+        assertTrue(new org.jawata.mcp.tools.workflow.FormatTool(() -> service).execute(arguments).isSuccess(), "the format tool formats the file");
+        String byTool = Files.readString(calculator);
+        assertTrue(!byTool.equals(typed), "the tool changed the file");
+        Files.writeString(calculator, typed);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        session.open(calculator, typed);
+
+        JsonNode edits = session.ask("textDocument/formatting", formattingOf(calculator));
+
+        assertEquals(byTool, applied(typed, edits), "the editor's text is the tool's text");
+    }
+
+    @Test
+    @DisplayName("renaming a Java file in its folder over unsaved text is refused, naming the file")
+    void aFileRenameOverUnsavedTextIsRefused() throws Exception {
+        Path folder = copiedTree();
+        Path hello = folder.resolve("HelloWorld.java");
+        session.open(hello, Files.readString(hello) + "\n// typed and not saved\n");
+
+        String message = session.refusalOf("workspace/willRenameFiles", willRename(hello, folder.resolve("Greeting.java")));
+
+        assertTrue(message.contains("HelloWorld.java") && message.contains("unsaved"), message);
+    }
+
+    @Test
+    @DisplayName("a selection is offered the extractions of the engine, as the edits that make them")
+    void aSelectionIsOfferedTheExtractions() throws Exception {
+        Path folder = copiedTree();
+        Path calculator = folder.resolve("Calculator.java");
+        String text = Files.readString(calculator);
+        int line = lineOf(text, "lastResult = a + b;");
+        String lineText = text.split("\n", -1)[line];
+        int expression = lineText.indexOf("a + b");
+        int statement = lineText.indexOf("lastResult");
+
+        JsonNode variableActions = session.ask("textDocument/codeAction", selection(calculator, line, expression, line, expression + "a + b".length()));
+        JsonNode methodActions = session.ask("textDocument/codeAction", selection(calculator, line, statement, line, lineText.length()));
+
+        JsonNode variable = actionOfKind(variableActions, "refactor.extract", "local variable");
+        assertTrue(variable != null, "the expression can be extracted to a variable: " + variableActions);
+        String withVariable = applied(text, variable.path("edit").path("changes").get(calculator.toUri().toString()));
+        assertTrue(!withVariable.contains("lastResult = a + b;") && withVariable.lines().anyMatch(l -> l.contains("int ") && l.contains("= a + b;")), withVariable);
+        JsonNode method = actionOfKind(methodActions, "refactor.extract", "method");
+        assertTrue(method != null, "the statement can be extracted to a method: " + methodActions);
+        String withMethod = applied(text, method.path("edit").path("changes").get(calculator.toUri().toString()));
+        assertTrue(withMethod.split("extracted\\(", -1).length >= 3, "the call and the new method: " + withMethod);
+    }
+
+    private static Map<String, Object> selection(Path file, int line, int from, int endLine, int to) {
+        return Map.of("textDocument", Map.of("uri", file.toUri().toString()),
+            "range", Map.of("start", Map.of("line", line, "character", from), "end", Map.of("line", endLine, "character", to)),
+            "context", Map.of("diagnostics", List.of(), "only", List.of("refactor.extract")));
     }
 }

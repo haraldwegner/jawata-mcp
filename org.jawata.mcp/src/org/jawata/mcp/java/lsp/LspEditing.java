@@ -20,22 +20,28 @@ import org.jawata.mcp.java.JavaRanges;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.SourceFormatting;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
- * The language server's editing requests (Sprint 28h, S16c): rename and the check before it. A rename is the rename the agent gets:
- * the gate stages {@code rename_symbol} with {@code edits: true}, and the answer's edits are translated into the protocol's workspace
- * edit. Nothing is written by the server, and the editor applies the edit to its own buffers.
+ * The language server's editing requests (Sprint 28h, S16c): rename and the check before it, formatting (whole, range, on type), code
+ * actions (quick fixes, organize imports, extractions) and the code changes a file rename or move implies. A rename is the rename the
+ * agent gets: the gate stages {@code rename_symbol} with {@code edits: true}, and the answer's edits are translated into the protocol's
+ * workspace edit; the other refactorings are asked the same way. Nothing is written by the server, and the editor applies the edits to
+ * its own buffers.
  *
- * <p>A rename that would change a file the editor has open with unsaved text is refused naming that file: the staged edits are
- * positions in the file's saved text, so applying them over the typed text would land in the wrong places. The person saves or closes
- * the file first, the same rule the write guard applies when a tool writes disk.</p>
+ * <p>A rename or file operation that would change a file the editor has open with unsaved text is refused naming that file, and code
+ * actions are not offered for such a file: the staged edits are positions in the file's saved text, so applying them over the typed
+ * text would land in the wrong places. The person saves or closes the file first, the same rule the write guard applies when a tool
+ * writes disk. Formatting needs no such rule, because it is computed on the editor's own text.</p>
  */
 final class LspEditing {
 
+    private static final Logger log = LoggerFactory.getLogger(LspEditing.class);
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final ToolCalls tools;
@@ -214,7 +220,38 @@ final class LspEditing {
         if (wanted(only, "source.organizeImports")) {
             organizeImports(filePath, actions);
         }
+        JsonNode range = params.path("range");
+        if (wanted(only, "refactor.extract") && !range.path("start").equals(range.path("end"))) {
+            extractions(filePath, range, actions);
+        }
         return actions;
+    }
+
+    /** What the engine's extract can do with the selected text, each as the edit it stages; a selection it cannot extract offers nothing. */
+    private void extractions(String filePath, JsonNode range, List<Object> actions) throws ToolNotFoundException {
+        String[][] kinds = {{"variable", "Extract to local variable"}, {"method", "Extract to method"}};
+        for (String[] kind : kinds) {
+            ObjectNode arguments = JSON.createObjectNode().put("kind", kind[0]).put("filePath", filePath)
+                .put("startLine", range.path("start").path("line").asInt()).put("startColumn", range.path("start").path("character").asInt())
+                .put("endLine", range.path("end").path("line").asInt()).put("endColumn", range.path("end").path("character").asInt())
+                .put("auto_apply", false).put("edits", true);
+            if (kind[0].equals("method")) {
+                arguments.put("methodName", "extracted");
+            }
+            ToolResponse staged = tools.callTool("extract", arguments, caller);
+            if (!staged.isSuccess()) {
+                continue;
+            }
+            Map<String, List<Object>> changes = new LinkedHashMap<>();
+            try {
+                addStaged(staged, changes, "refactoring");
+            } catch (IllegalStateException e) {
+                continue; // another file the refactoring would change has unsaved text: no action, rather than an error on every cursor move
+            }
+            if (!changes.isEmpty()) {
+                actions.add(Map.of("title", kind[1], "kind", "refactor.extract", "edit", Map.of("changes", changes)));
+            }
+        }
     }
 
     /** Whether the editor asked for this kind of action, or for every kind. */
@@ -300,8 +337,11 @@ final class LspEditing {
             Path from = pathOf(oldUri);
             Path to = pathOf(pair.path("newUri").asText());
             ICompilationUnit unit = from.toString().endsWith(".java") && to.toString().endsWith(".java") ? unitOf.apply(oldUri) : null;
+            log.info("willRenameFiles: {} to {}", from, to);
             if (unit != null) {
                 addChangeFor(unit, from, to, changes);
+            } else if (from.toString().endsWith(".java")) {
+                log.warn("willRenameFiles: the model holds no unit for {}, so no code is changed along with it", from);
             }
         }
         return changes.isEmpty() ? null : Map.of("changes", changes);
@@ -313,8 +353,10 @@ final class LspEditing {
      */
     private void addChangeFor(ICompilationUnit unit, Path from, Path to, Map<String, List<Object>> changes) throws ToolNotFoundException {
         try {
-            org.eclipse.jdt.core.IType type = unit.findPrimaryType();
+            org.eclipse.jdt.core.IType type = primaryTypeOf(unit);
             if (type == null) {
+                log.warn("willRenameFiles: {} has no primary type in the model (exists {}, working copy {}, file on disk {}, text of {} characters, types {}), so no code is changed along with it",
+                    from, unit.exists(), unit.isWorkingCopy(), java.nio.file.Files.exists(from), unit.getSource().length(), unit.getTypes().length);
                 return;
             }
             org.eclipse.jdt.core.ISourceRange name = type.getNameRange();
@@ -326,6 +368,7 @@ final class LspEditing {
                 if (newName.equals(type.getElementName())) {
                     return;
                 }
+                refuseIfUnsaved(from.toUri().toString(), from, "file operation");
                 addStaged(stagedBy("rename_symbol", arguments.put("newName", newName), from), changes, "file operation");
                 addDeclarationEdits(from, to, changes, "file operation");
             } else {
@@ -333,6 +376,7 @@ final class LspEditing {
                 if (target == null) {
                     return;
                 }
+                refuseIfUnsaved(from.toUri().toString(), from, "file operation");
                 addStaged(stagedBy("move", arguments.put("kind", "class").put("targetPackage", target), from), changes, "file operation");
                 addPackageEdit(unit, from, target, changes);
             }
@@ -361,7 +405,7 @@ final class LspEditing {
         }
         refuseIfUnsaved(uri, from, what);
         try {
-            org.eclipse.jdt.core.IType type = unit.findPrimaryType();
+            org.eclipse.jdt.core.IType type = primaryTypeOf(unit);
             if (type == null) {
                 return;
             }
@@ -409,6 +453,27 @@ final class LspEditing {
             throw new IllegalStateException("The " + what + " changes " + file.getFileName() + ", which has unsaved text in the editor: "
                 + "save or close it first. Nothing was changed.");
         }
+    }
+
+    /**
+     * The type the unit is named for. While the engine syncs or builds the project, the model can answer "none" for a unit that has one,
+     * for a moment; the request waits for it up to two seconds rather than answer that nothing needs to change.
+     */
+    private static org.eclipse.jdt.core.IType primaryTypeOf(ICompilationUnit unit) throws org.eclipse.jdt.core.JavaModelException {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            org.eclipse.jdt.core.IType type = unit.findPrimaryType();
+            if (type != null) {
+                return type;
+            }
+            unit.close(); // a request cancelled while JDT parsed can leave an empty structure behind; closing makes the next ask parse again
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+        return null;
     }
 
     /** The package a folder names under the unit's source root; null when the folder is outside that root or is the root itself. */

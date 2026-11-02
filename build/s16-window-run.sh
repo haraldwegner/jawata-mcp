@@ -42,6 +42,7 @@ cleanup() {
     [ -n "$POLLER_PID" ] && kill "$POLLER_PID" 2>/dev/null
     [ -n "$RESIDENT_PID" ] && kill "$RESIDENT_PID" 2>/dev/null
     [ -n "$RESIDENT_PID" ] && wait "$RESIDENT_PID" 2>/dev/null
+    [ -n "${S16_KEEP_LOG:-}" ] && [ -f "$LOG" ] && cp "$LOG" "$S16_KEEP_LOG"   # a named run can keep the engine's log to read why a request failed
     rm -rf "$WS"
 }
 trap cleanup EXIT INT TERM HUP

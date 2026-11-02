@@ -54,7 +54,7 @@ final class LspSession {
 
     /** The doors the navigation requests are answered by, as the gate publishes them. */
     private static ToolCalls doors(JdtServiceImpl service) {
-        Map<String, Tool> byName = Map.of(
+        Map<String, Tool> byName = new java.util.HashMap<>(Map.of(
             "get_at_position", new GetAtPositionTool(() -> service),
             "go_to_definition", new GoToDefinitionTool(() -> service),
             "find_references", new FindRefsTool(() -> service),
@@ -64,7 +64,8 @@ final class LspSession {
             "rename_symbol", new RenameSymbolTool(() -> service, new RefactoringChangeCache(), () -> null),
             "quick_fix", new org.jawata.mcp.tools.QuickFixTool(() -> service),
             "organize_imports", new org.jawata.mcp.tools.OrganizeImportsTool(() -> service, new RefactoringChangeCache()),
-            "move", new org.jawata.mcp.tools.MoveTool(() -> service, new RefactoringChangeCache()));
+            "move", new org.jawata.mcp.tools.MoveTool(() -> service, new RefactoringChangeCache())));
+        byName.put("extract", new org.jawata.mcp.tools.ExtractTool(() -> service, new RefactoringChangeCache()));
         return new ToolCalls() {
             @Override
             public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {

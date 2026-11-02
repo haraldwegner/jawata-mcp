@@ -146,7 +146,7 @@ class RenameSymbolEditsTest {
 
         assertTrue(response.isSuccess(), "the rename must stage; got: " + response.getError());
         Map<String, Object> data = dataOf(response);
-        assertFalse(list(data.get("edits")).isEmpty(), "the class and its constructors are edited");
+        assertFalse(list(data.get("edits")).isEmpty(), "the places that name the type are edited; the declaration and constructors are left to the file rename the answer also carries");
         List<Map<String, Object>> renames = list(data.get("fileRenames"));
         assertNotNull(renames, "the type's file is renamed with it, and the editor must be told");
         assertEquals(1, renames.size());
