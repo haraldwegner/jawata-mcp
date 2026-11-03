@@ -229,6 +229,12 @@ printf '#!/bin/sh\nprintf "%%s\\n" "$@" > "%s/ground-argv"\necho "{\\"type\\":\\
 chmod +x "$GROUND_BIN/claude"
 export PATH="$GROUND_BIN:$PATH"
 
+# Sprint 28h, S13 (E11): a brain the engine starts over ACP. The stand-in ACP agent of the unit tests is copied here and registered under the
+# brain name `cursor` (the name the seat below declares), so the hire is started through the engine's ACP client and its plan carries the
+# seat's tool list; the seats of the checks above name `claude-code` and are unaffected. The marker HIREHANG keeps the hire open.
+cp "$(cd "$(dirname "$0")/.." && pwd)/org.jawata.mcp.tests/test-resources/acp/FakeAcpAgent.java.txt" "$WS/FakeAcpAgent.java"
+export JAWATA_AGENT_HIRE_BRAINS="{\"cursor\":{\"command\":[\"$(command -v java)\",\"$WS/FakeAcpAgent.java\"],\"env\":{\"FAKE_ACP_STATE\":\"$WS\"},\"vendor\":\"Standin\",\"model\":\"\"}}"
+
 # ============================ lifecycle 1 ====================================
 start_resident
 
@@ -453,6 +459,64 @@ if [ -e "$WS/adhoc-fired" ]; then
 else
     pass "seat-schedule CONTROL: the seat with no schedule was not hired"
 fi
+
+# --- seat-allowlist (Sprint 28h, S13, E11): the engine's choke turns away a hired session's call outside its seat's list --------------
+# A hire is held open by the stand-in ACP agent; its plan id is the session id its brain would present to the resident, read here with
+# plan_steps as the hire's issuer. Calls carrying that id as the session must be refused for a tool the seat does not list and allowed for
+# a listed tool and for the gate of the step; a call of a person's own session is the control, or a check that refused every call of
+# every session would pass.
+call_as() {   # call_as <session> <tool> <json-args> -> the tool's answer, UNESCAPED, under that session id
+    curl -s --max-time 60 -X POST "http://127.0.0.1:$PORT/mcp" \
+        -H "Authorization: Bearer $TOKEN" -H "Mcp-Session-Id: $1" \
+        -H 'Content-Type: application/json' \
+        -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",
+             \"params\":{\"name\":\"$2\",\"arguments\":$3}}" \
+        | sed 's/\\"/"/g'
+}
+printf -- '---\nname: e2e-allow\nbrain: cursor\naccepts_uncontained_writes: true\ntools: [experience]\nttl_secs: 600\n---\n\nYou are the e2e allowlist seat.\n' > "$WS/e2e-allow.md"
+( call_as "e2e-allow-issuer" hire "{\"hirer\":\"e2e\",\"seat\":\"e2e-allow\",\"seatFile\":\"$WS/e2e-allow.md\",\"brief\":\"HIREHANG\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}" > "$WS/allow-hire-answer" 2>&1 ) &
+ALLOW_HIRE_PID=$!
+ALLOW_PLAN=""
+for _ in $(seq 1 40); do
+    ALLOW_PLAN="$(call_as "e2e-allow-issuer" plan_steps '{}' | sed -n 's/.*"planId":"\([^"]*\)".*/\1/p' | head -1)"
+    [ -n "$ALLOW_PLAN" ] && break
+    sleep 1
+done
+if [ -z "$ALLOW_PLAN" ]; then
+    fail "seat-allowlist no open hire plan was found for the issuer within 40 seconds: $(head -c 300 "$WS/allow-hire-answer")"
+else
+    A_OUT="$(call_as "$ALLOW_PLAN" inspect '{"kind":"project_structure"}')"
+    case "$A_OUT" in
+        *'"code":"TOOL_NOT_ALLOWED"'*) pass "seat-allowlist a hired session's call to a tool its seat does not list is refused at the choke" ;;
+        *) fail "seat-allowlist the unlisted tool was not refused: $(printf '%s' "$A_OUT" | head -c 300)" ;;
+    esac
+    case "$A_OUT" in
+        *'"hint":"the tools it may call: experience; and health_check, the gate of its current step"'*) pass "seat-allowlist the refusal names the seat's list and the gate of its current step" ;;
+        *) fail "seat-allowlist the refusal does not name the list and the gate: $(printf '%s' "$A_OUT" | head -c 300)" ;;
+    esac
+    A_LISTED="$(call_as "$ALLOW_PLAN" experience '{"kind":"stats"}')"
+    case "$A_LISTED" in
+        *TOOL_NOT_ALLOWED*) fail "seat-allowlist CONTROL: a tool the seat lists was refused: $(printf '%s' "$A_LISTED" | head -c 300)" ;;
+        *'"total"'*) pass "seat-allowlist CONTROL: a tool the seat lists runs for the hired session" ;;
+        *) fail "seat-allowlist CONTROL: the listed tool did not answer: $(printf '%s' "$A_LISTED" | head -c 300)" ;;
+    esac
+    A_GATE="$(call_as "$ALLOW_PLAN" health_check '{}')"
+    case "$A_GATE" in
+        *TOOL_NOT_ALLOWED*) fail "seat-allowlist CONTROL: the gate of the session's current step was refused: $(printf '%s' "$A_GATE" | head -c 300)" ;;
+        *'"status"'*) pass "seat-allowlist CONTROL: the gate of the current step runs although the seat does not list it" ;;
+        *) fail "seat-allowlist CONTROL: the gate did not answer: $(printf '%s' "$A_GATE" | head -c 300)" ;;
+    esac
+    A_OTHER="$(call_as "e2e-persons-own-client" inspect '{"kind":"project_structure"}')"
+    case "$A_OTHER" in
+        *TOOL_NOT_ALLOWED*) fail "seat-allowlist CONTROL: a person's own session was narrowed: $(printf '%s' "$A_OTHER" | head -c 300)" ;;
+        *'"success":'*) pass "seat-allowlist CONTROL: a session that is no hire's keeps every tool" ;;
+        *) fail "seat-allowlist CONTROL: the person's own call did not answer: $(printf '%s' "$A_OTHER" | head -c 300)" ;;
+    esac
+fi
+# The check made its own child process, so it removes it: the held-open hire's stand-in agent (named by this run's folder) and the call that waits on it.
+pkill -f "$WS/FakeAcpAgent.java" 2>/dev/null
+kill "$ALLOW_HIRE_PID" 2>/dev/null
+wait "$ALLOW_HIRE_PID" 2>/dev/null
 
 # --- tool-count: no tool silently appeared or vanished -----------------------
 # The release-note sentence "the tool count is still N" gets its live check
