@@ -156,5 +156,26 @@ class HireEntriesTest {
         assertEquals("review the design", hire.path("task").asText());
         assertEquals("running", hire.path("state").asText());
         assertFalse(calls.get(1).has("_meta"), "a call that is not a hire was stamped: " + calls.get(1));
+        // E3: a client with no jawata view shows the hire as one execute line naming the seat and its state; the plain call keeps its own title.
+        assertEquals("execute", calls.get(0).path("kind").asText());
+        assertEquals("architect — running", calls.get(0).path("title").asText());
+        assertEquals("Read a.txt", calls.get(1).path("title").asText());
+        assertFalse(calls.get(1).has("kind"), "a call that is not a hire was given a kind: " + calls.get(1));
+    }
+
+    @Test
+    @DisplayName("a hire's level is how many hires sit above it: a root is 0, the chief engineer it hires 1, the developer under that 2; and its title names the seat, the brain and the model where known")
+    void theLevelAndTheTitleAreRead() {
+        watch.observe(withInput(hireCall("tool_call", "pm1", "pending"), "main", "pm", "run the sprint"));
+        watch.observe(withInput(hireCall("tool_call", "ce1", "pending"), "pm", "chief-engineer", "build"));
+        HireEntry developer = watch.observe(withInput(hireCall("tool_call", "d1", "pending"), "chief-engineer", "developer", "edit")).orElseThrow();
+
+        assertEquals(0, watch.entry("pm1").orElseThrow().level());
+        assertEquals(1, watch.entry("ce1").orElseThrow().level());
+        assertEquals(2, developer.level());
+        assertEquals(2, developer.toMeta().path("level").asInt());
+        HireEntry named = new HireEntry("p", "test-writer", Optional.of("claude-code"), Optional.of("sonnet"), HireEntry.RUNNING, 0, 0,
+            java.util.OptionalDouble.empty(), "t", Optional.empty());
+        assertEquals("test-writer · claude-code · sonnet — running", named.title());
     }
 }

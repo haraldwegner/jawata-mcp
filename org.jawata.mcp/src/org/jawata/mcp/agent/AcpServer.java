@@ -493,6 +493,9 @@ public final class AcpServer {
             seen.ifPresent(entry -> {
                 ObjectNode meta = forwarded.path("_meta").isObject() ? (ObjectNode) forwarded.get("_meta") : forwarded.putObject("_meta");
                 meta.set("jawata/hire", entry.toMeta());
+                // A client with no jawata view still shows each running agent as one tool-call line with its status (contract E3).
+                forwarded.put("kind", "execute");
+                forwarded.put("title", entry.title());
             });
             update(session.id(), forwarded);
             seen.ifPresent(entry -> askAboutProposal(session, entry));

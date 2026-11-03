@@ -244,6 +244,21 @@ final class HireWatch {
     private HireEntry entryOf(Live hire) {
         long end = hire.endedMs >= 0 ? hire.endedMs : clock.getAsLong();
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, hire.state, end - hire.startedMs, hire.tokens, hire.cost,
-            hire.task, hire.parent, hire.brainSessionId, hire.verdict);
+            hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire));
+    }
+
+    /** How many hires the agent saw above this one, so a root is level 0, the chief engineer it hires 1, and the developer under that 2. */
+    private int levelOf(Live hire) {
+        int level = 0;
+        Optional<String> above = hire.parent;
+        while (above.isPresent() && level < 16) {
+            Live up = hires.get(above.get());
+            if (up == null) {
+                break;
+            }
+            level++;
+            above = up.parent;
+        }
+        return level;
     }
 }

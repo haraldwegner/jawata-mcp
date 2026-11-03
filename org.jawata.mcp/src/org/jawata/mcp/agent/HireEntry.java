@@ -1,5 +1,7 @@
 package org.jawata.mcp.agent;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.OptionalDouble;
 
@@ -26,7 +28,14 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  */
 public record HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
         long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId,
-        Optional<String> verdict) {
+        Optional<String> verdict, int level) {
+
+    /** An entry at the top of the hierarchy (level 0), whatever else it knows. */
+    public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
+            long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId,
+            Optional<String> verdict) {
+        this(planId, seat, brain, model, state, elapsedMs, tokens, costUsd, task, parentPlanId, brainSessionId, verdict, 0);
+    }
 
     /** An entry the person has not yet answered a proposal of. */
     public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
@@ -48,6 +57,18 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    /**
+     * The one line a client with no jawata view shows for this hire (contract E3): the seat, then the brain and the model where they are known,
+     * then the state, for example {@code developer · claude-code · sonnet — running}. A brain or model that is not known is left out.
+     */
+    public String title() {
+        List<String> parts = new ArrayList<>();
+        parts.add(seat);
+        brain.ifPresent(parts::add);
+        model.ifPresent(parts::add);
+        return String.join(" · ", parts) + " — " + state;
+    }
+
     /** The entry as the wire carries it: only the fields that are known, so a missing cost or parent is absent and never a placeholder. */
     public ObjectNode toMeta() {
         ObjectNode meta = JSON.createObjectNode();
@@ -63,6 +84,7 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
         parentPlanId.ifPresent(p -> meta.put("parentPlanId", p));
         brainSessionId.ifPresent(s -> meta.put("brainSessionId", s));
         verdict.ifPresent(v -> meta.put("verdict", v));
+        meta.put("level", level);
         return meta;
     }
 }
