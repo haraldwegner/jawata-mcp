@@ -70,12 +70,17 @@ public final class RunningHires {
 
     /**
      * Registers what a stop does to the hire running on the current thread, such as killing the brain's process it has just started. When no
-     * hire is registered on this thread, as in a run made outside the hire tool, there is nothing to stop and nothing is registered.
+     * hire is registered on this thread, as in a run made outside the hire tool, there is nothing to stop and nothing is registered. A stop
+     * that came before the process was started has already gone by, so the action is run at once: otherwise the process would start after
+     * the stop and nothing would ever end it.
      */
     public void onStop(Runnable action) {
         for (Running hire : running) {
             if (hire.thread == Thread.currentThread()) {
                 hire.onStop.add(action);
+                if (stopped.contains(hire.thread)) {
+                    action.run();
+                }
             }
         }
     }
@@ -92,11 +97,6 @@ public final class RunningHires {
             }
         }
         return stoppedCount;
-    }
-
-    /** How many hires are running now. */
-    public int count() {
-        return running.size();
     }
 
     private static String normal(String brief) {

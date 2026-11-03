@@ -77,9 +77,10 @@ class AgentControlStopTest {
 
     /** A hire running on its own thread, registered the way the hire tool registers one; the thread ends when it is interrupted. */
     private static Thread aRunningHire(CountDownLatch interrupted) throws InterruptedException {
-        int before = RunningHires.shared().count();
+        CountDownLatch registered = new CountDownLatch(1);
         Thread worker = new Thread(() -> {
             try (RunningHires.Registration registration = RunningHires.shared().begin(SEAT, BRIEF)) {
+                registered.countDown();
                 Thread.sleep(30_000);
             } catch (InterruptedException e) {
                 interrupted.countDown();
@@ -87,11 +88,34 @@ class AgentControlStopTest {
         });
         worker.setDaemon(true);
         worker.start();
-        for (int i = 0; i < 100 && RunningHires.shared().count() == before; i++) {
-            Thread.sleep(50);
-        }
-        assertEquals(before + 1, RunningHires.shared().count(), "the hire did not register as running");
+        assertTrue(registered.await(5, TimeUnit.SECONDS), "the hire did not register as running");
         return worker;
+    }
+
+    @Test
+    @DisplayName("a stop that comes before the brain's process is started still ends the process: what the hire registers afterwards is run at once")
+    void aStopBeforeTheProcessStartsStillEndsIt() throws Exception {
+        CountDownLatch registered = new CountDownLatch(1);
+        CountDownLatch ended = new CountDownLatch(1);
+        Thread worker = new Thread(() -> {
+            try (RunningHires.Registration registration = RunningHires.shared().begin(SEAT, BRIEF)) {
+                registered.countDown();
+                try {
+                    Thread.sleep(30_000);
+                } catch (InterruptedException stopped) {
+                    // The stop has gone by; the process is started only now, and its kill is registered only now.
+                    RunningHires.shared().onStop(ended::countDown);
+                }
+            }
+        });
+        worker.setDaemon(true);
+        worker.start();
+        assertTrue(registered.await(5, TimeUnit.SECONDS), "the hire did not register as running");
+
+        assertEquals(1, RunningHires.shared().stop(SEAT, BRIEF));
+
+        assertTrue(ended.await(5, TimeUnit.SECONDS), "a process started after the stop was never ended");
+        worker.join(5_000);
     }
 
     @Test

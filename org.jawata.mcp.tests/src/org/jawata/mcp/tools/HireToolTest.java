@@ -253,9 +253,13 @@ class HireToolTest {
     }
 
     private JsonNode hireArgs(Path seat) {
+        return hireArgs(seat, "cataloguer");
+    }
+
+    private JsonNode hireArgs(Path seat, String seatName) {
         return JSON.createObjectNode()
             .put("hirer", "chief-engineer")
-            .put("seat", "cataloguer")
+            .put("seat", seatName)
             .put("seatFile", seat.toString())
             .put("brief", "Describe every member of org.jawata.mcp.execution.")
             .put("workingDirectory", dir.toString())
@@ -1589,39 +1593,39 @@ class HireToolTest {
     @Test
     @DisplayName("S9: the model a person picked for a seat in the Agent Control panel is used by that seat's next hire over the seat file's own, and with the pick forgotten the seat file stands again")
     void aPickedModelIsUsedByTheSeatsNextHire() throws Exception {
+        // A seat of its own: the picks are one store for the whole process, and a pick on the cataloguer would reach every later hire of it.
+        String seat = "pick-test-seat";
+        String seatMarkdown = CATALOGUER_SEAT.replace("name: cataloguer", "name: " + seat);
         org.jawata.mcp.execution.SeatBrainPicks picks = org.jawata.mcp.execution.SeatBrainPicks.shared();
-        try {
-            picks.pick("cataloguer", org.jawata.mcp.execution.SeatHire.Brain.CLAUDE_CODE, "picked-model");
-            StandsIn picked = new StandsIn(host, aBrainThatAnswers());
-            Map<String, Object> pickedData = dataOf(toolWithSettings(picked, Map.of()).execute(hireArgs(seatFile(CATALOGUER_SEAT))));
 
-            picks.pick("cataloguer", org.jawata.mcp.execution.SeatHire.Brain.CLAUDE_CODE, "");
-            StandsIn sameBrainNoModel = new StandsIn(host, aBrainThatAnswers());
-            toolWithSettings(sameBrainNoModel, Map.of()).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+        StandsIn forgotten = new StandsIn(host, aBrainThatAnswers());
+        toolWithSettings(forgotten, Map.of()).execute(hireArgs(seatFile(seatMarkdown), seat));
 
-            picks.clear();
-            StandsIn forgotten = new StandsIn(host, aBrainThatAnswers());
-            toolWithSettings(forgotten, Map.of()).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+        picks.pick(seat, org.jawata.mcp.execution.SeatHire.Brain.CLAUDE_CODE, "picked-model");
+        StandsIn picked = new StandsIn(host, aBrainThatAnswers());
+        Map<String, Object> pickedData = dataOf(toolWithSettings(picked, Map.of()).execute(hireArgs(seatFile(seatMarkdown), seat)));
 
-            assertAll(
-                () -> assertEquals("claude-sonnet-5", modelOf(sameBrainNoModel.asked()),
-                    "a pick of the same brain with no model dropped the seat's model: " + sameBrainNoModel.asked()),
-                () -> assertEquals("picked-model", modelOf(picked.asked()), "the pick was not used: " + picked.asked()),
-                () -> assertEquals("picked-model", ((Map<?, ?>) pickedData.get("brain")).get("model"), String.valueOf(pickedData)),
-                () -> assertEquals("claude-sonnet-5", modelOf(forgotten.asked()), "the seat file did not stand again: " + forgotten.asked()));
-        } finally {
-            picks.clear();
-        }
+        picks.pick(seat, org.jawata.mcp.execution.SeatHire.Brain.CLAUDE_CODE, "");
+        StandsIn sameBrainNoModel = new StandsIn(host, aBrainThatAnswers());
+        toolWithSettings(sameBrainNoModel, Map.of()).execute(hireArgs(seatFile(seatMarkdown), seat));
+
+        assertAll(
+            () -> assertEquals("claude-sonnet-5", modelOf(forgotten.asked()), "with no pick the seat file did not stand: " + forgotten.asked()),
+            () -> assertEquals("claude-sonnet-5", modelOf(sameBrainNoModel.asked()),
+                "a pick of the same brain with no model dropped the seat's model: " + sameBrainNoModel.asked()),
+            () -> assertEquals("picked-model", modelOf(picked.asked()), "the pick was not used: " + picked.asked()),
+            () -> assertEquals("picked-model", ((Map<?, ?>) pickedData.get("brain")).get("model"), String.valueOf(pickedData)));
     }
 
     /** A brain that says one thing and then keeps running for a minute, so a hire of it is still going when something stops it. */
-    private HostCommand aBrainThatBlocks() throws Exception {
+    private HostCommand aBrainThatBlocks(Path started) throws Exception {
         Path file = Files.createTempFile(dir, "brain-", ".sh");
         Files.writeString(file, """
             #!/bin/sh
             echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"working"}]}}'
+            touch '%s'
             sleep 60
-            """);
+            """.formatted(started));
         Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
         return HostCommand.of(file.toString());
     }
@@ -1630,8 +1634,8 @@ class HireToolTest {
     @DisplayName("S9: a hire stopped from the Agent Control panel ends at once, its answer says the person stopped it, and it is no longer listed as running")
     void aHireStoppedFromThePanelEndsAtOnceAndSaysSo() throws Exception {
         org.jawata.mcp.execution.RunningHires running = org.jawata.mcp.execution.RunningHires.shared();
-        int before = running.count();
-        HireTool hire = toolWithSettings(new StandsIn(host, aBrainThatBlocks()), Map.of());
+        Path started = dir.resolve("brain-started");
+        HireTool hire = toolWithSettings(new StandsIn(host, aBrainThatBlocks(started)), Map.of());
         // A daemon thread, so a hire that does not end cannot keep the test run from ending.
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
             Thread thread = new Thread(task);
@@ -1640,10 +1644,11 @@ class HireToolTest {
         });
         try {
             java.util.concurrent.Future<ToolResponse> response = pool.submit(() -> hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
-            for (int i = 0; i < 100 && running.count() == before; i++) {
+            // The brain writes the marker once its process runs, which is after the hire has registered as running.
+            for (int i = 0; i < 200 && !Files.exists(started); i++) {
                 Thread.sleep(50);
             }
-            assertEquals(before + 1, running.count(), "the hire never registered as running");
+            assertTrue(Files.exists(started), "the brain never started");
 
             int stopped = running.stop("cataloguer", "Describe every member of org.jawata.mcp.execution.");
             ToolResponse answer = response.get(20, java.util.concurrent.TimeUnit.SECONDS);
@@ -1652,7 +1657,8 @@ class HireToolTest {
                 () -> assertEquals(1, stopped),
                 () -> assertFalse(answer.isSuccess(), "a stopped hire was answered as a success"),
                 () -> assertTrue(String.valueOf(answer.getError()).contains("stopped from the Agent Control panel"), String.valueOf(answer.getError())),
-                () -> assertEquals(before, running.count(), "the stopped hire is still listed as running"));
+                () -> assertEquals(0, running.stop("cataloguer", "Describe every member of org.jawata.mcp.execution."),
+                    "the stopped hire is still listed as running"));
         } finally {
             pool.shutdownNow();
         }

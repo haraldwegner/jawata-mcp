@@ -39,9 +39,4 @@ public final class SeatBrainPicks {
     public Optional<Pick> forSeat(String seat) {
         return Optional.ofNullable(picks.get(seat));
     }
-
-    /** Forgets every pick, so a test or a restarted panel starts from the seat files again. */
-    public void clear() {
-        picks.clear();
-    }
 }
