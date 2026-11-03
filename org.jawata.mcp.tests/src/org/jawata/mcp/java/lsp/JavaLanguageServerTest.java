@@ -164,6 +164,14 @@ class JavaLanguageServerTest {
         assertEquals(2, result.path("capabilities").path("textDocumentSync").path("change").asInt(), "incremental");
         assertTrue(result.path("capabilities").has("hoverProvider"), "what is answered is advertised");
         assertTrue(result.path("capabilities").path("renameProvider").path("prepareProvider").asBoolean(), "rename, with its prepare step, is answered");
+        JsonNode filters = result.path("capabilities").path("workspace").path("fileOperations").path("willRename").path("filters");
+        boolean javaFiles = false;
+        boolean folders = false;
+        for (JsonNode filter : filters) {
+            javaFiles |= "**/*.java".equals(filter.path("pattern").path("glob").asText());
+            folders |= "folder".equals(filter.path("pattern").path("matches").asText());
+        }
+        assertTrue(javaFiles && folders, "the editor is asked before it renames a Java file or a folder: " + filters);
     }
 
     @Test

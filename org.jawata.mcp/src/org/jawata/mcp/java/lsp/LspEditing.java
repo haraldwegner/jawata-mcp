@@ -3,6 +3,7 @@ package org.jawata.mcp.java.lsp;
 import static org.jawata.mcp.java.lsp.LspEdits.add;
 import static org.jawata.mcp.java.lsp.LspEdits.pathOf;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -10,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.jawata.mcp.engine.ToolCalls;
@@ -148,6 +150,10 @@ final class LspEditing {
             String oldUri = pair.path("oldUri").asText();
             Path from = pathOf(oldUri);
             Path to = pathOf(pair.path("newUri").asText());
+            if (Files.isDirectory(from)) {
+                addFolderChange(from, to, changes);
+                continue;
+            }
             ICompilationUnit unit = from.toString().endsWith(".java") && to.toString().endsWith(".java") ? unitOf.apply(oldUri) : null;
             if (unit != null) {
                 addChangeFor(unit, from, to, changes);
@@ -194,6 +200,55 @@ final class LspEditing {
         } catch (org.eclipse.jdt.core.JavaModelException e) {
             throw new IllegalStateException("the file could not be read: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * A folder renamed or moved in the editor: when it holds Java source it is a package, and the engine's package move, staged as edits,
+     * is what changes the files in it and the files that use them. A folder with no Java below it changes no code.
+     */
+    private void addFolderChange(Path from, Path to, Map<String, List<Object>> changes) throws ToolNotFoundException {
+        Map<Path, ICompilationUnit> inside = unitsUnder(from);
+        if (inside.isEmpty()) {
+            return;
+        }
+        ICompilationUnit any = inside.values().iterator().next();
+        String oldPackage = packageOf(any, from);
+        String newPackage = packageOf(any, to);
+        if (oldPackage == null || newPackage == null || oldPackage.equals(newPackage)) {
+            return;
+        }
+        ObjectNode arguments = JSON.createObjectNode().put("kind", "package").put("packageName", oldPackage)
+            .put("newPackageName", newPackage).put("auto_apply", false).put("edits", true);
+        LspEdits.addStaged(unsaved, stagedBy("move", arguments, from), changes, "file operation");
+        // the engine's staged edits change the files that use the package; the package line of each file in the folder is the editor's file
+        // move to leave as it was, as for a single moved file
+        inside.forEach((file, unit) -> {
+            try {
+                org.eclipse.jdt.core.IPackageDeclaration[] declared = unit.getPackageDeclarations();
+                String name = declared.length == 0 ? "" : declared[0].getElementName();
+                if (name.equals(oldPackage) || name.startsWith(oldPackage + ".")) {
+                    addPackageEdit(unit, file, newPackage + name.substring(oldPackage.length()), changes);
+                }
+            } catch (org.eclipse.jdt.core.JavaModelException e) {
+                throw new IllegalStateException("the file could not be read: " + e.getMessage(), e);
+            }
+        });
+    }
+
+    /** The units of the Java files below a folder that the model holds, by file. */
+    private Map<Path, ICompilationUnit> unitsUnder(Path folder) {
+        Map<Path, ICompilationUnit> units = new LinkedHashMap<>();
+        try (Stream<Path> files = Files.walk(folder)) {
+            files.filter(file -> file.toString().endsWith(".java")).forEach(file -> {
+                ICompilationUnit unit = unitOf.apply(file.toUri().toString());
+                if (unit != null) {
+                    units.put(file, unit);
+                }
+            });
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("the folder could not be read: " + e.getMessage(), e);
+        }
+        return units;
     }
 
     private ToolResponse stagedBy(String tool, ObjectNode arguments, Path file) throws ToolNotFoundException {

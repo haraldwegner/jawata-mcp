@@ -410,6 +410,49 @@ class JavaLanguageServerRenameTest {
         assertEquals(0, compiled.path("errorCount").asInt(), "the moved file compiles with no organize-imports step: " + compiled);
     }
 
+    /**
+     * Sprint 28h, S16e (c). A folder that is a package, renamed in the editor, renames the package: the files in it name the new package
+     * and the files that use them import it. Only Java files were handled; a folder changed no code.
+     */
+    @Test
+    @DisplayName("renaming a folder that is a package answers the new package of its files and the imports of the files that use them, so the code compiles; a folder with no Java changes no code")
+    void aFolderRenameRenamesItsPackage() throws Exception {
+        Path folder = copiedTree();
+        Path tools = folder.resolve("tools");
+        Path notes = folder.resolve("notes");
+        Files.createDirectories(tools);
+        Files.createDirectories(notes);
+        Path tool = tools.resolve("Tool.java");
+        Path user = folder.resolve("UsesTool.java");
+        Files.writeString(tool, "package com.example.tools;\n\npublic class Tool {\n    public int one() {\n        return 1;\n    }\n}\n");
+        Files.writeString(user, "package com.example;\n\nimport com.example.tools.Tool;\n\npublic class UsesTool {\n    int n = new Tool().one();\n}\n");
+        Files.writeString(notes.resolve("readme.txt"), "not code\n");
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        Path gadgets = folder.resolve("gadgets");
+
+        JsonNode edit = session.ask("workspace/willRenameFiles", willRename(tools, gadgets));
+        JsonNode none = session.ask("workspace/willRenameFiles", willRename(notes, folder.resolve("memos")));
+
+        JsonNode changes = edit.path("changes");
+        assertTrue(changes.has(tool.toUri().toString()) && changes.has(user.toUri().toString()), "the files of the folder and their users change: " + edit);
+        String toolText = applied(Files.readString(tool), changes.get(tool.toUri().toString()));
+        String userText = applied(Files.readString(user), changes.get(user.toUri().toString()));
+        assertTrue(toolText.contains("package com.example.gadgets;"), toolText);
+        assertTrue(userText.contains("import com.example.gadgets.Tool;") && !userText.contains("com.example.tools"), userText);
+        assertTrue(none.isNull(), "control: a folder with no Java changed code: " + none);
+        Files.createDirectories(gadgets);
+        Files.writeString(gadgets.resolve("Tool.java"), toolText);
+        Files.delete(tool);
+        Files.delete(tools);
+        Files.writeString(user, userText);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        JsonNode compiled = mapper.valueToTree(new org.jawata.mcp.tools.CompileWorkspaceTool(() -> service,
+            () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service))
+            .execute(mapper.createObjectNode()).getData());
+        assertEquals(0, compiled.path("errorCount").asInt(), "the code compiles after the folder was renamed: " + compiled);
+    }
+
     @Test
     @DisplayName("a file operation that would change a file with unsaved editor text is refused, naming that file")
     void aFileOperationOverUnsavedTextIsRefused() throws Exception {

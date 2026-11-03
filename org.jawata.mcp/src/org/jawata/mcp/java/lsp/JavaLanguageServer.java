@@ -414,7 +414,9 @@ public final class JavaLanguageServer {
         capabilities.put("textDocumentSync", sync);
         capabilities.put("workspace", Map.of(
             "workspaceFolders", Map.of("supported", true, "changeNotifications", true),
-            "fileOperations", Map.of("willRename", Map.of("filters", List.of(Map.of("pattern", Map.of("glob", "**/*.java")))))));
+            "fileOperations", Map.of("willRename", Map.of("filters", List.of(
+                Map.of("pattern", Map.of("glob", "**/*.java")),
+                Map.of("pattern", Map.of("glob", "**", "matches", "folder")))))));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("capabilities", capabilities);
         result.put("serverInfo", Map.of("name", "jawata"));
