@@ -368,8 +368,21 @@ public class ToolResponse {
      * exactly that way (C13-c).</p>
      */
     public static ToolResponse internalError(Throwable e) {
+        if (isCancellation(e)) {
+            return error("OPERATION_CANCELLED", "The request was cancelled while it was being worked (" + e.getClass().getSimpleName()
+                + "), so it has no answer; this is not a bug in the tool.", "Ask again.");
+        }
         return error(ErrorInfo.internalError(e.getClass().getSimpleName()
             + (e.getMessage() != null ? ": " + e.getMessage() : "")
             + (e.getStackTrace().length > 0 ? " at " + e.getStackTrace()[0] : "")));
+    }
+
+    /**
+     * Whether an exception says the work was cancelled and not that it broke: an editor cancels a request it no longer wants by interrupting
+     * the thread working it, and the Eclipse model then throws its cancellation (named by class here, because this package knows no Eclipse
+     * type) out of whatever it was reading.
+     */
+    private static boolean isCancellation(Throwable e) {
+        return e instanceof java.util.concurrent.CancellationException || "OperationCanceledException".equals(e.getClass().getSimpleName());
     }
 }

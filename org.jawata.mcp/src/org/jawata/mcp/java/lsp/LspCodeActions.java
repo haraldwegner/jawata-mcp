@@ -82,6 +82,7 @@ final class LspCodeActions {
                 arguments.put("methodName", "extracted");
             }
             ToolResponse staged = tools.callTool("extract", arguments, caller);
+            refuseIfBroken(staged);
             if (!staged.isSuccess()) {
                 continue;
             }
@@ -113,11 +114,8 @@ final class LspCodeActions {
     private void quickFixes(String uri, String filePath, ICompilationUnit unit, int line, List<Object> actions) throws ToolNotFoundException {
         ToolResponse listed = tools.callTool("quick_fix",
             JSON.createObjectNode().put("action", "list").put("filePath", filePath).put("line", line), caller);
+        refuseIfBroken(listed);
         if (!listed.isSuccess()) {
-            if (listed.getError() != null && "FIX_SEARCH_FAILED".equals(listed.getError().getCode())) {
-                // the search for a type to import broke: an error to the editor, not "no actions", which says no import exists
-                throw new IllegalStateException(listed.getError().getMessage());
-            }
             return;
         }
         String text;
@@ -134,6 +132,7 @@ final class LspCodeActions {
             }
             ToolResponse applied = tools.callTool("quick_fix", JSON.createObjectNode().put("action", "apply").put("filePath", filePath)
                 .put("fixId", fix.path("fixId").asText()).put("line", line), caller);
+            refuseIfBroken(applied);
             if (!applied.isSuccess()) {
                 continue;
             }
@@ -150,9 +149,24 @@ final class LspCodeActions {
         }
     }
 
+    /**
+     * A failed answer that says the work itself broke (the search for an import failed) or was cancelled is an error to the editor, never "no
+     * actions", which would say there is nothing to offer; any other failed answer is that nothing is offered.
+     */
+    private static void refuseIfBroken(ToolResponse response) {
+        if (response.isSuccess() || response.getError() == null) {
+            return;
+        }
+        String code = response.getError().getCode();
+        if ("FIX_SEARCH_FAILED".equals(code) || "OPERATION_CANCELLED".equals(code)) {
+            throw new IllegalStateException(response.getError().getMessage());
+        }
+    }
+
     private void organizeImports(String filePath, List<Object> actions) throws ToolNotFoundException {
         ToolResponse staged = tools.callTool("organize_imports",
             JSON.createObjectNode().put("scope", "file").put("filePath", filePath).put("auto_apply", false).put("edits", true), caller);
+        refuseIfBroken(staged);
         if (!staged.isSuccess()) {
             return;
         }

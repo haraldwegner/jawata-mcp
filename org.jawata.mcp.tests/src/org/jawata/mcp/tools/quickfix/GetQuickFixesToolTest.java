@@ -160,6 +160,40 @@ class GetQuickFixesToolTest {
     }
 
     /**
+     * Sprint 28h, S16f (g). The editor cancels the request it no longer wants by interrupting the thread working it, and the file's parse
+     * is then cancelled by JDT with an exception that has no message; the tool answered it as an internal error, the same answer as a
+     * bug in the tool. A parse cancelled that way is answered as cancelled, which says to ask again.
+     */
+    @Test
+    @DisplayName("a request whose thread is interrupted while its file is parsed is answered as cancelled, not as an internal error")
+    void aCancelledParseIsNotAnInternalError() throws Exception {
+        JdtServiceImpl copy = helper.loadProjectCopy("simple-maven");
+        java.nio.file.Path broken = copy.getProjectRoot().resolve("src/main/java/com/example/HasAProblem.java");
+        java.nio.file.Files.writeString(broken, """
+            package com.example;
+
+            public class HasAProblem {
+                Object made = new ArrayList<String>();
+            }
+            """);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> copy).syncBeforeCall();
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", broken.toString());
+        args.put("line", 3);
+
+        ToolResponse response;
+        Thread.currentThread().interrupt();
+        try {
+            response = new GetQuickFixesTool(() -> copy).execute(args);
+        } finally {
+            Thread.interrupted();
+        }
+
+        assertTrue(response.isSuccess() || "OPERATION_CANCELLED".equals(response.getError().getCode()),
+            "an interrupted parse was answered as: " + response.getError());
+    }
+
+    /**
      * Sprint 28h, S16e (b), the audit's finding 3. A type of the default package cannot be imported, and offering it made the list of fixes
      * fail on the package it does not have. With one in the project, the import of the library type is still offered and the default
      * package's is not.

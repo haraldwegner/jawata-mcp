@@ -63,8 +63,12 @@ class LspCodeActionsFailureTest {
         LspCodeActions otherFailure = new LspCodeActions(
             answering(ToolResponse.error("PROBLEMS_UNKNOWN", "the file could not be parsed", "run get_diagnostics")), caller, unitOf, uri -> false);
 
+        LspCodeActions cancelled = new LspCodeActions(
+            answering(ToolResponse.error("OPERATION_CANCELLED", "the request was cancelled while it was being worked", "Ask again.")), caller, unitOf, uri -> false);
+
         IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> searchBroke.codeAction(params));
         assertTrue(thrown.getMessage().contains("search for a type"), thrown.getMessage());
+        assertThrows(IllegalStateException.class, () -> cancelled.codeAction(params));
         assertTrue(((List<?>) otherFailure.codeAction(params)).isEmpty(), "control: another failed listing must stay no actions");
     }
 }
