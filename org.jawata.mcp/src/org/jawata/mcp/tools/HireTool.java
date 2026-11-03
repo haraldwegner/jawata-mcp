@@ -464,8 +464,12 @@ public class HireTool extends NeutralTool {
         boolean stoppedByPerson = false;
         try {
             // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
+            // The registry names a brain by its product name, as the panel's choices and the vendor rule do ("cursor"); the dialect names itself
+            // otherwise ("cursor-agent"), so the product name is tried first and the dialect's after.
+            String productName = seat.brain().label();
             Optional<AcpBrainSession.Program> acp = brainsRegistry
-                .flatMap(registryText -> AcpBrainSession.programFor(registryText, dialect.name()));
+                .flatMap(registryText -> AcpBrainSession.programFor(registryText, productName)
+                    .or(() -> AcpBrainSession.programFor(registryText, dialect.name())));
             proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()),
                 hiddenTools, acp);
         } catch (IOException e) {

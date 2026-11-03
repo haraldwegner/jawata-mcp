@@ -207,6 +207,29 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("a tool call that Cursor's agent opens as a placeholder and names in a later update is known by the server and tool named there")
+    void aToolCallNamedByALaterUpdateIsKnownByItsName() throws Exception {
+        HiredBrain.Outcome outcome = hire("CURSORCALL");
+
+        assertEquals(List.of("mcp__jawata__health_check"), outcome.toolNames(), "the placeholder title stayed: " + outcome.toolNames());
+        assertEquals(1, outcome.toolSteps());
+        assertEquals(0, outcome.unnamedToolSteps());
+    }
+
+    @Test
+    @DisplayName("a brain that answered its prompt and then does not exit when its input closes is ended by the client, and that kill is not counted as a crash")
+    void aBrainThatLingersAfterItsAnswerIsStillClean() throws Exception {
+        agent = new AcpBrainSession.Program(agent.command(), Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_LINGER", "1"));
+
+        HiredBrain.Outcome outcome = hire("REMEMBER:bluebird");
+
+        assertEquals("noted", outcome.text());
+        assertEquals(0, outcome.exitCode().orElse(-1), "the client's own kill was reported as the brain's exit status");
+        assertTrue(outcome.clean(), "a finished answer was reported as an unclean run: " + outcome);
+        assertFalse(outcome.timedOut());
+    }
+
+    @Test
     @DisplayName("a brain that dies mid-prompt is a failure, not an empty answer")
     void aBrainThatDiesIsNotSilence() throws Exception {
         HiredBrain.Outcome outcome = hire("DIE");

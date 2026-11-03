@@ -59,6 +59,10 @@ public class FakeAcpAgent {
                 default -> { }
             }
         }
+        // With FAKE_ACP_LINGER set the agent does not exit when its input closes, as Cursor's agent measured: the client has to end it.
+        if (System.getenv("FAKE_ACP_LINGER") != null) {
+            Thread.sleep(60_000);
+        }
     }
 
     static void prompt(String line, String id, Path state) throws Exception {
@@ -99,6 +103,14 @@ public class FakeAcpAgent {
             String answer = in.readLine();
             String chosen = answer == null ? "none" : field(answer, "optionId");
             chunk(session, "permission:" + (chosen == null ? "cancelled" : chosen));
+        } else if (text.startsWith("CURSORCALL")) {
+            // As Cursor's agent opens a tool call of an MCP server: a placeholder title and no input, named in a later update.
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"c1\",\"title\":\"MCP: tool\",\"kind\":\"other\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"c1\",\"title\":\"jawata: health_check\","
+                + "\"rawInput\":{\"providerIdentifier\":\"jawata\",\"toolName\":\"health_check\",\"args\":{}}}}}");
+            chunk(session, "called");
         } else if (text.startsWith("SPEND")) {
             for (int i = 1; i <= 5; i++) {
                 send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session

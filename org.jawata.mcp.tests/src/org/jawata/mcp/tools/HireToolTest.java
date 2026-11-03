@@ -1530,6 +1530,21 @@ class HireToolTest {
                 "the brain's own session id is not in the hire's answer: " + data));
     }
 
+    @Test
+    @DisplayName("S12: a Cursor seat whose registry entry is keyed by the product name, as the panel and the vendor rule key it, is started through the engine's ACP client and not by its print-mode dialect")
+    void aCursorBrainRegisteredUnderItsProductNameIsStartedOverAcp() throws Exception {
+        Map<String, Object> program = theStandInAcpProgram();
+        List<List<String>> started = new java.util.ArrayList<>();
+        HireTool hire = toolWithBrainsSetting(aHostRecording(started, false), JSON.writeValueAsString(Map.of("cursor", program)));
+
+        hire.execute(hireArgs(seatFile(CURSOR_SEAT)));
+
+        assertAll(
+            () -> assertEquals(1, started.size(), "one brain was started: " + started),
+            () -> assertEquals(program.get("command"), started.get(0),
+                "the registry entry for \"cursor\" was not used, so the dialect's own command line ran: " + started));
+    }
+
     /** A hire tool whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),

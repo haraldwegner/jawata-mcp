@@ -6,6 +6,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -137,6 +138,8 @@ public final class AcpBrainSession {
         OptionalDouble cost = OptionalDouble.empty();
         String stoppedBy = null;
         String sessionId = null;
+        boolean answered = false;
+        boolean endedByUs = false;
 
         try {
             JsonNode init = wire.call(1, "initialize", params -> {
@@ -183,13 +186,27 @@ public final class AcpBrainSession {
                     params.put("sessionId", id);
                     params.putArray("prompt").addObject().put("type", "text").put("text", prompt);
                 });
+                Map<String, Integer> callAt = new HashMap<>();
                 for (JsonNode update : wire.events) {
                     switch (update.path("sessionUpdate").asText()) {
                         case "agent_message_chunk" -> said.append(update.path("content").path("text").asText(""));
                         case "tool_call" -> {
                             String name = update.path("title").asText(update.path("kind").asText("tool"));
+                            callAt.put(update.path("toolCallId").asText(""), toolNames.size());
                             toolNames.add(name);
                             toolCalls.add(new ToolCall(name, update.has("rawInput") ? update.get("rawInput") : JSON.createObjectNode()));
+                        }
+                        case "tool_call_update" -> {
+                            // Cursor's agent opens a tool call as "MCP: tool" with no input and names it in a later update (measured
+                            // 2026-11-03): the server and the tool arrive in rawInput, and the call is known from then on by the form the
+                            // classification reads, mcp__<server>__<tool>.
+                            Integer index = callAt.get(update.path("toolCallId").asText(""));
+                            JsonNode raw = update.path("rawInput");
+                            if (index != null && raw.hasNonNull("providerIdentifier") && raw.hasNonNull("toolName")) {
+                                String name = "mcp__" + raw.get("providerIdentifier").asText() + "__" + raw.get("toolName").asText();
+                                toolNames.set(index, name);
+                                toolCalls.set(index, new ToolCall(name, raw.has("args") ? raw.get("args") : JSON.createObjectNode()));
+                            }
                         }
                         case "usage_update" -> {
                             JsonNode amount = update.path("cost").path("amount");
@@ -201,6 +218,7 @@ public final class AcpBrainSession {
                     }
                 }
                 stoppedBy = wire.stoppedBy;
+                answered = stop != null;
                 if (stop == null && !reaped[0] && stoppedBy == null) {
                     said.append(said.length() == 0 ? "" : "\n").append("(the brain ended before it answered the prompt)");
                 }
@@ -213,6 +231,7 @@ public final class AcpBrainSession {
                 // the child is already gone
             }
             if (!child.waitFor(5, TimeUnit.SECONDS)) {
+                endedByUs = true;
                 HostProcesses.reap(child);
                 child.waitFor(2, TimeUnit.SECONDS);
             }
@@ -220,6 +239,11 @@ public final class AcpBrainSession {
         }
 
         OptionalInt exit = child.isAlive() ? OptionalInt.empty() : OptionalInt.of(child.exitValue());
+        // A brain that answered its prompt and then did not exit when its input closed (measured with Cursor's agent) was ended by this client,
+        // and the status of that kill is not a verdict on its work: the run is clean when the answer came, no ceiling and no clock ended it.
+        if (answered && endedByUs && !reaped[0] && stoppedBy == null) {
+            exit = OptionalInt.of(0);
+        }
         return new HiredBrain.Outcome(said.toString(), cost, toolNames.size(), wire.unreadable, cost.isPresent(), reaped[0], exit,
             stderrTail.toString(), Optional.ofNullable(stoppedBy), List.copyOf(toolNames), Optional.empty(), Optional.empty(),
             List.copyOf(toolCalls), Optional.ofNullable(sessionId));
