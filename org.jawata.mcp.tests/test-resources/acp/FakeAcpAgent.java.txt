@@ -83,6 +83,9 @@ public class FakeAcpAgent {
             Thread.sleep(700);
             Files.writeString(state.resolve("answered.marker"), "answered");
             chunk(session, "edited");
+        } else if (text.contains("HIREHANG")) {
+            // a HIRED seat's prompt starts with the seat's stance, so a hang is asked for by a marker found anywhere in it (S8's live run)
+            Thread.sleep(400_000);
         } else if (text.contains("HIREREMEMBER:")) {
             // a HIRED seat's prompt is the seat's stance and then the brief, so these markers are found anywhere in it (D4): the word kept is the
             // one token after the marker, and a later prompt to the SAME brain session (session/load, same id) can ask for it back
