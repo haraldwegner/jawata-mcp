@@ -43,6 +43,7 @@ final class HireWatch {
         Optional<String> brain = Optional.empty();
         Optional<String> model = Optional.empty();
         Optional<String> parent = Optional.empty();
+        Optional<String> brainSessionId = Optional.empty();
         String state = HireEntry.RUNNING;
         long endedMs = -1;
         long tokens;
@@ -165,6 +166,7 @@ final class HireWatch {
             || answer.path("timedOut").asBoolean(false));
         finish(hire, clean ? HireEntry.DONE : HireEntry.FAILED);
         hire.answer = answer.path("answer").asText("");
+        hire.brainSessionId = answer.hasNonNull("brainSessionId") ? Optional.of(answer.get("brainSessionId").asText()) : Optional.empty();
         JsonNode tokens = answer.path("tokens");
         if (tokens.isObject()) {
             hire.tokens = tokens.hasNonNull("spent") ? tokens.get("spent").asLong()
@@ -213,6 +215,6 @@ final class HireWatch {
     private HireEntry entryOf(Live hire) {
         long end = hire.endedMs >= 0 ? hire.endedMs : clock.getAsLong();
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, hire.state, end - hire.startedMs, hire.tokens, hire.cost,
-            hire.task, hire.parent);
+            hire.task, hire.parent, hire.brainSessionId);
     }
 }

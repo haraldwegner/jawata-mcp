@@ -1525,7 +1525,9 @@ class HireToolTest {
         assertAll(
             () -> assertEquals(Boolean.TRUE, data.get("complete"), String.valueOf(data)),
             () -> assertEquals(1, started.size(), "one brain was started: " + started),
-            () -> assertEquals(program.get("command"), started.get(0), "the brain started was not the ACP program: " + started));
+            () -> assertEquals(program.get("command"), started.get(0), "the brain started was not the ACP program: " + started),
+            () -> assertTrue(data.get("brainSessionId") instanceof String id && !id.isBlank(),
+                "the brain's own session id is not in the hire's answer: " + data));
     }
 
     /** A hire tool whose host settings are exactly these, by key. */
@@ -1614,7 +1616,9 @@ class HireToolTest {
             () -> assertEquals("claude-sonnet-5", modelOf(sameBrainNoModel.asked()),
                 "a pick of the same brain with no model dropped the seat's model: " + sameBrainNoModel.asked()),
             () -> assertEquals("picked-model", modelOf(picked.asked()), "the pick was not used: " + picked.asked()),
-            () -> assertEquals("picked-model", ((Map<?, ?>) pickedData.get("brain")).get("model"), String.valueOf(pickedData)));
+            () -> assertEquals("picked-model", ((Map<?, ?>) pickedData.get("brain")).get("model"), String.valueOf(pickedData)),
+            // The control for the session id: a brain started by its dialect has none to give, and none is invented.
+            () -> assertFalse(pickedData.containsKey("brainSessionId"), String.valueOf(pickedData)));
     }
 
     /** A brain that says one thing and then keeps running for a minute, so a hire of it is still going when something stops it. */

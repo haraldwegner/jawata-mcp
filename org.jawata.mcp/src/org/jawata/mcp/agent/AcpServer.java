@@ -12,6 +12,7 @@ import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.RunningHires;
 import org.jawata.mcp.execution.SeatBrainPicks;
 import org.jawata.mcp.execution.SeatHire;
+import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -37,6 +38,10 @@ public final class AcpServer {
     static final String AGENT_VERSION = "5.0-dev";
     /** The id of the select config option that carries the grant of autonomy (agreed with the 28i chat). */
     static final String AUTONOMY = "autonomy";
+    /** The prefix of the select config options that carry one seat's brain and model: the id is this and the seat's name (contract E6). */
+    static final String SEAT_MODEL = "seat-model:";
+    /** The value of a seat's option that leaves the choice to the seat's own file. */
+    static final String SEAT_FILE = "seat-file";
 
     private static final int METHOD_NOT_FOUND = -32601;
     private static final int INVALID_PARAMS = -32602;
@@ -287,9 +292,38 @@ public final class AcpServer {
         return JsonRpcMessage.successResponse(id, result);
     }
 
-    /** The session's config options as ACP shows them: one select, {@code autonomy}, with the grant as its current value. */
-    private static ArrayNode configOptions(PrincipalSession session) {
+    /**
+     * The session's config options as ACP shows them: the select {@code autonomy} with the grant as its current value, then one select per hired
+     * seat, {@code seat-model:<seat>} (category {@code model}), whose choices are the brains the registry offers and whose current value is the
+     * brain picked for the seat or {@value #SEAT_FILE} while nobody has picked (contract E6; R5).
+     */
+    private ArrayNode configOptions(PrincipalSession session) {
         ArrayNode options = JSON.createArrayNode();
+        addAutonomy(options, session);
+        SeatTree.standard().seats().forEach(seat -> addSeatModel(options, seat));
+        return options;
+    }
+
+    private void addSeatModel(ArrayNode options, String seat) {
+        ObjectNode option = options.addObject();
+        option.put("id", SEAT_MODEL + seat);
+        option.put("name", "Brain and model for " + seat);
+        option.put("category", "model");
+        option.put("description", "Which brain, with which model, the " + seat + " seat uses for its next hire and every hire after it. "
+            + "'As the seat file says' leaves the choice to the seat's own file. A hire already running keeps the brain it started with.");
+        option.put("type", "select");
+        option.put("currentValue", SeatBrainPicks.shared().forSeat(seat).map(pick -> pick.brain().label()).orElse(SEAT_FILE));
+        ArrayNode values = option.putArray("options");
+        values.addObject().put("value", SEAT_FILE).put("name", "As the seat file says");
+        Hirer.brainsIn(brainRegistry.get()).forEach((name, brain) -> {
+            // Only a brain a hire can use is offered: the registry may name a program for one this product has no dialect for.
+            if (SeatHire.Brain.named(name).filter(dialect -> dialect != SeatHire.Brain.SCRIPT).isPresent()) {
+                values.addObject().put("value", name).put("name", brain.model().isBlank() ? name : name + " · " + brain.model());
+            }
+        });
+    }
+
+    private static void addAutonomy(ArrayNode options, PrincipalSession session) {
         ObjectNode autonomy = options.addObject();
         autonomy.put("id", AUTONOMY);
         autonomy.put("name", "Autonomy");
@@ -300,7 +334,6 @@ public final class AcpServer {
         ArrayNode values = autonomy.putArray("options");
         values.addObject().put("value", "off").put("name", "Stop at each turn");
         values.addObject().put("value", "on").put("name", "Carry on");
-        return options;
     }
 
     private JsonRpcMessage setConfigOption(Object id, JsonNode params, Channel from) {
@@ -308,8 +341,12 @@ public final class AcpServer {
         if (session == null) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown session: " + textField(params, "sessionId"), null);
         }
-        if (!AUTONOMY.equals(textField(params, "configId"))) {
-            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown config option: " + textField(params, "configId"), null);
+        String configId = textField(params, "configId");
+        if (configId != null && configId.startsWith(SEAT_MODEL)) {
+            return setSeatModel(id, session, configId.substring(SEAT_MODEL.length()), textField(params, "value"), from);
+        }
+        if (!AUTONOMY.equals(configId)) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown config option: " + configId, null);
         }
         String value = textField(params, "value");
         if (!"on".equals(value) && !"off".equals(value)) {
@@ -318,6 +355,37 @@ public final class AcpServer {
         if (!session.setAutonomy(from, "on".equals(value))) {
             return JsonRpcMessage.errorResponse(id, NOT_PERMITTED,
                 "Only the person sets autonomy; a message from a hired agent does not change it.", null);
+        }
+        ObjectNode result = JSON.createObjectNode();
+        result.set("configOptions", configOptions(session));
+        return JsonRpcMessage.successResponse(id, result);
+    }
+
+    /**
+     * The person's choice of brain and model for one seat (contract R5, E6): {@link #SEAT_FILE} hands the seat back to its own file, and any
+     * other value must be a brain the registry offers, taken with the model the registry names for it (none for a brain whose command line
+     * takes none). The answer carries the options as they now stand, because a host that sets an option is answered in its own response.
+     */
+    private JsonRpcMessage setSeatModel(Object id, PrincipalSession session, String seat, String value, Channel from) {
+        if (from != Channel.HOST) {
+            return JsonRpcMessage.errorResponse(id, NOT_PERMITTED,
+                "Only the person chooses a seat's brain; a message from a hired agent does not change it.", null);
+        }
+        if (!SeatTree.standard().seats().contains(seat)) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown seat: " + seat, null);
+        }
+        if (SEAT_FILE.equals(value)) {
+            SeatBrainPicks.shared().forget(seat);
+        } else {
+            Map<String, Hirer.Brain> offered = Hirer.brainsIn(brainRegistry.get());
+            java.util.Optional<SeatHire.Brain> brain = value == null || !offered.containsKey(value)
+                ? java.util.Optional.empty() : SeatHire.Brain.named(value);
+            if (brain.isEmpty() || brain.get() == SeatHire.Brain.SCRIPT) {
+                return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
+                    "A brain the registry offers, or " + SEAT_FILE + ", not: " + value + " (offered: " + String.join(", ", offered.keySet()) + ")", null);
+            }
+            String model = brain.get().takesAModel() ? offered.get(value).model().strip() : "";
+            SeatBrainPicks.shared().pick(seat, brain.get(), model);
         }
         ObjectNode result = JSON.createObjectNode();
         result.set("configOptions", configOptions(session));
@@ -489,7 +557,7 @@ public final class AcpServer {
         update(sessionId, update);
     }
 
-    private static ObjectNode configOptionUpdate(PrincipalSession session) {
+    private ObjectNode configOptionUpdate(PrincipalSession session) {
         ObjectNode update = JSON.createObjectNode();
         update.put("sessionUpdate", "config_option_update");
         update.set("configOptions", configOptions(session));

@@ -548,6 +548,8 @@ public class HireTool extends NeutralTool {
         // published no dollar cost is not a brain that cost nothing — only one of the four does —
         // and `saidNothing` is what keeps "it produced nothing" apart from "it failed".
         data.put("cleanExit", proposal.outcome().clean());
+        // The brain's own session id, when the dialect has one (ACP does): a host's Agent Control can open the hire as the brain's session.
+        proposal.outcome().brainSessionId().ifPresent(id -> data.put("brainSessionId", id));
         // WHY it was not clean: a `false` above told a reader nothing while the exit status and the
         // last of stderr sat in a record file the run's own scratch cleanup could remove. Measured
         // 2026-10-14: a test-manager hire ended mid-sentence with cleanExit false, stoppedBy

@@ -61,6 +61,11 @@ public final class SeatTree {
         return EDITORS.contains(seat);
     }
 
+    /** The seats that are hired, by name; main is not among them, because nobody hires it. */
+    public java.util.List<String> seats() {
+        return parents.keySet().stream().sorted().toList();
+    }
+
     /** Whether the tree knows the seat. */
     public boolean knows(String seat) {
         return "main".equals(seat) || parents.containsKey(seat);

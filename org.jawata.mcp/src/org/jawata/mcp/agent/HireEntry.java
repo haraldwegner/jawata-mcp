@@ -21,9 +21,16 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * @param costUsd      the dollar cost, only when the brain sent one
  * @param task         the brief the hire was given
  * @param parentPlanId the hire of the seat that hired this one, when that hire is one the agent saw; absent for a root
+ * @param brainSessionId the brain's own session id for this hire, from the hire's answer; absent while it runs and for a brain that has none
  */
 public record HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
-        long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId) {
+        long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId) {
+
+    /** An entry whose brain has given no session id. */
+    public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
+            long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId) {
+        this(planId, seat, brain, model, state, elapsedMs, tokens, costUsd, task, parentPlanId, Optional.empty());
+    }
 
     public static final String RUNNING = "running";
     public static final String DONE = "done";
@@ -44,6 +51,7 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
         costUsd.ifPresent(c -> meta.put("costUsd", c));
         meta.put("task", task);
         parentPlanId.ifPresent(p -> meta.put("parentPlanId", p));
+        brainSessionId.ifPresent(s -> meta.put("brainSessionId", s));
         return meta;
     }
 }

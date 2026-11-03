@@ -88,6 +88,25 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("the brain's own session id is on a hire's entry once the hire has answered, and absent while it runs and when the brain gave none")
+    void theBrainsSessionIdIsReadFromTheAnswer() {
+        watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "architect", "review"));
+        HireEntry running = watch.entry("t1").orElseThrow();
+        HireEntry done = watch.observe(answered(hireCall("tool_call_update", "t1", "completed"),
+            "{\"data\":{\"cleanExit\":true,\"brainSessionId\":\"sess-42\"}}")).orElseThrow();
+
+        watch.observe(withInput(hireCall("tool_call", "t2", "pending"), "main", "ux", "look"));
+        HireEntry none = watch.observe(answered(hireCall("tool_call_update", "t2", "completed"),
+            "{\"data\":{\"cleanExit\":true}}")).orElseThrow();
+
+        assertEquals(Optional.empty(), running.brainSessionId());
+        assertEquals(Optional.of("sess-42"), done.brainSessionId());
+        assertEquals("sess-42", done.toMeta().path("brainSessionId").asText());
+        assertEquals(Optional.empty(), none.brainSessionId());
+        assertFalse(none.toMeta().has("brainSessionId"), "a missing session id was sent on the wire: " + none.toMeta());
+    }
+
+    @Test
     @DisplayName("a hire made by a hired seat is a child of that seat's running hire, a hire made by main is a root, and a call that is not a hire is not read")
     void theHierarchyIsRead() {
         watch.observe(withInput(hireCall("tool_call", "pm1", "pending"), "main", "pm", "run the sprint"));

@@ -35,6 +35,11 @@ public final class SeatBrainPicks {
         picks.put(seat, new Pick(brain, model));
     }
 
+    /** Forgets the pick for this seat, so its next hire uses what its seat file says again; the other seats' picks stand. */
+    public void forget(String seat) {
+        picks.remove(seat);
+    }
+
     /** What was picked for this seat, or none when nobody picked. */
     public Optional<Pick> forSeat(String seat) {
         return Optional.ofNullable(picks.get(seat));
