@@ -1545,6 +1545,56 @@ class HireToolTest {
                 "the registry entry for \"cursor\" was not used, so the dialect's own command line ran: " + started));
     }
 
+    /** The same hire as {@link #hireArgs(Path)} with the brief the test needs. */
+    private JsonNode hireWithBrief(Path seat, String brief) {
+        return ((com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seat)).put("brief", brief);
+    }
+
+    @Test
+    @DisplayName("D4: a later hire of the same seat in the same principal session continues the brain's own session and answers what only the first hire saw")
+    void aLaterHireOfTheSameSeatContinuesTheBrainsSession() throws Exception {
+        Map<String, Object> program = theStandInAcpProgram();
+        HireTool hire = toolWithBrainsSetting(host, JSON.writeValueAsString(Map.of("claude-code", program)));
+        org.jawata.mcp.models.CallerIdentity principal = org.jawata.mcp.models.CallerIdentity.supplied("principal-d4-same");
+        Path seat = seatFile(CATALOGUER_SEAT);
+
+        Map<String, Object> first = dataOf(principal.speaking(() -> hire.execute(hireWithBrief(seat, "HIREREMEMBER:bluebird"))));
+        Map<String, Object> second = dataOf(principal.speaking(() -> hire.execute(hireWithBrief(seat, "HIRERECALL"))));
+
+        assertAll(
+            () -> assertEquals("noted", first.get("answer"), String.valueOf(first)),
+            () -> assertEquals(first.get("brainSessionId"), second.get("brainSessionId"), "the second hire did not continue the first's session"),
+            () -> assertEquals("bluebird", second.get("answer"), "the second hire did not answer what only the first saw: " + second));
+    }
+
+    @Test
+    @DisplayName("D4, control: a hire of the same seat from ANOTHER principal session starts a session of its own and recalls nothing")
+    void aHireFromAnotherPrincipalSessionContinuesNothing() throws Exception {
+        Map<String, Object> program = theStandInAcpProgram();
+        HireTool hire = toolWithBrainsSetting(host, JSON.writeValueAsString(Map.of("claude-code", program)));
+        Path seat = seatFile(CATALOGUER_SEAT);
+
+        org.jawata.mcp.models.CallerIdentity.supplied("principal-d4-one").speaking(() -> hire.execute(hireWithBrief(seat, "HIREREMEMBER:bluebird")));
+        Map<String, Object> other = dataOf(org.jawata.mcp.models.CallerIdentity.supplied("principal-d4-two")
+            .speaking(() -> hire.execute(hireWithBrief(seat, "HIRERECALL"))));
+
+        assertEquals("nothing", other.get("answer"), "another principal session's hire was handed the first one's conversation: " + other);
+    }
+
+    @Test
+    @DisplayName("D4, control: a caller that sent no session id of its own has nothing remembered for it and nothing recalled")
+    void aCallerWithNoSessionOfItsOwnContinuesNothing() throws Exception {
+        Map<String, Object> program = theStandInAcpProgram();
+        HireTool hire = toolWithBrainsSetting(host, JSON.writeValueAsString(Map.of("claude-code", program)));
+        org.jawata.mcp.models.CallerIdentity anonymous = org.jawata.mcp.models.CallerIdentity.minted("http");
+        Path seat = seatFile(CATALOGUER_SEAT);
+
+        anonymous.speaking(() -> hire.execute(hireWithBrief(seat, "HIREREMEMBER:bluebird")));
+        Map<String, Object> later = dataOf(anonymous.speaking(() -> hire.execute(hireWithBrief(seat, "HIRERECALL"))));
+
+        assertEquals("nothing", later.get("answer"), "an anonymous caller's hire continued an earlier one: " + later);
+    }
+
     /** A hire tool whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),

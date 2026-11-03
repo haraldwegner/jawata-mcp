@@ -456,7 +456,14 @@ public class HireTool extends NeutralTool {
             return ToolResponse.invalidParameter("workingDirectory", e.getMessage());
         }
 
-        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area);
+        // D4: a later hire of the same seat in the same principal session continues the brain's own session. Only a caller that sent a session
+        // id of its own has one: callers with none share a transport's anonymous bucket, and continuing one of them for another would hand a
+        // stranger the earlier conversation.
+        Optional<String> principalSession = org.jawata.mcp.models.CallerIdentity.serving()
+            .filter(caller -> caller.origin() == org.jawata.mcp.models.CallerIdentity.Origin.CLIENT_SUPPLIED)
+            .map(org.jawata.mcp.models.CallerIdentity::id);
+        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area)
+            .resuming(principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)));
         HiredRun.Proposal proposal;
         // While the brain runs this hire can be stopped from the Agent Control panel (S9): the panel's stop interrupts this thread, which ends the
         // run the way any interruption does, and the answer says the person stopped it.
@@ -559,6 +566,11 @@ public class HireTool extends NeutralTool {
         data.put("cleanExit", proposal.outcome().clean());
         // The brain's own session id, when the dialect has one (ACP does): a host's Agent Control can open the hire as the brain's session.
         proposal.outcome().brainSessionId().ifPresent(id -> data.put("brainSessionId", id));
+        // What the brain answered in is what the next hire of this seat in this principal session continues (D4), when the run ended cleanly.
+        if (proposal.outcome().clean()) {
+            principalSession.ifPresent(principal -> proposal.outcome().brainSessionId()
+                .ifPresent(id -> org.jawata.mcp.execution.SeatBrainSessions.shared().remember(principal, hired, id)));
+        }
         // WHY it was not clean: a `false` above told a reader nothing while the exit status and the
         // last of stderr sat in a record file the run's own scratch cleanup could remove. Measured
         // 2026-10-14: a test-manager hire ended mid-sentence with cleanExit false, stoppedBy

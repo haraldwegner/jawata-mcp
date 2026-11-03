@@ -779,7 +779,8 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
             org.jawata.mcp.field.FieldEvent.discriminatorOf(arguments));
 
         try {
-            ToolResponse response = tool.execute(arguments);
+            JsonNode toolArguments = arguments;
+            ToolResponse response = caller.speaking(() -> tool.execute(toolArguments));
             long duration = System.currentTimeMillis() - startTime;
             log.info("Tool {} completed in {}ms, success={}", name, duration, response.isSuccess());
             // Sprint 21e (item A): a successful project mutation changes what symbol

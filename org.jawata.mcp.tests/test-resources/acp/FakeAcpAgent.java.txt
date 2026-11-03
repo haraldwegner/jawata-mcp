@@ -83,6 +83,14 @@ public class FakeAcpAgent {
             Thread.sleep(700);
             Files.writeString(state.resolve("answered.marker"), "answered");
             chunk(session, "edited");
+        } else if (text.contains("HIREREMEMBER:")) {
+            // a HIRED seat's prompt is the seat's stance and then the brief, so these markers are found anywhere in it (D4): the word kept is the
+            // one token after the marker, and a later prompt to the SAME brain session (session/load, same id) can ask for it back
+            String after = text.substring(text.indexOf("HIREREMEMBER:") + "HIREREMEMBER:".length()).trim();
+            Files.writeString(memory, after.split("\\s")[0]);
+            chunk(session, "noted");
+        } else if (text.contains("HIRERECALL")) {
+            chunk(session, Files.exists(memory) ? Files.readString(memory) : "nothing");
         } else if (text.startsWith("REMEMBER:")) {
             Files.writeString(memory, text.substring("REMEMBER:".length()));
             chunk(session, "noted");

@@ -103,6 +103,33 @@ public record CallerIdentity(String id, Origin origin) {
         return new CallerIdentity("editor-" + connection, Origin.EDITOR);
     }
 
+    /** The caller of the tool call being served on this thread; none outside a call the registry dispatched. */
+    private static final ThreadLocal<CallerIdentity> SERVING = new ThreadLocal<>();
+
+    /**
+     * Runs {@code call} with this identity as the one {@link #serving()} answers on this thread, and puts back whoever was serving before.
+     * The registry wraps each tool's execution in it, so a tool that must tell its callers apart (a hire continuing the brain session of the
+     * caller's own earlier hire, Sprint 28h D4) can ask without every tool's signature carrying the caller.
+     */
+    public <T> T speaking(java.util.function.Supplier<T> call) {
+        CallerIdentity before = SERVING.get();
+        SERVING.set(this);
+        try {
+            return call.get();
+        } finally {
+            if (before == null) {
+                SERVING.remove();
+            } else {
+                SERVING.set(before);
+            }
+        }
+    }
+
+    /** The caller of the tool call being served on this thread, or none when no registry call is being served here. */
+    public static java.util.Optional<CallerIdentity> serving() {
+        return java.util.Optional.ofNullable(SERVING.get());
+    }
+
     @Override
     public String toString() {
         return id + " (" + origin + ")";

@@ -355,6 +355,18 @@ public final class HiredRun {
         }
     }
 
+    /** The brain session this run continues when its brain is started over ACP (D4); none starts a new one. */
+    private Optional<String> resume = Optional.empty();
+
+    /**
+     * Makes this run continue {@code brainSession}, the session the same seat's earlier hire answered in, when the brain is started over ACP.
+     * A run is built for one hire, so the session belongs to that hire alone.
+     */
+    public HiredRun resuming(Optional<String> brainSession) {
+        this.resume = brainSession;
+        return this;
+    }
+
     /**
      * The per-step action ceiling for a plan (D18): the seat's own run-wide tool ceiling ({@code max_tool_steps}, which the spec names as the
      * ceiling D18 enforces) spread over the plan's steps, rounded up, so a step cannot spend the whole run's allowance before its gate has
@@ -386,7 +398,7 @@ public final class HiredRun {
         try (SessionFolders.Binding ignored = folders == null ? null : folders.bind(plan.value(), base.workingDirectory())) {
             outcome = acp.isPresent()
                 ? AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                    Optional.empty(), ceilings, null, live, update -> { })
+                    resume, ceilings, null, live, update -> { })
                 : HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
         }
 
