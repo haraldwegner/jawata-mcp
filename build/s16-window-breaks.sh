@@ -7,13 +7,15 @@
 #
 # Usage:  build/s16-window-breaks.sh [maven|plugins]
 # Exit:   0 = every break turned the window red and the final control passed · 1 = a break did not turn it red, or the control failed
-# Time:   about 3 minutes on the Maven tree (four rebuilds and five window runs).
+# Time:   about 3 minutes on the Maven tree (four rebuilds and four window runs: three breaks and the control).
 set -uo pipefail
 TREE="${1:-maven}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 OUT="$(mktemp -d)"
-trap 'rm -rf "$OUT"' EXIT
+CUR=""
+# an interrupted run must not leave a planted break in the engine's source: the file being broken is restored from its backup
+trap '[ -n "$CUR" ] && [ -f "$OUT/backup" ] && cp "$OUT/backup" "$CUR"; rm -rf "$OUT"' EXIT
 L=org.jawata.mcp/src/org/jawata/mcp/java/lsp
 FAILURES=0
 
@@ -21,6 +23,7 @@ FAILURES=0
 brk() {
     echo "=== BREAK $1"
     cp "$2" "$OUT/backup"
+    CUR="$2"
     python3 -I - "$2" "$3" "$4" <<'PY'
 import sys
 path, old, new = sys.argv[1:4]
@@ -32,6 +35,7 @@ PY
     build/s16-window-run.sh "$TREE" > "$OUT/window-$1.log" 2>&1
     code=$?
     cp "$OUT/backup" "$2"
+    CUR=""
     if [ "$code" -ne 0 ] && sed 's/\x1b\[[0-9;]*m//g' "$OUT/window-$1.log" | grep -q "$5"; then
         echo "  ok    the window run failed on: $5"
     else
