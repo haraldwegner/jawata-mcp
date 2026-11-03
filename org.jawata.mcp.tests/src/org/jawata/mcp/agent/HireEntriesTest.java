@@ -69,6 +69,22 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("S9: a hire that is still running reports the time since it began, read at each request, and stops counting when it ends")
+    void aRunningHiresTimeKeepsRunningUntilItEnds() {
+        watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "chief-engineer", "build the stage"));
+
+        now.addAndGet(3_000);
+        assertEquals(3_000, watch.entry("t1").orElseThrow().elapsedMs(), "a running hire's time did not move with the clock");
+        now.addAndGet(2_000);
+        assertEquals(5_000, watch.entry("t1").orElseThrow().elapsedMs(), "the second reading did not include the time since the first");
+
+        HireEntry done = watch.observe(answered(hireCall("tool_call_update", "t1", "completed"), "{\"success\":true,\"data\":{\"cleanExit\":true}}")).orElseThrow();
+        now.addAndGet(7_000);
+        assertEquals(5_000, done.elapsedMs());
+        assertEquals(5_000, watch.entry("t1").orElseThrow().elapsedMs(), "control: an ended hire's time kept running");
+    }
+
+    @Test
     @DisplayName("a cost the brain did not send is absent and not 0, and a hire that timed out or whose call failed is failed")
     void aMissingCostIsAbsentAndAFailureIsFailed() {
         watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "architect", "review"));
