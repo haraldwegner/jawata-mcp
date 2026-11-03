@@ -1416,6 +1416,46 @@ class HireToolTest {
         assertTrue(((List<?>) observed.get("corrections")).isEmpty(), String.valueOf(observed));
     }
 
+    @Test
+    @DisplayName("S10 (F7): the plan of the observer-judge hire belongs to the caller that issued the worker, so no other caller's turn waits on it")
+    void aJudgesHirePlanBelongsToTheCallerThatIssuedTheWorker() throws Exception {
+        // The judge's gate is health_check; read the ledger from inside it, while the judge's plan is open.
+        java.util.List<Integer> issuerSees = new java.util.ArrayList<>();
+        java.util.List<Integer> otherSees = new java.util.ArrayList<>();
+        ToolRegistry registry = aRegistryWithACleanGate();
+        registry.register(new Tool() {
+            @Override public String getName() {
+                return "health_check";
+            }
+            @Override public String getDescription() {
+                return "a gate fixture that notes who the ledger says its plan is waiting for";
+            }
+            @Override public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+            @Override public ToolResponse execute(JsonNode arguments) {
+                issuerSees.add(plans.pendingFor("principal-f7-judge-issuer").size());
+                otherSees.add(plans.pendingFor("principal-f7-someone-else").size());
+                return ToolResponse.success(Map.of("errorCount", 0));
+            }
+        });
+        HireTool pm = toolWith(new StandsIn(host, aBrainSayingWithTokens(PM_ANSWER, 1000, 500).withSeparateStderr()), events, aRegistryWithACleanGate());
+        String issuerPlan = (String) dataOf(pm.execute(hireArgs(seatFile(CATALOGUER_SEAT)))).get("plan");
+        HireTool hire = toolWith(new StandsIn(host, aWorkerThenAnObserverWhoHalts("{\"symbol\":\"a.B#c\",\"newName\":\"SOMETHING ELSE\"}").withSeparateStderr()),
+            events, registry);
+        com.fasterxml.jackson.databind.node.ObjectNode args = (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("instructionsFrom", issuerPlan);
+        args.put("observerSeatFile", seatFile(CATALOGUER_SEAT).toString());
+
+        org.jawata.mcp.models.CallerIdentity.supplied("principal-f7-judge-issuer").speaking(() -> hire.execute(args));
+
+        assertAll(
+            () -> assertTrue(!issuerSees.isEmpty(), "the judge's gate never ran, so nothing was observed"),
+            () -> assertEquals(1, issuerSees.get(issuerSees.size() - 1), "the issuer is not told the judge's step is pending"),
+            () -> assertEquals(0, otherSees.get(otherSees.size() - 1),
+                "another caller was told about the judge's plan, which nobody owned, and would hold its turn on it"));
+    }
+
     /**
      * A worker brain whose CLI offered only the jawata rename (the init event says so): it makes the right
      * call, then ATTEMPTS the CLI's own Write, which was never offered and so cannot have run.

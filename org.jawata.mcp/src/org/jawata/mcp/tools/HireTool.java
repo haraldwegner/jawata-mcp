@@ -817,6 +817,9 @@ public class HireTool extends NeutralTool {
      * be made or answers with no verdict line gives no verdict, so the flag is reported as unjudged and not as clear.
      */
     private Observer.Judge hiredJudge(String seatFile, LearnerEventStore landsIn, SelfEndpoint endpoint, HireSite base) {
+        // The judge's plan belongs to the session that issued the worker it judges, read here on the tool's own thread: a plan nobody owns is
+        // listed to every caller and would hold their turns while the judge runs (S10, F7).
+        Optional<String> issuer = org.jawata.mcp.models.CallerIdentity.serving().map(org.jawata.mcp.models.CallerIdentity::id);
         return (flag, instruction, window) -> {
             try {
                 SeatHire observerSeat = SeatHire.read(readSeatFile(seatFile));
@@ -824,7 +827,7 @@ public class HireTool extends NeutralTool {
                 List<String> hidden = observerSeat.toolsToHide(engineTools.getToolNames().stream()
                     .filter(name -> engineTools.getTool(name).map(Tool::changesCode).orElse(false))
                     .toList());
-                HiredRun judging = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, engineTools.sessionFolders());
+                HiredRun judging = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, engineTools.sessionFolders()).ownedBy(issuer);
                 HiredRun.Proposal verdict = judging.issue(observerSeat, base, Observer.briefFor(flag, instruction, window),
                     List.of(new GatedStep(0, "health_check", JSON.createObjectNode())), new ToolGateRunner(engineTools), hidden);
                 return Observer.verdictOf(verdict.outcome().text());
