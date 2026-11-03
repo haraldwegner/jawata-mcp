@@ -1614,6 +1614,50 @@ class HireToolTest {
         }
     }
 
+    /** A brain that says one thing and then keeps running for a minute, so a hire of it is still going when something stops it. */
+    private HostCommand aBrainThatBlocks() throws Exception {
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        Files.writeString(file, """
+            #!/bin/sh
+            echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"working"}]}}'
+            sleep 60
+            """);
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return HostCommand.of(file.toString());
+    }
+
+    @Test
+    @DisplayName("S9: a hire stopped from the Agent Control panel ends at once, its answer says the person stopped it, and it is no longer listed as running")
+    void aHireStoppedFromThePanelEndsAtOnceAndSaysSo() throws Exception {
+        org.jawata.mcp.execution.RunningHires running = org.jawata.mcp.execution.RunningHires.shared();
+        int before = running.count();
+        HireTool hire = toolWithSettings(new StandsIn(host, aBrainThatBlocks()), Map.of());
+        // A daemon thread, so a hire that does not end cannot keep the test run from ending.
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
+            Thread thread = new Thread(task);
+            thread.setDaemon(true);
+            return thread;
+        });
+        try {
+            java.util.concurrent.Future<ToolResponse> response = pool.submit(() -> hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+            for (int i = 0; i < 100 && running.count() == before; i++) {
+                Thread.sleep(50);
+            }
+            assertEquals(before + 1, running.count(), "the hire never registered as running");
+
+            int stopped = running.stop("cataloguer", "Describe every member of org.jawata.mcp.execution.");
+            ToolResponse answer = response.get(20, java.util.concurrent.TimeUnit.SECONDS);
+
+            assertAll(
+                () -> assertEquals(1, stopped),
+                () -> assertFalse(answer.isSuccess(), "a stopped hire was answered as a success"),
+                () -> assertTrue(String.valueOf(answer.getError()).contains("stopped from the Agent Control panel"), String.valueOf(answer.getError())),
+                () -> assertEquals(before, running.count(), "the stopped hire is still listed as running"));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
     @Test
     @DisplayName("S12 (D48): the consultant is refused on main's own vendor, naming the rule, before any brain starts")
     void aConsultantOnMainsOwnVendorIsRefusedBeforeItStarts() throws Exception {

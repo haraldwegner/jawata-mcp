@@ -22,6 +22,7 @@ import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.Instructions;
 import org.jawata.mcp.execution.Observer;
 import org.jawata.mcp.execution.RunEffects;
+import org.jawata.mcp.execution.RunningHires;
 import org.jawata.mcp.execution.SeatBrainPicks;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatTree;
@@ -457,6 +458,10 @@ public class HireTool extends NeutralTool {
 
         HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area);
         HiredRun.Proposal proposal;
+        // While the brain runs this hire can be stopped from the Agent Control panel (S9): the panel's stop interrupts this thread, which ends the
+        // run the way any interruption does, and the answer says the person stopped it.
+        RunningHires.Registration running = RunningHires.shared().begin(hired, brief);
+        boolean stoppedByPerson = false;
         try {
             // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
             Optional<AcpBrainSession.Program> acp = brainsRegistry
@@ -470,10 +475,25 @@ public class HireTool extends NeutralTool {
                     + " that CLI is installed and on the resident's PATH. Which executable a brain"
                     + " IS cannot be set per call; it is the dialect's, chosen by the seat's brain");
         } catch (InterruptedException e) {
+            if (running.wasStopped()) {
+                // The person's stop is handled here and ends with this answer, so the thread is left as it is for the next request.
+                return ToolResponse.error("HIRE_STOPPED",
+                    "the hire was stopped from the Agent Control panel while the brain was running",
+                    "the child process is reaped; nothing is left running; hire again if the work is still wanted");
+            }
             Thread.currentThread().interrupt();
             return ToolResponse.error("INTERNAL_ERROR",
                 "the hire was interrupted while the brain was running",
                 "the child process is reaped; nothing is left running");
+        } finally {
+            // A killed process ends the read normally and no interrupt exception follows, so the stop is looked for here as well.
+            stoppedByPerson = running.wasStopped() || stoppedByPerson;
+            running.close();
+        }
+        if (stoppedByPerson) {
+            return ToolResponse.error("HIRE_STOPPED",
+                "the hire was stopped from the Agent Control panel while the brain was running",
+                "the child process is reaped; nothing is left running; hire again if the work is still wanted");
         }
 
         Map<String, Object> data = new LinkedHashMap<>();

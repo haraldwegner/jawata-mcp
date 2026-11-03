@@ -9,6 +9,7 @@ import java.util.function.Supplier;
 
 import org.jawata.mcp.agent.ReviewBeforeSend.Reviewer;
 import org.jawata.mcp.execution.Hirer;
+import org.jawata.mcp.execution.RunningHires;
 import org.jawata.mcp.execution.SeatBrainPicks;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.protocol.JsonRpcMessage;
@@ -121,6 +122,7 @@ public final class AcpServer {
             case "_jawata/brains" -> JsonRpcMessage.successResponse(id, brainsResult());
             case "_jawata/hire/transcript" -> hireTranscript(id, params);
             case "_jawata/hire/brain" -> hireBrain(id, params);
+            case "_jawata/hire/stop" -> hireStop(id, params);
             default -> JsonRpcMessage.errorResponse(id, METHOD_NOT_FOUND, "Method not found: " + request.getMethod(), null);
         };
     }
@@ -196,6 +198,31 @@ public final class AcpServer {
             meta.put("model", applied);
         }
         return JsonRpcMessage.successResponse(id, meta);
+    }
+
+    /**
+     * The Agent Control panel's stop for one agent (S9; his ruling 2026-10-31): ends that one hire while the principal's turn goes on and
+     * receives a failed-hire answer. The method name is provisional until the chat's recording R12 carries it. A hire the agent never saw, one
+     * that has already finished, and one this engine is not running are bad requests, each said in its own words, and nothing is stopped.
+     */
+    private JsonRpcMessage hireStop(Object id, JsonNode params) {
+        String planId = textField(params, "planId");
+        java.util.Optional<HireEntry> entry = planId == null ? java.util.Optional.empty() : hires.entry(planId);
+        if (entry.isEmpty()) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "no hire " + planId + " was seen by this agent", null);
+        }
+        if (!HireEntry.RUNNING.equals(entry.get().state())) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "hire " + planId + " has already " + entry.get().state() + "; there is nothing to stop", null);
+        }
+        int stopped = RunningHires.shared().stop(entry.get().seat(), entry.get().task());
+        if (stopped == 0) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
+                "this engine is not running a hire of " + entry.get().seat() + " for that brief, so there is nothing here to stop", null);
+        }
+        ObjectNode result = JSON.createObjectNode();
+        result.put("planId", planId);
+        result.put("stopped", stopped);
+        return JsonRpcMessage.successResponse(id, result);
     }
 
     private ObjectNode initializeResult() {

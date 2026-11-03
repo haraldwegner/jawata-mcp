@@ -180,6 +180,8 @@ public final class HiredBrain {
             base.environment(), ceilings.wallClock(), false, base.cleanEnvironment());
 
         Process child = host.start(command);
+        // A stop from the Agent Control panel kills this process: the read below is blocked and a thread interrupt cannot end it.
+        RunningHires.shared().onStop(() -> HostProcesses.reap(child));
         StringBuilder stderrTail = new StringBuilder();
         Thread stderrDrain = drainStderr(child, stderrTail);
 

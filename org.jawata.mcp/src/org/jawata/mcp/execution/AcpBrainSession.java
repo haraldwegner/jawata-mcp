@@ -110,6 +110,8 @@ public final class AcpBrainSession {
         environment.putAll(program.environment());
         Process child = host.start(new HostCommand(program.command(), base.workingDirectory(), environment,
             ceilings.wallClock(), false, base.cleanEnvironment()));
+        // A stop from the Agent Control panel kills this process: the read of its output is blocked and a thread interrupt cannot end it.
+        RunningHires.shared().onStop(() -> HostProcesses.reap(child));
         StringBuilder stderrTail = new StringBuilder();
         Thread drain = drain(child, stderrTail);
         boolean[] reaped = {false};
