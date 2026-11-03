@@ -24,4 +24,13 @@ public interface AgentBrain {
     default void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls) {
         answer(prompt, chunks);
     }
+
+    /**
+     * Answers {@code prompt} and also passes the brain's thinking and its plan to {@code thinking} as they happen, each as the ACP
+     * {@code agent_thought_chunk} or {@code plan} update the brain streamed (contract R9 and R10). A brain that streams neither, or
+     * that cannot see them, ignores the sink; the sink may be null.
+     */
+    default void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls, Consumer<JsonNode> thinking) {
+        answer(prompt, chunks, toolCalls);
+    }
 }

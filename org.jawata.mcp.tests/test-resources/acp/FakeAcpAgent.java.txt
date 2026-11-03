@@ -111,6 +111,16 @@ public class FakeAcpAgent {
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"c1\",\"title\":\"jawata: health_check\","
                 + "\"rawInput\":{\"providerIdentifier\":\"jawata\",\"toolName\":\"health_check\",\"args\":{}}}}}");
             chunk(session, "called");
+        } else if (text.startsWith("THINK")) {
+            // thinking in two chunks and a plan update, then the answer: the three kinds the contract's R9 and R10 rows carry
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"content\":{\"type\":\"text\",\"text\":\"Checking divisibility \"}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"plan\",\"entries\":[{\"content\":\"try 7\",\"priority\":\"medium\",\"status\":\"completed\"},"
+                + "{\"content\":\"say the answer\",\"priority\":\"medium\",\"status\":\"pending\"}]}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"content\":{\"type\":\"text\",\"text\":\"by 7 and 13.\"}}}}");
+            chunk(session, "thought");
         } else if (text.startsWith("SPEND")) {
             for (int i = 1; i <= 5; i++) {
                 send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session

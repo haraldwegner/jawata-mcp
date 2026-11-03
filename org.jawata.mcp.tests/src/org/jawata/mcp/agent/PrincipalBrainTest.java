@@ -94,6 +94,19 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("R9, R10: the principal brain hands the host the brain's thinking and its plan as they stream, in order, and the answer stays the answer")
+    void theBrainsThinkingAndPlanReachTheHost() {
+        PrincipalBrain brain = brain(Optional.of(fake));
+        List<String> pieces = new ArrayList<>();
+        List<String> thinking = new ArrayList<>();
+
+        brain.answer("THINK", pieces::add, null, update -> thinking.add(update.path("sessionUpdate").asText()));
+
+        assertEquals(List.of("agent_thought_chunk", "plan", "agent_thought_chunk"), thinking);
+        assertEquals("thought", String.join("", pieces), "the thinking was taken for the answer, or the answer was lost");
+    }
+
+    @Test
     @DisplayName("S3, D30: the principal brain presents a session id of its own to the resident, the same on every prompt of one brain and different between two brains")
     void thePrincipalBrainPresentsItsOwnSessionId() {
         SelfEndpoint endpoint = new SelfEndpoint("http://127.0.0.1:1/mcp", "key");

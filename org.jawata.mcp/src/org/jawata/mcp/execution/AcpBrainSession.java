@@ -104,9 +104,11 @@ public final class AcpBrainSession {
      * @param onText       called with each piece of the brain's answer as it arrives, or null when only the finished outcome is wanted
      * @param onToolUpdate called with each {@code tool_call} and {@code tool_call_update} the brain streams, the moment it is read, so a
      *                     host sees the brain's tool calls as they happen; null when nobody is listening
+     * @param onThinking   called with each {@code agent_thought_chunk} (thinking) and {@code plan} (a plan update) the brain streams, the
+     *                     moment it is read, so a host sees them as they happen; null when nobody is listening
      */
     public static HiredBrain.Outcome run(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
-            List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate) throws IOException, InterruptedException {
+            List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate, Consumer<JsonNode> onThinking) throws IOException, InterruptedException {
         Map<String, String> environment = new LinkedHashMap<>(base.environment());
         environment.putAll(program.environment());
         Process child = host.start(new HostCommand(program.command(), base.workingDirectory(), environment,
@@ -132,6 +134,7 @@ public final class AcpBrainSession {
         Wire wire = new Wire(child, new HashSet<>(allowedTools == null ? List.of() : allowedTools), ceilings);
         wire.onText = onText;
         wire.onToolUpdate = onToolUpdate;
+        wire.onThinking = onThinking;
         StringBuilder said = new StringBuilder();
         List<String> toolNames = new ArrayList<>();
         List<ToolCall> toolCalls = new ArrayList<>();
@@ -320,6 +323,8 @@ public final class AcpBrainSession {
         Consumer<String> onText;
         /** Called with each tool call update the moment it is read; null when nobody is listening. */
         Consumer<JsonNode> onToolUpdate;
+        /** Called with each thinking chunk and each plan update the moment it is read; null when nobody is listening. */
+        Consumer<JsonNode> onThinking;
 
         Wire(Process child, Set<String> allowed, HiredBrain.Ceilings ceilings) {
             this.child = child;
@@ -382,6 +387,9 @@ public final class AcpBrainSession {
                     String updateKind = update.path("sessionUpdate").asText();
                     if (onToolUpdate != null && ("tool_call".equals(updateKind) || "tool_call_update".equals(updateKind))) {
                         onToolUpdate.accept(update);
+                    }
+                    if (onThinking != null && ("agent_thought_chunk".equals(updateKind) || "plan".equals(updateKind))) {
+                        onThinking.accept(update);
                     }
                     if (exceeded(update)) {
                         HostProcesses.reap(child);

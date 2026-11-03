@@ -80,7 +80,7 @@ final class BrainReviewer implements ReviewBeforeSend.Reviewer {
             + "or the first line REVIEW: REVISED followed by the whole message to send.";
         HiredBrain.Outcome outcome;
         try {
-            outcome = AcpBrainSession.run(host, program, site, prompt, null, List.of(), resume, ceilings, null, null);
+            outcome = AcpBrainSession.run(host, program, site, prompt, null, List.of(), resume, ceilings, null, null, update -> { });
         } catch (IOException e) {
             return Optional.empty();
         } catch (InterruptedException e) {

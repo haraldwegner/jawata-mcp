@@ -386,7 +386,7 @@ public final class HiredRun {
         try (SessionFolders.Binding ignored = folders == null ? null : folders.bind(plan.value(), base.workingDirectory())) {
             outcome = acp.isPresent()
                 ? AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                    Optional.empty(), ceilings, null, live)
+                    Optional.empty(), ceilings, null, live, update -> { })
                 : HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
         }
 

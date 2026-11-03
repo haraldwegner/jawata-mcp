@@ -58,7 +58,7 @@ class AcpBrainSessionTest {
 
     private HiredBrain.Outcome hire(String prompt, List<String> allowed, Optional<String> resume, HiredBrain.Ceilings ceilings,
             SelfEndpoint mcp) throws Exception {
-        return AcpBrainSession.run(host, agent, HireSite.in(dir), prompt, mcp, allowed, resume, ceilings, null, null);
+        return AcpBrainSession.run(host, agent, HireSite.in(dir), prompt, mcp, allowed, resume, ceilings, null, null, update -> { });
     }
 
     private HiredBrain.Outcome hire(String prompt) throws Exception {
@@ -204,6 +204,20 @@ class AcpBrainSessionTest {
 
         assertTrue(outcome.timedOut(), "the hung brain was not reaped by the clock: " + outcome);
         assertFalse(outcome.clean());
+    }
+
+    @Test
+    @DisplayName("the brain's thinking and its plan update reach their sink in the order they were streamed, and the thinking is not taken for the answer (contract R9, R10)")
+    void thinkingAndAPlanReachTheirSinkInOrder() throws Exception {
+        List<String> seen = new java.util.concurrent.CopyOnWriteArrayList<>();
+
+        HiredBrain.Outcome outcome = AcpBrainSession.run(host, agent, HireSite.in(dir), "THINK", null, List.of(), Optional.empty(),
+            HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null, null,
+            update -> seen.add(update.path("sessionUpdate").asText() + ":"
+                + update.path("content").path("text").asText(update.path("entries").size() + " entries")));
+
+        assertEquals(List.of("agent_thought_chunk:Checking divisibility ", "plan:2 entries", "agent_thought_chunk:by 7 and 13."), seen);
+        assertEquals("thought", outcome.text(), "the thinking was taken for the answer");
     }
 
     @Test

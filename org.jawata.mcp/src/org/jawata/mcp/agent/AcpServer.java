@@ -511,7 +511,7 @@ public final class AcpServer {
         running.put(session.id(), Thread.currentThread());
         try {
             while (true) {
-                brain.answer(text, chunks, toolCalls);
+                brain.answer(text, chunks, toolCalls, thought -> update(session.id(), ((ObjectNode) thought).deepCopy()));
                 if (cancelled.contains(session.id())) {
                     stopReason = "cancelled";
                     break;
