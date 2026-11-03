@@ -402,6 +402,11 @@ public final class HiredRun {
         // THE ONE START PATH (S12): a brain with a program that speaks ACP is run through the engine's ACP client, under this plan's own
         // session id, with the seat's tools as its allowlist (an empty list allows none); any other brain is started by its dialect.
         LiveGates live = acp.isPresent() ? new LiveGates(plan, declaredGates) : null;
+        // S13 (the audit of C6, finding F2): the seat's list is also kept where the choke can read it, so a brain that ignores the permission
+        // answer still cannot call outside it. Only on this path, where an empty list means none; a dialect-started brain keeps its own reading.
+        if (acp.isPresent()) {
+            plans.allowTools(plan, tools);
+        }
         // ACL4: while the brain works, its session (the plan id it presents to the resident) is concerned with the folder it was hired in,
         // not with every project the manifest holds; the binding ends with the run.
         HiredBrain.Outcome outcome;

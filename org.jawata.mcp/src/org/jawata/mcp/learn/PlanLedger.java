@@ -136,6 +136,9 @@ public final class PlanLedger {
         /** The session that opened the plan, or empty when nobody said: a plan's pending step is that session's to answer for (S10). */
         private String owner = "";
 
+        /** The tools the hired seat may call, or null when no list was given (S13): the choke refuses a call outside it. */
+        private java.util.Set<String> allowed;
+
         Entry(List<GatedStep> steps, int perStepCeiling, long openedAt) {
             this.steps = steps;
             this.perStepCeiling = perStepCeiling;
@@ -153,6 +156,21 @@ public final class PlanLedger {
      * @param since   the clock reading at which the step began
      */
     public record StepBudget(PlanId plan, GatedStep gate, int ceiling, long since) {
+    }
+
+    /**
+     * What a hired session may call (S13, the audit of C6, finding F2): the tools its seat lists, and the gate of the step it is working, which
+     * a brain has to be able to run to show the step passed whatever its seat lists.
+     *
+     * @param tools the seat's own list; an empty list allows no tool but the gate
+     * @param gate  the tool whose answer would move the plan, when the current step gates the tree and not the seat's answer
+     */
+    public record ToolAllowance(java.util.Set<String> tools, Optional<String> gate) {
+
+        /** Whether the session may call {@code tool}. */
+        public boolean permits(String tool) {
+            return tools.contains(tool) || gate.map(tool::equals).orElse(false);
+        }
     }
 
     /** The prefix of a step that gates the seat's ANSWER, not the tree: it can pass only once the brain has answered, so no ceiling applies while it is current. */
@@ -420,6 +438,39 @@ public final class PlanLedger {
         if (entry != null) {
             entry.owner = owner == null ? "" : owner;
         }
+    }
+
+    /** Records the tools the seat that opened the plan may call, so the choke can refuse a call outside them (S13); an empty list allows none. */
+    public synchronized void allowTools(PlanId id, java.util.Collection<String> tools) {
+        Entry entry = plans.get(id);
+        if (entry != null) {
+            entry.allowed = tools == null ? java.util.Set.of() : java.util.Set.copyOf(tools);
+        }
+    }
+
+    /**
+     * What the session may call, or empty when it is no open plan's, the plan was given no list, or the plan has ended. {@code sessionId} is the
+     * caller's session id; a hired brain's is its plan's value (S3, D30).
+     */
+    public synchronized Optional<ToolAllowance> allowance(String sessionId) {
+        if (sessionId == null) {
+            return Optional.empty();
+        }
+        for (Map.Entry<PlanId, Entry> plan : plans.entrySet()) {
+            if (!plan.getKey().value().equals(sessionId)) {
+                continue;
+            }
+            Entry entry = plan.getValue();
+            if (entry.closed || entry.allowed == null) {
+                return Optional.empty();
+            }
+            int next = entry.currentStep + 1;
+            Optional<String> gate = next < entry.steps.size() && !entry.steps.get(next).tool().startsWith(ANSWER_GATE_PREFIX)
+                ? Optional.of(entry.steps.get(next).tool())
+                : Optional.empty();
+            return Optional.of(new ToolAllowance(entry.allowed, gate));
+        }
+        return Optional.empty();
     }
 
     /**

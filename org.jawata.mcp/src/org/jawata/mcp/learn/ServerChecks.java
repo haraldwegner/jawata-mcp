@@ -139,6 +139,26 @@ public final class ServerChecks {
             "run " + step.gate().tool() + " now; the next call of any other tool is refused until it passes, and a step that passes starts its count again");
     }
 
+    /**
+     * THE SEAT'S ALLOWLIST AT THE CHOKE (S13, the audit of C6, finding F2). A hired session may call the tools its seat lists and the gate of the
+     * step it is working, whatever its brain does about {@code session/request_permission}: a brain that never asks, or asks and is refused but
+     * calls anyway, reaches the resident only through here. A session nobody recorded a list for (a person's client, a dialect-started brain, a
+     * plan that ended) is not narrowed, which is the reading before this check existed.
+     */
+    private ToolResponse outsideTheSeatsTools(CallerIdentity caller, String name) {
+        if (plans == null || caller == null) {
+            return null;
+        }
+        java.util.Optional<PlanLedger.ToolAllowance> allowance = plans.allowance(caller.id());
+        if (allowance.isEmpty() || allowance.get().permits(name)) {
+            return null;
+        }
+        return ToolResponse.error("TOOL_NOT_ALLOWED",
+            "the seat this session was hired as does not list " + name,
+            "the tools it may call: " + (allowance.get().tools().isEmpty() ? "none" : String.join(", ", new java.util.TreeSet<>(allowance.get().tools())))
+                + (allowance.get().gate().map(gate -> "; and " + gate + ", the gate of its current step").orElse("")));
+    }
+
     public PolicyDial dial() {
         return dial;
     }
@@ -180,6 +200,10 @@ public final class ServerChecks {
     public ToolResponse acceptance(CallerIdentity caller, String name, JsonNode arguments,
             SessionLedger ledger) {
         try {
+            ToolResponse notListed = outsideTheSeatsTools(caller, name);
+            if (notListed != null) {
+                return notListed;
+            }
             ToolResponse overSpent = stepCeiling(caller, name, ledger);
             if (overSpent != null) {
                 return overSpent;

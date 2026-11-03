@@ -1571,6 +1571,47 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("S13 (F2): a hire started over ACP has its seat's tool list on its plan while it runs, where the choke reads it, and a hire started by its dialect has none")
+    void anAcpHiresSeatListIsKeptWhereTheChokeReads() throws Exception {
+        // Read from inside the gate, which the hire runs before its plan closes.
+        java.util.List<java.util.Optional<PlanLedger.ToolAllowance>> seen = new java.util.ArrayList<>();
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new Tool() {
+            @Override public String getName() {
+                return "compile_workspace";
+            }
+            @Override public String getDescription() {
+                return "a gate fixture that notes what the ledger says the hire's session may call";
+            }
+            @Override public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+            @Override public ToolResponse execute(JsonNode arguments) {
+                for (PlanLedger.Pending open : plans.pending()) {
+                    seen.add(plans.allowance(open.id().value()));
+                }
+                return ToolResponse.success(Map.of("errorCount", 0));
+            }
+        });
+        String brains = JSON.writeValueAsString(Map.of("claude-code", theStandInAcpProgram()));
+        HireTool overAcp = new HireTool(host, artifacts, plans, () -> events, () -> registry,
+            () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
+            () -> key -> HireTool.BRAINS_SETTING.equals(key) ? java.util.Optional.of(brains) : java.util.Optional.empty(), null);
+        dataOf(overAcp.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        int afterTheAcpHire = seen.size();
+        HireTool byDialect = toolWith(new StandsIn(host, aBrainThatAnswers()), events, registry);
+        dataOf(byDialect.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertTrue(afterTheAcpHire > 0, "the gate never ran in the ACP hire, so nothing was observed"),
+            () -> assertEquals(java.util.Set.of("inspect", "search_symbols", "analyze", "experience"), seen.get(0).orElseThrow().tools(),
+                "the seat's list was not on the ACP hire's plan"),
+            () -> assertEquals(java.util.Optional.of("compile_workspace"), seen.get(0).orElseThrow().gate()),
+            () -> assertTrue(seen.size() > afterTheAcpHire && seen.get(afterTheAcpHire).isEmpty(),
+                "control: a hire started by its dialect was given a list the choke would enforce"));
+    }
+
+    @Test
     @DisplayName("S12: a Cursor seat whose registry entry is keyed by the product name, as the panel and the vendor rule key it, is started through the engine's ACP client and not by its print-mode dialect")
     void aCursorBrainRegisteredUnderItsProductNameIsStartedOverAcp() throws Exception {
         Map<String, Object> program = theStandInAcpProgram();
