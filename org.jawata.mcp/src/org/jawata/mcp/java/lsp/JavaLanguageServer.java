@@ -269,13 +269,15 @@ public final class JavaLanguageServer {
         LspEditing editing = new LspEditing(tools, caller, this::viewOf, this::hasUnsavedText);
         requests.register("textDocument/prepareRename", "renameProvider", Map.of("prepareProvider", true), editing::prepareRename);
         requests.register("textDocument/rename", "renameProvider", Map.of("prepareProvider", true), editing::rename);
+        LspCodeActions codeActions = new LspCodeActions(tools, caller, this::viewOf, this::hasUnsavedText);
         requests.register("textDocument/codeAction", "codeActionProvider",
-            Map.of("codeActionKinds", List.of("quickfix", "source.organizeImports", "refactor.extract")), editing::codeAction);
+            Map.of("codeActionKinds", List.of("quickfix", "source.organizeImports", "refactor.extract")), codeActions::codeAction);
         requests.register("workspace/willRenameFiles", null, null, editing::willRenameFiles); // announced under workspace.fileOperations, which initializeResult owns
+        LspFormatting formatting = new LspFormatting(this::viewOf);
         requests.register("textDocument/onTypeFormatting", "documentOnTypeFormattingProvider",
-            Map.of("firstTriggerCharacter", "}", "moreTriggerCharacter", List.of(";", "\n")), editing::onTypeFormatting);
-        requests.register("textDocument/formatting", "documentFormattingProvider", true, editing::formatting);
-        requests.register("textDocument/rangeFormatting", "documentRangeFormattingProvider", true, editing::rangeFormatting);
+            Map.of("firstTriggerCharacter", "}", "moreTriggerCharacter", List.of(";", "\n")), formatting::onTypeFormatting);
+        requests.register("textDocument/formatting", "documentFormattingProvider", true, formatting::formatting);
+        requests.register("textDocument/rangeFormatting", "documentRangeFormattingProvider", true, formatting::rangeFormatting);
         LspStructure structure = new LspStructure(this::viewOf);
         requests.register("textDocument/foldingRange", "foldingRangeProvider", true, structure::foldingRange);
         requests.register("textDocument/selectionRange", "selectionRangeProvider", true, structure::selectionRange);
