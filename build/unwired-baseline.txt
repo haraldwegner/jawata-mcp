@@ -6,7 +6,6 @@ org.jawata.core.search.SearchService#getScope()
 org.jawata.core.workspace.DiskSyncGuard.ScanResult#isEmpty()
 # Sprint 28h S7a: the hire records the principal brain keeps. The recorder that writes them to the transcript lane is S9, which is their first production reader.
 org.jawata.mcp.agent.PrincipalBrain#records()
-org.jawata.mcp.agent.RoleFigures#of(Collection<HireFacts>)
 # v4.1.0: a question a guard asks of the registry. The product registers; it never asks.
 org.jawata.mcp.change.OperationRegistry#isWired()
 # v4.1.0: convenience overload for tests; the product calls the fuller form.
@@ -97,7 +96,6 @@ org.jawata.mcp.models.ResponseMeta#getTotalCount()
 org.jawata.mcp.models.ResponseMeta#getTruncated()
 org.jawata.mcp.models.ToolResponse#getMeta()
 org.jawata.mcp.models.ToolResponse#securityViolation(String)
-org.jawata.mcp.protocol.JsonRpcMessage#isResponse()
 org.jawata.mcp.protocol.JsonRpcMessage#setError(JsonRpcError)
 org.jawata.mcp.protocol.JsonRpcMessage#setId(Object)
 org.jawata.mcp.protocol.JsonRpcMessage#setJsonrpc(String)
