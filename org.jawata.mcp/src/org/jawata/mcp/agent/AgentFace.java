@@ -85,9 +85,20 @@ public final class AgentFace implements RoutedFace {
         return new MessageRoute(PATH, out -> open(brains.get(), out, brains)::receive, AgentFace::runsAtOnce, keepaliveSeconds);
     }
 
-    /** The person's switch and cancel must act while a prompt is running; queued behind it, they would arrive after the turn they were for. */
-    private static boolean runsAtOnce(String method) {
-        return "session/set_config_option".equals(method) || "session/cancel".equals(method);
+    /**
+     * What must act while a prompt is running, because queued behind it the message would arrive after the turn it was for: the person's
+     * switch and cancel, the Agent Control panel's stop, brain pick, transcript and brains list (a hire runs INSIDE the principal's prompt, so a
+     * stop queued behind the prompt would act only when the hire it was meant to end had ended), and the host's answer to a question the agent
+     * asked, which has no method at all.
+     */
+    static boolean runsAtOnce(String method) {
+        if (method == null) {
+            return true;
+        }
+        return switch (method) {
+            case "session/set_config_option", "session/cancel", "_jawata/hire/stop", "_jawata/hire/brain", "_jawata/hire/transcript", "_jawata/brains" -> true;
+            default -> false;
+        };
     }
 
     @Override

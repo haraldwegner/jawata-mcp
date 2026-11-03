@@ -93,6 +93,8 @@ public final class AcpServer {
         if (!message.isRequest()) {
             if (from == Channel.HOST && "session/cancel".equals(message.getMethod())) {
                 cancel(message);
+            } else if (from == Channel.HOST && message.isResponse()) {
+                answerProposal(message);
             }
             return;
         }
@@ -392,6 +394,67 @@ public final class AcpServer {
         return JsonRpcMessage.successResponse(id, result);
     }
 
+    /** A proposal put to the person and not yet answered: the session it was put in, and the hire it is about. */
+    private record Asked(PrincipalSession session, String planId, String seat) {
+    }
+
+    /** The proposals put to the person and waiting for the answer, by the id of the request that carries each. */
+    private final Map<String, Asked> proposals = new ConcurrentHashMap<>();
+    private final java.util.concurrent.atomic.AtomicInteger proposalRequests = new java.util.concurrent.atomic.AtomicInteger();
+
+    /**
+     * A seat's proposal, put to the person as {@code session/request_permission} (R7): when a hire has ended well and changed files, the host is
+     * asked once whether to accept it, with the files in the request. The turn is not held for the answer; the answer is recorded when it comes
+     * and shown on the hire's entry. The hire's answer names the files and carries no diff text, so the request lists the files and no more.
+     */
+    private void askAboutProposal(PrincipalSession session, HireEntry entry) {
+        hires.proposalToAsk(entry.planId()).ifPresent(files -> {
+            String requestId = "jawata-proposal-" + proposalRequests.incrementAndGet();
+            proposals.put(requestId, new Asked(session, entry.planId(), entry.seat()));
+            ObjectNode params = JSON.createObjectNode();
+            params.put("sessionId", session.id());
+            ObjectNode call = params.putObject("toolCall");
+            call.put("toolCallId", entry.planId());
+            call.put("title", "Proposal of " + entry.seat() + ": " + files.size() + (files.size() == 1 ? " file" : " files") + " changed");
+            call.put("status", "completed");
+            ArrayNode content = call.putArray("content");
+            files.forEach(file -> content.addObject().put("type", "content").putObject("content").put("type", "text").put("text", file));
+            ArrayNode options = params.putArray("options");
+            options.addObject().put("optionId", "accept").put("name", "Accept the proposal").put("kind", "allow_once");
+            options.addObject().put("optionId", "reject").put("name", "Reject the proposal").put("kind", "reject_once");
+            params.putObject("_meta").set("jawata/hire", entry.toMeta());
+            out.accept(JsonRpcMessage.request(requestId, "session/request_permission", params));
+        });
+    }
+
+    /**
+     * The person's answer to a proposal put to them: it is kept on the hire's entry, shown to the host as an update of the hire's tool call,
+     * and recorded in the transcript lane as the person's verdict. A response to anything else is ignored, and so is an answer that chose
+     * nothing (the host cancelled the question): no choice is no verdict, and none is invented. The agent changes no file on a verdict.
+     */
+    private void answerProposal(JsonRpcMessage response) {
+        Asked asked = proposals.remove(String.valueOf(response.getId()));
+        if (asked == null || response.getError() != null || response.getResult() == null) {
+            return;
+        }
+        JsonNode outcome = JSON.valueToTree(response.getResult()).path("outcome");
+        String chosen = "selected".equals(outcome.path("outcome").asText()) ? outcome.path("optionId").asText("") : "";
+        String verdict = "accept".equals(chosen) ? HireEntry.ACCEPTED : "reject".equals(chosen) ? HireEntry.REJECTED : null;
+        if (verdict == null) {
+            return;
+        }
+        hires.answered(asked.planId(), verdict).ifPresent(entry -> {
+            ObjectNode shown = JSON.createObjectNode();
+            shown.put("sessionUpdate", "tool_call_update");
+            shown.put("toolCallId", asked.planId());
+            shown.putObject("_meta").set("jawata/hire", entry.toMeta());
+            update(asked.session().id(), shown);
+        });
+        recorder.record(AgentRecorder.Level.HIRED, asked.session(), "verdict_" + asked.planId(),
+            "The person's answer to the proposal of " + asked.seat() + " (" + asked.planId() + "): " + verdict,
+            "Recorded the person's verdict on the proposal of " + asked.seat() + ": " + verdict, List.of());
+    }
+
     private JsonRpcMessage prompt(Object id, JsonNode params, Channel from) {
         PrincipalSession session = sessionOf(params);
         if (session == null) {
@@ -426,11 +489,13 @@ public final class AcpServer {
         Map<String, ObjectNode> toolState = new java.util.LinkedHashMap<>();
         Consumer<JsonNode> toolCalls = call -> {
             ObjectNode forwarded = ((ObjectNode) call).deepCopy();
-            hires.observe(call).ifPresent(entry -> {
+            java.util.Optional<HireEntry> seen = hires.observe(call);
+            seen.ifPresent(entry -> {
                 ObjectNode meta = forwarded.path("_meta").isObject() ? (ObjectNode) forwarded.get("_meta") : forwarded.putObject("_meta");
                 meta.set("jawata/hire", entry.toMeta());
             });
             update(session.id(), forwarded);
+            seen.ifPresent(entry -> askAboutProposal(session, entry));
             ObjectNode state = toolState.computeIfAbsent(call.path("toolCallId").asText(), key -> JSON.createObjectNode());
             for (String field : List.of("title", "status")) {
                 if (call.hasNonNull(field)) {

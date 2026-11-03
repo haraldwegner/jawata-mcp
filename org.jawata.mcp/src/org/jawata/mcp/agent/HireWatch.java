@@ -44,6 +44,9 @@ final class HireWatch {
         Optional<String> model = Optional.empty();
         Optional<String> parent = Optional.empty();
         Optional<String> brainSessionId = Optional.empty();
+        List<String> changedFiles = List.of();
+        boolean asked;
+        Optional<String> verdict = Optional.empty();
         String state = HireEntry.RUNNING;
         long endedMs = -1;
         long tokens;
@@ -95,6 +98,29 @@ final class HireWatch {
     /** The hire with this id, if the agent saw it. */
     synchronized Optional<HireEntry> entry(String planId) {
         return Optional.ofNullable(hires.get(planId)).map(this::entryOf);
+    }
+
+    /**
+     * The files a finished hire changed when the person has not yet been asked about them: present once per hire, for a hire that ended well and
+     * changed files. That list is the hire's proposal. A hire that failed, changed nothing or has already been asked about is not asked again.
+     */
+    synchronized Optional<List<String>> proposalToAsk(String planId) {
+        Live hire = hires.get(planId);
+        if (hire == null || hire.asked || !HireEntry.DONE.equals(hire.state) || hire.changedFiles.isEmpty()) {
+            return Optional.empty();
+        }
+        hire.asked = true;
+        return Optional.of(hire.changedFiles);
+    }
+
+    /** Records the person's answer to a hire's proposal and gives the entry as it now stands; none when the agent never saw the hire. */
+    synchronized Optional<HireEntry> answered(String planId, String verdict) {
+        Live hire = hires.get(planId);
+        if (hire == null) {
+            return Optional.empty();
+        }
+        hire.verdict = Optional.of(verdict);
+        return Optional.of(entryOf(hire));
     }
 
     /** One thing said in a hire: who said it, and the words. */
@@ -167,6 +193,9 @@ final class HireWatch {
         finish(hire, clean ? HireEntry.DONE : HireEntry.FAILED);
         hire.answer = answer.path("answer").asText("");
         hire.brainSessionId = answer.hasNonNull("brainSessionId") ? Optional.of(answer.get("brainSessionId").asText()) : Optional.empty();
+        List<String> files = new java.util.ArrayList<>();
+        answer.path("changedFiles").forEach(file -> files.add(file.asText()));
+        hire.changedFiles = List.copyOf(files);
         JsonNode tokens = answer.path("tokens");
         if (tokens.isObject()) {
             hire.tokens = tokens.hasNonNull("spent") ? tokens.get("spent").asLong()
@@ -215,6 +244,6 @@ final class HireWatch {
     private HireEntry entryOf(Live hire) {
         long end = hire.endedMs >= 0 ? hire.endedMs : clock.getAsLong();
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, hire.state, end - hire.startedMs, hire.tokens, hire.cost,
-            hire.task, hire.parent, hire.brainSessionId);
+            hire.task, hire.parent, hire.brainSessionId, hire.verdict);
     }
 }
