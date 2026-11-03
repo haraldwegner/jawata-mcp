@@ -117,6 +117,7 @@ public final class AcpServer {
             case "session/load" -> loadSession(id, params);
             case "session/prompt" -> prompt(id, params, from);
             case "_jawata/brains" -> JsonRpcMessage.successResponse(id, brainsResult());
+            case "_jawata/hire/transcript" -> hireTranscript(id, params);
             default -> JsonRpcMessage.errorResponse(id, METHOD_NOT_FOUND, "Method not found: " + request.getMethod(), null);
         };
     }
@@ -143,6 +144,24 @@ public final class AcpServer {
             row.put("model", brain.model());
         });
         return result;
+    }
+
+    /**
+     * What was said in one hire, for unfolding an agent in the Agent Control panel (S9): the brief its issuer gave and, once it has finished, the
+     * answer it gave. The method name is provisional until the chat's recording R12 carries it. A hire the agent never saw, or a request with no
+     * plan id, is a bad request and not an empty transcript.
+     */
+    private JsonRpcMessage hireTranscript(Object id, JsonNode params) {
+        String planId = textField(params, "planId");
+        java.util.Optional<List<HireWatch.Said>> said = planId == null ? java.util.Optional.empty() : hires.transcript(planId);
+        if (said.isEmpty()) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "no hire " + planId + " was seen by this agent", null);
+        }
+        ObjectNode result = JSON.createObjectNode();
+        result.put("planId", planId);
+        ArrayNode turns = result.putArray("turns");
+        said.get().forEach(turn -> turns.addObject().put("from", turn.from()).put("text", turn.text()));
+        return JsonRpcMessage.successResponse(id, result);
     }
 
     private ObjectNode initializeResult() {

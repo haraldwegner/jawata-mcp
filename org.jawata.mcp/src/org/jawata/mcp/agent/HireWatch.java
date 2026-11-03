@@ -38,6 +38,7 @@ final class HireWatch {
         String seat = "";
         String task = "";
         String hirer = "";
+        String answer = "";
         String seatFile = "";
         Optional<String> brain = Optional.empty();
         Optional<String> model = Optional.empty();
@@ -95,6 +96,28 @@ final class HireWatch {
         return Optional.ofNullable(hires.get(planId)).map(this::entryOf);
     }
 
+    /** One thing said in a hire: who said it, and the words. */
+    record Said(String from, String text) {
+    }
+
+    /**
+     * What was said in one hire, in order: the brief its issuer gave, then the answer the hire gave once it has finished. A hire still running
+     * has said nothing yet and an answer that holds no text adds no turn, so a failure is never shown as an empty reply. None when the agent
+     * never saw a hire with this id.
+     */
+    synchronized Optional<List<Said>> transcript(String planId) {
+        Live hire = hires.get(planId);
+        if (hire == null) {
+            return Optional.empty();
+        }
+        List<Said> turns = new java.util.ArrayList<>();
+        turns.add(new Said(hire.hirer.isEmpty() ? MAIN : hire.hirer, hire.task));
+        if (!hire.answer.isEmpty()) {
+            turns.add(new Said(hire.seat, hire.answer));
+        }
+        return Optional.of(turns);
+    }
+
     private static boolean isHireCall(JsonNode update) {
         for (String name : List.of(update.path("title").asText(""), update.path("_meta").path("claudeCode").path("toolName").asText(""))) {
             if (!name.isEmpty() && "hire".equals(RunEffects.bareName(name))) {
@@ -141,6 +164,7 @@ final class HireWatch {
         boolean clean = answer.isMissingNode() || !(answer.path("cleanExit").asText("true").equals("false")
             || answer.path("timedOut").asBoolean(false));
         finish(hire, clean ? HireEntry.DONE : HireEntry.FAILED);
+        hire.answer = answer.path("answer").asText("");
         JsonNode tokens = answer.path("tokens");
         if (tokens.isObject()) {
             hire.tokens = tokens.hasNonNull("spent") ? tokens.get("spent").asLong()
