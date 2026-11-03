@@ -1587,6 +1587,34 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("S9: the model a person picked for a seat in the Agent Control panel is used by that seat's next hire over the seat file's own, and with the pick forgotten the seat file stands again")
+    void aPickedModelIsUsedByTheSeatsNextHire() throws Exception {
+        org.jawata.mcp.execution.SeatBrainPicks picks = org.jawata.mcp.execution.SeatBrainPicks.shared();
+        try {
+            picks.pick("cataloguer", org.jawata.mcp.execution.SeatHire.Brain.CLAUDE_CODE, "picked-model");
+            StandsIn picked = new StandsIn(host, aBrainThatAnswers());
+            Map<String, Object> pickedData = dataOf(toolWithSettings(picked, Map.of()).execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+            picks.pick("cataloguer", org.jawata.mcp.execution.SeatHire.Brain.CLAUDE_CODE, "");
+            StandsIn sameBrainNoModel = new StandsIn(host, aBrainThatAnswers());
+            toolWithSettings(sameBrainNoModel, Map.of()).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+
+            picks.clear();
+            StandsIn forgotten = new StandsIn(host, aBrainThatAnswers());
+            toolWithSettings(forgotten, Map.of()).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+
+            assertAll(
+                () -> assertEquals("claude-sonnet-5", modelOf(sameBrainNoModel.asked()),
+                    "a pick of the same brain with no model dropped the seat's model: " + sameBrainNoModel.asked()),
+                () -> assertEquals("picked-model", modelOf(picked.asked()), "the pick was not used: " + picked.asked()),
+                () -> assertEquals("picked-model", ((Map<?, ?>) pickedData.get("brain")).get("model"), String.valueOf(pickedData)),
+                () -> assertEquals("claude-sonnet-5", modelOf(forgotten.asked()), "the seat file did not stand again: " + forgotten.asked()));
+        } finally {
+            picks.clear();
+        }
+    }
+
+    @Test
     @DisplayName("S12 (D48): the consultant is refused on main's own vendor, naming the rule, before any brain starts")
     void aConsultantOnMainsOwnVendorIsRefusedBeforeItStarts() throws Exception {
         Map<String, String> settings = Map.of(Hirer.MAIN_BRAIN_SETTING, "{\"command\":[\"main-brain\"],\"vendor\":\"Anthropic\"}",

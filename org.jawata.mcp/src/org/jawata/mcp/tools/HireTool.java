@@ -22,6 +22,7 @@ import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.Instructions;
 import org.jawata.mcp.execution.Observer;
 import org.jawata.mcp.execution.RunEffects;
+import org.jawata.mcp.execution.SeatBrainPicks;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
@@ -350,6 +351,13 @@ public class HireTool extends NeutralTool {
             return ToolResponse.error("INVALID_PARAMETER",
                 "the seat file does not describe a hireable seat: " + e.getMessage(),
                 "check its brain: field — an unknown brain is refused rather than defaulted");
+        }
+
+        // THE PERSON'S PICK (S9, his ruling 2026-10-31): the brain and model picked for this seat in the Agent Control panel replace the seat file's,
+        // before the registry fills a model the seat names none of, so the pick wins over the registry's default for the brain.
+        Optional<SeatBrainPicks.Pick> picked = SeatBrainPicks.shared().forSeat(hired);
+        if (picked.isPresent()) {
+            seat = seat.withBrain(picked.get().brain(), picked.get().model());
         }
 
         // THE MODEL REGISTRY AND THE VENDOR RULE (S12, D11, D48). The registry setting offers each brain with its vendor and model; the seat file's own

@@ -102,6 +102,14 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         }
 
         /**
+         * Whether this product passes the brain a model: claude and cursor take one on their command line, while copilot routes its own and
+         * codex's is set in its config out of band, so a model named for either would be a flag invented and is not applied.
+         */
+        public boolean takesAModel() {
+            return this == CLAUDE_CODE || this == CURSOR;
+        }
+
+        /**
          * The brain a seat means by this word, or absent.
          *
          * <p>Several spellings per brain because a seat is written by a human who will reasonably
@@ -310,6 +318,18 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             return this;
         }
         return new SeatHire(seat, brain, offered.model(), tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
+            changesCode, readsFiles, activities, writesStore);
+    }
+
+    /**
+     * The same seat on the brain and model a person picked for it in the Agent Control panel (S9). A model written for one brain is not the
+     * model of another: with no model picked, the same brain keeps its model and a different brain starts from its own default, which the
+     * registry setting may then fill.
+     */
+    public SeatHire withBrain(Brain picked, String pickedModel) {
+        boolean named = pickedModel != null && !pickedModel.isBlank();
+        String next = named && picked.takesAModel() ? pickedModel.strip() : (picked == brain ? model : null);
+        return new SeatHire(seat, picked, next, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
             changesCode, readsFiles, activities, writesStore);
     }
 

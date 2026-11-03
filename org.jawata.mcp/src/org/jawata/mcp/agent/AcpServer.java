@@ -9,6 +9,8 @@ import java.util.function.Supplier;
 
 import org.jawata.mcp.agent.ReviewBeforeSend.Reviewer;
 import org.jawata.mcp.execution.Hirer;
+import org.jawata.mcp.execution.SeatBrainPicks;
+import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -118,6 +120,7 @@ public final class AcpServer {
             case "session/prompt" -> prompt(id, params, from);
             case "_jawata/brains" -> JsonRpcMessage.successResponse(id, brainsResult());
             case "_jawata/hire/transcript" -> hireTranscript(id, params);
+            case "_jawata/hire/brain" -> hireBrain(id, params);
             default -> JsonRpcMessage.errorResponse(id, METHOD_NOT_FOUND, "Method not found: " + request.getMethod(), null);
         };
     }
@@ -162,6 +165,37 @@ public final class AcpServer {
         ArrayNode turns = result.putArray("turns");
         said.get().forEach(turn -> turns.addObject().put("from", turn.from()).put("text", turn.text()));
         return JsonRpcMessage.successResponse(id, result);
+    }
+
+    /**
+     * The Agent Control panel's brain control (S9; his ruling 2026-10-31): the pick sets the brain and model of that agent's seat for its next hire
+     * and every hire after it, because a process already started cannot change its brain. The answer is the agent's hire entry as it will be.
+     * The method name is provisional until the chat's recording R12 carries it. A hire the agent never saw, a brain this product has no dialect
+     * for, and the script brain (which needs a program of its own) are bad requests. A model named for a brain whose command line takes none
+     * is not applied and is not echoed.
+     */
+    private JsonRpcMessage hireBrain(Object id, JsonNode params) {
+        String planId = textField(params, "planId");
+        java.util.Optional<HireEntry> entry = planId == null ? java.util.Optional.empty() : hires.entry(planId);
+        if (entry.isEmpty()) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "no hire " + planId + " was seen by this agent", null);
+        }
+        java.util.Optional<SeatHire.Brain> brain = SeatHire.Brain.named(textField(params, "brain"));
+        if (brain.isEmpty() || brain.get() == SeatHire.Brain.SCRIPT) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
+                "brain must be one of claude-code, cursor, copilot, codex; the script brain needs a program of its own and cannot be picked", null);
+        }
+        String model = textField(params, "model");
+        String applied = model != null && !model.isBlank() && brain.get().takesAModel() ? model.strip() : "";
+        SeatBrainPicks.shared().pick(entry.get().seat(), brain.get(), applied);
+        ObjectNode meta = entry.get().toMeta();
+        meta.put("brain", brain.get().label());
+        if (applied.isEmpty()) {
+            meta.remove("model");
+        } else {
+            meta.put("model", applied);
+        }
+        return JsonRpcMessage.successResponse(id, meta);
     }
 
     private ObjectNode initializeResult() {
