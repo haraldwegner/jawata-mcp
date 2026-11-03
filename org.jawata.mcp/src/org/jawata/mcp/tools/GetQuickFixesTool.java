@@ -46,8 +46,49 @@ public class GetQuickFixesTool extends AbstractTool {
     private static final int UNHANDLED_EXCEPTION = 16777384;      // IProblem.UnhandledException
     private static final int IMPORT_NOT_FOUND = 268435846;        // IProblem.ImportNotFound
 
+    /**
+     * The search for types of a given simple name, replaceable so a search that FAILS can be shown without breaking the real index. The
+     * default asks the project's own type index.
+     */
+    public interface TypeSearch {
+        void find(IJdtService service, String typeName, TypeNameMatchRequestor requestor) throws Exception;
+    }
+
+    /** The search for a type to import failed, so the list of fixes is unknown; it is not an answer of no fix. */
+    private static final class FixSearchFailed extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
+        FixSearchFailed(String typeName, Throwable cause) {
+            super("The search for a type named '" + typeName + "' to import failed, so the fixes for it are unknown — this is not an answer"
+                + " of no fix: " + cause, cause);
+        }
+    }
+
+    private final TypeSearch typeSearch;
+
     public GetQuickFixesTool(Supplier<IJdtService> serviceSupplier) {
+        this(serviceSupplier, GetQuickFixesTool::searchProjectTypes);
+    }
+
+    public GetQuickFixesTool(Supplier<IJdtService> serviceSupplier, TypeSearch typeSearch) {
         super(serviceSupplier);
+        this.typeSearch = typeSearch;
+    }
+
+    private static void searchProjectTypes(IJdtService service, String typeName, TypeNameMatchRequestor requestor) throws Exception {
+        IJavaSearchScope scope = SearchEngine.createJavaSearchScope(
+            new IJavaElement[] { service.getJavaProject() },
+            IJavaSearchScope.SOURCES | IJavaSearchScope.APPLICATION_LIBRARIES | IJavaSearchScope.SYSTEM_LIBRARIES);
+        new SearchEngine().searchAllTypeNames(
+            null,
+            SearchPattern.R_EXACT_MATCH,
+            typeName.toCharArray(),
+            SearchPattern.R_EXACT_MATCH | SearchPattern.R_CASE_SENSITIVE,
+            IJavaSearchConstants.TYPE,
+            scope,
+            requestor,
+            IJavaSearchConstants.WAIT_UNTIL_READY_TO_SEARCH,
+            new NullProgressMonitor());
     }
 
     @Override
@@ -177,6 +218,10 @@ public class GetQuickFixesTool extends AbstractTool {
                 ))
                 .build());
 
+        } catch (FixSearchFailed e) {
+            log.warn("Quick fixes could not be listed: {}", e.getMessage());
+            return ToolResponse.error("FIX_SEARCH_FAILED", e.getMessage(),
+                "Ask again; if it repeats, run get_diagnostics on the file and refresh_workspace, because the project's type index is not answering.");
         } catch (Exception e) {
             log.error("Error getting quick fixes: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
@@ -291,6 +336,8 @@ public class GetQuickFixesTool extends AbstractTool {
                 }
             }
 
+        } catch (FixSearchFailed e) {
+            throw e;
         } catch (Exception e) {
             log.debug("Error generating fixes for problem {}: {}", problemId, e.getMessage());
         }
@@ -306,14 +353,6 @@ public class GetQuickFixesTool extends AbstractTool {
         List<Map<String, Object>> fixes = new ArrayList<>();
 
         try {
-            IJavaSearchScope scope = SearchEngine.createJavaSearchScope(
-                new IJavaElement[] { service.getJavaProject() },
-                IJavaSearchScope.SOURCES |
-                IJavaSearchScope.APPLICATION_LIBRARIES |
-                IJavaSearchScope.SYSTEM_LIBRARIES
-            );
-
-            SearchEngine engine = new SearchEngine();
             List<Map<String, Object>> candidates = new ArrayList<>();
 
             TypeNameMatchRequestor requestor = new TypeNameMatchRequestor() {
@@ -326,8 +365,9 @@ public class GetQuickFixesTool extends AbstractTool {
                         String fqn = type.getFullyQualifiedName();
                         String packageName = type.getPackageFragment().getElementName();
 
-                        // Skip internal packages
-                        if (packageName.contains(".internal.") ||
+                        // Skip a type in the default package (it cannot be imported) and internal packages
+                        if (packageName.isEmpty() ||
+                            packageName.contains(".internal.") ||
                             packageName.startsWith("sun.") ||
                             packageName.startsWith("com.sun.")) {
                             return;
@@ -345,17 +385,7 @@ public class GetQuickFixesTool extends AbstractTool {
                 }
             };
 
-            engine.searchAllTypeNames(
-                null,
-                SearchPattern.R_EXACT_MATCH,
-                typeName.toCharArray(),
-                SearchPattern.R_EXACT_MATCH | SearchPattern.R_CASE_SENSITIVE,
-                IJavaSearchConstants.TYPE,
-                scope,
-                requestor,
-                IJavaSearchConstants.WAIT_UNTIL_READY_TO_SEARCH,
-                new NullProgressMonitor()
-            );
+            typeSearch.find(service, typeName, requestor);
 
             // Sort by relevance
             candidates.sort(Comparator.comparingInt(
@@ -378,7 +408,8 @@ public class GetQuickFixesTool extends AbstractTool {
             }
 
         } catch (Exception e) {
-            log.debug("Error suggesting imports for '{}': {}", typeName, e.getMessage());
+            // Not an empty list: "the search failed" and "no such type exists" are different answers (S16e b).
+            throw new FixSearchFailed(typeName, e);
         }
 
         return fixes;

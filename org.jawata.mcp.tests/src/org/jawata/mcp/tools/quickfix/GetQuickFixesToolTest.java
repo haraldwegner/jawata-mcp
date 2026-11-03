@@ -158,4 +158,39 @@ class GetQuickFixesToolTest {
         assertNotNull(fix.get("fixId"));
         assertNotNull(fix.get("label"));
     }
+
+    /**
+     * Sprint 28h, S16e (b). A type search that FAILED was logged at debug level and answered as an empty list of fixes, which is the same
+     * answer as "no type of that name exists": the editor's import fix vanished and nothing said why (about 2 of 37 window runs on a Maven
+     * tree). A failure is now an error answer, and a search that finds nothing stays a real answer of no import fix.
+     */
+    @Test
+    @DisplayName("a failed type search is an error answer and not an empty list of fixes; a search that finds nothing is still an answer of no import fix")
+    void aFailedTypeSearchIsNotAnEmptyListOfFixes() throws Exception {
+        JdtServiceImpl copy = helper.loadProjectCopy("simple-maven");
+        java.nio.file.Path broken = copy.getProjectRoot().resolve("src/main/java/com/example/HasAProblem.java");
+        java.nio.file.Files.writeString(broken, """
+            package com.example;
+
+            public class HasAProblem {
+                Object made = new ArrayList<String>();
+            }
+            """);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> copy).syncBeforeCall();
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", broken.toString());
+        args.put("line", 3);
+
+        ToolResponse failed = new GetQuickFixesTool(() -> copy,
+            (service, typeName, requestor) -> { throw new IllegalStateException("the index is not ready"); }).execute(args);
+        ToolResponse foundNothing = new GetQuickFixesTool(() -> copy, (service, typeName, requestor) -> { }).execute(args);
+
+        assertAll(
+            () -> assertFalse(failed.isSuccess(), "a failed search was answered as success: " + failed.getData()),
+            () -> assertEquals("FIX_SEARCH_FAILED", failed.getError().getCode()),
+            () -> assertTrue(failed.getError().getMessage().contains("ArrayList"), failed.getError().getMessage()),
+            () -> assertTrue(foundNothing.isSuccess(), () -> String.valueOf(foundNothing.getError())),
+            () -> assertTrue(getFixes(getData(foundNothing)).stream().noneMatch(f -> String.valueOf(f.get("fixId")).startsWith("add_import:")),
+                "control: a search that found nothing offered an import"));
+    }
 }
