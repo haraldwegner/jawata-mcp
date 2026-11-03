@@ -263,7 +263,7 @@ class JavaLanguageServerRenameTest {
         if (!only.isEmpty()) {
             context.put("only", only);
         }
-        return Map.of("textDocument", Map.of("uri", file.toUri().toString()),
+        return Map.<String, Object>of("textDocument", Map.of("uri", file.toUri().toString()),
             "range", Map.of("start", Map.of("line", line, "character", 0), "end", Map.of("line", line, "character", 0)),
             "context", context);
     }
