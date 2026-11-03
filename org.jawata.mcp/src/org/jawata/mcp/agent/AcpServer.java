@@ -128,10 +128,31 @@ public final class AcpServer {
             case "session/prompt" -> prompt(id, params, from);
             case "_jawata/brains" -> JsonRpcMessage.successResponse(id, brainsResult());
             case "_jawata/hire/transcript" -> hireTranscript(id, params);
+            case "_jawata/hire/figures" -> JsonRpcMessage.successResponse(id, figuresResult());
             case "_jawata/hire/brain" -> hireBrain(id, params);
             case "_jawata/hire/stop" -> hireStop(id, params);
             default -> JsonRpcMessage.errorResponse(id, METHOD_NOT_FOUND, "Method not found: " + request.getMethod(), null);
         };
+    }
+
+    /**
+     * The per-role figures of the measures (D10), read from the hires this agent has seen, one row per role, so the Agent Control panel can show
+     * how each role is doing. What is not measured is said and not counted as zero: a zero would read as good news.
+     */
+    private ObjectNode figuresResult() {
+        ObjectNode result = JSON.createObjectNode();
+        ArrayNode roles = result.putArray("roles");
+        for (RoleFigures figures : hires.figures()) {
+            ObjectNode row = roles.addObject();
+            row.put("seat", figures.seat());
+            row.put("hires", figures.hires());
+            row.put("tokens", figures.tokens());
+            row.put("toolSteps", figures.toolSteps());
+            row.put("countedAgainst", figures.countedAgainst());
+        }
+        result.putArray("notMeasured").add("chief-engineer: edit orders given where a tool existed. An instruction names a tool and does not "
+            + "label an edit order, so none is counted against the chief engineer and its row reads 0 for want of a reading, not as a good result.");
+        return result;
     }
 
     /** Where the registry of brains is read from, each time it is asked for; none offered reads as no brains. */

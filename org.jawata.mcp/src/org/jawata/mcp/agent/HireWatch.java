@@ -51,6 +51,12 @@ final class HireWatch {
         long endedMs = -1;
         long tokens;
         OptionalDouble cost = OptionalDouble.empty();
+        /** Tool calls the hire made, as its answer counted them (D10). */
+        int toolSteps;
+        /** Code changes the hire's brain made by hand, outside any engine tool, as its answer counted them (D10). */
+        int editsByHand;
+        /** Whether an issuer gave the hire instructions that name tools, so an edit it made by hand was made where a tool was named (D10). */
+        boolean instructed;
 
         Live(String id, long startedMs) {
             this.id = id;
@@ -88,6 +94,18 @@ final class HireWatch {
             readAnswer(hire, update);
         }
         return Optional.of(entryOf(hire));
+    }
+
+    /**
+     * The per-role figures of the measures (D10) over every hire seen, from the hires' own answers: the tokens and tool calls each reported,
+     * and, for a developer, the code changes its brain made by hand in a hire whose instructions named tools. A chief engineer's edit orders
+     * given where a tool existed are not counted: an instruction names a tool and does not label an edit order, so that part of D10 has
+     * nothing to read yet and is reported by the server as not measured.
+     */
+    synchronized List<RoleFigures> figures() {
+        return RoleFigures.of(hires.values().stream()
+            .map(h -> new RoleFigures.HireFacts(h.seat, h.tokens, h.toolSteps, h.instructed ? h.editsByHand : 0, 0))
+            .toList());
     }
 
     /** Every hire seen, in the order they began. */
@@ -196,6 +214,9 @@ final class HireWatch {
         List<String> files = new java.util.ArrayList<>();
         answer.path("changedFiles").forEach(file -> files.add(file.asText()));
         hire.changedFiles = List.copyOf(files);
+        hire.toolSteps = answer.path("toolSteps").asInt(0);
+        hire.editsByHand = answer.path("codeChangesByHand").asInt(0);
+        hire.instructed = answer.path("instructionScore").path("instructionsIssued").asInt(0) > 0;
         JsonNode tokens = answer.path("tokens");
         if (tokens.isObject()) {
             hire.tokens = tokens.hasNonNull("spent") ? tokens.get("spent").asLong()

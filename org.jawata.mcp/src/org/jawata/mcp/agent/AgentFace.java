@@ -96,7 +96,7 @@ public final class AgentFace implements RoutedFace {
             return true;
         }
         return switch (method) {
-            case "session/set_config_option", "session/cancel", "_jawata/hire/stop", "_jawata/hire/brain", "_jawata/hire/transcript", "_jawata/brains" -> true;
+            case "session/set_config_option", "session/cancel", "_jawata/hire/stop", "_jawata/hire/brain", "_jawata/hire/transcript", "_jawata/hire/figures", "_jawata/brains" -> true;
             default -> false;
         };
     }

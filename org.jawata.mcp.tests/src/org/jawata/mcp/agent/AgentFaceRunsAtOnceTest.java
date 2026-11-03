@@ -17,7 +17,7 @@ class AgentFaceRunsAtOnceTest {
     @DisplayName("the person's switch and cancel, the panel's stop, pick, transcript and brains list, and the host's answers (which have no method) act at once")
     void whatTheDoorMustNotQueue() {
         for (String method : new String[] {"session/set_config_option", "session/cancel", "_jawata/hire/stop", "_jawata/hire/brain",
-            "_jawata/hire/transcript", "_jawata/brains"}) {
+            "_jawata/hire/transcript", "_jawata/hire/figures", "_jawata/brains"}) {
             assertTrue(AgentFace.runsAtOnce(method), method + " was queued behind the running prompt");
         }
         assertTrue(AgentFace.runsAtOnce(null), "the host's answer to a question was queued behind the running prompt");
