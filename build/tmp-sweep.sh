@@ -27,8 +27,22 @@ fi
 
 # jawata-runtime is the PERSISTENT artifact store, not run debris, so it is never a candidate
 # — on either side, so that it can never enter the difference.
+# jawata-suite-run.* is a RUN'S OWN private directory (run-suite.sh points its test JVMs' temp
+# folder there and removes it itself). Another run's is therefore never ours to remove, and a
+# run that overlaps this one creates its own AFTER our snapshot, so it would look new.
 candidates() {
-    find "$ROOT" -maxdepth 1 -name 'jawata-*' ! -name 'jawata-runtime' 2>/dev/null | sort
+    find "$ROOT" -maxdepth 1 -name 'jawata-*' ! -name 'jawata-runtime' ! -name 'jawata-suite-run.*' 2>/dev/null | sort
+}
+
+# The top-level directories under ROOT that a live process holds right now, as its working
+# directory or an open file. A snapshot difference cannot tell this run's debris from a
+# directory a CONCURRENT run created after the snapshot; whatever it still holds is not
+# debris. Where /proc does not exist this answers nothing and the sweep is the plain
+# difference again (no live-process check on that machine).
+busy() {
+    [ -d /proc/self ] || return 0
+    find /proc/[0-9]*/cwd /proc/[0-9]*/fd -maxdepth 1 -type l -printf '%l\n' 2>/dev/null \
+        | sed -n "s#^${ROOT}/\([^/ ]*\).*#${ROOT}/\1#p" | sort -u
 }
 
 case "$MODE" in
@@ -38,15 +52,21 @@ case "$MODE" in
     sweep)
         [ -f "$FILE" ] || { echo "tmp-sweep: no snapshot at '$FILE' — refusing to sweep," \
                                  "because without one EVERY directory looks new" >&2; exit 2; }
-        AFTER="$(mktemp)"; NEW="$(mktemp)"
-        trap 'rm -f "$AFTER" "$NEW"' EXIT
+        AFTER="$(mktemp)"; NEW="$(mktemp)"; BUSY="$(mktemp)"; GONE="$(mktemp)"
+        trap 'rm -f "$AFTER" "$NEW" "$BUSY" "$GONE"' EXIT
         candidates > "$AFTER"
         comm -13 "$FILE" "$AFTER" > "$NEW"
-        COUNT=$(wc -l < "$NEW")
+        busy > "$BUSY"
+        comm -23 "$NEW" "$BUSY" > "$GONE"
+        COUNT=$(wc -l < "$GONE")
+        HELD=$(( $(wc -l < "$NEW") - COUNT ))
         if [ "$COUNT" -gt 0 ]; then
-            KB=$(xargs -r -a "$NEW" du -sk 2>/dev/null | awk '{s+=$1} END {print s+0}')
-            xargs -r -a "$NEW" rm -rf 2>/dev/null
+            KB=$(xargs -r -a "$GONE" du -sk 2>/dev/null | awk '{s+=$1} END {print s+0}')
+            xargs -r -a "$GONE" rm -rf 2>/dev/null
             echo "swept $COUNT /tmp working director(ies) this run created ($((KB / 1024)) MB)"
+        fi
+        if [ "$HELD" -gt 0 ]; then
+            echo "left $HELD new /tmp working director(ies) a live process still holds (another run's, or one of ours still running)"
         fi
         ;;
     *)

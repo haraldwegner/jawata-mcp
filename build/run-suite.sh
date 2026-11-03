@@ -143,6 +143,17 @@ ln -sfn "$OUT" "$DIST/suite-shards"
 TMP_BEFORE="$OUT/.tmp-before"
 "$ROOT/build/tmp-sweep.sh" snapshot /tmp "$TMP_BEFORE"
 
+# The set above says what is NEW, and a run that overlaps this one makes directories that are
+# new too (2026-11-01: a suite's end removed the live workspace of the suite beside it). So the
+# test JVMs' temp folder is this run's own private directory: everything they create is owned
+# at creation and removed by the run that made it, and the sweep never lists it as a candidate
+# (a name of the form jawata-suite-run.*). TMPDIR carries it to the shell gates' mktemp. A
+# child process that is not given the property still writes under /tmp itself, and for those
+# the sweep leaves any directory a live process holds.
+RUN_TMP="$(mktemp -d /tmp/jawata-suite-run.XXXXXX)"
+export TMPDIR="$RUN_TMP"
+trap '[ "${JAWATA_KEEP_TMP:-0}" = "1" ] || rm -rf "$RUN_TMP"' EXIT
+
 # The verdict gate proves its own arithmetic before it is trusted to judge a
 # run. It costs milliseconds and runs FIRST so a broken gate costs a re-run
 # rather than a whole suite. A gate that certifies a run is worth no more than
@@ -311,7 +322,7 @@ RESERVED="${JAWATA_SUITE_RESERVED:-4}"
 AVAILABLE=$(( CORES - RESERVED )); [ "$AVAILABLE" -lt 2 ] && AVAILABLE=2
 SLICE=$(( AVAILABLE / SHARDS )); [ "$SLICE" -lt 2 ] && SLICE=2
 echo "cores=$CORES reserved=$RESERVED shards=$SHARDS slice=$SLICE (shards x slice = $(( SHARDS * SLICE )))"
-JVM_OPTS="${JVM_OPTS:--XX:ActiveProcessorCount=$SLICE -Xmx3g}"
+JVM_OPTS="${JVM_OPTS:--XX:ActiveProcessorCount=$SLICE -Xmx3g} -Djava.io.tmpdir=$RUN_TMP"
 # Sprint 27 D1: the embedder's Vector API backend, GUARDED — a JVM given
 # --add-modules for a module it lacks refuses to start (exit 1), so probing
 # beats assuming. Without it the tests still pass on the scalar backend; the

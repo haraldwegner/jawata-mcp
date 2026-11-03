@@ -49,6 +49,27 @@ case "$OUT" in *"swept 1 "*) check "it reports exactly the one it removed" 0 ;;
 Q="$("$SWEEP" sweep "$R" "$R/before2")"
 [ -z "$Q" ]; check "a run that created nothing prints nothing" "$?"
 
+# --- A DIRECTORY ANOTHER RUN IS USING. A snapshot-difference alone cannot tell this run's debris
+# from a directory a CONCURRENT run created after the snapshot: both are new. The 2026-11-01
+# sweep hazard was exactly that (a suite's end removed the live workspace of the suite beside
+# it). Two things tell them apart: a directory a live process still holds (its working
+# directory or an open file) is left alone, and a run's private directory (jawata-suite-run.*,
+# which each run removes for itself) is never a candidate at all.
+"$SWEEP" snapshot "$R" "$R/before3"
+mkdir -p "$R/jawata-held-by-another-run";  : > "$R/jawata-held-by-another-run/data"
+mkdir -p "$R/jawata-suite-run.OTHER";      : > "$R/jawata-suite-run.OTHER/data"
+mkdir -p "$R/jawata-plain-debris";         : > "$R/jawata-plain-debris/data"
+( cd "$R/jawata-held-by-another-run" && exec sleep 60 ) & HOLDER=$!
+sleep 0.5
+H_OUT="$("$SWEEP" sweep "$R" "$R/before3")"
+say "  $H_OUT"
+[ -d "$R/jawata-held-by-another-run" ]; check "a new directory a live process still holds is left alone" "$?"
+[ -f "$R/jawata-suite-run.OTHER/data" ]; check "another run's private directory is never swept" "$?"
+[ ! -d "$R/jawata-plain-debris" ];       check "control: a new directory nothing holds is removed in the same sweep" "$?"
+kill "$HOLDER" 2>/dev/null; wait "$HOLDER" 2>/dev/null
+"$SWEEP" sweep "$R" "$R/before3" >/dev/null
+[ ! -d "$R/jawata-held-by-another-run" ]; check "control: once nothing holds it, the same directory is removed" "$?"
+
 # --- REFUSALS: without a snapshot every directory looks new, so sweeping is refused.
 "$SWEEP" sweep "$R" "$R/no-such-snapshot" >/dev/null 2>&1
 [ "$?" -eq 2 ]; check "sweeping with no snapshot is REFUSED, not treated as an empty set" "$?"
