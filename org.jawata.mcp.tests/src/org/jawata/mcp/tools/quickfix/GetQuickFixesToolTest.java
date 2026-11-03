@@ -160,6 +160,37 @@ class GetQuickFixesToolTest {
     }
 
     /**
+     * Sprint 28h, S16e (b), the audit's finding 3. A type of the default package cannot be imported, and offering it made the list of fixes
+     * fail on the package it does not have. With one in the project, the import of the library type is still offered and the default
+     * package's is not.
+     */
+    @Test
+    @DisplayName("a type of the default package is not offered as an import and does not spoil the fixes: the import of the library type is still offered")
+    void aTypeInTheDefaultPackageIsNotOfferedAndDoesNotSpoilTheFixes() throws Exception {
+        JdtServiceImpl copy = helper.loadProjectCopy("simple-maven");
+        java.nio.file.Files.writeString(copy.getProjectRoot().resolve("src/main/java/ArrayList.java"), "public class ArrayList {\n}\n");
+        java.nio.file.Path broken = copy.getProjectRoot().resolve("src/main/java/com/example/HasAProblem.java");
+        java.nio.file.Files.writeString(broken, """
+            package com.example;
+
+            public class HasAProblem {
+                Object made = new ArrayList<String>();
+            }
+            """);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> copy).syncBeforeCall();
+        ObjectNode args = objectMapper.createObjectNode();
+        args.put("filePath", broken.toString());
+        args.put("line", 3);
+
+        ToolResponse response = new GetQuickFixesTool(() -> copy).execute(args);
+
+        assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
+        List<String> imports = getFixes(getData(response)).stream().map(f -> String.valueOf(f.get("fixId"))).filter(id -> id.startsWith("add_import:")).toList();
+        assertTrue(imports.contains("add_import:java.util.ArrayList"), "the library type is offered: " + imports);
+        assertTrue(!imports.contains("add_import:ArrayList"), "a type that cannot be imported was offered: " + imports);
+    }
+
+    /**
      * Sprint 28h, S16e (b). A type search that FAILED was logged at debug level and answered as an empty list of fixes, which is the same
      * answer as "no type of that name exists": the editor's import fix vanished and nothing said why (about 2 of 37 window runs on a Maven
      * tree). A failure is now an error answer, and a search that finds nothing stays a real answer of no import fix.

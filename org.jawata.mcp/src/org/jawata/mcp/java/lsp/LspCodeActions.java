@@ -114,6 +114,10 @@ final class LspCodeActions {
         ToolResponse listed = tools.callTool("quick_fix",
             JSON.createObjectNode().put("action", "list").put("filePath", filePath).put("line", line), caller);
         if (!listed.isSuccess()) {
+            if (listed.getError() != null && "FIX_SEARCH_FAILED".equals(listed.getError().getCode())) {
+                // the search for a type to import broke: an error to the editor, not "no actions", which says no import exists
+                throw new IllegalStateException(listed.getError().getMessage());
+            }
             return;
         }
         String text;

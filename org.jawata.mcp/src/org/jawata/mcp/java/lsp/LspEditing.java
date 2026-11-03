@@ -217,22 +217,26 @@ final class LspEditing {
         if (oldPackage == null || newPackage == null || oldPackage.equals(newPackage)) {
             return;
         }
-        ObjectNode arguments = JSON.createObjectNode().put("kind", "package").put("packageName", oldPackage)
-            .put("newPackageName", newPackage).put("auto_apply", false).put("edits", true);
-        LspEdits.addStaged(unsaved, stagedBy("move", arguments, from), changes, "file operation");
-        // the engine's staged edits change the files that use the package; the package line of each file in the folder is the editor's file
-        // move to leave as it was, as for a single moved file
+        // the engine's package move renames the one package it is asked for, so it is staged for every package declared below the folder,
+        // and the package line of each file in the folder, which the editor's folder move leaves as it was, is added as for a single moved file
+        java.util.Set<String> packages = new java.util.TreeSet<>();
         inside.forEach((file, unit) -> {
             try {
                 org.eclipse.jdt.core.IPackageDeclaration[] declared = unit.getPackageDeclarations();
                 String name = declared.length == 0 ? "" : declared[0].getElementName();
                 if (name.equals(oldPackage) || name.startsWith(oldPackage + ".")) {
+                    packages.add(name);
                     addPackageEdit(unit, file, newPackage + name.substring(oldPackage.length()), changes);
                 }
             } catch (org.eclipse.jdt.core.JavaModelException e) {
                 throw new IllegalStateException("the file could not be read: " + e.getMessage(), e);
             }
         });
+        for (String name : packages) {
+            ObjectNode arguments = JSON.createObjectNode().put("kind", "package").put("packageName", name)
+                .put("newPackageName", newPackage + name.substring(oldPackage.length())).put("auto_apply", false).put("edits", true);
+            LspEdits.addStaged(unsaved, stagedBy("move", arguments, from), changes, "file operation");
+        }
     }
 
     /** The units of the Java files below a folder that the model holds, by file. */

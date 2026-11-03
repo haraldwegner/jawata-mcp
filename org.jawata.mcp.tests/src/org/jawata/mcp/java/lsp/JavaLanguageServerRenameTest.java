@@ -386,12 +386,17 @@ class JavaLanguageServerRenameTest {
         Files.writeString(user, "package com.example;\n\nimport java.util.List;\n\npublic class UsesNeighbour {\n"
             + "    List<Neighbour> all = new java.util.ArrayList<>();\n\n    int count() {\n        return new Neighbour().one() + all.size();\n    }\n}\n");
         Files.writeString(plain, "package com.example;\n\nimport java.util.List;\n\npublic class UsesNothing {\n    List<String> all = new java.util.ArrayList<>();\n}\n");
+        Path bare = folder.resolve("Bare.java");
+        Files.writeString(bare, "package com.example;\n\npublic class Bare {\n    Neighbour n;\n}\n");
         new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
         Path movedUser = folder.resolve("util").resolve("UsesNeighbour.java");
         Path movedPlain = folder.resolve("util").resolve("UsesNothing.java");
 
         JsonNode userEdit = session.ask("workspace/willRenameFiles", willRename(user, movedUser));
         JsonNode plainEdit = session.ask("workspace/willRenameFiles", willRename(plain, movedPlain));
+        JsonNode bareEdit = session.ask("workspace/willRenameFiles", willRename(bare, folder.resolve("util").resolve("Bare.java")));
+        String bareText = applied(Files.readString(bare), bareEdit.path("changes").get(bare.toUri().toString()));
+        assertTrue(bareText.contains("package com.example.util;\n\nimport com.example.Neighbour;"), "a file with no imports gets them after its package line: " + bareText);
 
         String movedText = applied(Files.readString(user), userEdit.path("changes").get(user.toUri().toString()));
         String plainText = applied(Files.readString(plain), plainEdit.path("changes").get(plain.toUri().toString()));
@@ -451,6 +456,50 @@ class JavaLanguageServerRenameTest {
             () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service))
             .execute(mapper.createObjectNode()).getData());
         assertEquals(0, compiled.path("errorCount").asInt(), "the code compiles after the folder was renamed: " + compiled);
+    }
+
+    /** Sprint 28h, S16e (c), the audit's finding 7: a folder with sub-folders is a package with sub-packages, which are renamed with it. */
+    @Test
+    @DisplayName("renaming a folder that holds a sub-package renames it too: the file below names the new package and the file that uses it imports it, so the code compiles")
+    void aFolderRenameAlsoRenamesItsSubPackages() throws Exception {
+        Path folder = copiedTree();
+        Path tools = folder.resolve("tools");
+        Path deepFolder = tools.resolve("deep");
+        Files.createDirectories(deepFolder);
+        Path tool = tools.resolve("Tool.java");
+        Path deep = deepFolder.resolve("Deep.java");
+        Path user = folder.resolve("UsesDeep.java");
+        Files.writeString(tool, "package com.example.tools;\n\npublic class Tool {\n}\n");
+        Files.writeString(deep, "package com.example.tools.deep;\n\npublic class Deep {\n}\n");
+        Files.writeString(user, "package com.example;\n\nimport com.example.tools.deep.Deep;\n\npublic class UsesDeep {\n    Deep d;\n}\n");
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        Path gadgets = folder.resolve("gadgets");
+
+        JsonNode edit = session.ask("workspace/willRenameFiles", willRename(tools, gadgets));
+
+        JsonNode changes = edit.path("changes");
+        assertTrue(changes.has(tool.toUri().toString()) && changes.has(deep.toUri().toString()) && changes.has(user.toUri().toString()),
+            "the files of the package, of its sub-package and their user change: " + edit);
+        String toolText = applied(Files.readString(tool), changes.get(tool.toUri().toString()));
+        String deepText = applied(Files.readString(deep), changes.get(deep.toUri().toString()));
+        String userText = applied(Files.readString(user), changes.get(user.toUri().toString()));
+        assertTrue(toolText.contains("package com.example.gadgets;"), toolText);
+        assertTrue(deepText.contains("package com.example.gadgets.deep;"), deepText);
+        assertTrue(userText.contains("import com.example.gadgets.deep.Deep;") && !userText.contains("com.example.tools"), userText);
+        Files.createDirectories(gadgets.resolve("deep"));
+        Files.writeString(gadgets.resolve("Tool.java"), toolText);
+        Files.writeString(gadgets.resolve("deep").resolve("Deep.java"), deepText);
+        Files.delete(tool);
+        Files.delete(deep);
+        Files.delete(deepFolder);
+        Files.delete(tools);
+        Files.writeString(user, userText);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        JsonNode compiled = mapper.valueToTree(new org.jawata.mcp.tools.CompileWorkspaceTool(() -> service,
+            () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service))
+            .execute(mapper.createObjectNode()).getData());
+        assertEquals(0, compiled.path("errorCount").asInt(), "the code compiles after the folder with its sub-package was renamed: " + compiled);
     }
 
     @Test
