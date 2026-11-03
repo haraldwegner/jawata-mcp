@@ -377,6 +377,7 @@ final class LspEditing {
                 refuseIfUnsaved(from.toUri().toString(), from, "file operation");
                 addStaged(stagedBy("move", arguments.put("kind", "class").put("targetPackage", target), from), changes, "file operation");
                 addPackageEdit(unit, from, target, changes);
+                addOldNeighbourImports(unit, from, changes);
             }
         } catch (org.eclipse.jdt.core.JavaModelException e) {
             throw new IllegalStateException("the file could not be read: " + e.getMessage(), e);
@@ -440,6 +441,21 @@ final class LspEditing {
             org.eclipse.jdt.core.ISourceRange declaration = declared[0].getSourceRange();
             int name = text.indexOf(declared[0].getElementName(), declaration.getOffset() + "package".length());
             add(edits, text, lines, name, declared[0].getElementName().length(), target);
+        } catch (org.eclipse.jdt.core.JavaModelException e) {
+            throw new IllegalStateException("the file could not be read: " + e.getMessage(), e);
+        }
+    }
+
+    /** A file moved to another package imports the types of its old package that it uses, which it saw before without an import. */
+    private void addOldNeighbourImports(ICompilationUnit unit, Path from, Map<String, List<Object>> changes) {
+        MovedFileImports.Insertion needed = MovedFileImports.neededBy(unit);
+        if (needed == null) {
+            return;
+        }
+        try {
+            String text = unit.getSource();
+            add(changes.computeIfAbsent(from.toUri().toString(), key -> new ArrayList<>()), text, JavaRanges.linesOf(text),
+                needed.offset(), 0, needed.text());
         } catch (org.eclipse.jdt.core.JavaModelException e) {
             throw new IllegalStateException("the file could not be read: " + e.getMessage(), e);
         }

@@ -370,6 +370,46 @@ class JavaLanguageServerRenameTest {
         }
     }
 
+    /**
+     * Sprint 28h, S16e (a). A file moved to another package loses what it saw by sharing a package: the types beside it need an import
+     * once it stands elsewhere. The engine's own move adds them; the editor's move did not, so the file could fail to compile until the
+     * person ran organize imports.
+     */
+    @Test
+    @DisplayName("moving a Java file answers the imports it needs for the types of its old package, so the moved file compiles with no organize-imports step; a file that used no neighbour gains none")
+    void aMovedFileKeepsItsOldNeighbours() throws Exception {
+        Path folder = copiedTree();
+        Path neighbour = folder.resolve("Neighbour.java");
+        Path user = folder.resolve("UsesNeighbour.java");
+        Path plain = folder.resolve("UsesNothing.java");
+        Files.writeString(neighbour, "package com.example;\n\npublic class Neighbour {\n    public int one() {\n        return 1;\n    }\n}\n");
+        Files.writeString(user, "package com.example;\n\nimport java.util.List;\n\npublic class UsesNeighbour {\n"
+            + "    List<Neighbour> all = new java.util.ArrayList<>();\n\n    int count() {\n        return new Neighbour().one() + all.size();\n    }\n}\n");
+        Files.writeString(plain, "package com.example;\n\nimport java.util.List;\n\npublic class UsesNothing {\n    List<String> all = new java.util.ArrayList<>();\n}\n");
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        Path movedUser = folder.resolve("util").resolve("UsesNeighbour.java");
+        Path movedPlain = folder.resolve("util").resolve("UsesNothing.java");
+
+        JsonNode userEdit = session.ask("workspace/willRenameFiles", willRename(user, movedUser));
+        JsonNode plainEdit = session.ask("workspace/willRenameFiles", willRename(plain, movedPlain));
+
+        String movedText = applied(Files.readString(user), userEdit.path("changes").get(user.toUri().toString()));
+        String plainText = applied(Files.readString(plain), plainEdit.path("changes").get(plain.toUri().toString()));
+        assertTrue(movedText.contains("package com.example.util;") && movedText.contains("import com.example.Neighbour;"), movedText);
+        assertEquals(2, movedText.lines().filter(l -> l.startsWith("import ")).count(), "the one import it had and the one neighbour: " + movedText);
+        assertTrue(plainText.contains("package com.example.util;") && !plainText.contains("import com.example."), "control: " + plainText);
+        assertEquals(1, plainText.lines().filter(l -> l.startsWith("import ")).count(), "control: a file that used no neighbour gained an import: " + plainText);
+        Files.createDirectories(movedUser.getParent());
+        Files.writeString(movedUser, movedText);
+        Files.delete(user);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        JsonNode compiled = mapper.valueToTree(new org.jawata.mcp.tools.CompileWorkspaceTool(() -> service,
+            () -> new org.jawata.mcp.java.JavaBuildVerdict(service), () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service))
+            .execute(mapper.createObjectNode()).getData());
+        assertEquals(0, compiled.path("errorCount").asInt(), "the moved file compiles with no organize-imports step: " + compiled);
+    }
+
     @Test
     @DisplayName("a file operation that would change a file with unsaved editor text is refused, naming that file")
     void aFileOperationOverUnsavedTextIsRefused() throws Exception {
