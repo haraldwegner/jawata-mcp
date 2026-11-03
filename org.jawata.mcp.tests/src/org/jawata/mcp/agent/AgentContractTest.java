@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -68,6 +69,18 @@ class AgentContractTest {
             }
         }
         return chunks;
+    }
+
+    /** The text of each thinking chunk the recorded agent sent, in order. */
+    private static List<String> recordedThinking(List<Line> recording) {
+        List<String> thoughts = new ArrayList<>();
+        for (Line line : recording) {
+            JsonNode update = line.msg().path("params").path("update");
+            if (line.dir().equals("recv") && "agent_thought_chunk".equals(update.path("sessionUpdate").asText())) {
+                thoughts.add(update.path("content").path("text").asText());
+            }
+        }
+        return thoughts;
     }
 
     private static List<AdvertisedCommand> recordedCommands(List<Line> recording) {
@@ -167,6 +180,16 @@ class AgentContractTest {
         if (lastChunk > promptResponse && promptResponse >= 0) {
             problems.add("a chunk came after the prompt's answer");
         }
+        List<String> thoughts = new ArrayList<>();
+        for (JsonNode message : said) {
+            JsonNode update = message.path("params").path("update");
+            if ("agent_thought_chunk".equals(update.path("sessionUpdate").asText())) {
+                thoughts.add(update.path("content").path("text").asText());
+            }
+        }
+        if (!recordedThinking(recording).equals(thoughts)) {
+            problems.add("thinking " + thoughts + ", recorded " + recordedThinking(recording));
+        }
         List<AdvertisedCommand> recordedCommands = recordedCommands(recording);
         if (!recordedCommands.isEmpty()) {
             Set<String> expected = new TreeSet<>();
@@ -197,6 +220,36 @@ class AgentContractTest {
         List<JsonNode> said = play(r1, (prompt,chunks) -> answer.forEach(chunks), List.of(), anEngine(), null);
 
         assertEquals(List.of(), mismatches(r1, said));
+    }
+
+    @Test
+    @DisplayName("R9 — thinking, recorded from a real brain (Cursor's agent) through the real launcher: the agent sends the thinking as the recorded agent did, before and apart from the answer")
+    void r9TheAgentSendsTheThinkingAsTheRecordedAgentDid() throws IOException {
+        List<Line> r9 = recording("R9");
+        List<String> thinking = recordedThinking(r9);
+        List<String> answer = recordedAnswer(r9);
+        assertFalse(thinking.isEmpty(), "the recording holds no thinking to replay");
+        assertFalse(answer.isEmpty(), "the recording holds no answer to replay");
+        AgentBrain brain = new AgentBrain() {
+            @Override
+            public void answer(String prompt, Consumer<String> chunks) {
+                answer(prompt, chunks, null, null);
+            }
+
+            @Override
+            public void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls, Consumer<JsonNode> thought) {
+                for (String text : thinking) {
+                    ObjectNode update = JSON.createObjectNode().put("sessionUpdate", "agent_thought_chunk");
+                    update.putObject("content").put("type", "text").put("text", text);
+                    thought.accept(update);
+                }
+                answer.forEach(chunks);
+            }
+        };
+
+        List<JsonNode> said = play(r9, brain, List.of(), anEngine(), null);
+
+        assertEquals(List.of(), mismatches(r9, said));
     }
 
     @Test
