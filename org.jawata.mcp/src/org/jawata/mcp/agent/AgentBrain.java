@@ -33,4 +33,12 @@ public interface AgentBrain {
     default void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls, Consumer<JsonNode> thinking) {
         answer(prompt, chunks, toolCalls);
     }
+
+    /**
+     * The session id this brain's own calls to the engine's tools carry, when it has one: the hires it issues are opened under it, so it is
+     * also the session whose pending steps the turn boundary must ask about. None for a brain that makes no calls the engine can attribute.
+     */
+    default java.util.Optional<String> toolSessionKey() {
+        return java.util.Optional.empty();
+    }
 }

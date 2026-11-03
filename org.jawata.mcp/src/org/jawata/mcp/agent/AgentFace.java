@@ -127,7 +127,7 @@ public final class AgentFace implements RoutedFace {
         if (attached == null) {
             throw new IllegalStateException("the agent face is not attached to an engine");
         }
-        TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools()), new AttemptLedger(RESUMPTIONS_PER_STEP));
+        TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools(), brain.toolSessionKey()), new AttemptLedger(RESUMPTIONS_PER_STEP));
         String recording = attached.settings() == null ? null : attached.settings().get(AgentRecorder.SETTING).orElse(null);
         AgentRecorder recorder = new AgentRecorder(attached.tools(), AgentRecorder.Depth.of(recording));
         ReviewBeforeSend.Reviewer reviewer = BrainReviewer.over(attached.settings(), java.nio.file.Path.of(System.getProperty("user.dir"))).orElse(null);

@@ -133,6 +133,9 @@ public final class PlanLedger {
         /** When the step now being worked began: the plan's opening, then each advance. Engine calls from this moment count against the ceiling. */
         private long stepStartedAt;
 
+        /** The session that opened the plan, or empty when nobody said: a plan's pending step is that session's to answer for (S10). */
+        private String owner = "";
+
         Entry(List<GatedStep> steps, int perStepCeiling, long openedAt) {
             this.steps = steps;
             this.perStepCeiling = perStepCeiling;
@@ -409,5 +412,28 @@ public final class PlanLedger {
             }
         }
         return open;
+    }
+
+    /** Records which session opened the plan, so its pending step is that session's to answer for and no other caller's turn waits on it. */
+    public synchronized void ownedBy(PlanId id, String owner) {
+        Entry entry = plans.get(id);
+        if (entry != null) {
+            entry.owner = owner == null ? "" : owner;
+        }
+    }
+
+    /**
+     * The pending plans {@code owner} answers for: those it opened and those no session was recorded for. A plan another session opened is not
+     * listed, so a hire running for someone else does not hold this session's turn at its end (S10).
+     */
+    public synchronized List<Pending> pendingFor(String owner) {
+        List<Pending> mine = new ArrayList<>();
+        for (Pending open : pending()) {
+            String opened = plans.get(open.id()).owner;
+            if (opened.isEmpty() || opened.equals(owner)) {
+                mine.add(open);
+            }
+        }
+        return mine;
     }
 }

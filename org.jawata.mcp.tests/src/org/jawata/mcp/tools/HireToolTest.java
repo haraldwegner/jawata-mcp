@@ -1595,6 +1595,42 @@ class HireToolTest {
         assertEquals("nothing", later.get("answer"), "an anonymous caller's hire continued an earlier one: " + later);
     }
 
+    @Test
+    @DisplayName("S10 (F7): while a hire runs, its plan's waiting step is the issuing caller's to answer for and no other caller's")
+    void aHiresPendingPlanBelongsToTheCallerThatIssuedIt() throws Exception {
+        // A plan ends with its hire, so ownership is read while the hire is still running: from inside its own gate, which the hire calls
+        // after the brain has answered and before the plan closes.
+        java.util.List<Integer> issuerSees = new java.util.ArrayList<>();
+        java.util.List<Integer> otherSees = new java.util.ArrayList<>();
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new Tool() {
+            @Override public String getName() {
+                return "compile_workspace";
+            }
+            @Override public String getDescription() {
+                return "a gate fixture that notes who the ledger says its plan is waiting for";
+            }
+            @Override public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+            @Override public ToolResponse execute(JsonNode arguments) {
+                issuerSees.add(plans.pendingFor("principal-f7-issuer").size());
+                otherSees.add(plans.pendingFor("principal-f7-someone-else").size());
+                return ToolResponse.success(Map.of("errorCount", 0));
+            }
+        });
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, registry);
+        org.jawata.mcp.models.CallerIdentity issuer = org.jawata.mcp.models.CallerIdentity.supplied("principal-f7-issuer");
+        JsonNode arguments = hireArgs(seatFile(CATALOGUER_SEAT));
+
+        dataOf(issuer.speaking(() -> hire.execute(arguments)));
+
+        assertAll(
+            () -> assertTrue(!issuerSees.isEmpty(), "the gate never ran, so nothing was observed"),
+            () -> assertEquals(1, issuerSees.get(0), "the issuer is told its own hire's step is pending"),
+            () -> assertEquals(0, otherSees.get(0), "another caller was told about a hire it did not issue, and would hold its turn on it"));
+    }
+
     /** A hire tool whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),

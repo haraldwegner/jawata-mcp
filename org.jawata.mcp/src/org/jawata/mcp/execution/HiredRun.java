@@ -235,6 +235,7 @@ public final class HiredRun {
         // this brain and no other agent. The first dialect above only answered the containment question, which does not depend on it.
         List<GatedStep> planned = withAnswerGates(steps, seat.answerGates());
         PlanId plan = plans.open(planned, perStepCeiling(seat.ceilings(), planned.size()));
+        owner.ifPresent(opener -> plans.ownedBy(plan, opener));
         try {
             BrainDialect asThisHire = seat.dialect(self == null ? null : self.forSession(plan.value()), hiddenTools);
             // THE GROUND (S14, D16): only a seat that changes code is bound to the area's jobs. The map is the catalogue's own rows for the
@@ -357,6 +358,15 @@ public final class HiredRun {
 
     /** The brain session this run continues when its brain is started over ACP (D4); none starts a new one. */
     private Optional<String> resume = Optional.empty();
+
+    /** The session that issued this hire, recorded on the plan it opens so the plan's pending step is that session's to answer for (S10). */
+    private Optional<String> owner = Optional.empty();
+
+    /** Names the session that issued this hire; a run is built for one hire, so the owner belongs to that hire alone. */
+    public HiredRun ownedBy(Optional<String> issuer) {
+        this.owner = issuer;
+        return this;
+    }
 
     /**
      * Makes this run continue {@code brainSession}, the session the same seat's earlier hire answered in, when the brain is started over ACP.

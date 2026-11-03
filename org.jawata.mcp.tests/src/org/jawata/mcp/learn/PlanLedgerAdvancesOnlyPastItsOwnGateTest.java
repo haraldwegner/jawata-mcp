@@ -229,7 +229,10 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
                 "view()",
                 // S12 slice 4 (D18): open(List,int) is open(List) with a per-step ceiling, a plan's birth and no step movement; stepBudget(String)
                 // is a READ that hands back a copy (which step, which gate, how many calls, from when), so the one-member rule for the step holds.
-                "open(List,int)", "stepBudget(String)")),
+                "open(List,int)", "stepBudget(String)",
+                // S10 (F7): ownedBy(PlanId,String) records WHO opened a plan and moves no step; pendingFor(String) is a READ of pending() narrowed
+                // to one caller, returning copies. A plan's owner is not its step, so the one-member rule for the step still holds.
+                "ownedBy(PlanId,String)", "pendingFor(String)")),
             published,
             "a member ARRIVING here is how an external write gets in, so the set is pinned"
                 + " rather than merely counted — and pinned by SIGNATURE, so an overload"

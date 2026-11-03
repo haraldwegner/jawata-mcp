@@ -49,7 +49,12 @@ public final class PlanStepsTool implements Tool {
     @Override
     public ToolResponse execute(JsonNode arguments) {
         List<Map<String, Object>> pending = new ArrayList<>();
-        for (PlanLedger.Pending open : plans.pending()) {
+        // A caller answers for the plans it opened and for those nobody was recorded for: a hire another caller is running does not hold this
+        // caller's turn (S10). A call made outside the registry has no caller to answer for and sees every plan.
+        List<PlanLedger.Pending> mine = org.jawata.mcp.models.CallerIdentity.serving()
+            .map(caller -> plans.pendingFor(caller.id()))
+            .orElseGet(plans::pending);
+        for (PlanLedger.Pending open : mine) {
             Map<String, Object> step = new LinkedHashMap<>();
             step.put("index", open.next().index());
             step.put("tool", open.next().tool());

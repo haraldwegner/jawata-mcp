@@ -122,6 +122,11 @@ public final class PrincipalBrain implements AgentBrain {
     }
 
     @Override
+    public java.util.Optional<String> toolSessionKey() {
+        return self == null ? java.util.Optional.empty() : java.util.Optional.of(sessionKey);
+    }
+
+    @Override
     public void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls) {
         answer(prompt, chunks, toolCalls, null);
     }

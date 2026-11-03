@@ -126,6 +126,21 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("S10 (F7): the key the principal brain reports for its tool calls is the session id it presents to the resident, and a brain that cannot call the resident reports none")
+    void theBrainReportsTheKeyItsCallsCarry() {
+        SelfEndpoint endpoint = new SelfEndpoint("http://127.0.0.1:1/mcp", "key");
+        PrincipalBrain connected = new PrincipalBrain(HostProcesses.system(), Optional.of(fake), HireSite.in(dir), endpoint,
+            List.of("inspect"), new Hirer(SeatTree.standard(), Map.of(), java.util.Set.of()), HiredBrain.Ceilings.of(Duration.ofSeconds(60)));
+
+        String presented = ask(connected, "SERVERS", new ArrayList<>());
+
+        java.util.regex.Matcher id = java.util.regex.Pattern.compile("principal-[0-9a-f-]+").matcher(presented);
+        assertTrue(id.find(), "the brain presented no session id of its own: " + presented);
+        assertEquals(Optional.of(id.group()), connected.toolSessionKey(), "the reported key is not the one the brain's calls carried");
+        assertEquals(Optional.empty(), brain(Optional.of(fake)).toolSessionKey(), "control: a brain with no endpoint to call has no key to report");
+    }
+
+    @Test
     @DisplayName("the second prompt of the same brain continues the first one's session")
     void theSecondPromptKnowsWhatTheFirstSaw() {
         PrincipalBrain brain = brain(Optional.of(fake));

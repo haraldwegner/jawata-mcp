@@ -21,16 +21,27 @@ public final class ToolStepLedger implements StepLedger {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final ToolCalls tools;
+    private final java.util.Optional<String> askAs;
 
     public ToolStepLedger(ToolCalls tools) {
+        this(tools, java.util.Optional.empty());
+    }
+
+    /**
+     * Asks as the session key the brain's own calls carry, so the plans its hires opened are the ones it hears about (S10): a hire another
+     * caller is running does not hold this turn.
+     */
+    public ToolStepLedger(ToolCalls tools, java.util.Optional<String> askAs) {
         this.tools = tools;
+        this.askAs = askAs;
     }
 
     @Override
     public List<Pending> pending(PrincipalSession session) {
         ToolResponse response;
         try {
-            response = tools.callTool(TOOL, JSON.createObjectNode(), session.identity());
+            response = tools.callTool(TOOL, JSON.createObjectNode(),
+                askAs.map(org.jawata.mcp.models.CallerIdentity::supplied).orElseGet(session::identity));
         } catch (Exception e) {
             return List.of();
         }
