@@ -489,6 +489,11 @@ public class HireTool extends NeutralTool {
             // A killed process ends the read normally and no interrupt exception follows, so the stop is looked for here as well.
             stoppedByPerson = running.wasStopped() || stoppedByPerson;
             running.close();
+            if (stoppedByPerson) {
+                // The stop interrupted this thread too, and a killed process ends the read with no exception to clear it: the next request
+                // served on this thread must not start interrupted.
+                Thread.interrupted();
+            }
         }
         if (stoppedByPerson) {
             return ToolResponse.error("HIRE_STOPPED",

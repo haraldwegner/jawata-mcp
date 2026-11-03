@@ -1647,7 +1647,13 @@ class HireToolTest {
             return thread;
         });
         try {
-            java.util.concurrent.Future<ToolResponse> response = pool.submit(() -> hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+            // The thread's interrupt flag is read inside the same task: the pool clears it between tasks, so reading it afterwards would see nothing.
+            boolean[] leftInterrupted = new boolean[1];
+            java.util.concurrent.Future<ToolResponse> response = pool.submit(() -> {
+                ToolResponse answer = hire.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+                leftInterrupted[0] = Thread.currentThread().isInterrupted();
+                return answer;
+            });
             // The brain writes the marker once its process runs, which is after the hire has registered as running.
             for (int i = 0; i < 200 && !Files.exists(started); i++) {
                 Thread.sleep(50);
@@ -1662,7 +1668,8 @@ class HireToolTest {
                 () -> assertFalse(answer.isSuccess(), "a stopped hire was answered as a success"),
                 () -> assertTrue(String.valueOf(answer.getError()).contains("stopped from the Agent Control panel"), String.valueOf(answer.getError())),
                 () -> assertEquals(0, running.stop("cataloguer", "Describe every member of org.jawata.mcp.execution."),
-                    "the stopped hire is still listed as running"));
+                    "the stopped hire is still listed as running"),
+                () -> assertFalse(leftInterrupted[0], "the thread that carried the stopped hire was left interrupted for the next request"));
         } finally {
             pool.shutdownNow();
         }

@@ -46,8 +46,10 @@ public final class RunningHires {
 
         @Override
         public void close() {
-            running.remove(hire);
-            stopped.remove(hire.thread);
+            synchronized (RunningHires.this) {
+                running.remove(hire);
+                stopped.remove(hire.thread);
+            }
         }
     }
 
@@ -61,9 +63,14 @@ public final class RunningHires {
         return SHARED;
     }
 
-    /** Registers a hire of this seat for this brief as running on the current thread. */
-    public Registration begin(String seat, String brief) {
+    /**
+     * Registers a hire of this seat for this brief as running on the current thread. A stop mark left on this thread by an earlier hire is
+     * dropped: it would otherwise end this hire the moment its brain's process started. Registering, stopping and closing take turns, so a
+     * stop cannot mark a thread whose hire has just closed.
+     */
+    public synchronized Registration begin(String seat, String brief) {
         Running hire = new Running(seat, normal(brief), Thread.currentThread());
+        stopped.remove(hire.thread);
         running.add(hire);
         return new Registration(hire);
     }
@@ -86,7 +93,7 @@ public final class RunningHires {
     }
 
     /** Stops every running hire of this seat for this brief and answers how many there were. */
-    public int stop(String seat, String brief) {
+    public synchronized int stop(String seat, String brief) {
         int stoppedCount = 0;
         for (Running hire : running) {
             if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
