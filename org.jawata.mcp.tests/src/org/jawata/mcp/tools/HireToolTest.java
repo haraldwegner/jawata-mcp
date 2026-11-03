@@ -1571,7 +1571,7 @@ class HireToolTest {
     }
 
     @Test
-    @DisplayName("S13 (F2): a hire started over ACP has its seat's tool list on its plan while it runs, where the choke reads it, and a hire started by its dialect has none")
+    @DisplayName("S13 (F2): a hire has its seat's tool list on its plan while it runs, where the choke reads it, whether started over ACP or by its dialect; a dialect hire whose seat lists no tools has none")
     void anAcpHiresSeatListIsKeptWhereTheChokeReads() throws Exception {
         // Read from inside the gate, which the hire runs before its plan closes.
         java.util.List<java.util.Optional<PlanLedger.ToolAllowance>> seen = new java.util.ArrayList<>();
@@ -1601,14 +1601,19 @@ class HireToolTest {
         int afterTheAcpHire = seen.size();
         HireTool byDialect = toolWith(new StandsIn(host, aBrainThatAnswers()), events, registry);
         dataOf(byDialect.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        int afterTheDialectHire = seen.size();
+        dataOf(byDialect.execute(hireArgs(seatFile(CATALOGUER_SEAT.replace("tools: [inspect, search_symbols, analyze, experience]", "tools: []")))));
 
         assertAll(
             () -> assertTrue(afterTheAcpHire > 0, "the gate never ran in the ACP hire, so nothing was observed"),
             () -> assertEquals(java.util.Set.of("inspect", "search_symbols", "analyze", "experience"), seen.get(0).orElseThrow().tools(),
                 "the seat's list was not on the ACP hire's plan"),
             () -> assertEquals(java.util.Optional.of("compile_workspace"), seen.get(0).orElseThrow().gate()),
-            () -> assertTrue(seen.size() > afterTheAcpHire && seen.get(afterTheAcpHire).isEmpty(),
-                "control: a hire started by its dialect was given a list the choke would enforce"));
+            () -> assertTrue(seen.size() > afterTheAcpHire && seen.get(afterTheAcpHire).isPresent()
+                    && seen.get(afterTheAcpHire).get().tools().equals(java.util.Set.of("inspect", "search_symbols", "analyze", "experience")),
+                "a hire started by its dialect, whose seat lists tools, was left unbounded at the choke"),
+            () -> assertTrue(seen.size() > afterTheDialectHire && seen.get(afterTheDialectHire).isEmpty(),
+                "control: a dialect hire whose seat lists no tools was given a list (there an empty list means the brain keeps its own configuration)"));
     }
 
     @Test

@@ -116,6 +116,62 @@ class SeatAllowlistAtTheChokeTest {
     }
 
     @Test
+    @DisplayName("each hired session is narrowed by its own seat's list and by no other: a tool one hire may call is refused to the other, and a person's client is narrowed by neither")
+    void eachHireIsNarrowedByItsOwnListOnly() {
+        PlanId reader = hiredAs(List.of("inspect"), "compile_workspace");
+        PlanId searcher = hiredAs(List.of("search_symbols"), "compile_workspace");
+
+        assertAll(
+            () -> assertNotNull(asksFor(reader, "search_symbols"), "the reader was let through with the searcher's list"),
+            () -> assertNull(asksFor(searcher, "search_symbols"), "control: the searcher was refused its own tool"),
+            () -> assertNotNull(asksFor(searcher, "inspect"), "the searcher was let through with the reader's list"),
+            () -> assertNull(asksFor(reader, "inspect"), "control: the reader was refused its own tool"),
+            () -> assertNull(checks.acceptance(CallerIdentity.supplied("a-persons-client"), "inspect", JSON.createObjectNode(), new SessionLedger()),
+                "a person's client was narrowed while two hires with lists were open"));
+    }
+
+    @Test
+    @DisplayName("the gate is allowed only as the step declared it: the same tool with other arguments is refused, because a gate must not open a way round the seat's list")
+    void theGateIsAllowedOnlyAsDeclared() throws Exception {
+        PlanId plan = plans.open(List.of(new GatedStep(0, "compile_workspace", JSON.readTree("{\"scope\":\"main\"}"))));
+        plans.allowTools(plan, List.of("inspect"));
+
+        assertAll(
+            () -> assertNull(checks.acceptance(CallerIdentity.supplied(plan.value()), "compile_workspace", JSON.readTree("{\"scope\":\"main\"}"), new SessionLedger()),
+                "the gate called as declared was refused"),
+            () -> assertNull(checks.acceptance(CallerIdentity.supplied(plan.value()), "compile_workspace", JSON.readTree("{\"scope\":\"main\",\"clean\":true}"), new SessionLedger()),
+                "control: the gate with extra arguments (a live call carries control fields) was refused"),
+            () -> assertNotNull(checks.acceptance(CallerIdentity.supplied(plan.value()), "compile_workspace", JSON.readTree("{\"scope\":\"test\"}"), new SessionLedger()),
+                "the gate's tool with arguments the step did not declare was let through"),
+            () -> assertNotNull(checks.acceptance(CallerIdentity.supplied(plan.value()), "compile_workspace", JSON.createObjectNode(), new SessionLedger()),
+                "the gate's tool with no arguments was let through although the step declared some"));
+    }
+
+    @Test
+    @DisplayName("a plan whose hire is still running is not forgotten when many plans are opened after it, so its session stays narrowed; ended plans past the limit are dropped")
+    void aRunningPlanIsKeptWhenManyOthersAreOpened() {
+        PlanId running = hiredAs(List.of("inspect"), "compile_workspace");
+        for (int i = 0; i < PlanLedger.MAX_PLANS * 3; i++) {
+            plans.close(hiredAs(List.of("inspect"), "compile_workspace"));
+        }
+
+        assertAll(
+            () -> assertNotNull(asksFor(running, "rename_symbol"), "the running hire stopped being narrowed after other plans were opened"),
+            () -> assertNull(asksFor(running, "inspect"), "control: the running hire's own tool was refused"),
+            () -> assertEquals(PlanLedger.MAX_PLANS, plans.planCount(), "ended plans past the limit were not dropped"));
+    }
+
+    @Test
+    @DisplayName("plans nobody closed are still bounded: past the hard limit the oldest goes whatever its state")
+    void plansNobodyClosedAreStillBounded() {
+        for (int i = 0; i < PlanLedger.HARD_LIMIT + 5; i++) {
+            hiredAs(List.of("inspect"), "compile_workspace");
+        }
+
+        assertEquals(PlanLedger.HARD_LIMIT, plans.planCount());
+    }
+
+    @Test
     @DisplayName("a plan given no list, a session that is no plan's and a plan that has ended are not narrowed")
     void whatNobodyRecordedAListForIsNotNarrowed() {
         PlanId noList = plans.open(List.of(new GatedStep(0, "compile_workspace", JSON.createObjectNode())));

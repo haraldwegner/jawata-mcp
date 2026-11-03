@@ -145,12 +145,12 @@ public final class ServerChecks {
      * calls anyway, reaches the resident only through here. A session nobody recorded a list for (a person's client, a dialect-started brain, a
      * plan that ended) is not narrowed, which is the reading before this check existed.
      */
-    private ToolResponse outsideTheSeatsTools(CallerIdentity caller, String name) {
+    private ToolResponse outsideTheSeatsTools(CallerIdentity caller, String name, JsonNode arguments) {
         if (plans == null || caller == null) {
             return null;
         }
         java.util.Optional<PlanLedger.ToolAllowance> allowance = plans.allowance(caller.id());
-        if (allowance.isEmpty() || allowance.get().permits(name)) {
+        if (allowance.isEmpty() || allowance.get().permits(name, arguments)) {
             return null;
         }
         return ToolResponse.error("TOOL_NOT_ALLOWED",
@@ -200,7 +200,7 @@ public final class ServerChecks {
     public ToolResponse acceptance(CallerIdentity caller, String name, JsonNode arguments,
             SessionLedger ledger) {
         try {
-            ToolResponse notListed = outsideTheSeatsTools(caller, name);
+            ToolResponse notListed = outsideTheSeatsTools(caller, name, arguments);
             if (notListed != null) {
                 return notListed;
             }

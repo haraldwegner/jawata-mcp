@@ -236,6 +236,13 @@ public final class HiredRun {
         List<GatedStep> planned = withAnswerGates(steps, seat.answerGates());
         PlanId plan = plans.open(planned, perStepCeiling(seat.ceilings(), planned.size()));
         owner.ifPresent(opener -> plans.ownedBy(plan, opener));
+        // S13 (the audit of C6, finding F2): the seat's tool list is kept where the choke reads it, from the moment the plan opens, so a brain
+        // that ignores the permission answer, or never asks, still cannot call outside it. Over ACP an empty list means none. A dialect-started
+        // brain is bounded the same way when the seat lists tools; with none listed it keeps its own configuration, as the javadoc of the
+        // bare-dialect overload says, so no list is recorded and the seat is not narrowed (a declared residual).
+        if (acp.isPresent() || !seat.tools().isEmpty()) {
+            plans.allowTools(plan, listForTheChoke(seat.tools()));
+        }
         try {
             BrainDialect asThisHire = seat.dialect(self == null ? null : self.forSession(plan.value()), hiddenTools);
             // THE GROUND (S14, D16): only a seat that changes code is bound to the area's jobs. The map is the catalogue's own rows for the
@@ -246,6 +253,20 @@ public final class HiredRun {
         } finally {
             plans.close(plan);
         }
+    }
+
+    /**
+     * A seat's tool list as the engine's choke reads it: each name as the seat wrote it and also its bare form. The permission path accepts a
+     * brain's own name for a tool or the bare one, while the choke sees only the bare name the registry knows, so a seat that wrote
+     * {@code mcp__server__inspect} would be allowed by one and refused by the other.
+     */
+    static List<String> listForTheChoke(List<String> seatTools) {
+        List<String> widened = new ArrayList<>();
+        for (String name : seatTools) {
+            widened.add(name);
+            widened.add(RunEffects.bareName(name));
+        }
+        return widened;
     }
 
     /**
@@ -402,11 +423,6 @@ public final class HiredRun {
         // THE ONE START PATH (S12): a brain with a program that speaks ACP is run through the engine's ACP client, under this plan's own
         // session id, with the seat's tools as its allowlist (an empty list allows none); any other brain is started by its dialect.
         LiveGates live = acp.isPresent() ? new LiveGates(plan, declaredGates) : null;
-        // S13 (the audit of C6, finding F2): the seat's list is also kept where the choke can read it, so a brain that ignores the permission
-        // answer still cannot call outside it. Only on this path, where an empty list means none; a dialect-started brain keeps its own reading.
-        if (acp.isPresent()) {
-            plans.allowTools(plan, tools);
-        }
         // ACL4: while the brain works, its session (the plan id it presents to the resident) is concerned with the folder it was hired in,
         // not with every project the manifest holds; the binding ends with the run.
         HiredBrain.Outcome outcome;

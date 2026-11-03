@@ -75,18 +75,25 @@ import com.fasterxml.jackson.databind.JsonNode;
  * another's plan. Correct for a cooperative driver, wrong as a security
  * boundary, and written down so it is not mistaken for one.</p>
  *
- * <p>Bounded like its sibling at {@link #MAX_PLANS} plans, least-recently-used
- * evicted. Its eviction does nothing but evict: no listener, no callback — unlike
+ * <p>Bounded like its sibling, but only ENDED plans are dropped (S13, the audit
+ * of the seat allowlist): past {@link #MAX_PLANS} plans the oldest ended ones go
+ * first, and a plan whose hire is still running is kept, because its tool list is
+ * what narrows its session at the choke and dropping it would silently unbound a
+ * brain that is still working. {@link #HARD_LIMIT} bounds the ledger when plans
+ * are opened and never closed, and then the oldest goes whatever its state. Its
+ * eviction does nothing but evict: no listener, no callback — unlike
  * {@code SessionLedger}, whose eviction invokes one, because there a session's
- * disappearance IS the only end signal and here it is not. A plan evicted
- * mid-flight and then advanced is REFUSED, and the refusal says the plan is
- * unknown; silently treating it as a fresh plan at step -1 is the one answer that
- * would be wrong.</p>
+ * disappearance IS the only end signal and here it is not. A plan evicted and then
+ * advanced is REFUSED, and the refusal says the plan is unknown; silently treating
+ * it as a fresh plan at step -1 is the one answer that would be wrong.</p>
  */
 public final class PlanLedger {
 
-    /** At most this many plans are remembered; the least recently touched goes first. */
+    /** Past this many plans the oldest ENDED ones are dropped; plans still running are kept. */
     static final int MAX_PLANS = 16;
+
+    /** Past this many plans the oldest goes whatever its state: the bound for plans nobody closed. */
+    static final int HARD_LIMIT = MAX_PLANS * 8;
 
     /**
      * What one attempt to advance did.
@@ -162,14 +169,17 @@ public final class PlanLedger {
      * What a hired session may call (S13, the audit of C6, finding F2): the tools its seat lists, and the gate of the step it is working, which
      * a brain has to be able to run to show the step passed whatever its seat lists.
      *
-     * @param tools the seat's own list; an empty list allows no tool but the gate
-     * @param gate  the tool whose answer would move the plan, when the current step gates the tree and not the seat's answer
+     * @param tools         the seat's own list; an empty list allows no tool but the gate
+     * @param gate          the tool whose answer would move the plan, when the current step gates the tree and not the seat's answer
+     * @param gateArguments the arguments the step declared for that gate: the exemption covers the gate called as declared, not the gate's
+     *                      tool with any arguments, so a seat that may not change code cannot reach a code-changing tool by way of a gate
      */
-    public record ToolAllowance(java.util.Set<String> tools, Optional<String> gate) {
+    public record ToolAllowance(java.util.Set<String> tools, Optional<String> gate, JsonNode gateArguments) {
 
-        /** Whether the session may call {@code tool}. */
-        public boolean permits(String tool) {
-            return tools.contains(tool) || gate.map(tool::equals).orElse(false);
+        /** Whether the session may call {@code tool} with {@code arguments}. */
+        public boolean permits(String tool, JsonNode arguments) {
+            return tools.contains(tool)
+                || gate.map(tool::equals).orElse(false) && declaredArgumentsAreSatisfied(gateArguments, arguments);
         }
     }
 
@@ -212,13 +222,25 @@ public final class PlanLedger {
         return Optional.empty();
     }
 
-    private final LinkedHashMap<PlanId, Entry> plans =
-        new LinkedHashMap<>(16, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(Map.Entry<PlanId, Entry> eldest) {
-                return size() > MAX_PLANS;
+    private final LinkedHashMap<PlanId, Entry> plans = new LinkedHashMap<>(16, 0.75f, true);
+
+    /**
+     * Keeps the ledger bounded without forgetting a running plan: past {@link #MAX_PLANS} the oldest ENDED plans go, and past
+     * {@link #HARD_LIMIT} the oldest goes whatever its state (plans nobody closed would otherwise be kept for good).
+     */
+    private void dropEndedPlansPastTheLimit() {
+        java.util.Iterator<Map.Entry<PlanId, Entry>> oldestFirst = plans.entrySet().iterator();
+        while (plans.size() > MAX_PLANS && oldestFirst.hasNext()) {
+            if (oldestFirst.next().getValue().closed) {
+                oldestFirst.remove();
             }
-        };
+        }
+        oldestFirst = plans.entrySet().iterator();
+        while (plans.size() > HARD_LIMIT && oldestFirst.hasNext()) {
+            oldestFirst.next();
+            oldestFirst.remove();
+        }
+    }
 
     /**
      * Remember a plan's declared steps and hand back its identity.
@@ -256,6 +278,7 @@ public final class PlanLedger {
         }
         PlanId id = PlanId.mint();
         plans.put(id, new Entry(List.copyOf(steps), Math.max(0, perStepCeiling), clock.getAsLong()));
+        dropEndedPlansPastTheLimit();
         return id;
     }
 
@@ -465,10 +488,10 @@ public final class PlanLedger {
                 return Optional.empty();
             }
             int next = entry.currentStep + 1;
-            Optional<String> gate = next < entry.steps.size() && !entry.steps.get(next).tool().startsWith(ANSWER_GATE_PREFIX)
-                ? Optional.of(entry.steps.get(next).tool())
-                : Optional.empty();
-            return Optional.of(new ToolAllowance(entry.allowed, gate));
+            boolean gatesTheTree = next < entry.steps.size() && !entry.steps.get(next).tool().startsWith(ANSWER_GATE_PREFIX);
+            return Optional.of(new ToolAllowance(entry.allowed,
+                gatesTheTree ? Optional.of(entry.steps.get(next).tool()) : Optional.empty(),
+                gatesTheTree ? entry.steps.get(next).gateArguments() : null));
         }
         return Optional.empty();
     }
