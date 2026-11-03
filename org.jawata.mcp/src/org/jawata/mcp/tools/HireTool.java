@@ -133,7 +133,7 @@ public class HireTool extends NeutralTool {
      * The host setting that names, per brain, the program that speaks ACP: {@code {"claude-code":{"command":[...],"env":{...}},...}}. A brain
      * without an entry is started the way it always was, by its own dialect's command line.
      */
-    public static final String BRAINS_SETTING = "jawata.agent.hireBrains";
+    public static final String BRAINS_SETTING = Hirer.BRAINS_SETTING;
 
     private final Supplier<EngineSettings> settings;
 

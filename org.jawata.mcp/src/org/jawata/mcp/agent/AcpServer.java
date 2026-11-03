@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import org.jawata.mcp.agent.ReviewBeforeSend.Reviewer;
+import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -115,8 +116,33 @@ public final class AcpServer {
             case "session/list" -> listSessions(id, params);
             case "session/load" -> loadSession(id, params);
             case "session/prompt" -> prompt(id, params, from);
+            case "_jawata/brains" -> JsonRpcMessage.successResponse(id, brainsResult());
             default -> JsonRpcMessage.errorResponse(id, METHOD_NOT_FOUND, "Method not found: " + request.getMethod(), null);
         };
+    }
+
+    /** Where the registry of brains is read from, each time it is asked for; none offered reads as no brains. */
+    private volatile Supplier<String> brainRegistry = () -> "";
+
+    /** Installs the source of the model registry that {@code _jawata/brains} serves (application wiring). */
+    void offerBrains(Supplier<String> registry) {
+        this.brainRegistry = registry == null ? () -> "" : registry;
+    }
+
+    /**
+     * The brains the studio offers with their models, for the Agent Control panel's brain control (S9; his ruling 2026-10-31). The method name is
+     * provisional until the chat's recording R12 carries it. A registry that is not readable offers none, which is an empty list and not an error.
+     */
+    private ObjectNode brainsResult() {
+        ObjectNode result = JSON.createObjectNode();
+        ArrayNode brains = result.putArray("brains");
+        Hirer.brainsIn(brainRegistry.get()).forEach((name, brain) -> {
+            ObjectNode row = brains.addObject();
+            row.put("brain", name);
+            row.put("vendor", brain.vendor());
+            row.put("model", brain.model());
+        });
+        return result;
     }
 
     private ObjectNode initializeResult() {

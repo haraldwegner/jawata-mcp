@@ -6,6 +6,7 @@ import java.util.function.Supplier;
 
 import org.jawata.mcp.engine.EngineApi;
 import org.jawata.mcp.engine.RoutedFace;
+import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.jawata.mcp.protocol.MessageRoute;
 
@@ -119,6 +120,8 @@ public final class AgentFace implements RoutedFace {
         String recording = attached.settings() == null ? null : attached.settings().get(AgentRecorder.SETTING).orElse(null);
         AgentRecorder recorder = new AgentRecorder(attached.tools(), AgentRecorder.Depth.of(recording));
         ReviewBeforeSend.Reviewer reviewer = BrainReviewer.over(attached.settings(), java.nio.file.Path.of(System.getProperty("user.dir"))).orElse(null);
-        return new AcpServer(brain, commands, out, boundary, recorder, sideBrains, reviewer);
+        AcpServer server = new AcpServer(brain, commands, out, boundary, recorder, sideBrains, reviewer);
+        server.offerBrains(() -> attached.settings() == null ? "" : attached.settings().get(Hirer.BRAINS_SETTING).orElse(""));
+        return server;
     }
 }

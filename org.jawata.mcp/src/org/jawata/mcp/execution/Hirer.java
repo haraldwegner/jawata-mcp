@@ -42,6 +42,12 @@ public final class Hirer {
      */
     public static final String MAIN_BRAIN_SETTING = "jawata.agent.brain";
 
+    /**
+     * The host setting that is the model registry: per brain, beside the program that speaks ACP, its {@code vendor} and {@code model}. The hire
+     * path reads one brain out of it; the agent serves the whole list of it to the Agent Control panel.
+     */
+    public static final String BRAINS_SETTING = "jawata.agent.hireBrains";
+
     private static final ObjectMapper JSON = new ObjectMapper();
 
     /**
@@ -57,6 +63,27 @@ public final class Hirer {
         } catch (IOException | RuntimeException e) {
             return Optional.empty();
         }
+    }
+
+    /**
+     * Every brain the registry offers, in the registry's order, each with its vendor and model (the Agent Control panel's list of brains, S9).
+     * The text that is not a JSON object offers none; an entry that is not an object is no brain; a missing vendor or model reads as blank.
+     */
+    public static Map<String, Brain> brainsIn(String registry) {
+        Map<String, Brain> offered = new LinkedHashMap<>();
+        try {
+            JsonNode root = JSON.readTree(registry);
+            if (root != null && root.isObject()) {
+                for (Map.Entry<String, JsonNode> entry : root.properties()) {
+                    if (entry.getValue().isObject()) {
+                        offered.put(entry.getKey(), new Brain(entry.getValue().path("vendor").asText(""), entry.getValue().path("model").asText("")));
+                    }
+                }
+            }
+        } catch (IOException | RuntimeException e) {
+            return Map.of();
+        }
+        return offered;
     }
 
     /** The vendor and model main's brain setting names beside its command line, or none when the text is not a JSON object. */
