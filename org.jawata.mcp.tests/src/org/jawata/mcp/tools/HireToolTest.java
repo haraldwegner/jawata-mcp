@@ -935,7 +935,8 @@ class HireToolTest {
 
         assertAll(
             () -> assertTrue(String.valueOf(data.get("changedFiles")).contains("proposed.txt"), String.valueOf(data.get("changedFiles"))),
-            () -> assertTrue(String.valueOf(data.get("diff")).contains("new file, not yet tracked by git: proposed.txt"), String.valueOf(data.get("diff"))));
+            () -> assertTrue(String.valueOf(data.get("changes")).contains("path=proposed.txt")
+                && String.valueOf(data.get("changes")).contains("newText=written"), String.valueOf(data.get("changes"))));
     }
 
     @Test

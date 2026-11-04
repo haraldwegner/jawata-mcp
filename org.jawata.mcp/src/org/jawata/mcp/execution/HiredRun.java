@@ -661,7 +661,6 @@ public final class HiredRun {
         p.put("changedFiles", changed.changed().orElse(null));
         p.put("changedFileCount", changed.count().orElse(null));
         p.put("changedFilesBasis", changed.basis());
-        p.put("diff", changed.diff().orElse(null));
         p.put("applied", applied(changed));
         // WHAT `applied` AND `changedFiles` ARE ABOUT (S16-21, the architect's disposition): a bare
         // boolean read as "this run wrote nothing" would deny a write the census cannot see. Additive,

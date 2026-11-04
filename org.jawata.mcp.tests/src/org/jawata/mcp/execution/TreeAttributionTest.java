@@ -231,37 +231,42 @@ class TreeAttributionTest {
     }
 
     @Test
-    @DisplayName("the change comes with its text: the edit's lines, a line for a new file, and no text when nothing changed or nobody could look")
-    void theChangeIsGivenAsTextAndAbsentWhenThereIsNone() throws Exception {
+    @DisplayName("the change comes as each changed file's old and new text (a new file has no old text), and as nothing when nothing changed or nobody could look")
+    void theChangeIsGivenAsEachFilesOldAndNewTextAndAbsentWhenThereIsNone() throws Exception {
         Path repo = aRepository();
-        Optional<String> quiet = TreeAttribution.before(host, repo).after().diff();
+        Optional<TreeAttribution.Changes> quiet = TreeAttribution.before(host, repo).after().changes();
         TreeAttribution census = TreeAttribution.before(host, repo);
         Files.writeString(repo.resolve("tracked.txt"), "one\ntwo\n");
         Files.writeString(repo.resolve("written.txt"), "new\n");
 
-        String diff = census.after().diff().orElseThrow();
+        TreeAttribution.Changes changes = census.after().changes().orElseThrow();
+        TreeAttribution.FileChange edited = changes.shown().stream().filter(c -> c.path().equals("tracked.txt")).findFirst().orElseThrow();
+        TreeAttribution.FileChange created = changes.shown().stream().filter(c -> c.path().equals("written.txt")).findFirst().orElseThrow();
 
         assertAll(
-            () -> assertTrue(diff.startsWith("Against HEAD"), "it says what it is against: " + diff),
-            () -> assertTrue(diff.contains("+two"), "the line the run added to a tracked file is in it: " + diff),
-            () -> assertTrue(diff.contains("new file, not yet tracked by git: written.txt"),
-                "a file git does not track yet cannot be diffed, so it gets a line of its own: " + diff),
-            () -> assertTrue(quiet.isEmpty(), "a run that changed nothing has no text, not an empty one"),
-            () -> assertTrue(TreeAttribution.before(host, dir).after().diff().isEmpty(),
+            () -> assertEquals("one\n", edited.oldText(), "a tracked file's old text is what git holds at HEAD"),
+            () -> assertEquals("one\ntwo\n", edited.newText()),
+            () -> assertTrue(created.oldText() == null, "a file git does not track has no old text"),
+            () -> assertEquals("new\n", created.newText()),
+            () -> assertTrue(changes.omitted().isEmpty()),
+            () -> assertTrue(quiet.isEmpty(), "a run that changed nothing has nothing to show, not an empty list"),
+            () -> assertTrue(TreeAttribution.before(host, dir).after().changes().isEmpty(),
                 "a directory nobody could look at has none either"));
     }
 
     @Test
-    @DisplayName("a change longer than the limit is cut and says how long it was, so a cut is not read as the whole change")
-    void aLongChangeIsCutAndSaysHowLongItWas() throws Exception {
+    @DisplayName("a file whose text is past the limit is named as omitted and never shown cut, so a cut text is not drawn as the whole change")
+    void aLargeFileIsNamedAsOmittedAndNeverShownCut() throws Exception {
         Path repo = aRepository();
         TreeAttribution census = TreeAttribution.before(host, repo);
-        Files.writeString(repo.resolve("tracked.txt"), "one\n" + "x".repeat(TreeAttribution.DIFF_LIMIT * 2) + "\n");
+        Files.writeString(repo.resolve("tracked.txt"), "one\n" + "x".repeat(TreeAttribution.FILE_TEXT_LIMIT * 2) + "\n");
+        Files.writeString(repo.resolve("small.txt"), "fits\n");
 
-        String diff = census.after().diff().orElseThrow();
+        TreeAttribution.Changes changes = census.after().changes().orElseThrow();
 
         assertAll(
-            () -> assertTrue(diff.contains("[diff cut at " + TreeAttribution.DIFF_LIMIT + " of "), diff.substring(diff.length() - 80)),
-            () -> assertTrue(diff.length() < TreeAttribution.DIFF_LIMIT + 100, "the text kept is bounded: " + diff.length()));
+            () -> assertEquals(List.of("tracked.txt"), changes.omitted()),
+            () -> assertTrue(changes.shown().stream().noneMatch(c -> c.path().equals("tracked.txt")), "the large file was shown"),
+            () -> assertTrue(changes.shown().stream().anyMatch(c -> c.path().equals("small.txt")), "the file that fits was left out with it"));
     }
 }

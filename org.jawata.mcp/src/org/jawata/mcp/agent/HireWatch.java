@@ -15,6 +15,7 @@ import java.util.function.LongSupplier;
 import org.jawata.mcp.execution.RunEffects;
 import org.jawata.mcp.execution.RunningHires;
 import org.jawata.mcp.execution.SeatHire;
+import org.jawata.mcp.execution.TreeAttribution;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -49,8 +50,10 @@ final class HireWatch {
         /** The slash command the seat file gives the seat, when it gives one. */
         Optional<String> seatCommand = Optional.empty();
         List<String> changedFiles = List.of();
-        /** The change as text, when the hire's answer carried it. */
-        Optional<String> diff = Optional.empty();
+        /** The change file by file as old and new text, when the hire's answer carried it. */
+        List<TreeAttribution.FileChange> changes = List.of();
+        /** The changed files whose texts were too large to carry. */
+        List<String> changesOmitted = List.of();
         boolean asked;
         Optional<String> verdict = Optional.empty();
         String state = HireEntry.RUNNING;
@@ -130,15 +133,17 @@ final class HireWatch {
      */
     synchronized Optional<Proposal> proposalToAsk(String planId) {
         Live hire = hires.get(planId);
-        if (hire == null || hire.asked || !HireEntry.DONE.equals(hire.state) || hire.changedFiles.isEmpty()) {
+        // A chat puts a permission request to the person only when it carries a diff, and answers any other "allow once" at once; a request with
+        // nothing to show would record a yes the person never gave, so a hire with no file to draw is not put to anyone.
+        if (hire == null || hire.asked || !HireEntry.DONE.equals(hire.state) || hire.changedFiles.isEmpty() || hire.changes.isEmpty()) {
             return Optional.empty();
         }
         hire.asked = true;
-        return Optional.of(new Proposal(hire.changedFiles, hire.diff));
+        return Optional.of(new Proposal(hire.changedFiles, hire.changes, hire.changesOmitted));
     }
 
-    /** What a hire proposes: the files it changed, and the change as text when the hire's answer carried it. */
-    record Proposal(List<String> files, Optional<String> diff) {
+    /** What a hire proposes: the files it changed, each with its old and new text where the hire's answer carried it, and those it could not show. */
+    record Proposal(List<String> files, List<TreeAttribution.FileChange> changes, List<String> omitted) {
     }
 
     /** Records the person's answer to a hire's proposal and gives the entry as it now stands; none when the agent never saw the hire. */
@@ -226,7 +231,13 @@ final class HireWatch {
         List<String> files = new java.util.ArrayList<>();
         answer.path("changedFiles").forEach(file -> files.add(file.asText()));
         hire.changedFiles = List.copyOf(files);
-        hire.diff = answer.hasNonNull("diff") ? Optional.of(answer.get("diff").asText()) : Optional.empty();
+        List<TreeAttribution.FileChange> shown = new java.util.ArrayList<>();
+        answer.path("changes").forEach(file -> shown.add(new TreeAttribution.FileChange(file.path("path").asText(),
+            file.hasNonNull("oldText") ? file.get("oldText").asText() : null, file.hasNonNull("newText") ? file.get("newText").asText() : null)));
+        hire.changes = List.copyOf(shown);
+        List<String> omitted = new java.util.ArrayList<>();
+        answer.path("changesOmitted").forEach(name -> omitted.add(name.asText()));
+        hire.changesOmitted = List.copyOf(omitted);
         hire.toolSteps = answer.path("toolSteps").asInt(0);
         hire.editsByHand = answer.path("codeChangesByHand").asInt(0);
         hire.instructed = answer.path("instructionScore").path("instructionsIssued").asInt(0) > 0;

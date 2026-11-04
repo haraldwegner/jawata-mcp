@@ -562,8 +562,18 @@ public class HireTool extends NeutralTool {
             data.put("changedFileCount", files.size());
         });
         data.put("changedFilesBasis", proposal.changed().basis());
-        // The change as text, so the person asked to accept the proposal can read it (R7); left out when git could not give it.
-        proposal.changed().diff().ifPresent(diff -> data.put("diff", diff));
+        // The change file by file as old and new text, so the person asked to accept the proposal can read it (R7); a file too large to show
+        // is named in changesOmitted, and the whole key is left out when there is nothing to show.
+        proposal.changed().changes().ifPresent(changes -> {
+            data.put("changes", changes.shown().stream().map(change -> {
+                Map<String, Object> file = new LinkedHashMap<>();
+                file.put("path", change.path());
+                file.put("oldText", change.oldText());
+                file.put("newText", change.newText());
+                return file;
+            }).toList());
+            data.put("changesOmitted", changes.omitted());
+        });
         // WHAT THE BRAIN DID, and the three absences are reported as absences. A brain that
         // published no dollar cost is not a brain that cost nothing — only one of the four does —
         // and `saidNothing` is what keeps "it produced nothing" apart from "it failed".

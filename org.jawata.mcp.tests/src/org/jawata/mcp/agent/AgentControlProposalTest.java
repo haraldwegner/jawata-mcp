@@ -92,7 +92,8 @@ class AgentControlProposalTest {
         }
     }
 
-    private static final String CHANGED = "{\"data\":{\"cleanExit\":true,\"answer\":\"done\",\"changedFiles\":[\"src/A.java\",\"src/B.java\"]}}";
+    private static final String CHANGED = "{\"data\":{\"cleanExit\":true,\"answer\":\"done\",\"changedFiles\":[\"src/A.java\",\"src/B.java\"],"
+        + "\"changes\":[{\"path\":\"src/A.java\",\"oldText\":null,\"newText\":\"a\\n\"},{\"path\":\"src/B.java\",\"oldText\":\"b\\n\",\"newText\":\"bb\\n\"}]}}";
 
     @Test
     @DisplayName("a hire that ended well and changed files is put to the person once, as a permission request listing the files, with accept and reject")
@@ -110,19 +111,25 @@ class AgentControlProposalTest {
     }
 
     @Test
-    @DisplayName("the request carries the change as text when the hire's answer held it, and only the file names when it held none")
+    @DisplayName("the request carries each file the hire's answer could show as a diff block, names the rest as text, and is not put at all when there is nothing to draw")
     void theRequestCarriesTheDiffWhenThereIsOne() {
-        String withDiff = "{\"data\":{\"cleanExit\":true,\"answer\":\"done\",\"changedFiles\":[\"src/A.java\"],\"diff\":\"Against HEAD\\n+int two;\"}}";
+        String withDiff = "{\"data\":{\"cleanExit\":true,\"answer\":\"done\",\"changedFiles\":[\"src/A.java\",\"src/Big.java\"],"
+            + "\"changes\":[{\"path\":\"src/A.java\",\"oldText\":\"int one;\\n\",\"newText\":\"int two;\\n\"}],\"changesOmitted\":[\"src/Big.java\"]}}";
         Connection shown = new Connection(withDiff, "completed");
         Connection bare = new Connection("{\"data\":{\"cleanExit\":true,\"answer\":\"done\",\"changedFiles\":[\"src/A.java\"]}}", "completed");
 
         JsonNode shownContent = shown.questions().get(0).path("params").path("toolCall").path("content");
-        JsonNode bareContent = bare.questions().get(0).path("params").path("toolCall").path("content");
 
+        // The chat puts a request to the person only when it carries a diff block, so the file that could be shown is one, with its old and new text.
         assertEquals(2, shownContent.size(), shownContent.toString());
-        assertEquals("src/A.java", shownContent.get(0).path("content").path("text").asText());
-        assertTrue(shownContent.get(1).path("content").path("text").asText().contains("+int two;"), shownContent.toString());
-        assertEquals(1, bareContent.size(), "a hire whose answer held no diff must not be shown one: " + bareContent);
+        assertEquals("diff", shownContent.get(0).path("type").asText());
+        assertEquals("src/A.java", shownContent.get(0).path("path").asText());
+        assertEquals("int one;\n", shownContent.get(0).path("oldText").asText());
+        assertEquals("int two;\n", shownContent.get(0).path("newText").asText());
+        // The file too large to carry is still named, as text.
+        assertEquals("src/Big.java", shownContent.get(1).path("content").path("text").asText());
+        // A hire with nothing the chat could draw is not put to anyone: the chat would answer "allow once" itself and record a yes nobody gave.
+        assertEquals(0, bare.questions().size(), bare.said.toString());
     }
 
     @Test

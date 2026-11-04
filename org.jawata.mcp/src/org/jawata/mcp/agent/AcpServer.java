@@ -440,8 +440,25 @@ public final class AcpServer {
             call.put("title", "Proposal of " + entry.seat() + ": " + files.size() + (files.size() == 1 ? " file" : " files") + " changed");
             call.put("status", "completed");
             ArrayNode content = call.putArray("content");
-            files.forEach(file -> content.addObject().put("type", "content").putObject("content").put("type", "text").put("text", file));
-            proposal.diff().ifPresent(diff -> content.addObject().put("type", "content").putObject("content").put("type", "text").put("text", diff));
+            // A chat shows a permission request to the person only when it carries diff blocks (a request without any is answered "allow once"
+            // at once), so each file the hire's answer could show is a diff block: its path, its old text (null for a new file), its new text
+            // (empty for a file that is gone). Every other changed file, whether too large to carry or not shown for another reason, is named
+            // as text, so no changed file goes unnamed.
+            java.util.Set<String> drawn = new java.util.LinkedHashSet<>();
+            proposal.changes().forEach(change -> {
+                ObjectNode block = content.addObject();
+                block.put("type", "diff");
+                block.put("path", change.path());
+                if (change.oldText() == null) {
+                    block.putNull("oldText");
+                } else {
+                    block.put("oldText", change.oldText());
+                }
+                block.put("newText", change.newText() == null ? "" : change.newText());
+                drawn.add(change.path());
+            });
+            files.stream().filter(file -> !drawn.contains(file))
+                .forEach(file -> content.addObject().put("type", "content").putObject("content").put("type", "text").put("text", file));
             ArrayNode options = params.putArray("options");
             options.addObject().put("optionId", "accept").put("name", "Accept the proposal").put("kind", "allow_once");
             options.addObject().put("optionId", "reject").put("name", "Reject the proposal").put("kind", "reject_once");
