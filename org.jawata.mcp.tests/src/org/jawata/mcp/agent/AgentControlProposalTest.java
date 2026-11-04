@@ -8,6 +8,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
+import org.jawata.mcp.engine.ToolCalls;
+import org.jawata.mcp.models.CallerIdentity;
+import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -31,6 +34,10 @@ class AgentControlProposalTest {
         final AcpServer server;
 
         Connection(String answerJson, String status) {
+            this(answerJson, status, AgentRecorder.off());
+        }
+
+        Connection(String answerJson, String status, AgentRecorder recorder) {
             AgentBrain brain = new AgentBrain() {
                 @Override
                 public void answer(String prompt, Consumer<String> chunks) {
@@ -50,7 +57,7 @@ class AgentControlProposalTest {
                     chunks.accept("ok");
                 }
             };
-            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null, null);
+            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), TurnBoundary.open(), recorder, null, null);
             server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
             String session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
             ObjectNode params = JSON.createObjectNode().put("sessionId", session);
@@ -149,6 +156,48 @@ class AgentControlProposalTest {
 
         assertFalse(cancelled.lastEntry().has("verdict"), cancelled.lastEntry().toString());
         assertFalse(forged.lastEntry().has("verdict"), "a hired agent's message was taken for the person's yes: " + forged.lastEntry());
+    }
+
+    /** A recorder over a stand-in engine that keeps every call the agent makes to it, so a test reads what was written to the lane. */
+    private static final class Lane {
+        final List<ObjectNode> written = new ArrayList<>();
+        final AgentRecorder recorder = new AgentRecorder(new ToolCalls() {
+            @Override
+            public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {
+                written.add(arguments.deepCopy());
+                return ToolResponse.success(java.util.Map.of());
+            }
+
+            @Override
+            public List<java.util.Map<String, Object>> getToolDefinitions() {
+                return List.of();
+            }
+        }, AgentRecorder.Depth.ALL);
+
+        /** The turns written for the person's verdict on a proposal, whatever the key of the other turns. */
+        List<ObjectNode> verdicts() {
+            return written.stream().filter(args -> args.path("key").asText().startsWith("verdict_")).toList();
+        }
+    }
+
+    @Test
+    @DisplayName("D29: the person's yes or no on a proposal is recorded in the transcript lane under the hire's id, and a cancelled question records none")
+    void theVerdictIsRecordedInTheLane() {
+        Lane accepted = new Lane();
+        Connection yes = new Connection(CHANGED, "completed", accepted.recorder);
+        yes.answer(yes.questions().get(0), yes.selected("accept"), Channel.HOST);
+        Lane rejected = new Lane();
+        Connection no = new Connection(CHANGED, "completed", rejected.recorder);
+        no.answer(no.questions().get(0), no.selected("reject"), Channel.HOST);
+        Lane cancelled = new Lane();
+        Connection nothing = new Connection(CHANGED, "completed", cancelled.recorder);
+        nothing.answer(nothing.questions().get(0), JSON.createObjectNode().put("outcome", "cancelled"), Channel.HOST);
+
+        assertEquals(1, accepted.verdicts().size(), accepted.written.toString());
+        assertEquals("verdict_t1", accepted.verdicts().get(0).path("key").asText());
+        assertTrue(accepted.verdicts().get(0).path("his").asText().contains("accepted"), accepted.verdicts().toString());
+        assertTrue(rejected.verdicts().get(0).path("his").asText().contains("rejected"), rejected.verdicts().toString());
+        assertEquals(0, cancelled.verdicts().size(), "a question that chose nothing was recorded as a verdict: " + cancelled.verdicts());
     }
 
     @Test
