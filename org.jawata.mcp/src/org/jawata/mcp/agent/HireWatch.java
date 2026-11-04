@@ -9,9 +9,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.OptionalLong;
 import java.util.function.LongSupplier;
 
 import org.jawata.mcp.execution.RunEffects;
+import org.jawata.mcp.execution.RunningHires;
 import org.jawata.mcp.execution.SeatHire;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -264,8 +266,15 @@ final class HireWatch {
 
     private HireEntry entryOf(Live hire) {
         long end = hire.endedMs >= 0 ? hire.endedMs : clock.getAsLong();
-        return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, hire.state, end - hire.startedMs, hire.tokens, hire.cost,
-            hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire));
+        // While the hire runs, what its brain has reported so far is read from the engine's registry of running hires; once it has answered,
+        // the figures are the answer's own.
+        Optional<RunningHires.Progress> live = HireEntry.RUNNING.equals(hire.state)
+            ? RunningHires.shared().progress(hire.seat, hire.task) : Optional.empty();
+        OptionalDouble cost = live.isPresent() && live.get().costUsd().isPresent() ? live.get().costUsd() : hire.cost;
+        int steps = live.map(RunningHires.Progress::toolSteps).orElse(hire.toolSteps);
+        OptionalLong context = live.map(RunningHires.Progress::contextTokens).orElse(OptionalLong.empty());
+        return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, hire.state, end - hire.startedMs, hire.tokens, cost,
+            hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context);
     }
 
     /** How many hires the agent saw above this one, so a root is level 0, the chief engineer it hires 1, and the developer under that 2. */

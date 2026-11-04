@@ -85,6 +85,36 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("S9: a running hire's entry carries the tool calls, the context size and the cost its brain has reported so far; the answer's own figures replace them when it ends")
+    void aRunningHiresEntryCarriesWhatItsBrainHasReportedSoFar() {
+        watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "developer", "build the stage"));
+        watch.observe(withInput(hireCall("tool_call", "t2", "pending"), "main", "ux", "look at the screen"));
+        HireEntry idle = watch.entry("t1").orElseThrow();
+
+        try (org.jawata.mcp.execution.RunningHires.Registration running =
+                 org.jawata.mcp.execution.RunningHires.shared().begin("developer", "build the stage")) {
+            org.jawata.mcp.execution.RunningHires.shared().noteToolStep();
+            org.jawata.mcp.execution.RunningHires.shared().noteUsage(java.util.OptionalLong.of(4_000), java.util.OptionalDouble.of(0.25));
+            HireEntry working = watch.entry("t1").orElseThrow();
+
+            assertEquals(1, working.toolSteps());
+            assertEquals(0.25, working.costUsd().getAsDouble());
+            assertEquals(4_000, working.contextTokens().getAsLong());
+            assertEquals(4_000, working.toMeta().path("contextTokens").asLong(), "the figure was not on the wire");
+            assertEquals(0, watch.entry("t2").orElseThrow().toolSteps(), "CONTROL: another seat's hire was given this hire's figures");
+            assertFalse(watch.entry("t2").orElseThrow().toMeta().has("contextTokens"), "CONTROL: an unreported context size was sent");
+        }
+        assertEquals(0, idle.toolSteps(), "CONTROL: a hire nobody registered as running reported tool calls");
+        assertTrue(idle.costUsd().isEmpty());
+
+        HireEntry done = watch.observe(answered(hireCall("tool_call_update", "t1", "completed"),
+            "{\"data\":{\"cleanExit\":true,\"toolSteps\":7,\"costUsd\":0.5}}")).orElseThrow();
+        assertEquals(7, done.toolSteps(), "the answer's own count did not replace the running figure");
+        assertEquals(0.5, done.costUsd().getAsDouble());
+        assertTrue(done.contextTokens().isEmpty(), "a finished hire kept a context size from while it ran");
+    }
+
+    @Test
     @DisplayName("a cost the brain did not send is absent and not 0, and a hire that timed out or whose call failed is failed")
     void aMissingCostIsAbsentAndAFailureIsFailed() {
         watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "architect", "review"));

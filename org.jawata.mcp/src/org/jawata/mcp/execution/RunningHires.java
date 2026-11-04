@@ -1,6 +1,9 @@
 package org.jawata.mcp.execution;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -18,11 +21,19 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class RunningHires {
 
+    /**
+     * What a running hire's brain has reported so far, read off its stream as it arrives (S9, E3): the tool calls it has made, the size of
+     * its context at its last usage report, and the cost it last reported. A figure the brain has not sent is absent, never zero.
+     */
+    public record Progress(int toolSteps, OptionalLong contextTokens, OptionalDouble costUsd) {
+    }
+
     private static final class Running {
         final String seat;
         final String brief;
         final Thread thread;
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
+        volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
 
         Running(String seat, String brief, Thread thread) {
             this.seat = seat;
@@ -90,6 +101,40 @@ public final class RunningHires {
                 }
             }
         }
+    }
+
+    /** Counts one more tool call for the hire running on the current thread; a thread running no hire is ignored. */
+    public void noteToolStep() {
+        for (Running hire : running) {
+            if (hire.thread == Thread.currentThread()) {
+                Progress seen = hire.progress;
+                hire.progress = new Progress(seen.toolSteps() + 1, seen.contextTokens(), seen.costUsd());
+            }
+        }
+    }
+
+    /**
+     * Records what the brain of the hire running on the current thread last reported about its usage. A figure the report did not carry keeps
+     * the value the hire had before it: a report that names only a context size has not said the cost fell to nothing.
+     */
+    public void noteUsage(OptionalLong contextTokens, OptionalDouble costUsd) {
+        for (Running hire : running) {
+            if (hire.thread == Thread.currentThread()) {
+                Progress seen = hire.progress;
+                hire.progress = new Progress(seen.toolSteps(), contextTokens.isPresent() ? contextTokens : seen.contextTokens(),
+                    costUsd.isPresent() ? costUsd : seen.costUsd());
+            }
+        }
+    }
+
+    /** What the running hire of this seat for this brief has reported so far; none when no such hire is running. */
+    public Optional<Progress> progress(String seat, String brief) {
+        for (Running hire : running) {
+            if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
+                return Optional.of(hire.progress);
+            }
+        }
+        return Optional.empty();
     }
 
     /** Stops every running hire of this seat for this brief and answers how many there were. */

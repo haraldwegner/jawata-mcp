@@ -381,6 +381,7 @@ public final class AcpBrainSession {
                 } else if (collect && "session/update".equals(message.path("method").asText())) {
                     JsonNode update = message.path("params").path("update");
                     events.add(update);
+                    noteProgress(update);
                     if (onText != null && "agent_message_chunk".equals(update.path("sessionUpdate").asText())) {
                         onText.accept(update.path("content").path("text").asText(""));
                     }
@@ -398,6 +399,22 @@ public final class AcpBrainSession {
                 }
             }
             return null;
+        }
+
+        /**
+         * Tells the registry of running hires what this update shows of the hire on this thread: one more tool call, or the context size and
+         * cost a usage report carries. A report is read as the brain sent it; a figure it does not carry is passed on as absent.
+         */
+        private static void noteProgress(JsonNode update) {
+            String kind = update.path("sessionUpdate").asText();
+            if ("tool_call".equals(kind)) {
+                RunningHires.shared().noteToolStep();
+            } else if ("usage_update".equals(kind)) {
+                JsonNode used = update.path("used");
+                JsonNode amount = update.path("cost").path("amount");
+                RunningHires.shared().noteUsage(used.isNumber() ? java.util.OptionalLong.of(used.asLong()) : java.util.OptionalLong.empty(),
+                    amount.isNumber() ? OptionalDouble.of(amount.asDouble()) : OptionalDouble.empty());
+            }
         }
 
         /** Counts a streamed tool call or cost against the ceilings as it arrives; true, with {@link #stoppedBy} set, once one is passed. */

@@ -198,6 +198,32 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("S9: while a hire's brain works, the registry of running hires holds the tool calls it has made and the context size and cost its last usage report carried, and drops them when the hire ends")
+    void aRunningHiresProgressFollowsItsBrainsStream() throws Exception {
+        List<String> seen = new java.util.ArrayList<>();
+        try (RunningHires.Registration running = RunningHires.shared().begin("developer", "SPEND")) {
+            AcpBrainSession.run(host, agent, HireSite.in(dir), "SPEND", null, List.of(), Optional.empty(),
+                HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null, update -> {
+                    RunningHires.Progress now = RunningHires.shared().progress("developer", "SPEND").orElseThrow();
+                    seen.add(now.toolSteps() + " calls, context " + now.contextTokens() + ", cost " + now.costUsd());
+                }, update -> { });
+
+            assertEquals(List.of(
+                "1 calls, context OptionalLong.empty, cost OptionalDouble.empty",
+                "2 calls, context OptionalLong[100], cost OptionalDouble[0.25]",
+                "3 calls, context OptionalLong[200], cost OptionalDouble[0.5]",
+                "4 calls, context OptionalLong[300], cost OptionalDouble[0.75]",
+                "5 calls, context OptionalLong[400], cost OptionalDouble[1.0]"), seen,
+                "the figures a reader sees while the brain works did not follow its stream");
+            assertEquals(new RunningHires.Progress(5, java.util.OptionalLong.of(500), java.util.OptionalDouble.of(1.25)),
+                RunningHires.shared().progress("developer", "SPEND").orElseThrow(), "the last usage report was not kept");
+            assertTrue(RunningHires.shared().progress("developer", "another brief").isEmpty(),
+                "CONTROL: a hire of the same seat for another brief was given this hire's figures");
+        }
+        assertTrue(RunningHires.shared().progress("developer", "SPEND").isEmpty(), "the figures outlived the hire");
+    }
+
+    @Test
     @DisplayName("the wall clock reaps a brain that never answers, and says so")
     void theWallClockReapsAHungBrain() throws Exception {
         HiredBrain.Outcome outcome = hire("HANG", List.of(), Optional.empty(), HiredBrain.Ceilings.of(Duration.ofSeconds(3)), null);
