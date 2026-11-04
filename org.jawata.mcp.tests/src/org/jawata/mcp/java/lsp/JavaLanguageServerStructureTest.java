@@ -237,7 +237,7 @@ class JavaLanguageServerStructureTest {
     void lensesCountReferences() throws Exception {
         start();
         JsonNode lenses = session.ask("textDocument/codeLens", document());
-        assertEquals(4, lenses.size(), "Calculator, Colour, add and twice: " + lenses);
+        assertEquals(6, lenses.size(), "Calculator, Colour, add, twice and the fields base and LIMIT: " + lenses);
         JsonNode addLens = lensAt(lenses, lineOf(TEXT, "public int add("));
         JsonNode twiceLens = lensAt(lenses, lineOf(TEXT, "public int twice("));
         assertTrue(addLens.path("command").isMissingNode(), "a lens is counted only when the editor shows it: " + addLens);

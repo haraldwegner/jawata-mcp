@@ -15,17 +15,19 @@ import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTVisitor;
-import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.BooleanLiteral;
 import org.eclipse.jdt.core.dom.CharacterLiteral;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.Expression;
+import org.eclipse.jdt.core.dom.FieldDeclaration;
 import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.IVariableBinding;
+import org.eclipse.jdt.core.dom.LambdaExpression;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.MethodInvocation;
+import org.eclipse.jdt.core.dom.Modifier;
 import org.eclipse.jdt.core.dom.NullLiteral;
 import org.eclipse.jdt.core.dom.NumberLiteral;
 import org.eclipse.jdt.core.dom.PrefixExpression;
@@ -62,6 +64,11 @@ final class LspHints {
 
     /** The command a resolved lens carries; the editor's extension turns it into the references view. */
     static final String SHOW_REFERENCES = "jawata.showReferences";
+    /** The command an implementations lens carries; the extension turns it into the implementations view. */
+    static final String SHOW_IMPLEMENTATIONS = "jawata.showImplementations";
+    /** What a lens counts, as it is written into the lens and read back when the editor resolves it; these are also the {@code find_references} kinds. */
+    private static final String KIND_REFERENCES = "references";
+    private static final String KIND_IMPLEMENTATIONS = "implementations";
 
     private final ToolCalls tools;
     private final CallerIdentity caller;
@@ -83,7 +90,8 @@ final class LspHints {
         if (unit == null) {
             return hints;
         }
-        JavaRanges.Lines lines = JavaRanges.linesOf(unit.getSource());
+        String text = unit.getSource();
+        JavaRanges.Lines lines = JavaRanges.linesOf(text);
         JsonNode range = params.path("range");
         int from = lines.offsetOf(range.path("start").path("line").asInt(), range.path("start").path("character").asInt());
         int to = lines.offsetOf(range.path("end").path("line").asInt(), range.path("end").path("character").asInt());
@@ -92,6 +100,18 @@ final class LspHints {
             @Override
             public boolean visit(MethodInvocation node) {
                 argumentNames(hints, lines, from, to, node.resolveMethodBinding(), node.arguments());
+                chainedResult(hints, lines, text, from, to, node);
+                return true;
+            }
+
+            /** A lambda parameter written without its type gets the type the compiler infers for it. */
+            @Override
+            public boolean visit(LambdaExpression node) {
+                for (Object parameter : node.parameters()) {
+                    if (parameter instanceof VariableDeclarationFragment each) {
+                        typeAfter(hints, lines, from, to, each.getName(), each.resolveBinding());
+                    }
+                }
                 return true;
             }
 
@@ -179,8 +199,23 @@ final class LspHints {
     }
 
     private static void typeAfter(List<Map<String, Object>> hints, JavaRanges.Lines lines, int from, int to, SimpleName name, IVariableBinding variable) {
-        ITypeBinding type = variable == null ? null : variable.getType();
-        int end = name.getStartPosition() + name.getLength();
+        typeHint(hints, lines, from, to, name.getStartPosition() + name.getLength(), variable == null ? null : variable.getType());
+    }
+
+    /**
+     * A call whose receiver is a call that ends its line: the receiver's result type is shown after it, which is what a chain written one
+     * call per line hides. A chain on one line is not hinted, because each call is visible beside the next.
+     */
+    private static void chainedResult(List<Map<String, Object>> hints, JavaRanges.Lines lines, String text, int from, int to, MethodInvocation call) {
+        if (call.getExpression() instanceof MethodInvocation receiver) {
+            int end = receiver.getStartPosition() + receiver.getLength();
+            if (text.substring(end, call.getName().getStartPosition()).indexOf('\n') >= 0) {
+                typeHint(hints, lines, from, to, end, receiver.resolveTypeBinding());
+            }
+        }
+    }
+
+    private static void typeHint(List<Map<String, Object>> hints, JavaRanges.Lines lines, int from, int to, int end, ITypeBinding type) {
         if (type == null || end < from || end > to) {
             return;
         }
@@ -192,7 +227,10 @@ final class LspHints {
         hints.add(hint);
     }
 
-    /** The lenses of a file: one above each type and each method (constructors are left out), not yet counted. */
+    /**
+     * The lenses of a file, not yet counted: a references lens above each type, method, constructor and field, and an implementations
+     * lens above each interface, abstract class and method with no body (an abstract or interface method).
+     */
     Object codeLens(JsonNode params) throws JavaModelException {
         String uri = params.path("textDocument").path("uri").asText();
         ICompilationUnit unit = unitOf.apply(uri);
@@ -204,26 +242,38 @@ final class LspHints {
         LspStructure.syntaxOf(unit, false).accept(new ASTVisitor() {
             @Override
             public boolean visit(org.eclipse.jdt.core.dom.TypeDeclaration node) {
-                lens(lenses, lines, uri, node.getName());
+                lens(lenses, lines, uri, node.getName(), KIND_REFERENCES);
+                if (node.isInterface() || Modifier.isAbstract(node.getModifiers())) {
+                    lens(lenses, lines, uri, node.getName(), KIND_IMPLEMENTATIONS);
+                }
                 return true;
             }
 
             @Override
             public boolean visit(org.eclipse.jdt.core.dom.EnumDeclaration node) {
-                lens(lenses, lines, uri, node.getName());
+                lens(lenses, lines, uri, node.getName(), KIND_REFERENCES);
                 return true;
             }
 
             @Override
             public boolean visit(org.eclipse.jdt.core.dom.RecordDeclaration node) {
-                lens(lenses, lines, uri, node.getName());
+                lens(lenses, lines, uri, node.getName(), KIND_REFERENCES);
                 return true;
             }
 
             @Override
             public boolean visit(MethodDeclaration node) {
-                if (!node.isConstructor()) {
-                    lens(lenses, lines, uri, node.getName());
+                lens(lenses, lines, uri, node.getName(), KIND_REFERENCES);
+                if (node.getBody() == null && !Modifier.isNative(node.getModifiers())) {
+                    lens(lenses, lines, uri, node.getName(), KIND_IMPLEMENTATIONS);
+                }
+                return true;
+            }
+
+            @Override
+            public boolean visit(FieldDeclaration node) {
+                for (Object fragment : node.fragments()) {
+                    lens(lenses, lines, uri, ((VariableDeclarationFragment) fragment).getName(), KIND_REFERENCES);
                 }
                 return true;
             }
@@ -231,32 +281,41 @@ final class LspHints {
         return lenses;
     }
 
-    private static void lens(List<Map<String, Object>> lenses, JavaRanges.Lines lines, String uri, ASTNode name) {
+    private static void lens(List<Map<String, Object>> lenses, JavaRanges.Lines lines, String uri, ASTNode name, String kind) {
         JavaRanges.Range span = lines.span(name.getStartPosition(), name.getLength());
         Map<String, Object> lens = new LinkedHashMap<>();
         lens.put("range", span.toProtocol());
-        lens.put("data", Map.of("uri", uri, "line", span.line(), "character", span.column()));
+        lens.put("data", Map.of("uri", uri, "line", span.line(), "character", span.column(), "kind", kind));
         lenses.add(lens);
     }
 
     /** The lens with its count: the places the engine's reference search finds for the name the lens sits on. */
     Object resolveLens(JsonNode lens) throws ToolNotFoundException {
         JsonNode where = lens.path("data");
-        ToolResponse response = tools.callTool("find_references", JSON.createObjectNode().put("kind", "references")
-            .put("filePath", Path.of(URI.create(where.path("uri").asText())).toString())
-            .put("line", where.path("line").asInt()).put("column", where.path("character").asInt()), caller);
-        if (!response.isSuccess()) {
-            throw new IllegalStateException("the references for a lens could not be counted: " + response);
-        }
-        int count = JSON.valueToTree(response.getData()).path("totalReferences").asInt(-1);
-        if (count < 0) {
-            throw new IllegalStateException("the reference search answered no count: " + response);
-        }
+        boolean implementations = KIND_IMPLEMENTATIONS.equals(where.path("kind").asText(KIND_REFERENCES));
+        int count = lensCount(where, implementations ? KIND_IMPLEMENTATIONS : KIND_REFERENCES,
+            implementations ? "totalImplementations" : "totalReferences");
+        String noun = implementations ? "implementation" : "reference";
         Map<String, Object> resolved = new LinkedHashMap<>();
         resolved.put("range", JSON.convertValue(lens.path("range"), Map.class));
         resolved.put("data", JSON.convertValue(where, Map.class));
-        resolved.put("command", Map.of("title", count == 1 ? "1 reference" : count + " references", "command", SHOW_REFERENCES,
+        resolved.put("command", Map.of("title", count == 1 ? "1 " + noun : count + " " + noun + "s",
+            "command", implementations ? SHOW_IMPLEMENTATIONS : SHOW_REFERENCES,
             "arguments", List.of(where.path("uri").asText(), where.path("line").asInt(), where.path("character").asInt())));
         return resolved;
+    }
+
+    private int lensCount(JsonNode where, String kind, String countField) throws ToolNotFoundException {
+        ToolResponse response = tools.callTool("find_references", JSON.createObjectNode().put("kind", kind)
+            .put("filePath", Path.of(URI.create(where.path("uri").asText())).toString())
+            .put("line", where.path("line").asInt()).put("column", where.path("character").asInt()), caller);
+        if (!response.isSuccess()) {
+            throw new IllegalStateException("the " + kind + " for a lens could not be counted: " + response);
+        }
+        int count = JSON.valueToTree(response.getData()).path(countField).asInt(-1);
+        if (count < 0) {
+            throw new IllegalStateException("the " + kind + " search answered no count: " + response);
+        }
+        return count;
     }
 }

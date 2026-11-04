@@ -17,11 +17,10 @@ import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.BlockComment;
 import org.eclipse.jdt.core.dom.Comment;
 import org.eclipse.jdt.core.dom.CompilationUnit;
-import org.eclipse.jdt.core.dom.Initializer;
+import org.eclipse.jdt.core.dom.Expression;
 import org.eclipse.jdt.core.dom.Javadoc;
-import org.eclipse.jdt.core.dom.LambdaExpression;
-import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.NodeFinder;
+import org.eclipse.jdt.core.dom.SwitchExpression;
 import org.eclipse.jdt.core.dom.SwitchStatement;
 import org.jawata.mcp.java.JavaRanges;
 
@@ -73,30 +72,22 @@ final class LspStructure {
         JavaRanges.Lines lines = JavaRanges.linesOf(text);
         CompilationUnit root = syntaxOf(unit, false);
         root.accept(new ASTVisitor(true) {
+            /** Every block folds once: a method, initializer or lambda body, and the block of an {@code if}, {@code else}, loop, {@code try}, {@code catch}, {@code finally} or {@code synchronized}. */
             @Override
-            public boolean visit(MethodDeclaration node) {
-                foldBlock(ranges, lines, node.getBody());
-                return true;
-            }
-
-            @Override
-            public boolean visit(Initializer node) {
-                foldBlock(ranges, lines, node.getBody());
-                return true;
-            }
-
-            @Override
-            public boolean visit(LambdaExpression node) {
-                if (node.getBody() instanceof Block block) {
-                    foldBlock(ranges, lines, block);
-                }
+            public boolean visit(Block node) {
+                foldBlock(ranges, lines, node);
                 return true;
             }
 
             @Override
             public boolean visit(SwitchStatement node) {
-                int brace = text.indexOf('{', node.getExpression().getStartPosition() + node.getExpression().getLength());
-                fold(ranges, lines, brace, node.getStartPosition() + node.getLength() - 1);
+                foldSwitch(ranges, lines, text, node.getExpression(), node);
+                return true;
+            }
+
+            @Override
+            public boolean visit(SwitchExpression node) {
+                foldSwitch(ranges, lines, text, node.getExpression(), node);
                 return true;
             }
         });
@@ -137,6 +128,12 @@ final class LspStructure {
         if (body != null) {
             fold(ranges, lines, body.getStartPosition(), body.getStartPosition() + body.getLength() - 1);
         }
+    }
+
+    /** The body of a {@code switch}, statement or expression: from the brace after its selector to the line before the closing brace. */
+    private static void foldSwitch(List<Map<String, Object>> ranges, JavaRanges.Lines lines, String text, Expression selector, ASTNode node) {
+        int brace = text.indexOf('{', selector.getStartPosition() + selector.getLength());
+        fold(ranges, lines, brace, node.getStartPosition() + node.getLength() - 1);
     }
 
     /** A fold from the line of the opening brace to the line before the closing one; a body of one or two lines is not worth folding. */
