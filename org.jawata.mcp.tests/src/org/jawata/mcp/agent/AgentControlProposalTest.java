@@ -103,6 +103,22 @@ class AgentControlProposalTest {
     }
 
     @Test
+    @DisplayName("the request carries the change as text when the hire's answer held it, and only the file names when it held none")
+    void theRequestCarriesTheDiffWhenThereIsOne() {
+        String withDiff = "{\"data\":{\"cleanExit\":true,\"answer\":\"done\",\"changedFiles\":[\"src/A.java\"],\"diff\":\"Against HEAD\\n+int two;\"}}";
+        Connection shown = new Connection(withDiff, "completed");
+        Connection bare = new Connection("{\"data\":{\"cleanExit\":true,\"answer\":\"done\",\"changedFiles\":[\"src/A.java\"]}}", "completed");
+
+        JsonNode shownContent = shown.questions().get(0).path("params").path("toolCall").path("content");
+        JsonNode bareContent = bare.questions().get(0).path("params").path("toolCall").path("content");
+
+        assertEquals(2, shownContent.size(), shownContent.toString());
+        assertEquals("src/A.java", shownContent.get(0).path("content").path("text").asText());
+        assertTrue(shownContent.get(1).path("content").path("text").asText().contains("+int two;"), shownContent.toString());
+        assertEquals(1, bareContent.size(), "a hire whose answer held no diff must not be shown one: " + bareContent);
+    }
+
+    @Test
     @DisplayName("the person's yes is kept on the hire's entry and shown to the host as an update of the hire's call")
     void anAcceptIsKeptAndShown() {
         Connection connection = new Connection(CHANGED, "completed");

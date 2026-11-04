@@ -47,6 +47,8 @@ final class HireWatch {
         Optional<String> parent = Optional.empty();
         Optional<String> brainSessionId = Optional.empty();
         List<String> changedFiles = List.of();
+        /** The change as text, when the hire's answer carried it. */
+        Optional<String> diff = Optional.empty();
         boolean asked;
         Optional<String> verdict = Optional.empty();
         String state = HireEntry.RUNNING;
@@ -124,13 +126,17 @@ final class HireWatch {
      * The files a finished hire changed when the person has not yet been asked about them: present once per hire, for a hire that ended well and
      * changed files. That list is the hire's proposal. A hire that failed, changed nothing or has already been asked about is not asked again.
      */
-    synchronized Optional<List<String>> proposalToAsk(String planId) {
+    synchronized Optional<Proposal> proposalToAsk(String planId) {
         Live hire = hires.get(planId);
         if (hire == null || hire.asked || !HireEntry.DONE.equals(hire.state) || hire.changedFiles.isEmpty()) {
             return Optional.empty();
         }
         hire.asked = true;
-        return Optional.of(hire.changedFiles);
+        return Optional.of(new Proposal(hire.changedFiles, hire.diff));
+    }
+
+    /** What a hire proposes: the files it changed, and the change as text when the hire's answer carried it. */
+    record Proposal(List<String> files, Optional<String> diff) {
     }
 
     /** Records the person's answer to a hire's proposal and gives the entry as it now stands; none when the agent never saw the hire. */
@@ -216,6 +222,7 @@ final class HireWatch {
         List<String> files = new java.util.ArrayList<>();
         answer.path("changedFiles").forEach(file -> files.add(file.asText()));
         hire.changedFiles = List.copyOf(files);
+        hire.diff = answer.hasNonNull("diff") ? Optional.of(answer.get("diff").asText()) : Optional.empty();
         hire.toolSteps = answer.path("toolSteps").asInt(0);
         hire.editsByHand = answer.path("codeChangesByHand").asInt(0);
         hire.instructed = answer.path("instructionScore").path("instructionsIssued").asInt(0) > 0;

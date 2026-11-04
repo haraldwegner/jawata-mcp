@@ -99,6 +99,7 @@ public final class TreeAttribution {
         });
         before.keySet().stream().filter(path -> !now.containsKey(path)).forEach(changed::add);
         changed.sort(String::compareTo);
+        Optional<String> diff = diffOf(changed, now);
         return new Attribution(Optional.of(List.copyOf(changed)),
             "git status --porcelain in " + directory + ", before and after the run. TWO BOUNDS, and"
                 + " an EMPTY list means neither was crossed rather than \"the brain wrote nothing\"."
@@ -108,7 +109,45 @@ public final class TreeAttribution {
                 + " any absolute path outside it is invisible here. That is not hypothetical — a"
                 + " brain under a read-only mode was measured writing its own plan file outside the"
                 + " hire's tree on every run, and an instrument scoped like this one reported the"
-                + " run as having changed nothing.");
+                + " run as having changed nothing.", diff);
+    }
+
+    /** The longest diff text kept; a longer one is cut and says by how much, so a cut is never read as the whole change. */
+    static final int DIFF_LIMIT = 20_000;
+
+    /**
+     * What the run changed, as text a person can read before accepting it: {@code git diff HEAD} of the changed paths, plus a line for each
+     * new file git does not yet track. It is against HEAD, so a file that was already modified before the run shows that earlier change too,
+     * and the text says so. ABSENT when nothing changed or git could not give it, never an empty string standing for "no change".
+     */
+    private Optional<String> diffOf(List<String> changed, Map<String, String> now) {
+        if (changed.isEmpty()) {
+            return Optional.empty();
+        }
+        StringBuilder text = new StringBuilder();
+        changed.stream().filter(path -> "??".equals(now.get(path)))
+            .forEach(path -> text.append("new file, not yet tracked by git: ").append(path).append('\n'));
+        List<String> tracked = changed.stream().filter(path -> !"??".equals(now.get(path))).toList();
+        if (!tracked.isEmpty()) {
+            List<String> command = new ArrayList<>(List.of("git", "diff", "HEAD", "--no-color", "--"));
+            command.addAll(tracked);
+            try {
+                HostProcessOutcome outcome = host.run(HostCommand.of(command).in(directory));
+                if (outcome.succeeded()) {
+                    text.append(outcome.output());
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (RuntimeException e) {
+                log.log(Level.WARNING, "could not diff " + directory, e);
+            }
+        }
+        if (text.isEmpty()) {
+            return Optional.empty();
+        }
+        String whole = "Against HEAD; a file already modified before the run shows that change too.\n" + text;
+        return Optional.of(whole.length() <= DIFF_LIMIT ? whole
+            : whole.substring(0, DIFF_LIMIT) + "\n[diff cut at " + DIFF_LIMIT + " of " + whole.length() + " characters]");
     }
 
     /** Why no claim can be made — read only when the census could not be taken. */
@@ -182,11 +221,15 @@ public final class TreeAttribution {
      * @param basis how the answer was reached, including the case it cannot see. Always present,
      *     because a list with no stated basis invites a reader to assume exactness it does not have
      */
-    public record Attribution(Optional<List<String>> changed, String basis) {
+    public record Attribution(Optional<List<String>> changed, String basis, Optional<String> diff) {
 
         /** How many files, or ABSENT. Separate from {@code changed} so a renderer need not unwrap. */
         public Optional<Integer> count() {
             return changed.map(List::size);
+        }
+
+        public Attribution(Optional<List<String>> changed, String basis) {
+            this(changed, basis, Optional.empty());
         }
     }
 }

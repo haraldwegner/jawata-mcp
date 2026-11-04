@@ -426,10 +426,11 @@ public final class AcpServer {
     /**
      * A seat's proposal, put to the person as {@code session/request_permission} (R7): when a hire has ended well and changed files, the host is
      * asked once whether to accept it, with the files in the request. The turn is not held for the answer; the answer is recorded when it comes
-     * and shown on the hire's entry. The hire's answer names the files and carries no diff text, so the request lists the files and no more.
+     * and shown on the hire's entry. The request lists the files and, when the hire's answer carried it, the change as text after them.
      */
     private void askAboutProposal(PrincipalSession session, HireEntry entry) {
-        hires.proposalToAsk(entry.planId()).ifPresent(files -> {
+        hires.proposalToAsk(entry.planId()).ifPresent(proposal -> {
+            List<String> files = proposal.files();
             String requestId = "jawata-proposal-" + proposalRequests.incrementAndGet();
             proposals.put(requestId, new Asked(session, entry.planId(), entry.seat()));
             ObjectNode params = JSON.createObjectNode();
@@ -440,6 +441,7 @@ public final class AcpServer {
             call.put("status", "completed");
             ArrayNode content = call.putArray("content");
             files.forEach(file -> content.addObject().put("type", "content").putObject("content").put("type", "text").put("text", file));
+            proposal.diff().ifPresent(diff -> content.addObject().put("type", "content").putObject("content").put("type", "text").put("text", diff));
             ArrayNode options = params.putArray("options");
             options.addObject().put("optionId", "accept").put("name", "Accept the proposal").put("kind", "allow_once");
             options.addObject().put("optionId", "reject").put("name", "Reject the proposal").put("kind", "reject_once");

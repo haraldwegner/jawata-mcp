@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostProcesses;
@@ -227,5 +228,40 @@ class TreeAttributionTest {
             // A hire must not fail because its attribution could not be set up: the run is the
             // point and the attribution is a report about it.
             () -> assertTrue(TreeAttribution.before(null, dir).after().changed().isEmpty()));
+    }
+
+    @Test
+    @DisplayName("the change comes with its text: the edit's lines, a line for a new file, and no text when nothing changed or nobody could look")
+    void theChangeIsGivenAsTextAndAbsentWhenThereIsNone() throws Exception {
+        Path repo = aRepository();
+        Optional<String> quiet = TreeAttribution.before(host, repo).after().diff();
+        TreeAttribution census = TreeAttribution.before(host, repo);
+        Files.writeString(repo.resolve("tracked.txt"), "one\ntwo\n");
+        Files.writeString(repo.resolve("written.txt"), "new\n");
+
+        String diff = census.after().diff().orElseThrow();
+
+        assertAll(
+            () -> assertTrue(diff.startsWith("Against HEAD"), "it says what it is against: " + diff),
+            () -> assertTrue(diff.contains("+two"), "the line the run added to a tracked file is in it: " + diff),
+            () -> assertTrue(diff.contains("new file, not yet tracked by git: written.txt"),
+                "a file git does not track yet cannot be diffed, so it gets a line of its own: " + diff),
+            () -> assertTrue(quiet.isEmpty(), "a run that changed nothing has no text, not an empty one"),
+            () -> assertTrue(TreeAttribution.before(host, dir).after().diff().isEmpty(),
+                "a directory nobody could look at has none either"));
+    }
+
+    @Test
+    @DisplayName("a change longer than the limit is cut and says how long it was, so a cut is not read as the whole change")
+    void aLongChangeIsCutAndSaysHowLongItWas() throws Exception {
+        Path repo = aRepository();
+        TreeAttribution census = TreeAttribution.before(host, repo);
+        Files.writeString(repo.resolve("tracked.txt"), "one\n" + "x".repeat(TreeAttribution.DIFF_LIMIT * 2) + "\n");
+
+        String diff = census.after().diff().orElseThrow();
+
+        assertAll(
+            () -> assertTrue(diff.contains("[diff cut at " + TreeAttribution.DIFF_LIMIT + " of "), diff.substring(diff.length() - 80)),
+            () -> assertTrue(diff.length() < TreeAttribution.DIFF_LIMIT + 100, "the text kept is bounded: " + diff.length()));
     }
 }

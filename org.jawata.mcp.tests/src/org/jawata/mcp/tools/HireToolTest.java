@@ -922,6 +922,23 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("R7: a hire whose brain wrote a file in a git working directory answers with the change as text, beside the file names")
+    void theAnswerCarriesTheChangeAsText() throws Exception {
+        host.run(HostCommand.of(List.of("git", "init", "-q")).in(dir));
+        Path brain = Files.createTempFile(dir, "brain-", ".sh");
+        Files.writeString(brain, "#!/bin/sh\necho written > '" + dir.resolve("proposed.txt") + "'\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.01}'\n");
+        Files.setPosixFilePermissions(brain, PosixFilePermissions.fromString("rwxr-xr-x"));
+        HireTool hire = toolWith(new StandsIn(host, HostCommand.of(brain.toString())), events, aRegistryWithACleanGate());
+
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CURSOR_SEAT))));
+
+        assertAll(
+            () -> assertTrue(String.valueOf(data.get("changedFiles")).contains("proposed.txt"), String.valueOf(data.get("changedFiles"))),
+            () -> assertTrue(String.valueOf(data.get("diff")).contains("new file, not yet tracked by git: proposed.txt"), String.valueOf(data.get("diff"))));
+    }
+
+    @Test
     @DisplayName("REL44-6: the hire hides the engine's code-changing tools from claude, except the ones a seat that changes code names")
     void aHiredClaudeIsNotOfferedTheEnginesCodeChangingToolsTheSeatDidNotAskFor() throws Exception {
         StandsIn spy = new StandsIn(host, aBrainThatAnswers());
