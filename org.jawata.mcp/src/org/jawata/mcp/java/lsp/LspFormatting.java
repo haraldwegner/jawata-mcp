@@ -1,10 +1,7 @@
 package org.jawata.mcp.java.lsp;
 
-import static org.jawata.mcp.java.lsp.LspEdits.add;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
 
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.text.edits.DeleteEdit;
@@ -23,10 +20,10 @@ final class LspFormatting {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    private final Function<String, ICompilationUnit> unitOf;
+    private final LspEdits lspEdits;
 
-    LspFormatting(Function<String, ICompilationUnit> unitOf) {
-        this.unitOf = unitOf;
+    LspFormatting(LspEdits lspEdits) {
+        this.lspEdits = lspEdits;
     }
 
     /** The edits that lay the whole document out as the project's formatter settings say; none when it is laid out already. */
@@ -52,7 +49,7 @@ final class LspFormatting {
     }
 
     private List<Object> formatted(String uri, JsonNode range) {
-        ICompilationUnit unit = unitOf.apply(uri);
+        ICompilationUnit unit = lspEdits.unit(uri);
         if (unit == null) {
             return List.of();
         }
@@ -73,7 +70,7 @@ final class LspFormatting {
     }
 
     /** The leaves of a formatter edit tree as protocol edits, in the text they were computed on; a leaf that changes nothing is left out. */
-    private static void collect(TextEdit edit, String text, JavaRanges.Lines lines, List<Object> out) {
+    private void collect(TextEdit edit, String text, JavaRanges.Lines lines, List<Object> out) {
         if (edit.hasChildren()) {
             for (TextEdit child : edit.getChildren()) {
                 collect(child, text, lines, out);
@@ -81,11 +78,11 @@ final class LspFormatting {
             return;
         }
         if (edit instanceof ReplaceEdit replace) {
-            add(out, text, lines, replace.getOffset(), replace.getLength(), replace.getText());
+            lspEdits.add(out, text, lines, replace.getOffset(), replace.getLength(), replace.getText());
         } else if (edit instanceof InsertEdit insert) {
-            add(out, text, lines, insert.getOffset(), 0, insert.getText());
+            lspEdits.add(out, text, lines, insert.getOffset(), 0, insert.getText());
         } else if (edit instanceof DeleteEdit delete) {
-            add(out, text, lines, delete.getOffset(), delete.getLength(), "");
+            lspEdits.add(out, text, lines, delete.getOffset(), delete.getLength(), "");
         }
     }
 }

@@ -58,13 +58,14 @@ class LspCodeActionsFailureTest {
             + "\"range\":{\"start\":{\"line\":5,\"character\":0},\"end\":{\"line\":5,\"character\":0}},\"context\":{\"only\":[\"quickfix\"]}}");
         CallerIdentity caller = CallerIdentity.supplied("code-action-failure-test");
 
+        LspEdits edits = new LspEdits(unitOf, uri -> false);
         LspCodeActions searchBroke = new LspCodeActions(
-            answering(ToolResponse.error("FIX_SEARCH_FAILED", "the search for a type named 'X' to import failed", "ask again")), caller, unitOf, uri -> false);
+            answering(ToolResponse.error("FIX_SEARCH_FAILED", "the search for a type named 'X' to import failed", "ask again")), caller, edits);
         LspCodeActions otherFailure = new LspCodeActions(
-            answering(ToolResponse.error("PROBLEMS_UNKNOWN", "the file could not be parsed", "run get_diagnostics")), caller, unitOf, uri -> false);
+            answering(ToolResponse.error("PROBLEMS_UNKNOWN", "the file could not be parsed", "run get_diagnostics")), caller, edits);
 
         LspCodeActions cancelled = new LspCodeActions(
-            answering(ToolResponse.error("OPERATION_CANCELLED", "the request was cancelled while it was being worked", "Ask again.")), caller, unitOf, uri -> false);
+            answering(ToolResponse.error("OPERATION_CANCELLED", "the request was cancelled while it was being worked", "Ask again.")), caller, edits);
 
         IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> searchBroke.codeAction(params));
         assertTrue(thrown.getMessage().contains("search for a type"), thrown.getMessage());

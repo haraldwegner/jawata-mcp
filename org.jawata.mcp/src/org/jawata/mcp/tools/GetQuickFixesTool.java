@@ -8,22 +8,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
-import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.ICompilationUnit;
-import org.eclipse.jdt.core.IJavaElement;
-import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.compiler.IProblem;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.ImportDeclaration;
-import org.eclipse.jdt.core.search.IJavaSearchConstants;
-import org.eclipse.jdt.core.search.IJavaSearchScope;
-import org.eclipse.jdt.core.search.SearchEngine;
-import org.eclipse.jdt.core.search.SearchPattern;
-import org.eclipse.jdt.core.search.TypeNameMatch;
-import org.eclipse.jdt.core.search.TypeNameMatchRequestor;
 import org.jawata.core.IJdtService;
+import org.jawata.core.TypeLookupException;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.ImportCandidates;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,49 +40,17 @@ public class GetQuickFixesTool extends AbstractTool {
     private static final int UNHANDLED_EXCEPTION = 16777384;      // IProblem.UnhandledException
     private static final int IMPORT_NOT_FOUND = 268435846;        // IProblem.ImportNotFound
 
-    /**
-     * The search for types of a given simple name, replaceable so a search that FAILS can be shown without breaking the real index. The
-     * default asks the project's own type index.
-     */
-    public interface TypeSearch {
-        void find(IJdtService service, String typeName, TypeNameMatchRequestor requestor) throws Exception;
-    }
+    private static final int MOST_IMPORT_FIXES = 10;
 
-    /** The search for a type to import failed, so the list of fixes is unknown; it is not an answer of no fix. */
-    private static final class FixSearchFailed extends RuntimeException {
-        private static final long serialVersionUID = 1L;
-
-        FixSearchFailed(String typeName, Throwable cause) {
-            super("The search for a type named '" + typeName + "' to import failed, so the fixes for it are unknown — this is not an answer"
-                + " of no fix: " + cause, cause);
-        }
-    }
-
-    private final TypeSearch typeSearch;
+    private final ImportCandidates.Search typeSearch;
 
     public GetQuickFixesTool(Supplier<IJdtService> serviceSupplier) {
-        this(serviceSupplier, GetQuickFixesTool::searchProjectTypes);
+        this(serviceSupplier, ImportCandidates.inProject());
     }
 
-    public GetQuickFixesTool(Supplier<IJdtService> serviceSupplier, TypeSearch typeSearch) {
+    public GetQuickFixesTool(Supplier<IJdtService> serviceSupplier, ImportCandidates.Search typeSearch) {
         super(serviceSupplier);
         this.typeSearch = typeSearch;
-    }
-
-    private static void searchProjectTypes(IJdtService service, String typeName, TypeNameMatchRequestor requestor) throws Exception {
-        IJavaSearchScope scope = SearchEngine.createJavaSearchScope(
-            new IJavaElement[] { service.getJavaProject() },
-            IJavaSearchScope.SOURCES | IJavaSearchScope.APPLICATION_LIBRARIES | IJavaSearchScope.SYSTEM_LIBRARIES);
-        new SearchEngine().searchAllTypeNames(
-            null,
-            SearchPattern.R_EXACT_MATCH,
-            typeName.toCharArray(),
-            SearchPattern.R_EXACT_MATCH | SearchPattern.R_CASE_SENSITIVE,
-            IJavaSearchConstants.TYPE,
-            scope,
-            requestor,
-            IJavaSearchConstants.WAIT_UNTIL_READY_TO_SEARCH,
-            new NullProgressMonitor());
     }
 
     @Override
@@ -218,7 +180,7 @@ public class GetQuickFixesTool extends AbstractTool {
                 ))
                 .build());
 
-        } catch (FixSearchFailed e) {
+        } catch (TypeLookupException e) {
             log.warn("Quick fixes could not be listed: {}", e.getMessage());
             return ToolResponse.error("FIX_SEARCH_FAILED", e.getMessage(),
                 "Ask again; if it repeats, run get_diagnostics on the file and refresh_workspace, because the project's type index is not answering.");
@@ -336,9 +298,7 @@ public class GetQuickFixesTool extends AbstractTool {
                 }
             }
 
-        } catch (FixSearchFailed e) {
-            throw e;
-        } catch (Exception e) {
+        } catch (JavaModelException e) {
             log.debug("Error generating fixes for problem {}: {}", problemId, e.getMessage());
         }
 
@@ -351,81 +311,17 @@ public class GetQuickFixesTool extends AbstractTool {
     private List<Map<String, Object>> suggestImportFixes(String typeName, IJdtService service,
                                                           IProblem problem) {
         List<Map<String, Object>> fixes = new ArrayList<>();
-
-        try {
-            List<Map<String, Object>> candidates = new ArrayList<>();
-
-            TypeNameMatchRequestor requestor = new TypeNameMatchRequestor() {
-                @Override
-                public void acceptTypeNameMatch(TypeNameMatch match) {
-                    if (candidates.size() >= 10) return;
-
-                    try {
-                        IType type = match.getType();
-                        String fqn = type.getFullyQualifiedName();
-                        String packageName = type.getPackageFragment().getElementName();
-
-                        // Skip a type in the default package (it cannot be imported) and internal packages
-                        if (packageName.isEmpty() ||
-                            packageName.contains(".internal.") ||
-                            packageName.startsWith("sun.") ||
-                            packageName.startsWith("com.sun.")) {
-                            return;
-                        }
-
-                        int relevance = calculateRelevance(packageName);
-
-                        Map<String, Object> candidate = new LinkedHashMap<>();
-                        candidate.put("fqn", fqn);
-                        candidate.put("relevance", relevance);
-                        candidates.add(candidate);
-                    } catch (Exception e) {
-                        // Skip this match
-                    }
-                }
-            };
-
-            typeSearch.find(service, typeName, requestor);
-
-            // Sort by relevance
-            candidates.sort(Comparator.comparingInt(
-                (Map<String, Object> c) -> (int) c.get("relevance")).reversed());
-
-            // Create fixes
-            for (Map<String, Object> candidate : candidates) {
-                String fqn = (String) candidate.get("fqn");
-                int relevance = (int) candidate.get("relevance");
-
-                String simplePkg = fqn.substring(0, fqn.lastIndexOf('.'));
-
-                Map<String, Object> fix = new LinkedHashMap<>();
-                fix.put("fixId", "add_import:" + fqn);
-                fix.put("label", "Import '" + typeName + "' (" + simplePkg + ")");
-                fix.put("category", "IMPORT");
-                fix.put("relevance", relevance);
-                fix.put("problemId", problem.getID());
-                fixes.add(fix);
-            }
-
-        } catch (Exception e) {
-            // Not an empty list: "the search failed" and "no such type exists" are different answers (S16e b).
-            throw new FixSearchFailed(typeName, e);
+        // A search that fails is a TypeLookupException and is not an empty list: "the search failed" and "no such type exists" are
+        // different answers (S16e b).
+        for (ImportCandidates.Candidate candidate : ImportCandidates.find(service, typeName, MOST_IMPORT_FIXES, typeSearch)) {
+            Map<String, Object> fix = new LinkedHashMap<>();
+            fix.put("fixId", "add_import:" + candidate.fullyQualifiedName());
+            fix.put("label", "Import '" + typeName + "' (" + candidate.packageName() + ")");
+            fix.put("category", "IMPORT");
+            fix.put("relevance", candidate.relevance());
+            fix.put("problemId", problem.getID());
+            fixes.add(fix);
         }
-
         return fixes;
-    }
-
-    private int calculateRelevance(String packageName) {
-        if (packageName.equals("java.util")) return 100;
-        if (packageName.startsWith("java.util.")) return 95;
-        if (packageName.equals("java.io")) return 90;
-        if (packageName.startsWith("java.io.")) return 85;
-        if (packageName.startsWith("java.nio.")) return 85;
-        if (packageName.startsWith("java.time")) return 85;
-        if (packageName.startsWith("java.")) return 70;
-        if (packageName.startsWith("javax.")) return 65;
-        if (packageName.startsWith("org.springframework.")) return 60;
-        if (packageName.startsWith("org.junit.")) return 60;
-        return 40;
     }
 }

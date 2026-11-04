@@ -186,7 +186,7 @@ final class LspStructure {
             Map<String, Object> chain = null;
             for (int i = spans.size() - 1; i >= 0; i--) { // the outermost first, so each inner range can name its parent
                 Map<String, Object> link = new LinkedHashMap<>();
-                link.put("range", protocolRange(lines.span(spans.get(i)[0], spans.get(i)[1])));
+                link.put("range", lines.span(spans.get(i)[0], spans.get(i)[1]).toProtocol());
                 if (chain != null) {
                     link.put("parent", chain);
                 }
@@ -195,11 +195,5 @@ final class LspStructure {
             answers.add(chain);
         }
         return answers;
-    }
-
-    /** A range in the protocol's shape. */
-    static Map<String, Object> protocolRange(JavaRanges.Range span) {
-        return Map.of("start", Map.of("line", span.line(), "character", span.column()),
-            "end", Map.of("line", span.endLine(), "character", span.endColumn()));
     }
 }

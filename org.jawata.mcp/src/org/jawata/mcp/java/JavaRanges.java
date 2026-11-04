@@ -50,6 +50,11 @@ public final class JavaRanges {
             return map;
         }
 
+        /** The range as the language server protocol spells it: a start and an end, each a line and a character. */
+        public Map<String, Object> toProtocol() {
+            return Map.of("start", Map.of("line", line, "character", column), "end", Map.of("line", endLine, "character", endColumn));
+        }
+
         /** Adds the end to a tool answer that already carries this range's start. */
         public void putEndInto(Map<String, Object> answer) {
             answer.put("endLine", endLine);

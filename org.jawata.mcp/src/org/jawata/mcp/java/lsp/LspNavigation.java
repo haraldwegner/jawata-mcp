@@ -11,6 +11,7 @@ import java.util.function.Supplier;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.engine.ToolNotFoundException;
+import org.jawata.mcp.java.JavaRanges;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
 
@@ -435,7 +436,7 @@ final class LspNavigation {
         int column = span.path("column").asInt();
         int endLine = span.path("endLine").asInt(line);
         int endColumn = span.path("endColumn").asInt(column);
-        return Map.of("start", Map.of("line", line, "character", column), "end", Map.of("line", endLine, "character", endColumn));
+        return new JavaRanges.Range(line, column, endLine, endColumn).toProtocol();
     }
 
     private Map<String, Object> symbolOf(JsonNode symbol) {

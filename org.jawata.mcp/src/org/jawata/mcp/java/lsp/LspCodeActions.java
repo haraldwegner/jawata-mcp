@@ -1,17 +1,11 @@
 package org.jawata.mcp.java.lsp;
 
-import static org.jawata.mcp.java.lsp.LspEdits.add;
-import static org.jawata.mcp.java.lsp.LspEdits.addStaged;
-import static org.jawata.mcp.java.lsp.LspEdits.pathOf;
-import static org.jawata.mcp.java.lsp.LspEdits.rangeOf;
-
+import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.function.Predicate;
 
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.jawata.mcp.engine.ToolCalls;
@@ -31,14 +25,12 @@ final class LspCodeActions {
 
     private final ToolCalls tools;
     private final CallerIdentity caller;
-    private final Function<String, ICompilationUnit> unitOf;
-    private final Predicate<String> unsaved;
+    private final LspEdits lspEdits;
 
-    LspCodeActions(ToolCalls tools, CallerIdentity caller, Function<String, ICompilationUnit> unitOf, Predicate<String> unsaved) {
+    LspCodeActions(ToolCalls tools, CallerIdentity caller, LspEdits lspEdits) {
         this.tools = tools;
         this.caller = caller;
-        this.unitOf = unitOf;
-        this.unsaved = unsaved;
+        this.lspEdits = lspEdits;
     }
 
     private static final int MOST_QUICK_FIXES = 8;
@@ -50,13 +42,13 @@ final class LspCodeActions {
      */
     Object codeAction(JsonNode params) throws ToolNotFoundException {
         String uri = params.path("textDocument").path("uri").asText();
-        ICompilationUnit unit = unitOf.apply(uri);
+        ICompilationUnit unit = lspEdits.unit(uri);
         List<Object> actions = new ArrayList<>();
-        if (unit == null || unsaved.test(uri)) {
+        if (unit == null || lspEdits.hasUnsavedText(uri)) {
             return actions;
         }
         JsonNode only = params.path("context").path("only");
-        String filePath = pathOf(uri).toString();
+        String filePath = Path.of(URI.create(uri)).toString();
         if (wanted(only, "quickfix")) {
             quickFixes(uri, filePath, unit, params.path("range").path("start").path("line").asInt(), actions);
         }
@@ -88,7 +80,7 @@ final class LspCodeActions {
             }
             Map<String, List<Object>> changes = new LinkedHashMap<>();
             try {
-                addStaged(unsaved, staged, changes, "refactoring");
+                lspEdits.addStaged(staged, changes, "refactoring");
             } catch (IllegalStateException e) {
                 continue; // another file the refactoring would change has unsaved text: no action, rather than an error on every cursor move
             }
@@ -140,7 +132,7 @@ final class LspCodeActions {
             for (JsonNode edit : JSON.valueToTree(applied.getData()).path("edits")) {
                 int start = edit.has("offset") ? edit.path("offset").asInt() : edit.path("startOffset").asInt();
                 int end = edit.has("endOffset") ? edit.path("endOffset").asInt() : start;
-                add(edits, text, lines, start, end - start, edit.path("newText").asText(""));
+                lspEdits.add(edits, text, lines, start, end - start, edit.path("newText").asText(""));
             }
             if (!edits.isEmpty()) {
                 actions.add(Map.of("title", fix.path("label").asText(), "kind", "quickfix", "edit", Map.of("changes", Map.of(uri, edits))));
@@ -174,7 +166,7 @@ final class LspCodeActions {
         for (JsonNode file : JSON.valueToTree(staged.getData()).path("edits")) {
             List<Object> edits = new ArrayList<>();
             for (JsonNode edit : file.path("edits")) {
-                edits.add(Map.of("range", rangeOf(edit), "newText", edit.path("newText").asText()));
+                edits.add(Map.of("range", lspEdits.rangeOf(edit), "newText", edit.path("newText").asText()));
             }
             if (!edits.isEmpty()) {
                 changes.put(Path.of(file.path("filePath").asText()).toUri().toString(), edits);

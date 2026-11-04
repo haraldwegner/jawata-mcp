@@ -266,14 +266,17 @@ public final class JavaLanguageServer {
         requests.register("typeHierarchy/subtypes", null, null, navigation::subtypes);
         requests.register("workspace/executeCommand", "executeCommandProvider", Map.of("commands", navigation.commands()), navigation::executeCommand);
         requests.register("java/classFileContents", null, null, navigation::classFileContents);
-        LspEditing editing = new LspEditing(tools, caller, this::viewOf, this::hasUnsavedText);
-        requests.register("textDocument/prepareRename", "renameProvider", Map.of("prepareProvider", true), editing::prepareRename);
-        requests.register("textDocument/rename", "renameProvider", Map.of("prepareProvider", true), editing::rename);
-        LspCodeActions codeActions = new LspCodeActions(tools, caller, this::viewOf, this::hasUnsavedText);
+        LspEdits lspEdits = new LspEdits(this::viewOf, this::hasUnsavedText);
+        MovedFileEdits movedFileEdits = new MovedFileEdits(lspEdits);
+        LspRename rename = new LspRename(tools, caller, lspEdits, movedFileEdits);
+        requests.register("textDocument/prepareRename", "renameProvider", Map.of("prepareProvider", true), rename::prepareRename);
+        requests.register("textDocument/rename", "renameProvider", Map.of("prepareProvider", true), rename::rename);
+        LspCodeActions codeActions = new LspCodeActions(tools, caller, lspEdits);
         requests.register("textDocument/codeAction", "codeActionProvider",
             Map.of("codeActionKinds", List.of("quickfix", "source.organizeImports", "refactor.extract")), codeActions::codeAction);
-        requests.register("workspace/willRenameFiles", null, null, editing::willRenameFiles); // announced under workspace.fileOperations, which initializeResult owns
-        LspFormatting formatting = new LspFormatting(this::viewOf);
+        LspFileOperations fileOperations = new LspFileOperations(tools, caller, lspEdits, movedFileEdits);
+        requests.register("workspace/willRenameFiles", null, null, fileOperations::willRenameFiles); // announced under workspace.fileOperations, which initializeResult owns
+        LspFormatting formatting = new LspFormatting(lspEdits);
         requests.register("textDocument/onTypeFormatting", "documentOnTypeFormattingProvider",
             Map.of("firstTriggerCharacter", "}", "moreTriggerCharacter", List.of(";", "\n")), formatting::onTypeFormatting);
         requests.register("textDocument/formatting", "documentFormattingProvider", true, formatting::formatting);
@@ -494,9 +497,7 @@ public final class JavaLanguageServer {
             range = new JavaRanges.Range(line, 0, line, 0);
         }
         Map<String, Object> diagnostic = new LinkedHashMap<>();
-        diagnostic.put("range", Map.of(
-            "start", Map.of("line", range.line(), "character", range.column()),
-            "end", Map.of("line", range.endLine(), "character", range.endColumn())));
+        diagnostic.put("range", range.toProtocol());
         diagnostic.put("severity", "error".equals(row.get("severity")) ? SEVERITY_ERROR : SEVERITY_WARNING);
         diagnostic.put("source", "jawata");
         diagnostic.put("message", String.valueOf(row.get("message")));

@@ -502,6 +502,25 @@ class JavaLanguageServerRenameTest {
         assertEquals(0, compiled.path("errorCount").asInt(), "the code compiles after the folder with its sub-package was renamed: " + compiled);
     }
 
+    /** Sprint 28h, S16f 6: the exit of the folder branch for a folder moved out of its source root is a reason in the log and no change to code. */
+    @Test
+    @DisplayName("a folder moved out of its source root changes no code: the answer carries no edits")
+    void aFolderMovedOutOfItsSourceRootChangesNoCode() throws Exception {
+        Path folder = copiedTree();
+        Path tools = folder.resolve("tools");
+        Files.createDirectories(tools);
+        Files.writeString(tools.resolve("Tool.java"), "package com.example.tools;\n\npublic class Tool {\n}\n");
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        Path outside = Files.createTempDirectory("outside-the-source-root");
+        try {
+            JsonNode edit = session.ask("workspace/willRenameFiles", willRename(tools, outside.resolve("tools")));
+
+            assertTrue(edit.isNull(), edit.toString());
+        } finally {
+            Files.delete(outside);
+        }
+    }
+
     @Test
     @DisplayName("a file operation that would change a file with unsaved editor text is refused, naming that file")
     void aFileOperationOverUnsavedTextIsRefused() throws Exception {

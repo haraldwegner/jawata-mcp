@@ -59,6 +59,12 @@ class JavaRangesTest {
     // ---- the conversion of a span of text -----------------------------------------------------------------------------------------
 
     @Test
+    @DisplayName("a range in the protocol's words is a start and an end, each a line and a character, with the four numbers in their own places")
+    void aRangeInTheProtocolsWords() {
+        assertEquals(Map.of("start", Map.of("line", 1, "character", 2), "end", Map.of("line", 3, "character", 4)), range(1, 2, 3, 4).toProtocol());
+    }
+
+    @Test
     @DisplayName("a span is counted from line zero and column zero; a line ends at a newline, and a carriage return before it belongs to the line it ends")
     void aSpanIsLineAndColumnInTheTextItIsTakenFrom() {
         JavaRanges.Lines lines = JavaRanges.linesOf("ab\r\ncd\nef");

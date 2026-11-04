@@ -234,7 +234,7 @@ final class LspHints {
     private static void lens(List<Map<String, Object>> lenses, JavaRanges.Lines lines, String uri, ASTNode name) {
         JavaRanges.Range span = lines.span(name.getStartPosition(), name.getLength());
         Map<String, Object> lens = new LinkedHashMap<>();
-        lens.put("range", LspStructure.protocolRange(span));
+        lens.put("range", span.toProtocol());
         lens.put("data", Map.of("uri", uri, "line", span.line(), "character", span.column()));
         lenses.add(lens);
     }
