@@ -76,7 +76,7 @@ import java.util.Optional;
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
                        HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script,
-                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore) {
+                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command) {
 
     /** The brains this product has a dialect for. A seat may name no other. */
     public enum Brain {
@@ -251,7 +251,10 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             // one of them binds this seat. Declared here, once, so a label is asked for by a file
             // a person can read rather than by code that has to be searched.
             Frontmatter.list(front.get("activities")),
-            writesStore);
+            writesStore,
+            // The slash command a person types for this seat (architect is /refactor), written once in the seat's own file so that the
+            // studio's command table and the Agent Control panel read the same word. A seat with no command of its own leaves it out.
+            Frontmatter.emptyToNull(front.get("command")));
     }
 
     /**
@@ -318,7 +321,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             return this;
         }
         return new SeatHire(seat, brain, offered.model(), tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
-            changesCode, readsFiles, activities, writesStore);
+            changesCode, readsFiles, activities, writesStore, command);
     }
 
     /**
@@ -330,7 +333,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         boolean named = pickedModel != null && !pickedModel.isBlank();
         String next = named && picked.takesAModel() ? pickedModel.strip() : (picked == brain ? model : null);
         return new SeatHire(seat, picked, next, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
-            changesCode, readsFiles, activities, writesStore);
+            changesCode, readsFiles, activities, writesStore, command);
     }
 
     /**
@@ -421,5 +424,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities) {
         this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, activities, false);
+    }
+
+    public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore) {
+        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, activities, writesStore, null);
     }
 }

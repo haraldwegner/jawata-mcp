@@ -46,6 +46,8 @@ final class HireWatch {
         Optional<String> model = Optional.empty();
         Optional<String> parent = Optional.empty();
         Optional<String> brainSessionId = Optional.empty();
+        /** The slash command the seat file gives the seat, when it gives one. */
+        Optional<String> seatCommand = Optional.empty();
         List<String> changedFiles = List.of();
         /** The change as text, when the hire's answer carried it. */
         Optional<String> diff = Optional.empty();
@@ -205,9 +207,11 @@ final class HireWatch {
             SeatHire file = SeatHire.read(Files.readString(Path.of(hire.seatFile)));
             hire.brain = Optional.of(file.brain().name().toLowerCase(Locale.ROOT).replace("_code", ""));
             hire.model = file.model() == null || file.model().isBlank() ? Optional.empty() : Optional.of(file.model());
+            hire.seatCommand = Optional.ofNullable(file.command());
         } catch (IOException | RuntimeException e) {
             hire.brain = Optional.empty();
             hire.model = Optional.empty();
+            hire.seatCommand = Optional.empty();
         }
     }
 
@@ -281,7 +285,7 @@ final class HireWatch {
         int steps = live.map(RunningHires.Progress::toolSteps).orElse(hire.toolSteps);
         OptionalLong context = live.map(RunningHires.Progress::contextTokens).orElse(OptionalLong.empty());
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, hire.state, end - hire.startedMs, hire.tokens, cost,
-            hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context);
+            hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand);
     }
 
     /** How many hires the agent saw above this one, so a root is level 0, the chief engineer it hires 1, and the developer under that 2. */

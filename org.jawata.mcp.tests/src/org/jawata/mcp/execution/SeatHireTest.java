@@ -126,6 +126,21 @@ class SeatHireTest {
     }
 
     @Test
+    @DisplayName("the slash command a seat file names is read, survives a brain pick and a registry model, and is null for a seat that names none")
+    void theCommandTheSeatFileNamesIsReadAndKept() {
+        SeatHire named = SeatHire.read(PM.replace("kind: code\n", "kind: code\n        command: refactor\n"));
+        SeatHire unnamed = SeatHire.read(PM);
+        // The registry's model is applied only to a seat that names none, so this one has its model line taken out.
+        SeatHire noModel = SeatHire.read(PM.replace("model: claude-sonnet-5\n", "").replace("kind: code\n", "kind: code\n        command: refactor\n"));
+
+        assertAll(
+            () -> assertEquals("refactor", named.command()),
+            () -> assertEquals("refactor", named.withBrain(SeatHire.Brain.CURSOR, null).command(), "a brain pick dropped the command"),
+            () -> assertEquals("refactor", noModel.withRegistryModel(new Hirer.Brain("anthropic", "m")).command(), "the registry model dropped the command"),
+            () -> assertNull(unnamed.command()));
+    }
+
+    @Test
     @DisplayName("a four-line prose comment above the real fields does not disturb them")
     void aCommentDoesNotDisturbTheFieldsBelowIt() {
         SeatHire pm = SeatHire.read(PM);

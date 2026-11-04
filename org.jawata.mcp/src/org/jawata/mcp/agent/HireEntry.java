@@ -28,7 +28,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  */
 public record HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
         long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId,
-        Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens) {
+        Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand) {
 
     /** An entry at the top of the hierarchy (level 0), whatever else it knows. */
     public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
@@ -87,6 +87,7 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
         meta.put("level", level);
         meta.put("toolSteps", toolSteps);
         contextTokens.ifPresent(c -> meta.put("contextTokens", c));
+        seatCommand.ifPresent(c -> meta.put("seatCommand", c));
         return meta;
     }
 
@@ -96,5 +97,9 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
 
     public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs, long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId, Optional<String> verdict, int level, int toolSteps) {
         this(planId, seat, brain, model, state, elapsedMs, tokens, costUsd, task, parentPlanId, brainSessionId, verdict, level, toolSteps, java.util.OptionalLong.empty());
+    }
+
+    public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs, long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId, Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens) {
+        this(planId, seat, brain, model, state, elapsedMs, tokens, costUsd, task, parentPlanId, brainSessionId, verdict, level, toolSteps, contextTokens, Optional.empty());
     }
 }

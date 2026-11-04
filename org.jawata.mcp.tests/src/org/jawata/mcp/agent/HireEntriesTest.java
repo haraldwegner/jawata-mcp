@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +14,7 @@ import java.util.function.Consumer;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,6 +47,25 @@ class HireEntriesTest {
         update.put("status", "completed");
         update.put("rawOutput", answerJson);
         return update;
+    }
+
+    @Test
+    @DisplayName("the entry carries the slash command the hire's seat file names, on the entry and on the wire, and nothing when the file names none")
+    void theSeatCommandIsReadFromTheSeatFile(@TempDir java.nio.file.Path dir) throws Exception {
+        java.nio.file.Path named = Files.writeString(dir.resolve("named.md"), "---\nname: architect\ncommand: refactor\n---\n\nbody\n");
+        java.nio.file.Path plain = Files.writeString(dir.resolve("plain.md"), "---\nname: architect\n---\n\nbody\n");
+        ObjectNode withCommand = withInput(hireCall("tool_call", "t1", "pending"), "main", "architect", "review");
+        ((ObjectNode) withCommand.get("rawInput")).put("seatFile", named.toString());
+        ObjectNode without = withInput(hireCall("tool_call", "t2", "pending"), "main", "architect", "review");
+        ((ObjectNode) without.get("rawInput")).put("seatFile", plain.toString());
+
+        HireEntry shown = watch.observe(withCommand).orElseThrow();
+        HireEntry bare = watch.observe(without).orElseThrow();
+
+        assertEquals(Optional.of("refactor"), shown.seatCommand());
+        assertEquals("refactor", shown.toMeta().path("seatCommand").asText());
+        assertTrue(bare.seatCommand().isEmpty());
+        assertFalse(bare.toMeta().has("seatCommand"), "a seat with no command was shown a placeholder");
     }
 
     @Test
