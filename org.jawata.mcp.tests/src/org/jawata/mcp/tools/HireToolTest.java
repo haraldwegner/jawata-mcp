@@ -1906,6 +1906,24 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("S11 exit, journal precedes relay: a consultant's answer comes back only with its journal row already in the store, naming the vendor that gave it and the model")
+    void aConsultantsJournalRowExistsWhenItsAnswerIsRelayed() throws Exception {
+        Map<String, String> settings = Map.of(Hirer.MAIN_BRAIN_SETTING, "{\"command\":[\"main-brain\"],\"vendor\":\"anthropic\"}",
+            HireTool.BRAINS_SETTING, registryOf("openai", "other-model"));
+
+        Map<String, Object> data = dataOf(toolWithSettings(new StandsIn(host, aBrainThatAnswers()), settings).execute(consultantHireArgs()));
+
+        // The tool has returned, so the answer is what would be relayed; the row is read back from the store by the plan id in it.
+        List<LearnerEvent> rows = events.eventsOfSession((String) data.get("plan")).orElseThrow(
+            () -> new AssertionError("the journal could not be read back at all"));
+        assertAll(
+            () -> assertEquals(1, rows.size(), "the row was not in the store when the answer was given: " + rows),
+            () -> assertEquals("landed", data.get("journal"), String.valueOf(data.get("journalBasis"))),
+            () -> assertEquals("openai", ((Map<?, ?>) data.get("brain")).get("vendor")),
+            () -> assertEquals(LearnerEvent.KIND_HIRED_RUN, rows.get(0).kind()));
+    }
+
+    @Test
     @DisplayName("S12 (D48): a consultant whose vendor, or main's, is not named is refused and not assumed to differ, and the refusal says where to name it")
     void aConsultantWithAnUnnamedVendorIsRefused() throws Exception {
         ToolResponse noRegistryVendor = toolWithSettings(aHostThatMustNotSpawn(),
