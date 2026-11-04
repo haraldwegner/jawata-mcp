@@ -1894,6 +1894,21 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("S12 (D48), audit C12 F1: the vendor rule holds for any hirer, so a name the signed tree does not know cannot hire the consultant on main's own vendor")
+    void aHirerTheTreeDoesNotKnowCannotGetAroundTheVendorRule() throws Exception {
+        Map<String, String> settings = Map.of(Hirer.MAIN_BRAIN_SETTING, "{\"command\":[\"main-brain\"],\"vendor\":\"Anthropic\"}",
+            HireTool.BRAINS_SETTING, registryOf("anthropic", null));
+        ObjectNode args = consultantHireArgs();
+        args.put("hirer", "a-script-the-tree-has-never-heard-of");
+
+        ToolResponse response = toolWithSettings(aHostThatMustNotSpawn(), settings).execute(args);
+
+        assertAll(
+            () -> assertFalse(response.isSuccess(), "an unknown hirer got the consultant on main's own vendor"),
+            () -> assertTrue(response.getError().getMessage().contains("main's own vendor"), response.getError().getMessage()));
+    }
+
+    @Test
     @DisplayName("S12 (D48), the control: the consultant on another vendor is hired, and the answer names its vendor")
     void aConsultantOnAnotherVendorIsHired() throws Exception {
         Map<String, String> settings = Map.of(Hirer.MAIN_BRAIN_SETTING, "{\"command\":[\"main-brain\"],\"vendor\":\"anthropic\"}",

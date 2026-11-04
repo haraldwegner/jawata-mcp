@@ -117,28 +117,35 @@ public final class Hirer {
             return Optional.of(hirer + " does not hire " + seat + (tree.parentOf(seat).isPresent()
                 ? "; its hirer is " + tree.parentOf(seat).get() : ""));
         }
-        if ("consultant".equals(seat)) {
-            Brain main = brains.get("main");
-            Brain consultant = brains.get("consultant");
-            if (main == null || consultant == null || main.vendor().isBlank() || consultant.vendor().isBlank()) {
-                return Optional.of("the consultant needs a brain of its own and main's brain known, so the vendors can be compared: the vendor of main is read from "
-                    + "\"vendor\" in the " + MAIN_BRAIN_SETTING + " setting and the consultant's from \"vendor\" in its brain's entry of the hire-brains registry setting");
-            }
-            if (main.vendor().equalsIgnoreCase(consultant.vendor())) {
-                return Optional.of("the consultant runs on " + consultant.vendor()
-                    + ", main's own vendor; a review by the same vendor's agent is the working agent reviewing itself");
-            }
+        return "consultant".equals(seat) ? consultantRefusal() : Optional.empty();
+    }
+
+    /** Why the consultant may not run on this brain, or empty when its vendor is known and differs from main's. */
+    private Optional<String> consultantRefusal() {
+        Brain main = brains.get("main");
+        Brain consultant = brains.get("consultant");
+        if (main == null || consultant == null || main.vendor().isBlank() || consultant.vendor().isBlank()) {
+            return Optional.of("the consultant needs a brain of its own and main's brain known, so the vendors can be compared: the vendor of main is read from "
+                + "\"vendor\" in the " + MAIN_BRAIN_SETTING + " setting and the consultant's from \"vendor\" in its brain's entry of the hire-brains registry setting");
+        }
+        if (main.vendor().equalsIgnoreCase(consultant.vendor())) {
+            return Optional.of("the consultant runs on " + consultant.vendor()
+                + ", main's own vendor; a review by the same vendor's agent is the working agent reviewing itself");
         }
         return Optional.empty();
     }
 
     /**
      * The hire path's entry to {@link #refuse}: the hierarchy applies only where the tree knows both names. A seat a project defined for itself,
-     * or a hirer that is a person or a script and no seat, is outside the signed tree and is neither refused by it nor vouched for by it.
+     * or a hirer that is a person or a script and no seat, is outside the signed tree and is neither refused by it nor vouched for by it. The
+     * consultant's vendor rule does not depend on who hires it, so it holds for a hirer the tree does not know as well.
      */
     public Optional<String> refuseKnown(String hirer, String seat) {
-        if (hirer == null || seat == null || !tree.knows(hirer) || !tree.knows(seat)) {
+        if (hirer == null || seat == null || !tree.knows(seat)) {
             return Optional.empty();
+        }
+        if (!tree.knows(hirer)) {
+            return "consultant".equals(seat) ? consultantRefusal() : Optional.empty();
         }
         return refuse(hirer, seat);
     }

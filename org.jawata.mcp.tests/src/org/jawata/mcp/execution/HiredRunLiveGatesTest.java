@@ -103,6 +103,24 @@ class HiredRunLiveGatesTest {
     }
 
     @Test
+    @DisplayName("S12 D18, audit C12 F4: the plan a hire opens holds the seat's step allowance while the brain works, so the ceiling reaches a real hire and not only a hand-opened plan")
+    void theSeatsStepAllowanceIsHeldByThePlanTheHireOpened() throws Exception {
+        List<Integer> ceilings = new ArrayList<>();
+        HiredRun.GateRunner reading = gate -> {
+            List<PlanLedger.PlanView> views = plans.view();
+            plans.stepBudget(views.get(views.size() - 1).id().value()).ifPresent(budget -> ceilings.add(budget.ceiling()));
+            return new GateOutcome(gate.tool(), gate.gateArguments(), 0, true);
+        };
+
+        hire("EDITS:1", reading);
+
+        // The seat allows 8 tool steps across 2 planned steps, so each step may spend 4 before its gate passes.
+        assertAll(
+            () -> assertFalse(ceilings.isEmpty(), "the ledger held no step allowance for the hire's plan while the brain worked"),
+            () -> assertEquals(4, ceilings.get(0), "not the seat's allowance spread over its steps: " + ceilings));
+    }
+
+    @Test
     @DisplayName("S12 D18, resume: a step passed live is not run again, the end of the hire runs only the steps after it")
     void theEndOfTheHireResumesAfterTheLiveSteps() throws Exception {
         HiredRun.Proposal proposal = hire("EDITS:1", gates(0));
