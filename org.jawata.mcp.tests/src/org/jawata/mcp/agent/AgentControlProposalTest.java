@@ -208,6 +208,21 @@ class AgentControlProposalTest {
     }
 
     @Test
+    @DisplayName("28h item (a): the person's verdict line in the lane carries the hire's updated card, so a session loaded later shows the verdict")
+    void theVerdictLineCarriesTheUpdatedCard() {
+        Lane lane = new Lane();
+        Connection yes = new Connection(CHANGED, "completed", lane.recorder);
+        yes.answer(yes.questions().get(0), yes.selected("accept"), Channel.HOST);
+
+        JsonNode tools = lane.verdicts().get(0).path("tools");
+        java.util.Optional<ObjectNode> card = tools.isArray() && tools.size() == 1 ? HireEntry.readCardLine(tools.get(0).asText()) : java.util.Optional.empty();
+
+        assertTrue(card.isPresent(), "the verdict turn holds no card line: " + lane.verdicts());
+        assertEquals("t1", card.get().path("planId").asText());
+        assertEquals("accepted", card.get().path("verdict").asText(), "the card in the line is the one with the verdict: " + card.get());
+    }
+
+    @Test
     @DisplayName("a hire that changed nothing, a hire that failed, and an answer to a question never asked put nothing to the person")
     void nothingToAskIsNotAsked() {
         Connection none = new Connection("{\"data\":{\"cleanExit\":true,\"answer\":\"read only\",\"changedFiles\":[]}}", "completed");

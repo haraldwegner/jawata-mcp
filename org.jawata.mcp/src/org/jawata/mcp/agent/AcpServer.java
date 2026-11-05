@@ -484,16 +484,19 @@ public final class AcpServer {
         if (verdict == null) {
             return;
         }
-        hires.answered(asked.planId(), verdict).ifPresent(entry -> {
+        java.util.Optional<HireEntry> answered = hires.answered(asked.planId(), verdict);
+        answered.ifPresent(entry -> {
             ObjectNode shown = JSON.createObjectNode();
             shown.put("sessionUpdate", "tool_call_update");
             shown.put("toolCallId", asked.planId());
             shown.putObject("_meta").set("jawata/hire", entry.toMeta());
             update(asked.session().id(), shown);
         });
+        // The card with the verdict goes into the same turn, so a session loaded later shows the answer on the hire's card.
         recorder.record(AgentRecorder.Level.HIRED, asked.session(), "verdict_" + asked.planId(),
             "The person's answer to the proposal of " + asked.seat() + " (" + asked.planId() + "): " + verdict,
-            "Recorded the person's verdict on the proposal of " + asked.seat() + ": " + verdict, List.of());
+            "Recorded the person's verdict on the proposal of " + asked.seat() + ": " + verdict,
+            answered.map(entry -> List.of(entry.cardLine())).orElse(List.of()));
     }
 
     private JsonRpcMessage prompt(Object id, JsonNode params, Channel from) {
