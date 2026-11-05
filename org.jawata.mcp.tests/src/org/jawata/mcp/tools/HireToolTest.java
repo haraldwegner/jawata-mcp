@@ -897,6 +897,23 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h item (c): a hire that carries out another hire's instructions names that hire as its parent in its journal row, and a hire that carries out none names none")
+    void aHireIssuedFromAnotherNamesItsParentInItsRow() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode issued = (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        issued.put("instructionsFrom", "plan-issuer");
+
+        Map<String, Object> issuedData = dataOf(hire.execute(issued));
+        Map<String, Object> plainData = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        JsonNode issuedRow = JSON.readTree(events.eventsOfSession((String) issuedData.get("plan")).orElseThrow().get(0).detailJson());
+        JsonNode plainRow = JSON.readTree(events.eventsOfSession((String) plainData.get("plan")).orElseThrow().get(0).detailJson());
+
+        assertAll(
+            () -> assertEquals("plan-issuer", issuedRow.path("parent").asText(), "the row names the hire whose instructions it carried out: " + issuedRow),
+            () -> assertFalse(plainRow.hasNonNull("parent"), "a hire that carries out no instructions names no parent: " + plainRow));
+    }
+
+    @Test
     @DisplayName("S16-36: a claude hire with no resident endpoint is refused BEFORE anything is spawned")
     void aClaudeHireWithNoEndpointIsRefusedBeforeItSpawns() throws Exception {
         // The stdio resident has no endpoint to hand the brain, and without one the claude CLI

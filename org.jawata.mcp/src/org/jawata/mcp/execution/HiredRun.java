@@ -403,6 +403,15 @@ public final class HiredRun {
         return this;
     }
 
+    /** The plan id of the hire whose instructions this run carries out, written to the journal row as its parent so a hire's chain can be read back (28h item c). */
+    private String parentPlan = "";
+
+    /** Names the hire whose instructions this run carries out; blank when it carries out none. A run is built for one hire, so the name belongs to that hire alone. */
+    public HiredRun issuedFrom(String plan) {
+        this.parentPlan = plan == null ? "" : plan.strip();
+        return this;
+    }
+
     /** Names the session that issued this hire; a run is built for one hire, so the owner belongs to that hire alone. */
     public HiredRun ownedBy(Optional<String> issuer) {
         this.owner = issuer;
@@ -545,6 +554,9 @@ public final class HiredRun {
                 detail.put("hirer", hirerName);
                 if (!fixesPlan.isEmpty()) {
                     detail.put("fixes", fixesPlan);
+                }
+                if (!parentPlan.isEmpty()) {
+                    detail.put("parent", parentPlan);
                 }
                 detail.put("elapsedMs", brainRanMs);
                 detail.put("costUsd", costForRow(outcome));

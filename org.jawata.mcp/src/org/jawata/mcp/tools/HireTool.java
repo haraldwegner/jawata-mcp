@@ -481,7 +481,8 @@ public class HireTool extends NeutralTool {
             // The plan this hire opens belongs to the session that issued it, whoever it is: only that session's turn waits on its step (S10).
             .ownedBy(org.jawata.mcp.models.CallerIdentity.serving().map(org.jawata.mcp.models.CallerIdentity::id))
             .labelled(hired, hirer)
-            .fixing(getStringParam(arguments, "fixes"));
+            .fixing(getStringParam(arguments, "fixes"))
+            .issuedFrom(getStringParam(arguments, "instructionsFrom"));
         HiredRun.Proposal proposal;
         // While the brain runs this hire can be stopped from the Agent Control panel (S9): the panel's stop interrupts this thread, which ends the
         // run the way any interruption does, and the answer says the person stopped it.
