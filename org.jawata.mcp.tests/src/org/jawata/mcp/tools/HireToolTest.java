@@ -854,7 +854,19 @@ class HireToolTest {
             () -> assertEquals(data.get("stepsDeclared"), detail.path("ofSteps").asInt(),
                 "out of how many steps"),
             // D48: a review's row says which vendor's agent (the brain column above) and which model gave it.
-            () -> assertEquals("claude-sonnet-5", detail.path("model").asText(), "the model the seat's own file asked for"));
+            () -> assertEquals("claude-sonnet-5", detail.path("model").asText(), "the model the seat's own file asked for"),
+            // 28h item (c): what a cost view or a choice of model reads from the row, besides the model and the tokens above.
+            () -> assertEquals(data.get("hired"), detail.path("seat").asText(), "which seat ran, so a cost can be read per seat"),
+            () -> assertEquals(data.get("hirer"), detail.path("hirer").asText(), "who hired it, so the hires of one issuer can be summed"),
+            () -> org.junit.jupiter.api.Assertions.assertTrue(detail.path("elapsedMs").isNumber() && detail.path("elapsedMs").asLong() >= 0,
+                "how long the brain ran: " + detail),
+            () -> assertEquals(data.containsKey("costUsd"), detail.hasNonNull("costUsd"),
+                "a cost the brain sent is in the row, and one it did not send is absent and never 0"),
+            () -> {
+                if (data.containsKey("costUsd")) {
+                    assertEquals(((Number) data.get("costUsd")).doubleValue(), detail.path("costUsd").asDouble(), 1e-9, "the cost the answer shows");
+                }
+            });
 
         // AND THE HIRER IS TOLD, in the answer it already reads, what the journal holds — so
         // "journalled" is something the run's answer shows rather than something a caller assumes.

@@ -202,6 +202,28 @@ class HiredRunProposesTest {
     }
 
     @Test
+    @DisplayName("28h item (c): the journal row names the seat and its hirer, how long the brain ran and the cost the brain sent, and carries no cost when the brain sent none")
+    void theJournalRowCarriesWhatACostViewReads() throws Exception {
+        SeatHire seat = SeatHire.read("---\nname: pm\nbrain: claude-code\naccepts_uncontained_writes: true\nttl_secs: 30\n---\n\nbody\n");
+        HostCommand sends = brain("echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.03}'");
+        HostCommand silent = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
+
+        HiredRun.Proposal paid = new HiredRun(new RecordsTheArgv(host, sends), artifacts, plans, events).labelled("pm", "main")
+            .issue(seat, site(sends), "Do it.", twoSteps(), HiredRunProposesTest::passed, List.of());
+        HiredRun.Proposal free = new HiredRun(new RecordsTheArgv(host, silent), artifacts, plans, events).labelled("pm", "main")
+            .issue(seat, site(silent), "Do it again.", twoSteps(), HiredRunProposesTest::passed, List.of());
+
+        JsonNode withCost = JSON.readTree(events.eventsOfSession(paid.plan().value()).orElseThrow().get(0).detailJson());
+        JsonNode withoutCost = JSON.readTree(events.eventsOfSession(free.plan().value()).orElseThrow().get(0).detailJson());
+        assertAll(
+            () -> assertEquals("pm", withCost.path("seat").asText(), "which seat ran: " + withCost),
+            () -> assertEquals("main", withCost.path("hirer").asText(), "who hired it: " + withCost),
+            () -> assertTrue(withCost.path("elapsedMs").isNumber() && withCost.path("elapsedMs").asLong() >= 0, "how long the brain ran: " + withCost),
+            () -> assertEquals(0.03, withCost.path("costUsd").asDouble(), 1e-9, "the cost the brain sent: " + withCost),
+            () -> assertFalse(withoutCost.hasNonNull("costUsd"), "a brain that sent no cost was given one in the row: " + withoutCost));
+    }
+
+    @Test
     @DisplayName("D37: a seat's own declared brain, tools and model reach the command line that is started")
     void aSeatsDeclarationReachesTheRunItHires() throws Exception {
         // THE STAND-IN SPEAKS THE SEAT'S OWN BRAIN, not the script dialect's declarations. The spy

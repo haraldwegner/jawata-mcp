@@ -383,6 +383,17 @@ public final class HiredRun {
     /** The session that issued this hire, recorded on the plan it opens so the plan's pending step is that session's to answer for (S10). */
     private Optional<String> owner = Optional.empty();
 
+    /** The seat this run is for and the seat that hired it, written to the journal row so cost and time can be read per seat (28h item c). */
+    private String seatName = "";
+    private String hirerName = "";
+
+    /** Names the seat that runs and the seat that hired it; a run is built for one hire, so the names belong to that hire alone. */
+    public HiredRun labelled(String seat, String hirer) {
+        this.seatName = seat == null ? "" : seat;
+        this.hirerName = hirer == null ? "" : hirer;
+        return this;
+    }
+
     /** Names the session that issued this hire; a run is built for one hire, so the owner belongs to that hire alone. */
     public HiredRun ownedBy(Optional<String> issuer) {
         this.owner = issuer;
@@ -426,12 +437,15 @@ public final class HiredRun {
         // ACL4: while the brain works, its session (the plan id it presents to the resident) is concerned with the folder it was hired in,
         // not with every project the manifest holds; the binding ends with the run.
         HiredBrain.Outcome outcome;
+        final long brainStartedMs = System.currentTimeMillis();
         try (SessionFolders.Binding ignored = folders == null ? null : folders.bind(plan.value(), base.workingDirectory())) {
             outcome = acp.isPresent()
                 ? AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
                     resume, ceilings, null, live, update -> { })
                 : HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
         }
+
+        final long brainRanMs = System.currentTimeMillis() - brainStartedMs;
 
         // Taken immediately, before the gates run. A gate is a jawata tool and may legitimately
         // rewrite files itself, and folding its edits into the BRAIN's attribution would blame the
@@ -516,6 +530,12 @@ public final class HiredRun {
                 // WHO ANSWERED, in the row a verdict is read back from (D48): the vendor is the row's own brain column, and the model is here,
                 // so a review's journal row says which vendor's agent and which model gave it. Null when the hire was made without a seat.
                 detail.put("model", model);
+                // WHAT A COST VIEW AND A CHOICE OF MODEL READ (28h item c): which seat, who hired it, how long the brain ran, and what it cost
+                // when it said. A cost the brain did not send is absent from the row and never 0.
+                detail.put("seat", seatName);
+                detail.put("hirer", hirerName);
+                detail.put("elapsedMs", brainRanMs);
+                detail.put("costUsd", costForRow(outcome));
                 detail.put("tokensSpent", outcome.tokens().isPresent() ? outcome.tokens().get().spent() : null);
                 detail.put("instructions", Instructions.rows(Instructions.parse(outcome.text())));
                 detail.put("instructionFaults", Instructions.faults(outcome.text()));
@@ -535,6 +555,10 @@ public final class HiredRun {
         }
         return new Proposal(plan, artifactId, record, outcome, List.copyOf(ran), passed, changed,
             List.copyOf(answerRefusals));
+    }
+
+    private Double costForRow(HiredBrain.Outcome outcome) {
+        return outcome.costUsd().isPresent() ? outcome.costUsd().getAsDouble() : null;
     }
 
     /**
