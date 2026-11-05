@@ -193,7 +193,7 @@ public final class AcpServer {
         ObjectNode result = JSON.createObjectNode();
         result.put("planId", planId);
         ArrayNode turns = result.putArray("turns");
-        said.get().forEach(turn -> turns.addObject().put("from", turn.from()).put("text", turn.text()));
+        said.get().forEach(turn -> turns.addObject().put("role", turn.role()).put("from", turn.from()).put("text", turn.text()));
         return JsonRpcMessage.successResponse(id, result);
     }
 
@@ -248,6 +248,7 @@ public final class AcpServer {
                 "this engine is not running a hire of " + entry.get().seat() + " for that brief, so there is nothing here to stop", null);
         }
         ObjectNode result = JSON.createObjectNode();
+        result.put("ok", true);
         result.put("planId", planId);
         result.put("stopped", stopped);
         return JsonRpcMessage.successResponse(id, result);

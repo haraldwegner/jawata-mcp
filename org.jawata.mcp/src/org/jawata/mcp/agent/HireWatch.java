@@ -157,7 +157,7 @@ final class HireWatch {
     }
 
     /** One thing said in a hire: who said it, and the words. */
-    record Said(String from, String text) {
+    record Said(String from, String text, String role) {
     }
 
     /**
@@ -171,9 +171,9 @@ final class HireWatch {
             return Optional.empty();
         }
         List<Said> turns = new java.util.ArrayList<>();
-        turns.add(new Said(hire.hirer.isEmpty() ? MAIN : hire.hirer, hire.task));
+        turns.add(new Said(hire.hirer.isEmpty() ? MAIN : hire.hirer, hire.task, "user"));
         if (!hire.answer.isEmpty()) {
-            turns.add(new Said(hire.seat, hire.answer));
+            turns.add(new Said(hire.seat, hire.answer, "assistant"));
         }
         return Optional.of(turns);
     }
