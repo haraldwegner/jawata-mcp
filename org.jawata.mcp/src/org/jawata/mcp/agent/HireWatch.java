@@ -74,12 +74,29 @@ final class HireWatch {
         }
     }
 
+    /**
+     * What the hire tool's answer says in {@code brain.model} when the seat file, the person's pick and the registry setting all named no
+     * model (the tool's own wording, in {@code HireTool}); it is the absence of a model and is never shown as one.
+     */
+    private static final String NO_MODEL_NAMED = "THE BRAIN'S OWN DEFAULT";
+
     private final LongSupplier clock;
+    private final java.util.function.Supplier<String> registry;
     private final Map<String, Live> hires = new LinkedHashMap<>();
 
     /** @param clock the time in milliseconds, supplied so a test can say how long a hire ran */
     HireWatch(LongSupplier clock) {
+        this(clock, () -> "");
+    }
+
+    /**
+     * @param clock    the time in milliseconds, supplied so a test can say how long a hire ran
+     * @param registry the text of the model registry setting, read each time a seat file names no model: the engine runs the hire on the
+     *                 registry's model for the seat's brain then, so the card names it while the hire runs
+     */
+    HireWatch(LongSupplier clock, java.util.function.Supplier<String> registry) {
         this.clock = clock;
+        this.registry = registry;
     }
 
     /** The entry this update shows, or none when the update is not about a hire. */
@@ -212,11 +229,15 @@ final class HireWatch {
         }
     }
 
-    private static void readSeatFile(Live hire) {
+    private void readSeatFile(Live hire) {
         try {
             SeatHire file = SeatHire.read(Files.readString(Path.of(hire.seatFile)));
             hire.brain = Optional.of(file.brain().name().toLowerCase(Locale.ROOT).replace("_code", ""));
-            hire.model = file.model() == null || file.model().isBlank() ? Optional.empty() : Optional.of(file.model());
+            // The seat file's own word first, then the registry's model for its brain: the order the hire tool runs the hire in.
+            hire.model = file.model() == null || file.model().isBlank()
+                ? org.jawata.mcp.execution.Hirer.brainIn(registry.get(), file.brain().label())
+                    .map(org.jawata.mcp.execution.Hirer.Brain::model).filter(offered -> !offered.isBlank())
+                : Optional.of(file.model());
             hire.seatCommand = Optional.ofNullable(file.command()).map(command -> "/" + command);
         } catch (IOException | RuntimeException e) {
             hire.brain = Optional.empty();
@@ -235,6 +256,12 @@ final class HireWatch {
         boolean clean = answer.isMissingNode() || !(answer.path("cleanExit").asText("true").equals("false")
             || answer.path("timedOut").asBoolean(false));
         finish(hire, clean ? HireEntry.DONE : HireEntry.FAILED);
+        // The model the hire tool says ran is the first-hand word: it includes the person's pick in the Agent Control panel, which neither the
+        // seat file nor the registry shows.
+        String ran = answer.path("brain").path("model").asText("");
+        if (!ran.isBlank() && !NO_MODEL_NAMED.equals(ran)) {
+            hire.model = Optional.of(ran);
+        }
         hire.answer = answer.path("answer").asText("");
         hire.brainSessionId = answer.hasNonNull("brainSessionId") ? Optional.of(answer.get("brainSessionId").asText()) : Optional.empty();
         List<String> files = new java.util.ArrayList<>();

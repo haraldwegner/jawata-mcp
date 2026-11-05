@@ -70,6 +70,44 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("the entry's model is the one the hire tool says ran, and the tool's wording for 'no model named' is not shown as a model")
+    void theModelIsTheOneTheHireToolSaysRan(@TempDir java.nio.file.Path dir) throws Exception {
+        java.nio.file.Path plain = Files.writeString(dir.resolve("plain.md"), "---\nname: pm\nbrain: cursor\n---\n\nbody\n");
+        ObjectNode call = withInput(hireCall("tool_call", "m1", "pending"), "main", "pm", "plan it");
+        ((ObjectNode) call.get("rawInput")).put("seatFile", plain.toString());
+        assertTrue(watch.observe(call).orElseThrow().model().isEmpty(), "the seat file names none and nothing else was asked, so none is known yet");
+
+        HireEntry done = watch.observe(answered(hireCall("tool_call_update", "m1", "completed"),
+            "{\"cleanExit\":true,\"brain\":{\"brain\":\"cursor\",\"vendor\":\"Cursor\",\"model\":\"composer-2\"}}")).orElseThrow();
+        assertEquals(Optional.of("composer-2"), done.model());
+        assertEquals("composer-2", done.toMeta().path("model").asText());
+
+        ObjectNode second = withInput(hireCall("tool_call", "m2", "pending"), "main", "pm", "again");
+        ((ObjectNode) second.get("rawInput")).put("seatFile", plain.toString());
+        watch.observe(second);
+        HireEntry unnamed = watch.observe(answered(hireCall("tool_call_update", "m2", "completed"),
+            "{\"cleanExit\":true,\"brain\":{\"brain\":\"cursor\",\"vendor\":\"Cursor\",\"model\":\"THE BRAIN'S OWN DEFAULT\"}}")).orElseThrow();
+        assertTrue(unnamed.model().isEmpty(), "a sentence saying no model was named was shown as a model");
+        assertFalse(unnamed.toMeta().has("model"));
+    }
+
+    @Test
+    @DisplayName("while a hire runs, a seat file that names no model shows the model the registry setting offers its brain, and a model the seat file names wins over it")
+    void theRegistryModelFillsWhatTheSeatFileLeavesOut(@TempDir java.nio.file.Path dir) throws Exception {
+        String registry = "{\"cursor\":{\"command\":[\"agent\",\"acp\"],\"vendor\":\"Cursor\",\"model\":\"composer-2\"}}";
+        HireWatch registered = new HireWatch(now::get, () -> registry);
+        java.nio.file.Path plain = Files.writeString(dir.resolve("plain.md"), "---\nname: pm\nbrain: cursor\n---\n\nbody\n");
+        java.nio.file.Path named = Files.writeString(dir.resolve("named.md"), "---\nname: pm\nbrain: cursor\nmodel: gpt-5\n---\n\nbody\n");
+        ObjectNode fromRegistry = withInput(hireCall("tool_call", "r1", "pending"), "main", "pm", "plan it");
+        ((ObjectNode) fromRegistry.get("rawInput")).put("seatFile", plain.toString());
+        ObjectNode fromFile = withInput(hireCall("tool_call", "r2", "pending"), "main", "pm", "plan it again");
+        ((ObjectNode) fromFile.get("rawInput")).put("seatFile", named.toString());
+
+        assertEquals(Optional.of("composer-2"), registered.observe(fromRegistry).orElseThrow().model());
+        assertEquals(Optional.of("gpt-5"), registered.observe(fromFile).orElseThrow().model());
+    }
+
+    @Test
     @DisplayName("S17: a hire as Cursor's agent streams it is seen — the call is unnamed at first, a later update names it \"jawata: hire\" with the arguments under rawInput.args, and it ends with an answer that holds no data")
     void aHireAsCursorStreamsItIsSeen() throws Exception {
         ObjectNode first = JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "c1").put("title", "MCP: tool").put("kind", "other").put("status", "pending");

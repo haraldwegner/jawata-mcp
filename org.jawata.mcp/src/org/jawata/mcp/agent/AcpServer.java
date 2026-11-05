@@ -62,7 +62,7 @@ public final class AcpServer {
     /** The brain of each side thread, made when its first question arrives and kept so the thread has a conversation of its own. */
     private final Map<String, AgentBrain> sideBrainOf = new ConcurrentHashMap<>();
     /** The hires the brain has made through this connection, read from its tool calls as they stream. */
-    private final HireWatch hires = new HireWatch(System::currentTimeMillis);
+    private final HireWatch hires = new HireWatch(System::currentTimeMillis, () -> this.brainRegistry.get());
     private final Map<String, PrincipalSession> sessions = new ConcurrentHashMap<>();
     /** The thread running each session's prompt, so the person's cancel can interrupt the brain's work. */
     private final Map<String, Thread> running = new ConcurrentHashMap<>();
