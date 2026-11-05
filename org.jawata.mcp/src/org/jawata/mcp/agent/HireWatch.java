@@ -212,7 +212,7 @@ final class HireWatch {
             SeatHire file = SeatHire.read(Files.readString(Path.of(hire.seatFile)));
             hire.brain = Optional.of(file.brain().name().toLowerCase(Locale.ROOT).replace("_code", ""));
             hire.model = file.model() == null || file.model().isBlank() ? Optional.empty() : Optional.of(file.model());
-            hire.seatCommand = Optional.ofNullable(file.command());
+            hire.seatCommand = Optional.ofNullable(file.command()).map(command -> "/" + command);
         } catch (IOException | RuntimeException e) {
             hire.brain = Optional.empty();
             hire.model = Optional.empty();

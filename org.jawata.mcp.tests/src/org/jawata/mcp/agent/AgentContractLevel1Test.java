@@ -366,12 +366,22 @@ class AgentContractLevel1Test {
         }
         assertNotNull(ours, "the engine sent no entry for the hire");
         assertNotNull(recordedHire);
+        Map<String, String> tasks = new LinkedHashMap<>();
+        for (Line line : wire.lines) {
+            JsonNode update = line.msg().path("params").path("update");
+            if ("tool_call".equals(update.path("sessionUpdate").asText()) && update.path("_meta").has("jawata/hire")) {
+                tasks.put(update.path("toolCallId").asText(), update.path("_meta").path("jawata/hire").path("task").asText());
+            }
+        }
+        assertEquals(Map.of("p-architect", "Review the design of the change against the target architecture.", "p-test-writer", "Write the tests the change owes."), tasks,
+            "both hires are listed on the wire, each with its task");
         for (String field : List.of("planId", "seat", "brain", "model", "state", "elapsedMs", "tokens", "seatCommand", "task")) {
             assertTrue(ours.has(field), "the entry the engine sent has no " + field + ": " + ours);
             assertEquals(typeOf(recordedHire.get(field)), typeOf(ours.get(field)), field);
         }
         assertEquals("running", ours.path("state").asText());
-        assertEquals("refactor", ours.path("seatCommand").asText());
+        assertEquals("/refactor", ours.path("seatCommand").asText());
+        assertEquals(recordedHire.path("seatCommand").asText(), ours.path("seatCommand").asText(), "the command is written as the person types it, with its slash, as the recording writes it");
     }
 
     @Test
@@ -386,13 +396,14 @@ class AgentContractLevel1Test {
         ObjectNode pick = sentRequest(r12, "_jawata/hire/brain").msg().deepCopy();
         ((ObjectNode) pick.get("params")).put("planId", "p-pm").put("brain", "claude-code").put("model", "sonnet");
         JsonNode picked = wire.send(JSON.convertValue(pick, JsonRpcMessage.class));
+        org.jawata.mcp.execution.SeatBrainPicks.shared().forget("pm");
 
         assertEquals(List.of(), violations(wire.lines));
         assertEquals(2, brains.path("result").path("brains").size(), brains.toString());
         assertEquals("p-pm", picked.path("result").path("planId").asText(), picked.toString());
         assertEquals("claude-code", picked.path("result").path("brain").asText(), picked.toString());
         assertEquals("sonnet", picked.path("result").path("model").asText(), picked.toString());
-        assertEquals("pm", picked.path("result").path("seatCommand").asText(), picked.toString());
+        assertEquals("/pm", picked.path("result").path("seatCommand").asText(), picked.toString());
     }
 
     @Test
@@ -434,6 +445,50 @@ class AgentContractLevel1Test {
             assertTrue(option.has(field), "the option the engine sent has no " + field + ": " + option);
             assertEquals(recordedOption.get(field).getNodeType(), option.get(field).getNodeType(), field);
         }
+    }
+
+    @Test
+    @DisplayName("S9: a running hire's context size reaches the host on each update of the hire's call, and a fall in it is the value the host receives, not the largest seen")
+    void aRunningHiresContextSizeFallsOnTheWireWhenItFalls() {
+        List<Line> lines = new ArrayList<>();
+        AgentBrain brain = new AgentBrain() {
+            @Override
+            public void answer(String prompt, Consumer<String> chunks) {
+                answer(prompt, chunks, call -> { });
+            }
+
+            @Override
+            public void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls) {
+                ObjectNode started = JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "ctx-1").put("status", "pending")
+                    .put("title", "mcp__jawata-javata-dev__hire");
+                started.putObject("rawInput").put("hirer", "main").put("seat", "ctx-seat").put("brief", "ctx brief");
+                ObjectNode working = JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", "ctx-1").put("status", "in_progress")
+                    .put("title", "mcp__jawata-javata-dev__hire");
+                try (RunningHires.Registration running = RunningHires.shared().begin("ctx-seat", "ctx brief")) {
+                    toolCalls.accept(started);
+                    RunningHires.shared().noteUsage(java.util.OptionalLong.of(9_000), java.util.OptionalDouble.empty());
+                    toolCalls.accept(working.deepCopy());
+                    RunningHires.shared().noteUsage(java.util.OptionalLong.of(2_500), java.util.OptionalDouble.empty());
+                    toolCalls.accept(working.deepCopy());
+                }
+                chunks.accept("ok");
+            }
+        };
+        AcpServer server = new AcpServer(brain, List::of, message -> lines.add(new Line("recv", JSON.valueToTree(message))), TurnBoundary.open(), AgentRecorder.off(), null, null);
+        server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/workspace")));
+        String session = lines.stream().filter(l -> l.msg().path("result").has("sessionId")).findFirst().orElseThrow().msg().path("result").path("sessionId").asText();
+        ObjectNode params = JSON.createObjectNode().put("sessionId", session);
+        params.putArray("prompt").addObject().put("type", "text").put("text", "go");
+        server.receive(JsonRpcMessage.request(2, "session/prompt", params));
+
+        List<Long> sizes = new ArrayList<>();
+        for (Line line : lines) {
+            JsonNode entry = line.msg().path("params").path("update").path("_meta").path("jawata/hire");
+            if (!entry.isMissingNode()) {
+                sizes.add(entry.has("contextTokens") ? entry.get("contextTokens").asLong() : -1L);
+            }
+        }
+        assertEquals(List.of(-1L, 9_000L, 2_500L), sizes, "no figure before the brain reports one, then each report as it stands");
     }
 
     @Test

@@ -62,8 +62,8 @@ class HireEntriesTest {
         HireEntry shown = watch.observe(withCommand).orElseThrow();
         HireEntry bare = watch.observe(without).orElseThrow();
 
-        assertEquals(Optional.of("refactor"), shown.seatCommand());
-        assertEquals("refactor", shown.toMeta().path("seatCommand").asText());
+        assertEquals(Optional.of("/refactor"), shown.seatCommand());
+        assertEquals("/refactor", shown.toMeta().path("seatCommand").asText());
         assertTrue(bare.seatCommand().isEmpty());
         assertFalse(bare.toMeta().has("seatCommand"), "a seat with no command was shown a placeholder");
     }
