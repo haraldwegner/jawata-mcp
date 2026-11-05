@@ -185,6 +185,76 @@ class AgentHistoryTest {
         assertEquals(List.of("Read a.txt — completed"), titles, "the reloaded session did not replay the call as one line: " + later.said);
     }
 
+    /** A brain that makes one hire as a real brain streams it: the call with its arguments, then (when {@code finished}) its completion carrying the hire tool's answer. */
+    private static AgentBrain hiringBrain(boolean finished) {
+        return new AgentBrain() {
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks) {
+                answer(prompt, chunks, call -> { });
+            }
+
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks, java.util.function.Consumer<JsonNode> toolCalls) {
+                ObjectNode start = JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "h1")
+                    .put("title", "mcp__jawata-javata-dev__hire").put("status", "pending");
+                start.putObject("rawInput").put("hirer", "main").put("seat", "pm").put("brief", "Reply with the one word ok.");
+                toolCalls.accept(start);
+                if (finished) {
+                    ObjectNode end = JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", "h1").put("status", "completed");
+                    end.put("rawOutput", "{\"cleanExit\":true,\"answer\":\"SECRET ANSWER TEXT\",\"tokens\":{\"spent\":1234},\"costUsd\":0.05,"
+                        + "\"brain\":{\"brain\":\"claude-code\",\"model\":\"sonnet\"}}");
+                    toolCalls.accept(end);
+                }
+                chunks.accept("done");
+            }
+        };
+    }
+
+    private static List<JsonNode> cardsReplayed(Connection later) {
+        return later.said.stream().map(m -> m.path("params").path("update"))
+            .filter(u -> u.path("_meta").has("jawata/hire")).toList();
+    }
+
+    @Test
+    @DisplayName("a hire's card comes back when an old session is loaded, with its figures and state, and never carries the hire's answer text")
+    void aHireCardComesBackWhenAnOldSessionIsLoaded() {
+        Connection first = new Connection(hiringBrain(true), AgentRecorder.Depth.ALL);
+        first.open();
+        first.prompt("hire a pm");
+
+        Connection later = new Connection("unused", AgentRecorder.Depth.ALL);
+        later.call(3, "session/load", JSON.createObjectNode().put("sessionId", first.session).put("cwd", "/w"));
+        List<JsonNode> cards = cardsReplayed(later);
+
+        assertEquals(1, cards.size(), "one card for one hire: " + later.said);
+        JsonNode card = cards.get(0).path("_meta").path("jawata/hire");
+        assertEquals("tool_call", cards.get(0).path("sessionUpdate").asText());
+        assertEquals("pm", card.path("seat").asText());
+        assertEquals("done", card.path("state").asText());
+        assertEquals("sonnet", card.path("model").asText(), "the model the hire ran, as the card showed it");
+        assertEquals(1234, card.path("tokens").asLong());
+        assertEquals(0.05, card.path("costUsd").asDouble(), 1e-9);
+        assertTrue(!later.said.toString().contains("SECRET ANSWER TEXT"),
+            "the lane holds what was said and the card, never the hire's answer: " + later.said);
+    }
+
+    @Test
+    @DisplayName("a hire still running when the session was saved is replayed as failed, with the time it had, never as running forever")
+    void aHireSavedWhileRunningReplaysAsFailed() {
+        Connection first = new Connection(hiringBrain(false), AgentRecorder.Depth.ALL);
+        first.open();
+        first.prompt("hire a pm");
+
+        Connection later = new Connection("unused", AgentRecorder.Depth.ALL);
+        later.call(3, "session/load", JSON.createObjectNode().put("sessionId", first.session).put("cwd", "/w"));
+        List<JsonNode> cards = cardsReplayed(later);
+
+        assertEquals(1, cards.size(), later.said.toString());
+        assertEquals("failed", cards.get(0).path("_meta").path("jawata/hire").path("state").asText());
+        assertEquals("failed", cards.get(0).path("status").asText());
+        assertTrue(cards.get(0).path("_meta").path("jawata/hire").has("elapsedMs"), "the time it ran is kept");
+    }
+
     @Test
     @DisplayName("a session the recording does not hold cannot be loaded, and says so")
     void anUnknownSessionIsRefused() {

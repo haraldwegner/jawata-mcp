@@ -69,6 +69,27 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
         return String.join(" · ", parts) + " — " + state;
     }
 
+    /** The start of the one transcript line that keeps a hire's card, so a session that is loaded later can show the card again (28h item a). */
+    public static final String CARD_PREFIX = "jawata/hire ";
+
+    /** The card as the one line the transcript lane keeps: the prefix, then the card as the wire carries it. It holds the brief and the figures and never the hire's answer text. */
+    public String cardLine() {
+        return CARD_PREFIX + toMeta().toString();
+    }
+
+    /** The card a transcript line keeps, or none when the line is not a card line or what follows the prefix is not a card. */
+    public static Optional<ObjectNode> readCardLine(String line) {
+        if (line == null || !line.startsWith(CARD_PREFIX)) {
+            return Optional.empty();
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode parsed = JSON.readTree(line.substring(CARD_PREFIX.length()));
+            return parsed != null && parsed.isObject() && parsed.hasNonNull("planId") ? Optional.of((ObjectNode) parsed) : Optional.empty();
+        } catch (java.io.IOException e) {
+            return Optional.empty();
+        }
+    }
+
     /** The entry as the wire carries it: only the fields that are known, so a missing cost or parent is absent and never a placeholder. */
     public ObjectNode toMeta() {
         ObjectNode meta = JSON.createObjectNode();

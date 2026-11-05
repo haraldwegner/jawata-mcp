@@ -575,7 +575,9 @@ public final class AcpServer {
                 said.append(review.release());
             }
             recorder.record(AgentRecorder.Level.PRINCIPAL, session, messageId, typed, said.toString(),
-                toolState.values().stream().map(AcpServer::toolLine).toList());
+                // A hire is kept as its card, so a session loaded later shows the hire's figures and state again; any other call as one finished line.
+                toolState.entrySet().stream()
+                    .map(call -> hires.entry(call.getKey()).map(HireEntry::cardLine).orElseGet(() -> toolLine(call.getValue()))).toList());
         }
         ObjectNode result = JSON.createObjectNode();
         result.put("stopReason", stopReason);
@@ -620,6 +622,7 @@ public final class AcpServer {
         String cwd = textField(params, "cwd");
         PrincipalSession session = sessions.computeIfAbsent(sessionId, key -> new PrincipalSession(key, cwd == null ? "" : cwd, false));
         int turnNo = 0;
+        java.util.Set<String> replayedCards = new java.util.HashSet<>();
         for (AgentRecorder.Turn turn : turns) {
             turnNo++;
             for (String typed : turn.his()) {
@@ -627,6 +630,11 @@ public final class AcpServer {
             }
             int line = 0;
             for (String call : turn.tools()) {
+                java.util.Optional<ObjectNode> card = HireEntry.readCardLine(call);
+                if (card.isPresent()) {
+                    replayCard(sessionId, card.get(), replayedCards);
+                    continue;
+                }
                 ObjectNode update = JSON.createObjectNode();
                 update.put("sessionUpdate", "tool_call");
                 update.put("toolCallId", "replay_" + turnNo + "_t" + (++line));
@@ -642,6 +650,30 @@ public final class AcpServer {
         result.put("sessionId", session.id());
         result.set("configOptions", configOptions(session));
         return JsonRpcMessage.successResponse(id, result);
+    }
+
+    /**
+     * Shows one stored hire card to the host as the tool call it was: the first line of a hire is a {@code tool_call}, a later line of the same
+     * hire (its verdict, for one) an update of it. A hire stored as still running or compacting was cut off with its session, so it is shown
+     * as failed with the time it had and never as running forever. The agent no longer holds the hire, so its stop, transcript and brain
+     * pick answer that it is unknown.
+     */
+    private void replayCard(String sessionId, ObjectNode card, java.util.Set<String> shownBefore) {
+        String state = card.path("state").asText("");
+        if (HireEntry.RUNNING.equals(state) || "compacting".equals(state)) {
+            card.put("state", HireEntry.FAILED);
+            state = HireEntry.FAILED;
+        }
+        String planId = card.path("planId").asText();
+        ObjectNode shown = JSON.createObjectNode();
+        shown.put("sessionUpdate", shownBefore.add(planId) ? "tool_call" : "tool_call_update");
+        shown.put("toolCallId", planId);
+        shown.put("kind", "execute");
+        shown.put("title", java.util.stream.Stream.of(card.path("seat").asText(""), card.path("brain").asText(""), card.path("model").asText(""))
+            .filter(part -> !part.isEmpty()).collect(java.util.stream.Collectors.joining(" · ")) + " — " + state);
+        shown.put("status", HireEntry.FAILED.equals(state) ? "failed" : "completed");
+        shown.putObject("_meta").set("jawata/hire", card);
+        update(sessionId, shown);
     }
 
     private PrincipalSession sessionOf(JsonNode params) {
