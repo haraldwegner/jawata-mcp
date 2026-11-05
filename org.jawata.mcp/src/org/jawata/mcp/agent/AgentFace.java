@@ -7,8 +7,11 @@ import java.util.function.Supplier;
 import org.jawata.mcp.engine.EngineApi;
 import org.jawata.mcp.engine.RoutedFace;
 import org.jawata.mcp.execution.Hirer;
+import org.jawata.mcp.execution.ScheduledHires;
+import org.jawata.mcp.execution.SeatPrompts;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.jawata.mcp.protocol.MessageRoute;
+import org.jawata.spi.host.EngineSettings;
 
 import com.sun.net.httpserver.HttpHandler;
 
@@ -38,9 +41,9 @@ public final class AgentFace implements RoutedFace {
     private final Supplier<AgentBrain> brains;
     private volatile EngineApi engine;
 
-    /** The face as the framework builds it: it advertises no command until the seats are served (plan S14). */
+    /** The face as the framework builds it: it advertises the seats the engine serves, one command each, read when a session opens. */
     public AgentFace() {
-        this(List::of);
+        this(null, null);
     }
 
     /** A face that advertises what {@code commands} supplies at the moment a session opens. */
@@ -68,6 +71,20 @@ public final class AgentFace implements RoutedFace {
     public AgentFace(Supplier<List<AdvertisedCommand>> commands, Supplier<AgentBrain> brains) {
         this.commands = commands;
         this.brains = brains;
+    }
+
+    /**
+     * The seats the engine serves, as the commands a host lists (contract E1, group {@code seat}): the seat files of the folder the engine
+     * setting {@link ScheduledHires#SEATS_SETTING} names, read when a session opens, each under the word a person types for it and with its
+     * one-line purpose. No folder set, or no engine settings, advertises none.
+     */
+    private static List<AdvertisedCommand> servedSeats(EngineApi attached) {
+        EngineSettings settings = attached.settings();
+        if (settings == null) {
+            return List.of();
+        }
+        SeatPrompts seats = new SeatPrompts(() -> settings.get(ScheduledHires.SEATS_SETTING).filter(folder -> !folder.isBlank()).map(java.nio.file.Path::of));
+        return seats.list().stream().map(seat -> new AdvertisedCommand(seat.name(), seat.description(), "seat")).toList();
     }
 
     @Override
@@ -131,7 +148,8 @@ public final class AgentFace implements RoutedFace {
         String recording = attached.settings() == null ? null : attached.settings().get(AgentRecorder.SETTING).orElse(null);
         AgentRecorder recorder = new AgentRecorder(attached.tools(), AgentRecorder.Depth.of(recording));
         ReviewBeforeSend.Reviewer reviewer = BrainReviewer.over(attached.settings(), java.nio.file.Path.of(System.getProperty("user.dir"))).orElse(null);
-        AcpServer server = new AcpServer(brain, commands, out, boundary, recorder, sideBrains, reviewer);
+        Supplier<List<AdvertisedCommand>> advertised = commands != null ? commands : () -> servedSeats(attached);
+        AcpServer server = new AcpServer(brain, advertised, out, boundary, recorder, sideBrains, reviewer);
         server.offerBrains(() -> attached.settings() == null ? "" : attached.settings().get(Hirer.BRAINS_SETTING).orElse(""));
         return server;
     }
