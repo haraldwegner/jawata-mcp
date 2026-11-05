@@ -109,10 +109,14 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
         return "java";
     }
 
-    /** The suffix of the files Java owns: the one the engine's per-call disk-sync scan looks for, because a language declares its own (28h D15). */
+    /**
+     * The suffixes of the files Java owns: the ones the engine's per-call disk-sync scan looks for, because a language declares its own
+     * (28h D15). Beside {@code .java} it declares the four names of the files a Java project's classpath comes from, so that a change to one
+     * of them is SEEN and named in the next answer (28h S14, item d); the project is still never re-imported unasked.
+     */
     @Override
     public java.util.Set<String> sourceExtensions() {
-        return java.util.Set.of(".java");
+        return java.util.Set.of(".java", "pom.xml", "build.gradle", ".classpath", "MANIFEST.MF");
     }
 
     /**

@@ -1,5 +1,6 @@
 package org.jawata.mcp.execution;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -14,7 +15,10 @@ import java.util.logging.Logger;
 import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.models.ToolResponse;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
@@ -73,6 +77,81 @@ public final class ScheduledHires implements SeatScheduler.Firing {
         }
     }
 
+    /** The seat-file key that names a seat's own gate: {@code schedule_gate: <tool> [<json object of arguments>]}. Optional. */
+    static final String GATE_KEY = "schedule_gate";
+
+    private static final ObjectReader STRICT_JSON = JSON.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+
+    /**
+     * The one gate a scheduled hire is checked by (S12, item b).
+     *
+     * <p>When a seat declares {@code schedule_gate:} the gate is that tool step; when it declares none it is {@code compile_workspace} asking
+     * for its counts, exactly as every scheduled hire was gated before the key existed. A key that is present and cannot be read is refused
+     * with its reason and is never read as absent: that would hand a seat that asked for a stronger check the weakest one in silence. The
+     * gate's author carries one rule the hire tool already enforces: a gate that publishes no error count is read as not having passed, so a
+     * tool named here must publish one or the scheduled hire reads incomplete.</p>
+     *
+     * @param tool      a published tool name
+     * @param arguments the arguments it is called with; an empty object when the seat names none
+     */
+    record Gate(String tool, ObjectNode arguments) {
+
+        /** The gate of a seat that names none. */
+        static Gate defaultGate() {
+            return new Gate(GATE_TOOL, JSON.createObjectNode().put("summary", true));
+        }
+
+        /**
+         * A seat's gate: the one its frontmatter names, or the default when it names none.
+         *
+         * @throws IllegalArgumentException when the key is present and cannot be read, naming the key and why
+         */
+        static Gate of(Map<String, String> front) {
+            if (!front.containsKey(GATE_KEY)) {
+                return defaultGate();
+            }
+            return parse(front.get(GATE_KEY));
+        }
+
+        private static Gate parse(String text) {
+            String declared = text == null ? "" : text.strip();
+            if (declared.isEmpty()) {
+                throw new IllegalArgumentException(GATE_KEY + " is present but names no tool: write the tool name, then optionally a JSON object"
+                    + " of its arguments, or remove the key to be gated by " + GATE_TOOL);
+            }
+            int space = indexOfWhitespace(declared);
+            String tool = space < 0 ? declared : declared.substring(0, space);
+            if (!tool.matches("[a-z][a-z0-9_]*")) {
+                throw new IllegalArgumentException(GATE_KEY + " '" + declared + "': '" + tool + "' is not a tool name (lower case letters, digits"
+                    + " and underscores, starting with a letter)");
+            }
+            String rest = space < 0 ? "" : declared.substring(space).strip();
+            if (rest.isEmpty()) {
+                return new Gate(tool, JSON.createObjectNode());
+            }
+            JsonNode parsed;
+            try {
+                parsed = STRICT_JSON.readTree(rest);
+            } catch (IOException e) {
+                throw new IllegalArgumentException(GATE_KEY + " '" + declared + "': the arguments after '" + tool + "' are not valid JSON: "
+                    + e.getMessage(), e);
+            }
+            if (parsed == null || !parsed.isObject()) {
+                throw new IllegalArgumentException(GATE_KEY + " '" + declared + "': the arguments after '" + tool + "' must be a JSON object");
+            }
+            return new Gate(tool, (ObjectNode) parsed);
+        }
+
+        private static int indexOfWhitespace(String text) {
+            for (int i = 0; i < text.length(); i++) {
+                if (Character.isWhitespace(text.charAt(i))) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+    }
+
     private final ToolCalls tools;
     private final Path workingDirectory;
     private final Map<String, Path> files;
@@ -101,6 +180,8 @@ public final class ScheduledHires implements SeatScheduler.Firing {
                 if (schedule == null || !Frontmatter.readSwitch("enabled", seat.front().get("enabled"), true)) {
                     continue;
                 }
+                // A gate the seat wrote and nobody can read is refused here, with the reason, and the seat is not scheduled.
+                Gate.of(seat.front());
                 seats.add(new SeatScheduler.ScheduledSeat(seat.name(), schedule, BRIEF));
                 files.put(seat.name(), seat.file());
             } catch (RuntimeException e) {
@@ -154,9 +235,11 @@ public final class ScheduledHires implements SeatScheduler.Firing {
         arguments.put("brief", seat.brief());
         // THE HIRE TOOL REFUSES A HIRE WITH NO GATE, and a scheduled run has no lead to declare one, so it carries the one gate that holds for
         // any seat: the workspace still compiles after the run. A per-seat gate is a decision for the person, recorded in the plan.
+        // The seat may name its own gate with schedule_gate:, which only strengthens the check; absent, it is the compile gate unchanged.
+        Gate chosen = Gate.of(front);
         ObjectNode gate = arguments.putArray("steps").addObject();
-        gate.put("tool", GATE_TOOL);
-        gate.putObject("arguments").put("summary", true);
+        gate.put("tool", chosen.tool());
+        gate.set("arguments", chosen.arguments().deepCopy());
         arguments.put("workingDirectory", workingDirectory.toString());
         ToolResponse answer = tools.callTool("hire", arguments);
         if (!answer.isSuccess()) {

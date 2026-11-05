@@ -192,6 +192,96 @@ class ScheduledHiresTest {
     }
 
     @Test
+    @DisplayName("a seat that names schedule_gate is gated by that tool step, with its arguments, and by nothing else")
+    void aSeatThatNamesItsGateIsGatedByIt() throws Exception {
+        Path file = seat("architect.md",
+            "name: architect\nschedule: \"* * * * *\"\nschedule_gate: find_quality_issue {\"kind\":\"naming\",\"summary\":true}");
+        RecordingDoor door = new RecordingDoor(ToolResponse.success(Map.of()));
+        ScheduledHires hires = new ScheduledHires(door, work, Map.of("architect", file), SeatTree.standard());
+
+        hires.fire(new SeatScheduler.ScheduledSeat("architect", "* * * * *", "b"));
+
+        JsonNode steps = door.hires.get(0).path("steps");
+        assertAll(
+            () -> assertEquals(1, steps.size(), "the one gate the seat named, not that one plus the default"),
+            () -> assertEquals("find_quality_issue", steps.path(0).path("tool").asText()),
+            () -> assertEquals("naming", steps.path(0).path("arguments").path("kind").asText(), "with the arguments the seat wrote"),
+            () -> assertTrue(steps.path(0).path("arguments").path("summary").asBoolean()));
+    }
+
+    @Test
+    @DisplayName("a schedule_gate that names only a tool is that tool with no arguments")
+    void aGateNamedWithNoArgumentsHasNone() throws Exception {
+        Path file = seat("architect.md", "name: architect\nschedule: \"* * * * *\"\nschedule_gate: health_check");
+        RecordingDoor door = new RecordingDoor(ToolResponse.success(Map.of()));
+        ScheduledHires hires = new ScheduledHires(door, work, Map.of("architect", file), SeatTree.standard());
+
+        hires.fire(new SeatScheduler.ScheduledSeat("architect", "* * * * *", "b"));
+
+        JsonNode steps = door.hires.get(0).path("steps");
+        assertAll(
+            () -> assertEquals(1, steps.size()),
+            () -> assertEquals("health_check", steps.path(0).path("tool").asText()),
+            () -> assertTrue(steps.path(0).path("arguments").isObject() && steps.path(0).path("arguments").isEmpty(),
+                "an empty argument object, which is what a tool taking none is called with"));
+    }
+
+    @Test
+    @DisplayName("a seat that names no schedule_gate is gated exactly as before: one compile_workspace step asking for its counts only")
+    void aSeatThatNamesNoGateKeepsTheCompileGateUnchanged() throws Exception {
+        Path file = seat("architect.md", "name: architect\nschedule: \"* * * * *\"");
+        RecordingDoor door = new RecordingDoor(ToolResponse.success(Map.of()));
+        ScheduledHires hires = new ScheduledHires(door, work, Map.of("architect", file), SeatTree.standard());
+
+        hires.fire(new SeatScheduler.ScheduledSeat("architect", "* * * * *", "b"));
+
+        assertEquals("[{\"tool\":\"compile_workspace\",\"arguments\":{\"summary\":true}}]", door.hires.get(0).path("steps").toString(),
+            "byte for byte the gate every scheduled hire carried before the key existed");
+    }
+
+    @Test
+    @DisplayName("a malformed schedule_gate is refused with its reason when read, and the seat is not scheduled")
+    void aMalformedGateIsRefusedWhenRead() throws Exception {
+        seat("empty.md", "name: empty\nschedule: \"* * * * *\"\nschedule_gate:");
+        seat("badjson.md", "name: badjson\nschedule: \"* * * * *\"\nschedule_gate: health_check {\"kind\"");
+        seat("notobject.md", "name: notobject\nschedule: \"* * * * *\"\nschedule_gate: health_check [1,2]");
+        seat("notool.md", "name: notool\nschedule: \"* * * * *\"\nschedule_gate: {\"kind\":\"naming\"}");
+        seat("badname.md", "name: badname\nschedule: \"* * * * *\"\nschedule_gate: Not-A-Tool");
+        seat("trailing.md", "name: trailing\nschedule: \"* * * * *\"\nschedule_gate: health_check {} extra");
+        seat("fine.md", "name: fine\nschedule: \"* * * * *\"\nschedule_gate: health_check");
+
+        ScheduledHires.Reading read = ScheduledHires.read(seats);
+
+        assertAll(
+            () -> assertEquals(List.of("fine"), read.seats().stream().map(SeatScheduler.ScheduledSeat::name).toList(),
+                "only the seat whose key reads is scheduled; the six malformed ones are not quietly given the default gate"),
+            () -> assertEquals(6, read.unreadable().size(), "each malformed key is reported: " + read.unreadable()),
+            () -> assertTrue(read.unreadable().stream().allMatch(line -> line.contains("schedule_gate")),
+                "and each report names the key: " + read.unreadable()),
+            () -> assertTrue(read.unreadable().stream().anyMatch(line -> line.startsWith("badjson.md") && line.contains("arguments")),
+                "and the file and the reason: " + read.unreadable()));
+    }
+
+    @Test
+    @DisplayName("a schedule_gate that became malformed since the schedule was read is refused at the fire and nothing is hired")
+    void aGateMalformedSinceReadingIsRefusedAtTheFire() throws Exception {
+        Path file = seat("architect.md", "name: architect\nschedule: \"* * * * *\"\nschedule_gate: health_check");
+        RecordingDoor door = new RecordingDoor(ToolResponse.success(Map.of()));
+        ScheduledHires hires = new ScheduledHires(door, work, Map.of("architect", file), SeatTree.standard());
+        SeatScheduler.ScheduledSeat due = new SeatScheduler.ScheduledSeat("architect", "* * * * *", "b");
+
+        hires.fire(due);
+        assertEquals(1, door.hires.size(), "CONTROL: a readable key hires");
+
+        seat("architect.md", "name: architect\nschedule: \"* * * * *\"\nschedule_gate: health_check [");
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> hires.fire(due));
+
+        assertAll(
+            () -> assertTrue(refused.getMessage().contains("schedule_gate"), refused.getMessage()),
+            () -> assertEquals(1, door.hires.size(), "no hire was made on a gate nobody could read, and none on the default either"));
+    }
+
+    @Test
     @DisplayName("a folder in which no seat declares a schedule starts nothing")
     void nothingIsStartedWhenNoSeatIsScheduled() throws Exception {
         seat("adhoc.md", "name: adhoc");

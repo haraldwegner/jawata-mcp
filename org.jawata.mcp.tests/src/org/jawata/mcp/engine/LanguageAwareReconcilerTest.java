@@ -30,10 +30,13 @@ class LanguageAwareReconcilerTest {
             });
     }
 
+    /** What Java declares: the suffix of its own source files, and the four names of the build files a change to which is named (S14, item d). */
+    private static final Set<String> JAVA = Set.of(".java", "pom.xml", "build.gradle", ".classpath", "MANIFEST.MF");
+
     @Test
-    @DisplayName("Java declares the suffix of its own source files, so the scan does not have to")
+    @DisplayName("Java declares the suffix of its own source files and the names of its four build files, so the scan does not have to")
     void javaDeclaresTheSuffixOfItsOwnFiles() {
-        assertEquals(Set.of(".java"), new JavaProvider().sourceExtensions());
+        assertEquals(JAVA, new JavaProvider().sourceExtensions());
     }
 
     @Test
@@ -44,7 +47,9 @@ class LanguageAwareReconcilerTest {
 
         new LanguageAwareReconciler(host, () -> bound).syncBeforeCall();
 
-        assertEquals(List.of(Set.of(".java", ".cpp", ".h")), host.extensionSets(), "every bound language's suffixes, and no suffix nobody declared");
+        Set<String> expected = new java.util.HashSet<>(JAVA);
+        expected.addAll(Set.of(".cpp", ".h"));
+        assertEquals(List.of(expected), host.extensionSets(), "every bound language's suffixes, and no suffix nobody declared");
     }
 
     @Test

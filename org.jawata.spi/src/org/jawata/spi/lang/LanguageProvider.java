@@ -38,7 +38,8 @@ public interface LanguageProvider {
     /**
      * The file-name suffixes its source files carry (".java"), which the engine's per-call disk-sync scan asks of every language the host
      * serves so that a change on disk reaches the language that owns the file; a language that names none has its files left unscanned,
-     * and a scan names no suffix of its own (28h D15).
+     * and a scan names no suffix of its own (28h D15). A language may also declare the names of its build files here ("pom.xml"): the
+     * scan then sees a change to one, and the next answer names it and says {@code refresh_workspace} is the next step (28h S14).
      */
     default java.util.Set<String> sourceExtensions() {
         return java.util.Set.of();

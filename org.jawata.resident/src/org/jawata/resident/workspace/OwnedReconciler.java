@@ -135,7 +135,16 @@ public class OwnedReconciler implements Reconciler {
                 toBuild.add(prj);
             }
         }
+        // A build file the scan saw (28h S14, item d) is NAMED in the report and nothing more: it is not refreshed and it triggers no build,
+        // because a build over the classpath already imported could not apply the edit, and re-importing a project on its own discards open
+        // buffers. The caller is told, in the next answer, and decides.
+        java.util.List<String> changedBuildFiles = new java.util.ArrayList<>();
+        java.util.List<Path> sourceAdded = new java.util.ArrayList<>();
+        java.util.List<Path> sourceDeleted = new java.util.ArrayList<>();
         for (Path p : scan.changed()) {
+            if (isBuildFile(p, changedBuildFiles)) {
+                continue;
+            }
             int r = refreshExisting(byRoot, p, toBuild, monitor);
             refreshed += r;
             if (r > 0 && refreshedPaths.size() < MAX_REPORTED_PATHS) {
@@ -143,9 +152,17 @@ public class OwnedReconciler implements Reconciler {
             }
         }
         for (Path p : scan.deleted()) {
+            if (isBuildFile(p, changedBuildFiles)) {
+                continue;
+            }
+            sourceDeleted.add(p);
             refreshed += refreshExisting(byRoot, p, toBuild, monitor);
         }
         for (Path p : scan.added()) {
+            if (isBuildFile(p, changedBuildFiles)) {
+                continue;
+            }
+            sourceAdded.add(p);
             int r = refreshAdded(byRoot, p, toBuild, monitor);
             refreshed += r;
             if (r > 0 && refreshedPaths.size() < MAX_REPORTED_PATHS) {
@@ -158,15 +175,15 @@ public class OwnedReconciler implements Reconciler {
         // diagnostics model walk stayed at N files until an element lookup opened the
         // chain). Closing the source roots drops the stale cache; the model
         // repopulates lazily from the just-refreshed resources.
-        if (!scan.added().isEmpty() || !scan.deleted().isEmpty()) {
+        if (!sourceAdded.isEmpty() || !sourceDeleted.isEmpty()) {
             Set<LoadedProject> structureChanged = new LinkedHashSet<>();
-            for (Path p : scan.added()) {
+            for (Path p : sourceAdded) {
                 LoadedProject lp = LoadedProject.owning(byRoot.values(), p);
                 if (lp != null) {
                     structureChanged.add(lp);
                 }
             }
-            for (Path p : scan.deleted()) {
+            for (Path p : sourceDeleted) {
                 LoadedProject lp = LoadedProject.owning(byRoot.values(), p);
                 if (lp != null) {
                     structureChanged.add(lp);
@@ -180,7 +197,7 @@ public class OwnedReconciler implements Reconciler {
                 }
             }
         }
-        boolean full = decideFullBuild(scan, toBuild);
+        boolean full = decideFullBuild(!sourceAdded.isEmpty() || !sourceDeleted.isEmpty(), toBuild);
         int buildKind = full ? IncrementalProjectBuilder.FULL_BUILD
                              : IncrementalProjectBuilder.INCREMENTAL_BUILD;
         for (IProject prj : toBuild) {
@@ -189,7 +206,23 @@ public class OwnedReconciler implements Reconciler {
         recordRedState(toBuild);
         return new SyncReport(false, scan.newRoots().size(), refreshed, toBuild.size(),
             scan.durationNanos(), System.nanoTime() - t0, full,
-            java.util.List.copyOf(refreshedPaths));
+            java.util.List.copyOf(refreshedPaths), java.util.List.copyOf(changedBuildFiles));
+    }
+
+    /**
+     * Whether a file the scan saw is a build file, and if it is, it is noted by its absolute path (up to {@link #MAX_REPORTED_PATHS}).
+     * A build file is told by its exact name in {@link org.jawata.core.project.BuildSystem#BUILD_CONFIGURATION_FILES}, whatever suffix the
+     * language declared to make the scan see it, so a source file whose name merely ends in a declared name is still a source file.
+     */
+    private static boolean isBuildFile(Path file, java.util.List<String> noted) {
+        Path name = file.getFileName();
+        if (name == null || !org.jawata.core.project.BuildSystem.BUILD_CONFIGURATION_FILES.contains(name.toString())) {
+            return false;
+        }
+        if (noted.size() < MAX_REPORTED_PATHS) {
+            noted.add(file.toString());
+        }
+        return true;
     }
 
     /** Changed or deleted: refresh exactly the file handle (deletion drops it from the model). */
@@ -259,17 +292,17 @@ public class OwnedReconciler implements Reconciler {
      *       compile" rule).</li>
      * </ul>
      * A modify-only, green pass takes the fast incremental path. A changed build file ({@code pom.xml},
-     * {@code build.gradle}, {@code MANIFEST.MF}, …) is NOT a reason here: the scan looks for the suffixes the languages declare
-     * for their source files, none of which names a build file, and a build over the files already imported could not apply
-     * such an edit anyway, because the classpath comes from the importer (28k ledger C2b-16; 28h D15 built the source suffixes
-     * only, and the plan's S14 row says why the build-file names were not built). (The remaining
+     * {@code build.gradle}, {@code .classpath}, {@code MANIFEST.MF}) is NOT a reason here: a build over the files already imported could
+     * not apply such an edit, because the classpath comes from the importer (28k ledger C2b-16). The scan now SEES those four, since
+     * Java declares them (28h S14, item d), and {@link #syncBeforeCall(Set)} names them in its report instead of building; the caller is
+     * told to run {@code refresh_workspace} and the project is never re-imported unasked. (The remaining
      * refinement — escalating a modify whose DECLARATION surface changed, to catch
      * signature edits that silently stale consumers, {@code bugs.md #8} — needs a
      * per-file declaration-hash cache and is a deliberate follow-up, kept out of this
      * correctness hot path until it can be done + tested carefully.)
      */
-    private boolean decideFullBuild(DiskSyncGuard.ScanResult scan, Set<IProject> toBuild) {
-        if (!scan.added().isEmpty() || !scan.deleted().isEmpty()) {
+    private boolean decideFullBuild(boolean sourceStructureChanged, Set<IProject> toBuild) {
+        if (sourceStructureChanged) {
             return true;   // type universe changed; incremental lags fresh additions
         }
         for (IProject prj : toBuild) {

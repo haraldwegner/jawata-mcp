@@ -658,6 +658,19 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
     }
 
     /**
+     * The line an answer carries when a build file changed on disk since the last call: it names each changed file and says that the
+     * project was not re-imported and {@code refresh_workspace} is the next step. Null when none changed, so an ordinary answer is
+     * byte-unchanged.
+     */
+    private static String buildFileNotice(java.util.List<String> changedBuildFiles) {
+        if (changedBuildFiles == null || changedBuildFiles.isEmpty()) {
+            return null;
+        }
+        return "Build file changed on disk: " + String.join(", ", changedBuildFiles) + ". The project was NOT re-imported, so its classpath"
+            + " is still the one loaded before the change; run refresh_workspace to pick the change up.";
+    }
+
+    /**
      * Call a tool by name with the given arguments.
      *
      * @param name The tool name
@@ -703,10 +716,12 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         // CURRENT tree. Failure = WARN and proceed (availability over freshness on a
         // guard crash ONLY — never a switch; correctness is not configurable).
         java.util.List<String> syncDelta = java.util.List.of();
+        String buildFileNotice = null;
         if (reconciler != null) {
             try {
                 SyncReport sync = reconciler.syncBeforeCall();
                 syncDelta = sync.refreshedPaths();
+                buildFileNotice = buildFileNotice(sync.changedBuildFiles());
                 if (sync.reconciled()) {
                     log.info("Strict disk sync before {}: {} new project(s), {} file(s) reconciled,"
                             + " {} project(s) built in {}ms",
@@ -806,6 +821,11 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
             // Sprint 22 (POST layer): central steering injection — every success
             // result names the next grounded step (see steeringFor).
             response.applySteering(steeringFor(name));
+            // Sprint 28h S14 (item d): a build file that changed on disk since the last call is NAMED here, with the next step. Not on
+            // refresh_workspace's own answer, which is the step. The project is not re-imported: the caller decides.
+            if (buildFileNotice != null && !"refresh_workspace".equals(name)) {
+                response.appendStoreAnswer(buildFileNotice);
+            }
             // Sprint 26a (D2): the WEIGHTED PRECEDENT push — for the thing this
             // call is working on, what did tools do in similar cases before?
             // Runs BEFORE the tap so it reflects PAST experience, not this call's
