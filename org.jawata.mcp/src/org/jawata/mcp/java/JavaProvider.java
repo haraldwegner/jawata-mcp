@@ -243,7 +243,7 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
         // The interactive debugger is given the store: a breakpoint hit RECALLS what is recorded about its symbol. The profiler
         // shares the sessions the debugger opens.
         tools.add(new DebugTool(jdt, needs.runtimeSessions(), needs.runtimeArtifacts(),
-            new ExperienceRetrieval(needs.experienceStore(), memoryAnchors()), needs.debugTurn()));
+            new ExperienceRetrieval(needs.experienceStore(), memoryAnchors()), needs.debugTurn(), needs.hostRuns()));
         tools.add(new ProfileTool(jdt, needs.runtimeSessions(), needs.runtimeArtifacts()));
 
         tools.add(new FindDuplicateCodeTool(jdt));

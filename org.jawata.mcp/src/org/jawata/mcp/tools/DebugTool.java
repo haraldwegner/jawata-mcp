@@ -1,6 +1,14 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
@@ -12,17 +20,11 @@ import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.runtime.debug.DebugController;
 import org.jawata.mcp.runtime.debug.JdiValues;
 import org.jawata.spi.host.DebugTurn;
+import org.jawata.spi.host.HostRuns;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Sprint 24 — the {@code debug} front door: one tool, the whole interactive
@@ -93,6 +95,8 @@ public class DebugTool extends AbstractTool {
     private final org.jawata.mcp.knowledge.ExperienceRetrieval experience;
     /** Whose turn it is to debug: when the person has a launch of their own, the agent neither starts nor attaches. */
     private final DebugTurn debugTurn;
+    /** The host's own way of running a program for jawata, when it has one (contract §6.1). */
+    private final Optional<HostRuns> hostRuns;
 
     public DebugTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions) {
         this(serviceSupplier, sessions,
@@ -107,11 +111,23 @@ public class DebugTool extends AbstractTool {
     public DebugTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions,
                      RuntimeArtifactStore artifacts,
                      org.jawata.mcp.knowledge.ExperienceRetrieval experience, DebugTurn debugTurn) {
+        this(serviceSupplier, sessions, artifacts, experience, debugTurn, Optional.empty());
+    }
+
+    /**
+     * @param hostRuns how the host starts a program from the person's run configurations ("Run for jawata"), or empty when the host runs
+     *                 none and the agent starts a program from a main class and a classpath
+     */
+    public DebugTool(Supplier<IJdtService> serviceSupplier, RuntimeSessionRegistry sessions,
+                     RuntimeArtifactStore artifacts,
+                     org.jawata.mcp.knowledge.ExperienceRetrieval experience, DebugTurn debugTurn,
+                     Optional<HostRuns> hostRuns) {
         super(serviceSupplier);
         this.sessions = sessions;
         this.artifacts = artifacts;
         this.experience = experience;
         this.debugTurn = debugTurn;
+        this.hostRuns = hostRuns;
     }
 
     /**
@@ -153,6 +169,13 @@ public class DebugTool extends AbstractTool {
                          the program — otherwise it has already run past what you wanted
                          to see. Needs: mainClass + classpath. Optional: args, jvmArgs,
                          workingDirectory.
+                         IN AN IDE THAT RUNS PROGRAMS FOR JAWATA (Eclipse): launch with
+                         configuration=<the name of the person's run configuration> asks the
+                         host to run it ("Run for jawata"), then attaches. The program is NOT
+                         held: it is already running, so reproduce the bug in it, then set
+                         breakpoints or probes. The person's configuration is never changed.
+                         A program the person started with Run > Run for jawata is listed by
+                         discover with its configuration and who started it; attach by pid.
             - status   — one session, or all of them (omit sessionId).
             - detach   — end a session. A JVM you LAUNCHED is killed; a JVM you
                          ATTACHED to is released and keeps running — it was never
@@ -342,6 +365,10 @@ public class DebugTool extends AbstractTool {
         properties.put("workingDirectory", Map.of("type", "string",
             "description", "launch: the target's working directory."));
 
+        properties.put("configuration", Map.of("type", "string",
+            "description", "launch (a host that runs programs for jawata, such as Eclipse): the name of the person's run "
+                + "configuration to run with the debug agent, and attach to. Exclusive with mainClass/classpath/launcherPath. "
+                + "The program is not held at its start."));
         properties.put("launcherPath", Map.of("type", "string",
             "description", "launch (eclipse-rcp shape): the product's NATIVE launcher "
                 + "executable. Exclusive with mainClass/classpath — the command becomes "
@@ -1151,6 +1178,7 @@ public class DebugTool extends AbstractTool {
 
     private ToolResponse discover() {
         List<Map<String, Object>> jvms = JvmTargets.discover();
+        labelProgramsStartedForJawata(jvms);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("jvms", jvms);
         data.put("count", jvms.size());
@@ -1162,6 +1190,23 @@ public class DebugTool extends AbstractTool {
                     + "A JVM that started without a debug agent can NEVER be given one; "
                     + "debuggability is decided at launch and cannot be retrofitted.")
             .build());
+    }
+
+    /**
+     * Marks the programs the host started for jawata (path A by the agent, path B by the person) so the agent knows which one to attach
+     * to: each carries the person's run configuration, who started it, and a sentence saying so.
+     */
+    private void labelProgramsStartedForJawata(List<Map<String, Object>> jvms) {
+        for (HostRuns.RunForJawata run : hostRuns.map(HostRuns::runningForJawata).orElse(List.of())) {
+            for (Map<String, Object> jvm : jvms) {
+                if (jvm.get("pid") instanceof Number pid && pid.longValue() == run.pid()) {
+                    jvm.put("startedForJawata", true);
+                    jvm.put("configuration", run.configuration());
+                    jvm.put("startedBy", run.startedBy());
+                    jvm.put("label", "started by the " + run.startedBy() + " for jawata, configuration " + run.configuration());
+                }
+            }
+        }
     }
 
     private ToolResponse attach(JsonNode arguments) throws Exception {
@@ -1197,6 +1242,15 @@ public class DebugTool extends AbstractTool {
         String launcherPath = getStringParam(arguments, "launcherPath");
         String mainClass = getStringParam(arguments, "mainClass");
         String classpath = getStringParam(arguments, "classpath");
+        String configuration = getStringParam(arguments, "configuration");
+        if (configuration != null && !configuration.isBlank()) {
+            if (mainClass != null || classpath != null || launcherPath != null) {
+                return ToolResponse.invalidParameter("configuration",
+                    "A run configuration (configuration) is exclusive with mainClass, classpath and launcherPath: the host "
+                        + "builds the command from the person's configuration.");
+            }
+            return launchHostRun(arguments, configuration);
+        }
         if (launcherPath != null && !launcherPath.isBlank()) {
             if (mainClass != null || classpath != null) {
                 return ToolResponse.invalidParameter("launcherPath",
@@ -1224,6 +1278,37 @@ public class DebugTool extends AbstractTool {
                 + "This JVM is ours — detach kills it. Arm your breakpoints now, then "
                 + "debug(action=resume) to start the program: a target that is already "
                 + "running has already run past whatever you wanted to see.",
+            getStringParam(arguments, "projectKey"));
+    }
+
+    /**
+     * Path A of "Run for jawata" (contract §6.1): the host starts the person's run configuration with the debug agent in the background,
+     * and the debugger attaches to it by the process id the host answers with. The program is never held at its start.
+     */
+    private ToolResponse launchHostRun(JsonNode arguments, String configuration) throws Exception {
+        if (hostRuns.isEmpty()) {
+            return ToolResponse.error("HOST_RUNS_NO_PROGRAMS",
+                "This host does not run programs from run configurations, so there is no configuration '" + configuration + "' to start.",
+                "Start the program with debug(action=launch, mainClass=…, classpath=…), or start it yourself with the debug agent "
+                    + "(debug(action=preset_args)) and attach by pid.");
+        }
+        HostRuns.RunForJawata run;
+        try {
+            run = hostRuns.get().runForJawata(configuration, new org.eclipse.core.runtime.NullProgressMonitor());
+        } catch (org.eclipse.core.runtime.CoreException refused) {
+            return ToolResponse.error("HOST_RUN_FAILED", refused.getMessage(),
+                "Name a run configuration the person has made in the host, as the host lists it.");
+        }
+        RuntimeSession session;
+        try {
+            session = sessions.attach(run.pid());
+        } catch (JvmTargets.NotDebuggable e) {
+            return ToolResponse.error("JVM_NOT_DEBUGGABLE", e.getMessage(),
+                "The host started '" + configuration + "' (pid " + run.pid() + ") but its debug agent did not answer.");
+        }
+        return sessionResponse(session, "Started by the host from the person's run configuration '" + configuration + "' (pid " + run.pid()
+            + ") and attached. The program is NOT held: it is already running, so reproduce the problem in it, and set breakpoints or "
+            + "probes now. detach releases it and it keeps running; the person's configuration is unchanged.",
             getStringParam(arguments, "projectKey"));
     }
 

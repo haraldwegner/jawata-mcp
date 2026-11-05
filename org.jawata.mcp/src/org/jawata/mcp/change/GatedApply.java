@@ -47,6 +47,12 @@ import org.eclipse.ltk.core.refactoring.Change;
  */
 public final class GatedApply {
 
+    /**
+     * How the gate takes back a change it refuses: as a trial, so a host with an undo history of its own (Eclipse's Edit &gt; Undo) does not
+     * list the gate's own rollback as a step the person made (28k contract §16, ledger 28k-A18-1).
+     */
+    private static final org.jawata.spi.host.WorkspaceWrites.WriteMode TAKING_BACK = org.jawata.spi.host.WorkspaceWrites.WriteMode.TRIAL;
+
     private GatedApply() {
     }
 
@@ -102,7 +108,7 @@ public final class GatedApply {
             // would leave it applied with nobody able to undo it (28k ledger C2b-19). Undo it, then let the throw go on.
             if (outcome.undoChange() != null) {
                 try {
-                    ChangeEngine.ApplyOutcome undone = ChangeEngine.perform(outcome.undoChange(), context);
+                    ChangeEngine.ApplyOutcome undone = ChangeEngine.perform(outcome.undoChange(), context, TAKING_BACK);
                     if (undone.validationError() != null) {
                         thrown.addSuppressed(new IllegalStateException(
                             "UNDO FAILED — the change IS on disk; restore from VCS: " + undone.validationError()));
@@ -140,7 +146,7 @@ public final class GatedApply {
 
         boolean undone = false;
         if (outcome.undoChange() != null) {
-            undone = ChangeEngine.perform(outcome.undoChange(), context)
+            undone = ChangeEngine.perform(outcome.undoChange(), context, TAKING_BACK)
                 .validationError() == null;
         }
         return new Result(outcome, introduced,

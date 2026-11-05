@@ -88,6 +88,7 @@ public final class ShippedTools {
      * @param registry           the registry the tools are registered in, for the tool that gates through it
      * @param selfEndpoint       this resident's own endpoint, null on stdio and before it listens
      * @param defaultMemoryRoots where the experience tool loads memory files from by default
+     * @param hostRuns           how the host runs a program from the person's run configurations, or empty when it runs none
      */
     public record Wiring(
             HostWorkspace workspace,
@@ -105,7 +106,12 @@ public final class ShippedTools {
             Supplier<LearnerEventStore> learnerEvents,
             Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> selfEndpoint,
-            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn, Supplier<org.jawata.spi.host.EngineSettings> settings, org.jawata.mcp.learn.PlanLedger plans) {
+            Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn, Supplier<org.jawata.spi.host.EngineSettings> settings, org.jawata.mcp.learn.PlanLedger plans, java.util.Optional<org.jawata.spi.host.HostRuns> hostRuns) {
+
+        /** The wiring of a host that runs no programs for the engine: the debugger starts programs itself. */
+        public Wiring(HostWorkspace workspace, Supplier<Boolean> projectLoaded, Supplier<Integer> toolCount, Supplier<ProjectLoadingState> loadingState, Supplier<String> loadingError, Supplier<Path> fieldDir, Supplier<InFlightCalls> inFlight, RefactoringChangeCache changeCache, ExperienceStore experienceStore, Supplier<ExperienceStore> storeSupplier, Supplier<EmbeddingIndex> embeddingIndex, RuntimeSessionRegistry runtimeSessions, Supplier<LearnerEventStore> learnerEvents, Supplier<ToolRegistry> registry, Supplier<SelfEndpoint> selfEndpoint, Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn, Supplier<org.jawata.spi.host.EngineSettings> settings, org.jawata.mcp.learn.PlanLedger plans) {
+            this(workspace, projectLoaded, toolCount, loadingState, loadingError, fieldDir, inFlight, changeCache, experienceStore, storeSupplier, embeddingIndex, runtimeSessions, learnerEvents, registry, selfEndpoint, defaultMemoryRoots, reconciler, runtimeArtifacts, coverage, debugTurn, settings, plans, java.util.Optional.empty());
+        }
 
         public Wiring(HostWorkspace workspace, Supplier<Boolean> projectLoaded, Supplier<Integer> toolCount, Supplier<ProjectLoadingState> loadingState, Supplier<String> loadingError, Supplier<Path> fieldDir, Supplier<InFlightCalls> inFlight, RefactoringChangeCache changeCache, ExperienceStore experienceStore, Supplier<ExperienceStore> storeSupplier, Supplier<EmbeddingIndex> embeddingIndex, RuntimeSessionRegistry runtimeSessions, Supplier<LearnerEventStore> learnerEvents, Supplier<ToolRegistry> registry, Supplier<SelfEndpoint> selfEndpoint, Supplier<List<Path>> defaultMemoryRoots, Supplier<org.jawata.spi.host.Reconciler> reconciler, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.mcp.coverage.CoverageService coverage, org.jawata.spi.host.DebugTurn debugTurn) {
             this(workspace, projectLoaded, toolCount, loadingState, loadingError, fieldDir, inFlight, changeCache, experienceStore, storeSupplier, embeddingIndex, runtimeSessions, learnerEvents, registry, selfEndpoint, defaultMemoryRoots, reconciler, runtimeArtifacts, coverage, debugTurn, () -> key -> java.util.Optional.empty());
@@ -151,7 +157,7 @@ public final class ShippedTools {
         org.jawata.mcp.change.PlanSlot plans = new org.jawata.mcp.change.PlanSlot();
         ToolNeeds needs = new ToolNeeds(
             w.changeCache(), w.storeSupplier(), w.experienceStore(), w.runtimeSessions(), runTests::impactedTests,
-            w.runtimeArtifacts(), w.debugTurn(), plans, advisor);
+            w.runtimeArtifacts(), w.debugTurn(), plans, advisor, w.hostRuns());
         return new Built(List.copyOf(neutralTools(w, runTests, experience, ports, plans)), null, advisor, experience, needs);
     }
 

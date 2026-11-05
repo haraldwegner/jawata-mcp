@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  * @param debugTurn       whether the person is debugging, which the runtime tools respect
  * @param plans           where a language offers the plan actions of the refactoring front door
  * @param advisor         what the plan lifecycle consults and records against the knowledge store
+ * @param hostRuns        how the host runs a program from the person's run configurations for the debugger, or empty when it runs none
  */
 public record ToolNeeds(
         RefactoringChangeCache changeCache,
@@ -30,5 +31,15 @@ public record ToolNeeds(
         ExperienceStore experienceStore,
         RuntimeSessionRegistry runtimeSessions,
         Function<JsonNode, ToolResponse> impactedTests, org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.spi.host.DebugTurn debugTurn,
-        org.jawata.mcp.change.PlanSlot plans, org.jawata.mcp.domain.Advisor advisor) {
+        org.jawata.mcp.change.PlanSlot plans, org.jawata.mcp.domain.Advisor advisor,
+        java.util.Optional<org.jawata.spi.host.HostRuns> hostRuns) {
+
+    /** What a language is handed when the host runs no programs for the engine. */
+    public ToolNeeds(RefactoringChangeCache changeCache, Supplier<ExperienceStore> storeSupplier, ExperienceStore experienceStore,
+            RuntimeSessionRegistry runtimeSessions, Function<JsonNode, ToolResponse> impactedTests,
+            org.jawata.mcp.runtime.RuntimeArtifactStore runtimeArtifacts, org.jawata.spi.host.DebugTurn debugTurn,
+            org.jawata.mcp.change.PlanSlot plans, org.jawata.mcp.domain.Advisor advisor) {
+        this(changeCache, storeSupplier, experienceStore, runtimeSessions, impactedTests, runtimeArtifacts, debugTurn, plans, advisor,
+            java.util.Optional.empty());
+    }
 }

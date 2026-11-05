@@ -23,6 +23,7 @@ import org.jawata.spi.host.EngineHost;
 import org.jawata.spi.host.EngineLifecycle;
 import org.jawata.spi.host.EngineSettings;
 import org.jawata.spi.host.HostCapabilities;
+import org.jawata.spi.host.HostRuns;
 import org.jawata.spi.host.HostWorkspace;
 import org.jawata.spi.host.Instruments;
 import org.jawata.spi.host.LanguageBinding;
@@ -52,6 +53,7 @@ public final class FakeHost implements EngineHost {
     private final Recording person = new Recording();
     private final Turn debugTurn = new Turn();
     private volatile List<String> languages = List.of();
+    private volatile HostRuns runs;
 
     /**
      * @param scratch  the one folder everything the host keeps is under
@@ -125,7 +127,27 @@ public final class FakeHost implements EngineHost {
 
     @Override
     public Instruments instruments() {
-        return () -> debugTurn;
+        return new Instruments() {
+            @Override
+            public DebugTurn debugTurn() {
+                return debugTurn;
+            }
+
+            @Override
+            public Optional<HostRuns> runs() {
+                return Optional.ofNullable(runs);
+            }
+        };
+    }
+
+    /**
+     * Gives this host a way to run programs for the engine, as the Eclipse host has; set it before the engine is assembled over the host,
+     * because the engine reads it once, when it wires the tools.
+     *
+     * @param runs the host's runs
+     */
+    public void runs(HostRuns runs) {
+        this.runs = runs;
     }
 
     @Override

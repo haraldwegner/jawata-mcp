@@ -2514,6 +2514,10 @@
      "description": "launch (eclipse-rcp): -configuration area for the launched instance \u2014 point it at a scratch dir to leave the product's own configuration untouched.",
      "type": "string"
     },
+    "configuration": {
+     "description": "launch (a host that runs programs for jawata, such as Eclipse): the name of the person's run configuration to run with the debug agent, and attach to. Exclusive with mainClass/classpath/launcherPath. The program is not held at its start.",
+     "type": "string"
+    },
     "depth": {
      "description": "snapshot/instances: how deep to expand objects (default 3).",
      "type": "integer"

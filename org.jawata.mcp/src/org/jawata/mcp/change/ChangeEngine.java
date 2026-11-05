@@ -201,25 +201,34 @@ public final class ChangeEngine {
     /** Files a change will touch, derived from the change tree (pre-apply). */
     public static List<String> affectedFilePaths(Change change, org.jawata.mcp.change.ChangeContext context) {
         Set<String> affected = new LinkedHashSet<>();
-        collectAffectedPaths(change, context.paths(), affected);
+        for (IFile file : targetFiles(change, context.paths())) {
+            affected.add(formatPath(file, context.paths()));
+        }
         return new ArrayList<>(affected);
     }
 
-    private static void collectAffectedPaths(Change change, org.jawata.spi.lang.ChangePaths paths, Set<String> sink) {
+    /** The files a change tree acts on, read from the tree before anything is written. */
+    private static Set<IFile> targetFiles(Change change, org.jawata.spi.lang.ChangePaths paths) {
+        Set<IFile> files = new LinkedHashSet<>();
+        collectFiles(change, paths, files);
+        return files;
+    }
+
+    private static void collectFiles(Change change, org.jawata.spi.lang.ChangePaths paths, Set<IFile> sink) {
         if (change == null) {
             return;
         }
         Object modified = change.getModifiedElement();
         if (change instanceof TextFileChange tfc) {
-            sink.add(formatPath(tfc.getFile(), paths));
+            sink.add(tfc.getFile());
         } else if (modified instanceof IFile file) {
-            sink.add(formatPath(file, paths));
+            sink.add(file);
         } else {
-            paths.fileOf(modified).ifPresent(file -> sink.add(formatPath(file, paths)));
+            paths.fileOf(modified).ifPresent(sink::add);
         }
         if (change instanceof CompositeChange composite) {
             for (Change child : composite.getChildren()) {
-                collectAffectedPaths(child, paths, sink);
+                collectFiles(child, paths, sink);
             }
         }
     }
@@ -232,7 +241,22 @@ public final class ChangeEngine {
      * after perform misses their effects.</p>
      */
     public static ApplyOutcome perform(Change change, org.jawata.mcp.change.ChangeContext context) {
+        return perform(change, context, WorkspaceWrites.WriteMode.ACCEPTED);
+    }
+
+    /**
+     * Perform the change in a mode the host understands: a change the person keeps is {@code ACCEPTED}, a change applied only to be
+     * judged or taken back is {@code TRIAL}, which a host with an undo history of its own keeps out of it. Before anything is written
+     * the host is asked whether it will write over these files at all (28k contract §16): a refusal is an answer, not a failure, so it is
+     * logged without a stack and returned as the outcome's reason with nothing written.
+     */
+    public static ApplyOutcome perform(Change change, org.jawata.mcp.change.ChangeContext context, WorkspaceWrites.WriteMode mode) {
         ChangePaths paths = context.paths();
+        java.util.Optional<String> refused = context.writes().refusal(targetFiles(change, paths));
+        if (refused.isPresent()) {
+            log.info("The host refused to write '{}': {}", change.getName(), refused.get());
+            return new ApplyOutcome(null, List.of(), refused.get());
+        }
         try {
             change.initializeValidationData(new NullProgressMonitor());
 
@@ -259,7 +283,7 @@ public final class ChangeEngine {
                 listener, IResourceChangeEvent.POST_CHANGE);
             WorkspaceWrites.Applied applied;
             try {
-                applied = context.writes().perform(change, new NullProgressMonitor());
+                applied = context.writes().perform(change, mode, new NullProgressMonitor());
             } finally {
                 ResourcesPlugin.getWorkspace().removeResourceChangeListener(listener);
             }
