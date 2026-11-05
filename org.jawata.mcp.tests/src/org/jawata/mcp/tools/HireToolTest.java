@@ -860,13 +860,11 @@ class HireToolTest {
             () -> assertEquals(data.get("hirer"), detail.path("hirer").asText(), "who hired it, so the hires of one issuer can be summed"),
             () -> org.junit.jupiter.api.Assertions.assertTrue(detail.path("elapsedMs").isNumber() && detail.path("elapsedMs").asLong() >= 0,
                 "how long the brain ran: " + detail),
-            () -> assertEquals(data.containsKey("costUsd"), detail.hasNonNull("costUsd"),
-                "a cost the brain sent is in the row, and one it did not send is absent and never 0"),
-            () -> {
-                if (data.containsKey("costUsd")) {
-                    assertEquals(((Number) data.get("costUsd")).doubleValue(), detail.path("costUsd").asDouble(), 1e-9, "the cost the answer shows");
-                }
-            });
+            // The stand-in brain always reports a cost, so the answer shows one and the row carries the same figure;
+            // the case of a brain that sends none (absent, never 0) is HiredRunProposesTest's.
+            () -> org.junit.jupiter.api.Assertions.assertTrue(data.containsKey("costUsd"), "the answer shows the cost the brain sent: " + data),
+            () -> org.junit.jupiter.api.Assertions.assertTrue(detail.hasNonNull("costUsd"), "the row carries it: " + detail),
+            () -> assertEquals(((Number) data.get("costUsd")).doubleValue(), detail.path("costUsd").asDouble(), 1e-9, "the cost the answer shows"));
 
         // AND THE HIRER IS TOLD, in the answer it already reads, what the journal holds — so
         // "journalled" is something the run's answer shows rather than something a caller assumes.
@@ -877,6 +875,25 @@ class HireToolTest {
             () -> assertEquals(row.tool(), shown.get("brain")),
             () -> assertEquals(data.get("artifactId"),
                 ((Map<?, ?>) shown.get("detail")).get("artifactId")));
+    }
+
+    @Test
+    @DisplayName("28h item (b): a hire made with fixes names the hire it corrects in its answer and its journal row, and a hire without it names none")
+    void aFixHireNamesTheHireItCorrects() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode withFix = (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        withFix.put("fixes", "plan-earlier");
+
+        Map<String, Object> fixData = dataOf(hire.execute(withFix));
+        Map<String, Object> plainData = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        JsonNode fixRow = JSON.readTree(events.eventsOfSession((String) fixData.get("plan")).orElseThrow().get(0).detailJson());
+        JsonNode plainRow = JSON.readTree(events.eventsOfSession((String) plainData.get("plan")).orElseThrow().get(0).detailJson());
+
+        assertAll(
+            () -> assertEquals("plan-earlier", fixData.get("fixes"), "the answer names the hire it corrects"),
+            () -> assertEquals("plan-earlier", fixRow.path("fixes").asText(), "and so does the journal row: " + fixRow),
+            () -> org.junit.jupiter.api.Assertions.assertFalse(plainData.containsKey("fixes"), "a hire that corrects nothing names nothing"),
+            () -> org.junit.jupiter.api.Assertions.assertFalse(plainRow.hasNonNull("fixes"), "and its row carries none: " + plainRow));
     }
 
     @Test

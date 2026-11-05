@@ -54,6 +54,8 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
     public static final String FAILED = "failed";
     public static final String ACCEPTED = "accepted";
     public static final String REJECTED = "rejected";
+    /** The superior accepted the result and sent a follow-up hire naming what to correct; set by that hire's {@code fixes} argument. */
+    public static final String ACCEPTED_WITH_FIX = "accepted-with-fix";
 
     private static final ObjectMapper JSON = new ObjectMapper();
 

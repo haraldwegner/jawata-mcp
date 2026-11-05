@@ -499,6 +499,26 @@ public final class AcpServer {
             answered.map(entry -> List.of(entry.cardLine())).orElse(List.of()));
     }
 
+    /** Shows the host a hire's card as it now stands, as an update of the hire's own tool call. */
+    private void showCardUpdate(String sessionId, HireEntry entry) {
+        ObjectNode shown = JSON.createObjectNode();
+        shown.put("sessionUpdate", "tool_call_update");
+        shown.put("toolCallId", entry.planId());
+        shown.putObject("_meta").set("jawata/hire", entry.toMeta());
+        update(sessionId, shown);
+    }
+
+    /**
+     * An earlier hire has just been marked accepted-with-fix by a later hire that names it in {@code fixes}: the host sees its card change at
+     * once, and the change is kept in the lane under its own key so a session loaded later shows it.
+     */
+    private void showFixed(PrincipalSession session, HireEntry fixed) {
+        showCardUpdate(session.id(), fixed);
+        recorder.record(AgentRecorder.Level.HIRED, session, "fixed_" + fixed.planId(),
+            "A fix was sent for the result of " + fixed.seat() + " (" + fixed.planId() + "): " + HireEntry.ACCEPTED_WITH_FIX,
+            "Recorded that the result of " + fixed.seat() + " was accepted with a fix to follow.", List.of(fixed.cardLine()));
+    }
+
     private JsonRpcMessage prompt(Object id, JsonNode params, Channel from) {
         PrincipalSession session = sessionOf(params);
         if (session == null) {
@@ -543,6 +563,7 @@ public final class AcpServer {
             });
             update(session.id(), forwarded);
             seen.ifPresent(entry -> askAboutProposal(session, entry));
+            hires.takeFixed().ifPresent(fixed -> showFixed(session, fixed));
             ObjectNode state = toolState.computeIfAbsent(call.path("toolCallId").asText(), key -> JSON.createObjectNode());
             for (String field : List.of("title", "status")) {
                 if (call.hasNonNull(field)) {

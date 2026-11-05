@@ -255,6 +255,55 @@ class AgentHistoryTest {
         assertTrue(cards.get(0).path("_meta").path("jawata/hire").has("elapsedMs"), "the time it ran is kept");
     }
 
+    /** A brain that hires once in its first turn and, in its second, hires again naming the first hire's plan in {@code fixes}. */
+    private static AgentBrain fixingBrain() {
+        java.util.concurrent.atomic.AtomicInteger turns = new java.util.concurrent.atomic.AtomicInteger();
+        return new AgentBrain() {
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks) {
+                answer(prompt, chunks, call -> { });
+            }
+
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks, java.util.function.Consumer<JsonNode> toolCalls) {
+                int turn = turns.incrementAndGet();
+                ObjectNode start = JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "h" + turn)
+                    .put("title", "mcp__jawata-javata-dev__hire").put("status", "pending");
+                ObjectNode input = start.putObject("rawInput").put("hirer", "chief-engineer").put("seat", "worker").put("brief", "turn " + turn);
+                if (turn == 2) {
+                    input.put("fixes", "plan-aaa");
+                }
+                toolCalls.accept(start);
+                if (turn == 1) {
+                    toolCalls.accept(JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", "h1").put("status", "completed")
+                        .put("rawOutput", "{\"cleanExit\":true,\"plan\":\"plan-aaa\"}"));
+                }
+                chunks.accept("done");
+            }
+        };
+    }
+
+    @Test
+    @DisplayName("a hire that names fixes marks the earlier hire accepted-with-fix on the host's card at once and on the saved chat, in a later turn")
+    void aFixShowsTheEarlierHireAcceptedWithFixLiveAndAfterALoad() {
+        Connection first = new Connection(fixingBrain(), AgentRecorder.Depth.ALL);
+        first.open();
+        first.prompt("hire a worker");
+        first.prompt("hire a worker to fix it");
+
+        List<String> liveVerdicts = first.said.stream().map(m -> m.path("params").path("update"))
+            .filter(u -> "h1".equals(u.path("toolCallId").asText()) && u.path("_meta").path("jawata/hire").has("verdict"))
+            .map(u -> u.path("_meta").path("jawata/hire").path("verdict").asText()).toList();
+        assertTrue(liveVerdicts.contains("accepted-with-fix"), "the host was not shown the earlier hire's new verdict: " + first.said);
+
+        Connection later = new Connection("unused", AgentRecorder.Depth.ALL);
+        later.call(3, "session/load", JSON.createObjectNode().put("sessionId", first.session).put("cwd", "/w"));
+        JsonNode lastOfFirst = cardsReplayed(later).stream().filter(u -> "h1".equals(u.path("toolCallId").asText()))
+            .reduce((earlier, next) -> next).orElseThrow();
+        assertEquals("accepted-with-fix", lastOfFirst.path("_meta").path("jawata/hire").path("verdict").asText(),
+            "the saved chat lost the verdict the fix gave: " + later.said);
+    }
+
     @Test
     @DisplayName("a session the recording does not hold cannot be loaded, and says so")
     void anUnknownSessionIsRefused() {

@@ -394,6 +394,15 @@ public final class HiredRun {
         return this;
     }
 
+    /** The plan id of the hire this run corrects, written to the journal row so the fix and the hire it corrects can be read together (28h item b). */
+    private String fixesPlan = "";
+
+    /** Names the earlier hire this run corrects; blank when it corrects none. A run is built for one hire, so the name belongs to that hire alone. */
+    public HiredRun fixing(String plan) {
+        this.fixesPlan = plan == null ? "" : plan.strip();
+        return this;
+    }
+
     /** Names the session that issued this hire; a run is built for one hire, so the owner belongs to that hire alone. */
     public HiredRun ownedBy(Optional<String> issuer) {
         this.owner = issuer;
@@ -534,6 +543,9 @@ public final class HiredRun {
                 // when it said. A cost the brain did not send is absent from the row and never 0.
                 detail.put("seat", seatName);
                 detail.put("hirer", hirerName);
+                if (!fixesPlan.isEmpty()) {
+                    detail.put("fixes", fixesPlan);
+                }
                 detail.put("elapsedMs", brainRanMs);
                 detail.put("costUsd", costForRow(outcome));
                 detail.put("tokensSpent", outcome.tokens().isPresent() ? outcome.tokens().get().spent() : null);

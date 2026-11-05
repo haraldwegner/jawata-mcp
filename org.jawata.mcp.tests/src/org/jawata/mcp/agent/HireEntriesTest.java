@@ -92,6 +92,26 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("a hire made to fix an earlier one marks the earlier one accepted-with-fix, found by the plan id the earlier hire's answer named")
+    void aFixMarksTheEarlierHireAcceptedWithFix() {
+        watch.observe(withInput(hireCall("tool_call", "f1", "pending"), "chief-engineer", "worker", "do it"));
+        watch.observe(answered(hireCall("tool_call_update", "f1", "completed"), "{\"cleanExit\":true,\"plan\":\"plan-aaa\"}"));
+        assertTrue(watch.entry("f1").orElseThrow().verdict().isEmpty(), "nobody has answered the first hire yet");
+
+        ObjectNode fix = withInput(hireCall("tool_call", "f2", "pending"), "chief-engineer", "worker", "correct the two names");
+        ((ObjectNode) fix.get("rawInput")).put("fixes", "plan-aaa");
+        watch.observe(fix);
+
+        assertEquals(Optional.of("accepted-with-fix"), watch.entry("f1").orElseThrow().verdict());
+        assertTrue(watch.entry("f2").orElseThrow().verdict().isEmpty(), "the fix itself has no verdict yet");
+
+        ObjectNode strayFix = withInput(hireCall("tool_call", "f3", "pending"), "chief-engineer", "worker", "fix something unknown");
+        ((ObjectNode) strayFix.get("rawInput")).put("fixes", "plan-never-seen");
+        watch.observe(strayFix);
+        assertEquals(Optional.of("accepted-with-fix"), watch.entry("f1").orElseThrow().verdict(), "a plan id nobody knows marks nothing");
+    }
+
+    @Test
     @DisplayName("while a hire runs, a seat file that names no model shows the model the registry setting offers its brain, and a model the seat file names wins over it")
     void theRegistryModelFillsWhatTheSeatFileLeavesOut(@TempDir java.nio.file.Path dir) throws Exception {
         String registry = "{\"cursor\":{\"command\":[\"agent\",\"acp\"],\"vendor\":\"Cursor\",\"model\":\"composer-2\"}}";

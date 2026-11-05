@@ -260,6 +260,10 @@ public class HireTool extends NeutralTool {
                 + " hire carries out. The answer then reports how many ran as written (one tool, one call, the"
                 + " arguments written, no rework) and the issuer's tokens per instruction that did, read from the"
                 + " two hire records and never from either seat's report of itself."));
+        properties.put("fixes", Map.of("type", "string",
+            "description", "Optional. The plan id, from an earlier hire's answer, of the hire this one CORRECTS. Send it when a result was mostly"
+                + " right and a few parts are not acceptable: the brief names exactly what to correct, the earlier hire is accepted with this fix to"
+                + " follow, and this hire's journal row and answer name it. Leave it out when this hire corrects nothing."));
         properties.put("observerSeatFile", Map.of("type", "string",
             "description", "Optional, with instructionsFrom. The observer seat's markdown. When given, each step of this worker that did not run"
                 + " as the issuer's instruction wrote it is shown to that seat, and a step it halts comes back as a correction naming the"
@@ -476,7 +480,8 @@ public class HireTool extends NeutralTool {
             .resuming(principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
             // The plan this hire opens belongs to the session that issued it, whoever it is: only that session's turn waits on its step (S10).
             .ownedBy(org.jawata.mcp.models.CallerIdentity.serving().map(org.jawata.mcp.models.CallerIdentity::id))
-            .labelled(hired, hirer);
+            .labelled(hired, hirer)
+            .fixing(getStringParam(arguments, "fixes"));
         HiredRun.Proposal proposal;
         // While the brain runs this hire can be stopped from the Agent Control panel (S9): the panel's stop interrupts this thread, which ends the
         // run the way any interruption does, and the answer says the person stopped it.
@@ -530,6 +535,10 @@ public class HireTool extends NeutralTool {
         // answered is not an attribution.
         data.put("hirer", hirer);
         data.put("hired", hired);
+        String corrects = getStringParam(arguments, "fixes");
+        if (corrects != null && !corrects.isBlank()) {
+            data.put("fixes", corrects.strip());
+        }
         // WHICH BRAIN ANSWERED (D11, D48): its name, the vendor and model the registry setting names for it, and the model the run used.
         Map<String, Object> brainRow = new LinkedHashMap<>();
         brainRow.put("brain", dialect.name());

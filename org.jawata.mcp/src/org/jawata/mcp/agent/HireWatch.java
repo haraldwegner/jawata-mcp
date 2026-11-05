@@ -44,6 +44,8 @@ final class HireWatch {
         String hirer = "";
         String answer = "";
         String seatFile = "";
+        /** The engine's own plan id for this hire, from its answer; the name a later hire gives in {@code fixes}. */
+        String enginePlan = "";
         Optional<String> brain = Optional.empty();
         Optional<String> model = Optional.empty();
         Optional<String> parent = Optional.empty();
@@ -83,6 +85,8 @@ final class HireWatch {
     private final LongSupplier clock;
     private final java.util.function.Supplier<String> registry;
     private final Map<String, Live> hires = new LinkedHashMap<>();
+    /** The id of the hire an observed update has just marked accepted-with-fix, until {@link #takeFixed()} hands it on. */
+    private String justFixed;
 
     /** @param clock the time in milliseconds, supplied so a test can say how long a hire ran */
     HireWatch(LongSupplier clock) {
@@ -166,6 +170,16 @@ final class HireWatch {
     record Proposal(List<String> files, List<TreeAttribution.FileChange> changes, List<String> omitted) {
     }
 
+    /**
+     * The card an observed hire has just marked accepted-with-fix, handed over once so the server can show and record the change; none when
+     * no update since the last call marked one.
+     */
+    synchronized Optional<HireEntry> takeFixed() {
+        String id = justFixed;
+        justFixed = null;
+        return id == null ? Optional.empty() : entry(id);
+    }
+
     /** Records the person's answer to a hire's proposal and gives the entry as it now stands; none when the agent never saw the hire. */
     synchronized Optional<HireEntry> answered(String planId, String verdict) {
         Live hire = hires.get(planId);
@@ -219,6 +233,16 @@ final class HireWatch {
         if (input.hasNonNull("hirer")) {
             hire.hirer = input.get("hirer").asText();
         }
+        if (input.hasNonNull("fixes") && !input.get("fixes").asText().isEmpty()) {
+            // This hire corrects an earlier one, named by the plan id that hire's answer gave: the earlier one was accepted, with a fix to come.
+            String corrected = input.get("fixes").asText();
+            for (Live other : hires.values()) {
+                if (other != hire && corrected.equals(other.enginePlan) && !other.verdict.equals(Optional.of(HireEntry.ACCEPTED_WITH_FIX))) {
+                    other.verdict = Optional.of(HireEntry.ACCEPTED_WITH_FIX);
+                    justFixed = other.id;
+                }
+            }
+        }
         if (input.hasNonNull("seatFile") && !input.get("seatFile").asText().equals(hire.seatFile)) {
             hire.seatFile = input.get("seatFile").asText();
             readSeatFile(hire);
@@ -262,6 +286,7 @@ final class HireWatch {
         if (!ran.isBlank() && !NO_MODEL_NAMED.equals(ran)) {
             hire.model = Optional.of(ran);
         }
+        hire.enginePlan = answer.path("plan").asText("");
         hire.answer = answer.path("answer").asText("");
         hire.brainSessionId = answer.hasNonNull("brainSessionId") ? Optional.of(answer.get("brainSessionId").asText()) : Optional.empty();
         List<String> files = new java.util.ArrayList<>();

@@ -2830,6 +2830,10 @@
      "description": "Optional. The plan id of the PM or chief-engineer hire whose INSTRUCTION blocks this hire carries out. The answer then reports how many ran as written (one tool, one call, the arguments written, no rework) and the issuer's tokens per instruction that did, read from the two hire records and never from either seat's report of itself.",
      "type": "string"
     },
+    "fixes": {
+     "description": "Optional. The plan id, from an earlier hire's answer, of the hire this one CORRECTS. Send it when a result was mostly right and a few parts are not acceptable: the brief names exactly what to correct, the earlier hire is accepted with this fix to follow, and this hire's journal row and answer name it. Leave it out when this hire corrects nothing.",
+     "type": "string"
+    },
     "precedentOverride": {
      "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
      "type": "string"
