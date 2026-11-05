@@ -7,6 +7,7 @@ org.jawata.core.tests/src/org/jawata/core/host/HostFsResidueTest.java	the direct
 org.jawata.core.tests/src/org/jawata/core/host/HostFsResidueTest.java	the parent is still traversable, so existence is still determinable — this run could not construct the case and must not report a pass
 org.jawata.mcp.tests/src/org/jawata/mcp/ContainerMarkerProbes.java	mcp#54 probe: the container assumed its way out
 org.jawata.mcp.tests/src/org/jawata/mcp/coverage/StaleFingerprintIsNotFreshTest.java	the dangling link was not constructed, so this run measures nothing
+org.jawata.mcp.tests/src/org/jawata/mcp/execution/TheHirePathHasOneArgvSourceTest.java	sources are not present in this run: the program-source rule is UNPROVEN here, not passing
 org.jawata.mcp.tests/src/org/jawata/mcp/learn/ArchitectGateTest.java	every kind of this door is structural today, so there is no control to run
 org.jawata.mcp.tests/src/org/jawata/mcp/learn/GateNessIsDeclaredNotListedTest.java	the production sources are not present — an honest skip beats a false pass
 org.jawata.mcp.tests/src/org/jawata/mcp/models/EngineNotesTest.java	this OS does not report a process start time
