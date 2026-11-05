@@ -357,7 +357,8 @@ final class HireWatch {
         int steps = live.map(RunningHires.Progress::toolSteps).orElse(hire.toolSteps);
         OptionalLong context = live.map(RunningHires.Progress::contextTokens).orElse(OptionalLong.empty());
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, hire.state, end - hire.startedMs, hire.tokens, cost,
-            hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand);
+            hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand,
+            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan));
     }
 
     /** How many hires the agent saw above this one, so a root is level 0, the chief engineer it hires 1, and the developer under that 2. */

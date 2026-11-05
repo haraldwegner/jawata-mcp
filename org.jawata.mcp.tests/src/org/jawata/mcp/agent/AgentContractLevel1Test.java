@@ -64,12 +64,12 @@ class AgentContractLevel1Test {
 
     private static final Map<String, String> HIRE_FIELDS = new LinkedHashMap<>();
     /** The fields a hire may leave out. */
-    private static final Set<String> OPTIONAL_HIRE_FIELDS = Set.of("brainSessionId", "parentPlanId", "costUsd", "level", "toolSteps", "contextTokens", "verdict");
+    private static final Set<String> OPTIONAL_HIRE_FIELDS = Set.of("brainSessionId", "parentPlanId", "costUsd", "level", "toolSteps", "contextTokens", "verdict", "enginePlan");
     private static final Set<String> HIRE_STATES = Set.of("running", "compacting", "done", "failed");
     private static final Set<String> HIRE_METHODS = Set.of("_jawata/hire/stop", "_jawata/hire/transcript", "_jawata/hire/brain");
 
     static {
-        for (String field : List.of("planId", "seat", "brain", "model", "state", "seatCommand", "task", "parentPlanId", "brainSessionId", "verdict")) {
+        for (String field : List.of("planId", "seat", "brain", "model", "state", "seatCommand", "task", "parentPlanId", "brainSessionId", "verdict", "enginePlan")) {
             HIRE_FIELDS.put(field, "string");
         }
         for (String field : List.of("elapsedMs", "tokens", "costUsd", "level", "toolSteps", "contextTokens")) {

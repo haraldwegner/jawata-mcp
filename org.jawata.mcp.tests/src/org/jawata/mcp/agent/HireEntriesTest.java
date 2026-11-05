@@ -92,6 +92,24 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("the card carries the engine's plan id from the hire's answer, the key the hire's journal row is written under, and nothing before the answer or when the answer names none")
+    void theCardCarriesTheEnginePlanTheJournalIsKeyedBy() {
+        HireEntry running = watch.observe(withInput(hireCall("tool_call", "e1", "pending"), "chief-engineer", "worker", "do it")).orElseThrow();
+        assertTrue(running.enginePlan().isEmpty(), "no answer has named the plan yet");
+        assertFalse(running.toMeta().has("enginePlan"));
+
+        HireEntry done = watch.observe(answered(hireCall("tool_call_update", "e1", "completed"), "{\"cleanExit\":true,\"plan\":\"plan-eee\"}")).orElseThrow();
+        assertEquals(Optional.of("plan-eee"), done.enginePlan());
+        assertEquals("plan-eee", done.toMeta().path("enginePlan").asText());
+        assertEquals("e1", done.planId(), "the card's own id stays the brain's tool call");
+
+        watch.observe(withInput(hireCall("tool_call", "e2", "pending"), "chief-engineer", "worker", "again"));
+        HireEntry unnamed = watch.observe(answered(hireCall("tool_call_update", "e2", "completed"), "{\"cleanExit\":true}")).orElseThrow();
+        assertTrue(unnamed.enginePlan().isEmpty());
+        assertFalse(unnamed.toMeta().has("enginePlan"), "an answer that names no plan was shown a placeholder");
+    }
+
+    @Test
     @DisplayName("a hire made to fix an earlier one marks the earlier one accepted-with-fix, found by the plan id the earlier hire's answer named")
     void aFixMarksTheEarlierHireAcceptedWithFix() {
         watch.observe(withInput(hireCall("tool_call", "f1", "pending"), "chief-engineer", "worker", "do it"));
