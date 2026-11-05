@@ -89,13 +89,15 @@ final class HireWatch {
         }
         Live hire = hires.get(id);
         if (hire == null) {
-            if (!"tool_call".equals(update.path("sessionUpdate").asText()) || !isHireCall(update)) {
+            if (!isHireCall(update)) {
                 return Optional.empty();
             }
             hire = new Live(id, clock.getAsLong());
             hires.put(id, hire);
         }
-        readInput(hire, update.path("rawInput"));
+        JsonNode rawInput = update.path("rawInput");
+        // Cursor wraps a tool's arguments: {providerIdentifier, toolName, args}; Claude sends the arguments themselves.
+        readInput(hire, rawInput.has("toolName") && rawInput.path("args").isObject() ? rawInput.get("args") : rawInput);
         String status = update.path("status").asText("");
         if ("failed".equals(status)) {
             finish(hire, HireEntry.FAILED);
@@ -179,7 +181,9 @@ final class HireWatch {
     }
 
     private static boolean isHireCall(JsonNode update) {
-        for (String name : List.of(update.path("title").asText(""), update.path("_meta").path("claudeCode").path("toolName").asText(""))) {
+        // Claude names the call in its title (mcp__server__hire) and in _meta; Cursor names the tool in rawInput.toolName.
+        for (String name : List.of(update.path("title").asText(""), update.path("_meta").path("claudeCode").path("toolName").asText(""),
+                update.path("rawInput").path("toolName").asText(""))) {
             if (!name.isEmpty() && "hire".equals(RunEffects.bareName(name))) {
                 return true;
             }

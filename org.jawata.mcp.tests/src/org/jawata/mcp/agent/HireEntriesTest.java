@@ -69,6 +69,30 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("S17: a hire as Cursor's agent streams it is seen — the call is unnamed at first, a later update names it \"jawata: hire\" with the arguments under rawInput.args, and it ends with an answer that holds no data")
+    void aHireAsCursorStreamsItIsSeen() throws Exception {
+        ObjectNode first = JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "c1").put("title", "MCP: tool").put("kind", "other").put("status", "pending");
+        first.putObject("rawInput");
+        ObjectNode named = JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", "c1").put("title", "jawata: hire");
+        ObjectNode wrapped = named.putObject("rawInput").put("providerIdentifier", "jawata").put("toolName", "hire");
+        wrapped.putObject("args").put("hirer", "main").put("seat", "pm").put("brief", "Reply with the one word ok.");
+        ObjectNode other = JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", "c2").put("title", "jawata: experience");
+        other.putObject("rawInput").put("providerIdentifier", "jawata").put("toolName", "experience").putObject("args").put("kind", "recall");
+        ObjectNode done = JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", "c1").put("status", "completed");
+        done.putObject("rawOutput").put("success", true);
+
+        assertTrue(watch.observe(first).isEmpty(), "a call with no name yet is not known to be a hire");
+        HireEntry seen = watch.observe(named).orElseThrow();
+        assertTrue(watch.observe(other).isEmpty(), "another tool of the same server is not a hire");
+        HireEntry ended = watch.observe(done).orElseThrow();
+
+        assertEquals("pm", seen.seat());
+        assertEquals("Reply with the one word ok.", seen.task());
+        assertEquals(HireEntry.RUNNING, seen.state());
+        assertEquals(HireEntry.DONE, ended.state());
+    }
+
+    @Test
     @DisplayName("a hire is read from its call: running with the seat and the brief, then done with the time it ran, the tokens it spent and the cost it sent")
     void aHireIsReadFromItsCallAndItsAnswer() {
         HireEntry started = watch.observe(hireCall("tool_call", "t1", "pending")).orElseThrow();
