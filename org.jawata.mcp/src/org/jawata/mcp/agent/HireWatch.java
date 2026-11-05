@@ -12,6 +12,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.function.LongSupplier;
 
+import org.jawata.mcp.execution.FinishedHires;
 import org.jawata.mcp.execution.RunEffects;
 import org.jawata.mcp.execution.RunningHires;
 import org.jawata.mcp.execution.SeatHire;
@@ -227,6 +228,10 @@ final class HireWatch {
     /** The finished hire's own answer: whether it ended clean, what it spent, what it cost. */
     private void readAnswer(Live hire, JsonNode update) {
         JsonNode answer = answerOf(update);
+        if (!answer.has("cleanExit")) {
+            // The brain's echo carries no answer (Cursor sends {"success": true} only): the engine ran the hire and kept what it answered.
+            answer = FinishedHires.shared().answerOf(hire.seat, hire.task).orElse(answer);
+        }
         boolean clean = answer.isMissingNode() || !(answer.path("cleanExit").asText("true").equals("false")
             || answer.path("timedOut").asBoolean(false));
         finish(hire, clean ? HireEntry.DONE : HireEntry.FAILED);

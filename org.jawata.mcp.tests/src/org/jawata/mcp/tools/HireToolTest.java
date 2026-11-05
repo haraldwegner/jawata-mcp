@@ -18,6 +18,7 @@ import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostOS;
 import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.execution.FinishedHires;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
@@ -885,6 +886,22 @@ class HireToolTest {
                 response.getError().getMessage()),
             () -> assertEquals(0L, events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L),
                 "and nothing was journalled, because nothing ran"));
+    }
+
+    @Test
+    @DisplayName("S17: what the hire tool answers is kept for the agent face, a refusal included, because a brain may echo back nothing but success")
+    void theAnswerOfEveryHireIsKeptForTheAgentFace() throws Exception {
+        HireTool hire = new HireTool(aHostThatMustNotSpawn(), artifacts, plans,
+            () -> events, () -> aRegistryWithACleanGate());
+        JsonNode args = hireArgs(seatFile(CATALOGUER_SEAT));
+
+        ToolResponse response = hire.execute(args);
+
+        JsonNode kept = FinishedHires.shared().answerOf(args.path("seat").asText(), args.path("brief").asText()).orElse(null);
+        assertFalse(response.isSuccess());
+        assertTrue(kept != null, "the refused hire's answer was not kept");
+        assertFalse(kept.path("cleanExit").asBoolean(true), kept.toString());
+        assertEquals(response.getError().getMessage(), kept.path("error").asText(), kept.toString());
     }
 
     @Test

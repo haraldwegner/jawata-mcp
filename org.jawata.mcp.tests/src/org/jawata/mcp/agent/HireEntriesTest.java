@@ -11,6 +11,7 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
+import org.jawata.mcp.execution.FinishedHires;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -90,6 +91,36 @@ class HireEntriesTest {
         assertEquals("Reply with the one word ok.", seen.task());
         assertEquals(HireEntry.RUNNING, seen.state());
         assertEquals(HireEntry.DONE, ended.state());
+    }
+
+    @Test
+    @DisplayName("S17: when the brain's echo of a hire carries no answer, the entry takes the answer the engine kept — a refusal is failed, and tokens and cost come through")
+    void aHireWithNoEchoedAnswerTakesTheEnginesOwn() throws Exception {
+        ObjectNode refused = JSON.createObjectNode();
+        refused.put("cleanExit", false).put("error", "steps cannot be empty");
+        FinishedHires.shared().record("echo-less-seat", "refused brief", refused);
+        ObjectNode spent = JSON.createObjectNode();
+        spent.put("cleanExit", true).put("answer", "ok").put("costUsd", 0.04).putObject("tokens").put("input", 100).put("output", 20);
+        FinishedHires.shared().record("echo-less-seat", "spent brief", spent);
+
+        HireEntry failed = echoOnlySuccess("e1", "refused brief");
+        HireEntry done = echoOnlySuccess("e2", "spent brief");
+
+        assertEquals(HireEntry.FAILED, failed.state());
+        assertEquals(HireEntry.DONE, done.state());
+        assertEquals(120, done.tokens());
+        assertEquals(0.04, done.costUsd().getAsDouble());
+    }
+
+    /** A hire that ends with the echo Cursor sends, {@code {"success": true}}, and nothing else. */
+    private HireEntry echoOnlySuccess(String id, String brief) {
+        ObjectNode start = JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", id).put("title", "jawata: hire");
+        ObjectNode wrapped = start.putObject("rawInput").put("toolName", "hire");
+        wrapped.putObject("args").put("hirer", "main").put("seat", "echo-less-seat").put("brief", brief);
+        watch.observe(start);
+        ObjectNode end = JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", id).put("status", "completed");
+        end.putObject("rawOutput").put("success", true);
+        return watch.observe(end).orElseThrow();
     }
 
     @Test

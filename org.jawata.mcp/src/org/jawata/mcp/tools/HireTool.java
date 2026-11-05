@@ -15,6 +15,7 @@ import java.util.function.Supplier;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.BrainDialect;
+import org.jawata.mcp.execution.FinishedHires;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.HiredRun;
@@ -297,6 +298,15 @@ public class HireTool extends NeutralTool {
      */
     @Override
     public ToolResponse execute(JsonNode arguments) {
+        ToolResponse response = hire(arguments);
+        // Every exit of the hire, a refusal included, is kept for the agent face, which cannot rely on a brain echoing the answer back.
+        JsonNode outcome = response.isSuccess() ? JSON.valueToTree(response.getData())
+            : JSON.createObjectNode().put("cleanExit", false).put("error", response.getError().getMessage());
+        FinishedHires.shared().record(arguments.path("seat").asText(""), arguments.path("brief").asText(""), outcome);
+        return response;
+    }
+
+    private ToolResponse hire(JsonNode arguments) {
         LearnerEventStore landsIn = journal.get();
         if (landsIn == null) {
             // DEGRADATION ON THE RESPONSE CHANNEL, which is the only one a client can see. A hire
