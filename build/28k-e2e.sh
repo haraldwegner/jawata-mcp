@@ -613,7 +613,7 @@ rm -rf "$P8_DIR" "$P8_STORE"
 
 # --- P8 (Stage 8, contract §18 ring 1): a second language bound beside Java publishes its own tool, and Java's tools stay ------------
 # org.jawata.standin is the stand-in language (language "fake", tool fake_echo) built as a test bundle beside the dist, not in it. A dist
-# copy that has it in bundles/ is an engine with two languages: health_check lists both, tools/list holds the 44 and the stand-in's one.
+# copy that has it in bundles/ is an engine with two languages: health_check lists both, tools/list holds the published surface and the stand-in's one.
 P8L_PORT=$((PORT + 7))
 P8L_DIST="$(mktemp -d)"
 P8L_STORE="$(mktemp -d)"
@@ -645,7 +645,7 @@ else
         echo "  FAIL  P8 the resident with the stand-in language beside Java never printed READY: $(tail -3 "$P8L_LOG")" >&2
         P8_FAILED=1
     else
-        PROBE_PORT="$P8L_PORT" PROBE_TOKEN="$TOKEN" python3 - << 'PY' || P8_FAILED=1
+        PROBE_PORT="$P8L_PORT" PROBE_TOKEN="$TOKEN" PROBE_GOLDEN_TOOLS="$GOLDEN_TOOLS" python3 - << 'PY' || P8_FAILED=1
 import json, os, time, urllib.request
 
 PORT, TOKEN = os.environ["PROBE_PORT"], os.environ["PROBE_TOKEN"]
@@ -674,8 +674,11 @@ for _ in range(60):     # the second language binds when its component starts, j
 health = tools_called("health_check", {}).get("data") or {}
 languages = health.get("languages")
 check("health_check lists the stand-in language beside java: %s" % languages, isinstance(languages, list) and "fake" in languages and "java" in languages)
-check("the stand-in's tool is published beside the 44: %d tools, fake_echo present: %s" % (len(names), "fake_echo" in names),
-      "fake_echo" in names and len(names) == 45 and "search_symbols" in names)
+# The count is the golden's own (the surface the dist publishes), plus the stand-in's one: a literal here went stale at every added
+# tool (44, then 46 after plan_steps and plan_board, while this said 45) and nothing ran this gate between releases to say so.
+published = len(json.load(open(os.environ["PROBE_GOLDEN_TOOLS"], encoding="utf-8")))
+check("the stand-in's tool is published beside the %d: %d tools, fake_echo present: %s" % (published, len(names), "fake_echo" in names),
+      "fake_echo" in names and len(names) == published + 1 and "search_symbols" in names)
 echoed = tools_called("fake_echo", {"text": "hello"})
 check("the stand-in's tool answers: %s" % json.dumps(echoed)[:160], echoed.get("success") and (echoed.get("data") or {}).get("echo") == "hello")
 raise SystemExit(1 if failed else 0)

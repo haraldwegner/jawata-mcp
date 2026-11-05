@@ -2818,8 +2818,16 @@
  {
   "inputSchema": {
    "properties": {
+    "boardFile": {
+     "description": "Optional. The sprint's ...-plan.md. When given, the plan board in it is drawn from the plan ledger as soon as this hire's gates have run, and the answer carries what was drawn or why it was not.",
+     "type": "string"
+    },
     "brief": {
      "description": "The instruction the hired brain is given, verbatim.",
+     "type": "string"
+    },
+    "fixes": {
+     "description": "Optional. The plan id, from an earlier hire's answer, of the hire this one CORRECTS. Send it when a result was mostly right and a few parts are not acceptable: the brief names exactly what to correct, the earlier hire is accepted with this fix to follow, and this hire's journal row and answer name it. Leave it out when this hire corrects nothing.",
      "type": "string"
     },
     "hirer": {
@@ -2830,8 +2838,8 @@
      "description": "Optional. The plan id of the PM or chief-engineer hire whose INSTRUCTION blocks this hire carries out. The answer then reports how many ran as written (one tool, one call, the arguments written, no rework) and the issuer's tokens per instruction that did, read from the two hire records and never from either seat's report of itself.",
      "type": "string"
     },
-    "fixes": {
-     "description": "Optional. The plan id, from an earlier hire's answer, of the hire this one CORRECTS. Send it when a result was mostly right and a few parts are not acceptable: the brief names exactly what to correct, the earlier hire is accepted with this fix to follow, and this hire's journal row and answer name it. Leave it out when this hire corrects nothing.",
+    "observerSeatFile": {
+     "description": "Optional, with instructionsFrom. The observer seat's markdown. When given, each step of this worker that did not run as the issuer's instruction wrote it is shown to that seat, and a step it halts comes back as a correction naming the number of the instruction, in the answer's instructionScore.observer. Without it the rules still flag the steps and say they were not judged.",
      "type": "string"
     },
     "precedentOverride": {
@@ -2860,14 +2868,6 @@
       "type": "object"
      },
      "type": "array"
-    },
-    "observerSeatFile": {
-     "description": "Optional, with instructionsFrom. The observer seat's markdown. When given, each step of this worker that did not run as the issuer's instruction wrote it is shown to that seat, and a step it halts comes back as a correction naming the number of the instruction, in the answer's instructionScore.observer. Without it the rules still flag the steps and say they were not judged.",
-     "type": "string"
-    },
-    "boardFile": {
-     "description": "Optional. The sprint's ...-plan.md. When given, the plan board in it is drawn from the plan ledger as soon as this hire's gates have run, and the answer carries what was drawn or why it was not.",
-     "type": "string"
     },
     "workingDirectory": {
      "description": "Where the brain runs \u2014 REQUIRED, never defaulted. It is the hire's blast radius: the brain reads and may write here, so a caller states it rather than inheriting the resident's own directory.",
@@ -3298,6 +3298,10 @@
      ],
      "type": "string"
     },
+    "full": {
+     "description": "recall with lane=transcript alone and a session: every turn of that session in full (what was typed, what the agent said, one line per tool call), unclipped, for a host reloading it.",
+     "type": "boolean"
+    },
     "his": {
      "description": "transcript_append: what he typed in the turn, verbatim.",
      "type": "string"
@@ -3476,6 +3480,10 @@
      },
      "type": "array"
     },
+    "sessions": {
+     "description": "recall with lane=transcript alone: the N most recently active sessions the lane holds (session id, client, first words typed, turns, first and latest time), for a host that lists and reloads the agent's sessions.",
+     "type": "integer"
+    },
     "situation": {
      "description": "record: WHEN this applies. A situation is a GREP, a TASK, or a NUMBER. A grep \u2014 something you can look up in the code in front of you: \"when a test class declares @BeforeAll or @AfterAll\". A task \u2014 what you are doing right now: \"when amending an order that is already partially filled\". A number \u2014 a value you can read off an output: \"when a test run reports a class-level exception count above zero\". If it is none of the three it describes how the system works, which is true during every call and tells no one whether this entry is for them. Never a package or a symbol: a location matches everything inside it and distinguishes nothing. REQUIRED for lesson and failure_mode.",
      "type": "string"
@@ -3541,14 +3549,6 @@
       "worked"
      ],
      "type": "string"
-    },
-    "sessions": {
-     "type": "integer",
-     "description": "recall with lane=transcript alone: the N most recently active sessions the lane holds (session id, client, first words typed, turns, first and latest time), for a host that lists and reloads the agent's sessions."
-    },
-    "full": {
-     "type": "boolean",
-     "description": "recall with lane=transcript alone and a session: every turn of that session in full (what was typed, what the agent said, one line per tool call), unclipped, for a host reloading it."
     }
    },
    "required": [
