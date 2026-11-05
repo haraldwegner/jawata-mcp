@@ -16,6 +16,7 @@ import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.Hirer;
+import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.spi.host.McpEndpoint;
@@ -46,9 +47,10 @@ public final class PrincipalBrain implements AgentBrain {
      * @param clean          whether the brain ended cleanly
      * @param stoppedBy      the ceiling that stopped it, if one did
      * @param elapsed        how long the prompt took
+     * @param vendor         the brain product the command started, named as its dialect names itself, or none when the command names none
      */
     public record HireRecord(String seat, List<String> command, Optional<String> brainSessionId, int toolSteps, boolean clean,
-            Optional<String> stoppedBy, Duration elapsed) {
+            Optional<String> stoppedBy, Duration elapsed, Optional<String> vendor) {
     }
 
     private final HostProcesses host;
@@ -112,6 +114,36 @@ public final class PrincipalBrain implements AgentBrain {
         return names;
     }
 
+    /**
+     * The binaries each brain is started by that its seat spellings do not already name: Cursor's CLI installs as {@code agent}, and the
+     * Claude and Codex ACP adapters are started by their package names.
+     */
+    private static final Map<String, SeatHire.Brain> STARTED_BY = Map.of(
+        "agent", SeatHire.Brain.CURSOR,
+        "claude-agent-acp", SeatHire.Brain.CLAUDE_CODE,
+        "claude-code-acp", SeatHire.Brain.CLAUDE_CODE,
+        "codex-acp", SeatHire.Brain.CODEX);
+
+    /**
+     * The brain product a start command runs, named the way its dialect names itself ({@code cursor}, {@code copilot},
+     * {@code claude-code}, {@code codex}): the first word of the command line that is the binary of one of them, taken without its folder
+     * and its {@code .exe} or {@code .cmd}. None when no word is, because a vendor is read from the command line and never guessed.
+     */
+    static Optional<String> vendorOf(List<String> command) {
+        for (String word : command) {
+            String name = word.substring(Math.max(word.lastIndexOf('/'), word.lastIndexOf('\\')) + 1).toLowerCase(java.util.Locale.ROOT);
+            name = name.replaceFirst("\\.(exe|cmd|bat)$", "");
+            Optional<SeatHire.Brain> brain = SeatHire.Brain.named(name).filter(known -> known != SeatHire.Brain.SCRIPT);
+            if (brain.isEmpty()) {
+                brain = Optional.ofNullable(STARTED_BY.get(name));
+            }
+            if (brain.isPresent()) {
+                return Optional.of(brain.get().label());
+            }
+        }
+        return Optional.empty();
+    }
+
     private static SelfEndpoint endpointOf(McpEndpoint endpoint) {
         return new SelfEndpoint(endpoint.url().toString(), endpoint.key().orElse(""));
     }
@@ -161,7 +193,7 @@ public final class PrincipalBrain implements AgentBrain {
         }
         synchronized (records) {
             records.add(new HireRecord("main", program.get().command(), outcome.brainSessionId(), outcome.toolSteps(), outcome.clean(),
-                outcome.stoppedBy(), Duration.ofNanos(System.nanoTime() - started)));
+                outcome.stoppedBy(), Duration.ofNanos(System.nanoTime() - started), vendorOf(program.get().command())));
         }
     }
 

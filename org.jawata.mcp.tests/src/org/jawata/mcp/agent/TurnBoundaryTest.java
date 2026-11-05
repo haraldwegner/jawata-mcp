@@ -140,8 +140,27 @@ class TurnBoundaryTest {
         assertTrue(last.text().contains("compile_workspace") && last.text().contains("free check"),
             "the refusal does not name the free check: " + last.text());
 
-        boundary.personSpoke();
+        boundary.personSpoke(person);
         assertEquals(TurnBoundary.Kind.RESUME, boundary.atTurnEnd(person).kind(), "the person's word did not restart the count");
+    }
+
+    @Test
+    @DisplayName("two sessions waiting on the same step each have their own tries: one session using up the ceiling leaves the other its full count")
+    void eachSessionSpendsItsOwnTries() {
+        TurnBoundary boundary = boundaryOver(ledgerWithTwoSteps(), 3);
+        PrincipalSession one = new PrincipalSession("one", "/w", false);
+        PrincipalSession two = new PrincipalSession("two", "/w", false);
+        one.setAutonomy(Channel.HOST, true);
+        two.setAutonomy(Channel.HOST, true);
+        for (int i = 0; i < 3; i++) {
+            assertEquals(TurnBoundary.Kind.RESUME, boundary.atTurnEnd(one).kind());
+        }
+        assertEquals(TurnBoundary.Kind.REPORT, boundary.atTurnEnd(one).kind(), "CONTROL: session one has spent its tries");
+
+        TurnBoundary.Verdict other = boundary.atTurnEnd(two);
+
+        assertEquals(TurnBoundary.Kind.RESUME, other.kind(), "session one's tries were spent against session two: " + other.text());
+        assertTrue(other.text().contains("resumption 1 of 3"), other.text());
     }
 
     @Test
@@ -340,6 +359,44 @@ class TurnBoundaryTest {
         said.clear();
         server.receive(JsonRpcMessage.request(5, "session/prompt", build), Channel.BRAIN);
         assertEquals(4, mainSaw.size(), "the side question spent tries or ended the grant: " + mainSaw);
+    }
+
+    @Test
+    @DisplayName("one session's typed message restarts that session's tries and no other session's: the tries are kept per session on one connection")
+    void aPersonsMessageInOneSessionLeavesTheOtherSessionsTriesAlone() {
+        PlanLedger ledger = ledgerWithTwoSteps();
+        List<String> saw = new ArrayList<>();
+        List<JsonNode> said = new ArrayList<>();
+        AcpServer server = new AcpServer((prompt, chunks) -> {
+            saw.add(prompt);
+            if (saw.size() > 20) {
+                throw new AssertionError("the loop did not stop: " + saw.size() + " prompts");
+            }
+            chunks.accept("working");
+        }, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledger, 3), AgentRecorder.off(), null, null);
+        String[] ids = new String[2];
+        for (int i = 0; i < 2; i++) {
+            said.clear();
+            server.receive(JsonRpcMessage.request(10 + i, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+            ids[i] = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
+        }
+        server.receive(JsonRpcMessage.request(20, "session/set_config_option",
+            JSON.createObjectNode().put("sessionId", ids[0]).put("configId", "autonomy").put("value", "on")), Channel.HOST);
+
+        server.receive(JsonRpcMessage.request(30, "session/prompt", promptParams(ids[0], "build it")), Channel.BRAIN);
+        assertEquals(4, saw.size(), "CONTROL: session one's tries run to the ceiling (one turn, three resumptions): " + saw);
+
+        server.receive(JsonRpcMessage.request(31, "session/prompt", promptParams(ids[1], "the person speaks in session two")), Channel.HOST);
+        int afterTwo = saw.size();
+        server.receive(JsonRpcMessage.request(32, "session/prompt", promptParams(ids[0], "a subagent reports back")), Channel.BRAIN);
+
+        assertEquals(1, saw.size() - afterTwo, "the person's message in session two gave session one its tries back: " + saw);
+    }
+
+    private static ObjectNode promptParams(String session, String text) {
+        ObjectNode params = JSON.createObjectNode().put("sessionId", session);
+        params.putArray("prompt").addObject().put("type", "text").put("text", text);
+        return params;
     }
 
     @Test

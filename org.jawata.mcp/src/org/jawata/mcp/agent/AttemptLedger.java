@@ -21,7 +21,7 @@ public final class AttemptLedger {
     }
 
     private final int ceiling;
-    private final Map<String, Integer> used = new HashMap<>();
+    private final Map<String, Map<String, Integer>> used = new HashMap<>();
 
     /** A ledger that admits {@code ceiling} attempts of a slice. */
     public AttemptLedger(int ceiling) {
@@ -31,18 +31,22 @@ public final class AttemptLedger {
         this.ceiling = ceiling;
     }
 
-    /** Counts and admits an attempt of {@code slice}, or refuses it when the slice has had all it may. */
-    public synchronized Admission admit(String slice) {
-        int had = used.getOrDefault(slice, 0);
+    /**
+     * Counts and admits an attempt of {@code slice} made in {@code session}, or refuses it when the slice has had all it may in that
+     * session. The same slice in another session has its own count.
+     */
+    public synchronized Admission admit(String session, String slice) {
+        Map<String, Integer> mine = used.computeIfAbsent(session, key -> new HashMap<>());
+        int had = mine.getOrDefault(slice, 0);
         if (had >= ceiling) {
             return new Admission(false, had, ceiling);
         }
-        used.put(slice, had + 1);
+        mine.put(slice, had + 1);
         return new Admission(true, had + 1, ceiling);
     }
 
-    /** The person spoke: every slice starts again, because their word is what the ceiling was waiting for. */
-    public synchronized void personSpoke() {
-        used.clear();
+    /** The person spoke in {@code session}: every slice of that session starts again; no other session's count moves. */
+    public synchronized void personSpoke(String session) {
+        used.remove(session);
     }
 }

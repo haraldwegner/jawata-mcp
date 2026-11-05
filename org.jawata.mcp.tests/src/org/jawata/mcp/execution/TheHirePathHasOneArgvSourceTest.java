@@ -2,10 +2,21 @@ package org.jawata.mcp.execution;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import org.jawata.core.host.HostCommand;
 import org.junit.jupiter.api.DisplayName;
@@ -61,5 +72,122 @@ class TheHirePathHasOneArgvSourceTest {
             .map(c -> c.getName() + ":" + c.getType().getSimpleName())
             .toList();
         assertEquals(List.of(), carriers, "a HireSite component that could carry an argv");
+    }
+
+    // ---- the ACP program: the second place an argv can come from ---------------------------------------------------------
+    //
+    // A hired seat on an ACP brain is started by an AcpBrainSession.Program, which IS a command line. The two tests above ban the
+    // HostCommand and the HireSite from carrying one; this part bans a second way in. The registry setting is the one source of the
+    // program of a hired brain, and the only other places that read a setting into a program are the two single-purpose ones named
+    // below (the principal's own brain and the reviewer's). A new reader of a program, or a program built anywhere but in
+    // AcpBrainSession, turns these red and has to be answered here, not slipped in.
+
+    private static final Pattern PROGRAM_BUILT = Pattern.compile("new\\s+(?:\\w+\\s*\\.\\s*)*Program\\s*\\(|\\bProgram\\s*::\\s*new");
+    private static final Pattern PROGRAM_READ = Pattern.compile("\\b(parseProgram|programFor)\\b");
+
+    /** The text with comments and the insides of string and character literals blanked, so a pattern only matches code. */
+    static String codeOnly(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        int i = 0;
+        while (i < text.length()) {
+            char c = text.charAt(i);
+            if (c == '"' || c == '\'') {
+                int end = i + 1;
+                while (end < text.length() && text.charAt(end) != c) {
+                    end += text.charAt(end) == '\\' ? 2 : 1;
+                }
+                end = Math.min(end + 1, text.length());
+                out.append(c).append(" ".repeat(Math.max(0, end - i - 2))).append(c);
+                i = end;
+            } else if (text.startsWith("//", i)) {
+                while (i < text.length() && text.charAt(i) != '\n') {
+                    out.append(' ');
+                    i++;
+                }
+            } else if (text.startsWith("/*", i)) {
+                int end = text.indexOf("*/", i + 2);
+                end = end < 0 ? text.length() : end + 2;
+                for (int k = i; k < end; k++) {
+                    out.append(text.charAt(k) == '\n' ? '\n' : ' ');
+                }
+                i = end;
+            } else {
+                out.append(c);
+                i++;
+            }
+        }
+        return out.toString();
+    }
+
+    /** Production source file name (without folder) to the code of that file; the test is skipped, not passed, when this run has no sources. */
+    private static Map<String, String> productionCode() throws IOException {
+        Path root = null;
+        for (Path candidate = Path.of("").toAbsolutePath(); candidate != null; candidate = candidate.getParent()) {
+            if (Files.isDirectory(candidate.resolve("org.jawata.mcp/src"))) {
+                root = candidate;
+                break;
+            }
+        }
+        assumeTrue(root != null, "sources are not present in this run: the program-source rule is UNPROVEN here, not passing");
+        Map<String, String> code = new TreeMap<>();
+        try (Stream<Path> walk = Files.walk(root.resolve("org.jawata.mcp/src"))) {
+            for (Path file : walk.filter(p -> p.getFileName().toString().endsWith(".java")).toList()) {
+                code.put(file.getFileName().toString(), codeOnly(Files.readString(file, StandardCharsets.UTF_8)));
+            }
+        }
+        return code;
+    }
+
+    private static List<String> filesMatching(Map<String, String> code, Pattern pattern) {
+        return code.entrySet().stream().filter(e -> pattern.matcher(e.getValue()).find()).map(Map.Entry::getKey).sorted().toList();
+    }
+
+    @Test
+    @DisplayName("an ACP program is built in AcpBrainSession alone: no other production class makes a command line of its own for a brain")
+    void anAcpProgramIsBuiltInOnePlace() throws IOException {
+        Map<String, String> code = productionCode();
+
+        assertEquals(List.of("AcpBrainSession.java"), filesMatching(code, PROGRAM_BUILT),
+            "a production class builds an AcpBrainSession.Program, which is a second source of a brain's command line;"
+                + " it must come from a setting through AcpBrainSession.parseProgram or programFor (and the list in the next test)");
+    }
+
+    @Test
+    @DisplayName("a program is read out of a setting in three places only: the registry for a hired brain, and the principal's and the reviewer's own settings")
+    void aProgramIsReadFromASettingInThreePlacesOnly() throws IOException {
+        Map<String, String> code = productionCode();
+        code.remove("AcpBrainSession.java");
+
+        Map<String, List<String>> readers = new TreeMap<>();
+        code.forEach((file, text) -> {
+            java.util.regex.Matcher found = PROGRAM_READ.matcher(text);
+            java.util.Set<String> methods = new TreeSet<>();
+            while (found.find()) {
+                methods.add(found.group(1));
+            }
+            if (!methods.isEmpty()) {
+                readers.put(file, List.copyOf(methods));
+            }
+        });
+
+        assertEquals(Map.of("HireTool.java", List.of("programFor"), "PrincipalBrain.java", List.of("parseProgram"),
+            "BrainReviewer.java", List.of("parseProgram")), readers,
+            "a new reader of a brain's program appeared: a hired brain's program comes from the registry setting through HireTool alone;"
+                + " the principal's and the reviewer's settings are the only others");
+    }
+
+    @Test
+    @DisplayName("the scan sees a program built in code and a reader of one, and ignores both inside a comment or a string")
+    void theProgramScanSeesWhatItShouldAndNothingElse() {
+        String planted = "class A { void f() { var p = new AcpBrainSession.Program(java.util.List.of(\"x\"), java.util.Map.of()); parseProgram(s); } }";
+        String commented = "class B { // new Program(x)\n /* programFor(a) and new AcpBrainSession.Program( */ String s = \"new Program(\" + \"parseProgram\"; }";
+
+        assertTrue(PROGRAM_BUILT.matcher(codeOnly(planted)).find(), "CONTROL: a program built in code was not seen");
+        assertTrue(PROGRAM_READ.matcher(codeOnly(planted)).find(), "CONTROL: a program read in code was not seen");
+        assertTrue(PROGRAM_BUILT.matcher("var p = new org.jawata.mcp.execution.AcpBrainSession.Program(a, b);").find(),
+            "a program built under its fully qualified name was not seen");
+        assertTrue(PROGRAM_BUILT.matcher("list.stream().map(AcpBrainSession.Program::new)").find(), "a program built by a method reference was not seen");
+        assertFalse(PROGRAM_BUILT.matcher(codeOnly(commented)).find(), "a program built in a comment, or named in a string, was counted");
+        assertFalse(PROGRAM_READ.matcher(codeOnly(commented)).find(), "a reader named in a comment or a string was counted");
     }
 }

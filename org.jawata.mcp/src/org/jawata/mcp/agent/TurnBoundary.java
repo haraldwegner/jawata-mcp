@@ -46,9 +46,12 @@ public final class TurnBoundary {
         return new TurnBoundary(session -> List.of(), new AttemptLedger(1));
     }
 
-    /** The person sent a message: the tries a stuck step has used start again, because their word is what the ceiling waited for. */
-    public void personSpoke() {
-        attempts.personSpoke();
+    /**
+     * The person sent a message in {@code session}: the tries a stuck step of that session has used start again, because their word is
+     * what the ceiling waited for. Another session's tries stay as they were.
+     */
+    public void personSpoke(PrincipalSession session) {
+        attempts.personSpoke(session.id());
     }
 
     /** Decides what to do with the end of the turn a brain just made in {@code session}. */
@@ -63,7 +66,7 @@ public final class TurnBoundary {
             return new Verdict(Kind.REPORT, "The turn ended with " + named + " still waiting. Nobody resumes it while you are at the"
                 + " keyboard: say so to continue it, or run " + step.gateTool() + " yourself.");
         }
-        AttemptLedger.Admission admission = attempts.admit(step.planId() + "#" + step.index());
+        AttemptLedger.Admission admission = attempts.admit(session.id(), step.planId() + "#" + step.index());
         if (!admission.allowed()) {
             return new Verdict(Kind.REPORT, "The turn ended with " + named + " still waiting after " + admission.used() + " resumptions,"
                 + " which is all the loop may spend on one step without your word. The free check comes first: run " + step.gateTool()

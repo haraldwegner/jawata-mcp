@@ -533,7 +533,7 @@ public final class AcpServer {
         if (from == Channel.HOST) {
             // Only the person's message is the person's word: it restarts the tries and ends a grant. The same call from a hired agent
             // does neither.
-            boundary.personSpoke();
+            boundary.personSpoke(session);
             if (session.autonomy()) {
                 session.setAutonomy(Channel.HOST, false);
                 update(session.id(), messageChunk("agent_message_chunk", "Autonomy ended: you sent a message.\n\n", messageId));

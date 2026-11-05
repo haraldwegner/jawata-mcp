@@ -94,6 +94,39 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("the vendor of a brain is read from the command line that starts it: Cursor's agent, Copilot, the Claude and Codex adapters; a program that is none of them names no vendor")
+    void aCommandLineNamesTheBrainsVendor() {
+        assertEquals(Optional.of("cursor"), PrincipalBrain.vendorOf(List.of("agent", "acp")));
+        assertEquals(Optional.of("cursor"), PrincipalBrain.vendorOf(List.of("/home/h/.local/bin/agent", "acp")));
+        assertEquals(Optional.of("copilot"), PrincipalBrain.vendorOf(List.of("copilot", "--acp")));
+        assertEquals(Optional.of("claude-code"), PrincipalBrain.vendorOf(List.of("npx", "-y", "@zed-industries/claude-code-acp")));
+        assertEquals(Optional.of("codex"), PrincipalBrain.vendorOf(List.of("C:\\tools\\codex-acp.exe")));
+        assertEquals(Optional.empty(), PrincipalBrain.vendorOf(List.of("java", "FakeAcpAgent.java")), "a vendor was invented for a program that names none");
+        assertEquals(Optional.empty(), PrincipalBrain.vendorOf(List.of()));
+    }
+
+    @Test
+    @DisplayName("the hire record names the vendor of the brain that ran, and none for a program that names none")
+    void theHireRecordNamesTheVendor() throws IOException {
+        PrincipalBrain unnamed = brain(Optional.of(fake));
+        ask(unnamed, "REMEMBER:bluebird", new ArrayList<>());
+        assertEquals(Optional.empty(), unnamed.records().get(0).vendor(), "CONTROL: a stand-in that names no vendor was given one");
+
+        Path agent = dir.resolve("agent");
+        try {
+            Files.createSymbolicLink(agent, Path.of(System.getProperty("java.home"), "bin", "java"));
+        } catch (IOException | UnsupportedOperationException e) {
+            org.junit.jupiter.api.Assumptions.assumeTrue(false, "this machine cannot make a symbolic link: " + e);
+        }
+        PrincipalBrain named = brain(Optional.of(new AcpBrainSession.Program(List.of(agent.toString(), dir.resolve("FakeAcpAgent.java").toString()),
+            fake.environment())));
+
+        ask(named, "REMEMBER:bluebird", new ArrayList<>());
+
+        assertEquals(Optional.of("cursor"), named.records().get(0).vendor(), named.records().get(0).toString());
+    }
+
+    @Test
     @DisplayName("R9, R10: the principal brain hands the host the brain's thinking and its plan as they stream, in order, and the answer stays the answer")
     void theBrainsThinkingAndPlanReachTheHost() {
         PrincipalBrain brain = brain(Optional.of(fake));

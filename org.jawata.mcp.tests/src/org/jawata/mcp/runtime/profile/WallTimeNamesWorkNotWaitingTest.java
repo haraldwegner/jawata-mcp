@@ -201,7 +201,8 @@ class WallTimeNamesWorkNotWaitingTest {
                 // that returned nothing at all.
                 () -> assertNotNull(mine,
                     () -> "the park taken inside this class's own method must be NAMED, since a"
-                        + " program frame sits directly under it. Rows: " + rows),
+                        + " program frame sits directly under it. Rows: " + rows
+                        + " Event types in the recording file, counted without the parser: " + censusOf(jfr)),
                 // HALF 1. The symbol every parked thread used to collapse into.
                 () -> assertTrue(rows.stream().noneMatch(
                         r -> String.valueOf(r.get("symbol")).startsWith("jdk.internal.misc.Unsafe")),
@@ -356,6 +357,23 @@ class WallTimeNamesWorkNotWaitingTest {
      */
     private static void parkInsideAMethodOfThisClass() {
         LockSupport.parkNanos(Duration.ofMillis(250).toNanos());
+    }
+
+    /**
+     * How many events of each type the recording file holds, read with the JDK's own reader and not through {@link JfrParser}, so a failure
+     * that says "the recording had no park" also says what it did have. One run of this case failed in a sharded suite with an empty
+     * recording and its cause was never found; a recurrence carries this line, which tells an empty file from one the parser misread.
+     */
+    private static String censusOf(Path jfr) {
+        java.util.Map<String, Long> counts = new java.util.TreeMap<>();
+        try {
+            for (jdk.jfr.consumer.RecordedEvent event : jdk.jfr.consumer.RecordingFile.readAllEvents(jfr)) {
+                counts.merge(event.getEventType().getName(), 1L, Long::sum);
+            }
+        } catch (java.io.IOException e) {
+            return "(the file could not be read: " + e + ")";
+        }
+        return counts.toString();
     }
 
     /**
