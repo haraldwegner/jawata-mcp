@@ -24,6 +24,16 @@ public interface HostRuns {
     String PERSON = "person";
 
     /**
+     * The debug agent a program is started with for jawata: on loopback, on a port the JVM chooses, never holding the program at its start
+     * (contract §6.1 rule 2). Written here once: the engine's dev/sim preset reads it from here and a host takes it from here, so neither
+     * can drift from the other (28k ledger row A19-3).
+     */
+    String DEBUG_AGENT = "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:0";
+
+    /** The continuous, bounded flight recording a program is started with for jawata, which {@code profile jfr_dump} reads. */
+    String RECORDING = "-XX:StartFlightRecording=name=jawata,settings=default,maxsize=256m,maxage=1h";
+
+    /**
      * Starts the person's run configuration for jawata and answers once the program runs. The program is never held at its start, so
      * the caller attaches at once.
      *

@@ -5,6 +5,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.jawata.spi.host.HostRuns;
+
 /**
  * Sprint 24 (D5) — <b>the one host-controlled switch</b>. A JVM is either
  * prepared for the toolkit or it is not, and that is the host's decision, made
@@ -45,10 +47,10 @@ public final class DevSimPreset {
         List<String> args = new ArrayList<>();
         // 1. JDWP — LOOPBACK ONLY, and never suspending on our account: attaching
         //    must not change whether the program runs.
-        args.add("-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=127.0.0.1:0");
+        args.add(HostRuns.DEBUG_AGENT);
         // 2. Flight recording, continuous and BOUNDED — an unbounded recording on a
         //    long-running sim is a disk leak.
-        args.add("-XX:StartFlightRecording=name=jawata,settings=default,maxsize=256m,maxage=1h");
+        args.add(HostRuns.RECORDING);
         // 3. Local JMX. No authentication because there is no remote surface to
         //    authenticate: the connector is local-only.
         args.add("-Dcom.sun.management.jmxremote");
@@ -86,7 +88,7 @@ public final class DevSimPreset {
     public static List<String> jvmArgsForLaunch() {
         List<String> args = new ArrayList<>(jvmArgs());
         args.replaceAll(arg -> arg.startsWith("-agentlib:jdwp")
-            ? "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=127.0.0.1:0"
+            ? HostRuns.DEBUG_AGENT.replace("suspend=n", "suspend=y")
             : arg);
         return args;
     }
