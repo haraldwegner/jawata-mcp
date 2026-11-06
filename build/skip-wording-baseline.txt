@@ -11,6 +11,7 @@ org.jawata.mcp.tests/src/org/jawata/mcp/execution/TheHirePathHasOneArgvSourceTes
 org.jawata.mcp.tests/src/org/jawata/mcp/learn/ArchitectGateTest.java	every kind of this door is structural today, so there is no control to run
 org.jawata.mcp.tests/src/org/jawata/mcp/learn/GateNessIsDeclaredNotListedTest.java	the production sources are not present — an honest skip beats a false pass
 org.jawata.mcp.tests/src/org/jawata/mcp/models/EngineNotesTest.java	this OS does not report a process start time
+org.jawata.mcp.tests/src/org/jawata/mcp/runtime/NoJavaHomeReadOutsideTheResolverTest.java	sources are not present in this run: the rule is UNPROVEN here, not passing
 org.jawata.mcp.tests/src/org/jawata/mcp/runtime/UnreadableArtifactIsReportedTest.java	the directory is still readable (running as root?) — refusing to pass on a case this run could not construct
 org.jawata.mcp.tests/src/org/jawata/mcp/tools/DeclaredShapeHonestyTest.java	fixture produced no findings; nothing to attribute
 org.jawata.mcp.tests/src/org/jawata/mcp/tools/verification/HostBoundaryRulesTest.java	sources are not present in this run — the boundary rule is UNPROVEN here, not passing
