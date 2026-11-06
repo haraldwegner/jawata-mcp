@@ -317,6 +317,19 @@ public final class FakeHost implements EngineHost {
 
     /** Writes that apply a change as it is and hand back its undo. */
     public static final class Applying implements WorkspaceWrites {
+        private final List<String> kept = new CopyOnWriteArrayList<>();
+
+        /** @return the names of the changes the engine asked this host to keep, in order */
+        public List<String> kept() {
+            return List.copyOf(kept);
+        }
+
+        @Override
+        public boolean keep(Applied applied, String name) {
+            kept.add(name);
+            return true;
+        }
+
         @Override
         public Applied perform(Change change, IProgressMonitor monitor) throws CoreException {
             change.initializeValidationData(monitor);

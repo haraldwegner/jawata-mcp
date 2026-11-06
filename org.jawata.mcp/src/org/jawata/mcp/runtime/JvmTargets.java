@@ -73,12 +73,29 @@ public final class JvmTargets {
         return found;
     }
 
-    /** Launch a JVM under the dev/sim preset and connect to it. */
-    public static VirtualMachine launch(List<String> command, Path workingDirectory,
+    /**
+     * Launch a JVM under the dev/sim preset and connect to it.
+     *
+     * @param projectName the project the program belongs to, so the host's runtime for it runs the JVM; null runs it on the engine's own
+     */
+    public static VirtualMachine launch(String projectName, List<String> command, Path workingDirectory,
                                         List<String> extraJvmArgs, Process[] outProcess)
             throws Exception {
+        return startAndAttach(launchCommand(projectName, command, extraJvmArgs), workingDirectory, outProcess);
+    }
+
+    /**
+     * The command line of a launched target: the java of the project's runtime (the host's for that project, else the engine's own),
+     * the dev/sim preset that holds the target before its first instruction, the caller's extra JVM arguments, then the program.
+     *
+     * @param projectName  the project the program belongs to, or null for the engine's own runtime
+     * @param command      the program: class path, main class, arguments
+     * @param extraJvmArgs further JVM arguments; may be null
+     * @return the command, program first
+     */
+    public static List<String> launchCommand(String projectName, List<String> command, List<String> extraJvmArgs) {
         List<String> full = new ArrayList<>();
-        full.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        full.add(ChildJvm.binary(projectName, "java").toString());
         // Held before its first instruction: the caller arms breakpoints, THEN starts it.
         // See DevSimPreset#jvmArgsForLaunch — a launched target that is already running
         // has already run past whatever you wanted to see.
@@ -87,7 +104,7 @@ public final class JvmTargets {
             full.addAll(extraJvmArgs);
         }
         full.addAll(command);
-        return startAndAttach(full, workingDirectory, outProcess);
+        return full;
     }
 
     /**

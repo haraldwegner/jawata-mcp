@@ -28,6 +28,12 @@ org.jawata.mcp.embed.WordPieceTokenizer#vocabSize()
 # settings screen, so no production caller exists until that stage. EngineEnvironmentTest and ResidentDirectoriesTest
 # are the readers now: the first fails if a key a reader asks is missing from it.
 org.jawata.mcp.engine.SettingKeys#all()
+# Sprint 28h (ledger 28k-A17-1, -A17-2, -A17-3): who a setting is for, and the wording of its meaning per host. Their consumer is the
+# Eclipse preference page (jawata-eclipse), which hides the launcher-set and experiment keys and words each meaning without the
+# environment-variable sentence the engine that runs alone adds; the engine that runs alone has no settings screen, so no production
+# caller exists in this repository. SettingKeyAudienceTest is the reader here and holds the headless wording of every key byte for byte.
+org.jawata.mcp.engine.SettingKey#audience()
+org.jawata.mcp.engine.SettingKey#meaningFor(boolean)
 # Sprint 28g S9a, C9a 2026-10-05 — THE DRIVER'S ENTRY POINTS AND THE LEDGER'S READ SURFACE.
 # These are an ABSENCE this gate is reporting correctly, not a defect: the thing that would
 # call and read them is the /main seat's ledger wiring (plan step M7), which is named and

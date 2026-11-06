@@ -43,6 +43,22 @@ public interface WorkspaceWrites {
         return Optional.empty();
     }
 
+    /**
+     * Tells the host that a change it performed as a {@link WriteMode#TRIAL} was accepted, and is to stay as an ordinary step on the
+     * person's undo history from now on (28k contract §16, ledger 28k-A18-1). The engine applies every change forward as a trial, so that a
+     * change its gate refuses and takes back never reaches the person's Edit &gt; Undo, and calls this once when the gate accepts it. A
+     * change the gate refused is never kept.
+     *
+     * <p>The default does nothing and answers true: a host with no undo history of its own has nothing to keep.</p>
+     *
+     * @param applied what {@link #perform(Change, WriteMode, IProgressMonitor)} answered for this change
+     * @param name    the change's name, for the label of the step on the person's undo history
+     * @return true when the host now holds the change as an ordinary undoable edit, false when it could not keep it
+     */
+    default boolean keep(Applied applied, String name) {
+        return true;
+    }
+
     /** What performing a change left: the change that undoes it (null when nothing was done) and LTK's validation status. */
     record Applied(Change undo, RefactoringStatus validation) {
     }

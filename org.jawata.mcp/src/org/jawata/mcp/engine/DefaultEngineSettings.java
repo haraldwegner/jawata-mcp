@@ -11,13 +11,11 @@ import org.jawata.spi.host.EngineSettings;
  */
 public final class DefaultEngineSettings implements EngineSettings {
 
-    /** The settings that may also come from an environment variable, which applies when no system property says otherwise. */
+    /**
+     * The settings that may also come from an environment variable and are not in the registry ({@link SettingKeys}), which applies when
+     * no system property says otherwise. The registered keys name their own variable ({@link SettingKey#environment()}).
+     */
     private static final Map<String, String> ENVIRONMENT = Map.ofEntries(
-        Map.entry("jawata.transcript.enabled", "JAWATA_TRANSCRIPT"),
-        Map.entry("jawata.data.home", "XDG_DATA_HOME"),
-        Map.entry("jawata.project.path", "JAVA_PROJECT_PATH"),
-        Map.entry("jawata.timeout.seconds", "JAWATA_TIMEOUT_SECONDS"),
-        Map.entry("jawata.absolute.paths", "JAWATA_ABSOLUTE_PATHS"),
         Map.entry("jawata.agent.brain", "JAWATA_AGENT_BRAIN"),
         Map.entry("jawata.agent.recording", "JAWATA_AGENT_RECORDING"),
         Map.entry("jawata.agent.reviewer", "JAWATA_AGENT_REVIEWER"),
@@ -27,13 +25,26 @@ public final class DefaultEngineSettings implements EngineSettings {
         // is owed to S15 (the plan's Stage 15 carries it), and until then only a person or a test that sets it makes seats run on a schedule.
         Map.entry("jawata.agent.seatsDir", "JAWATA_AGENT_SEATS_DIR"));
 
+    /** What an environment variable holds: the process's own, or what a test says. */
+    private final java.util.function.UnaryOperator<String> environment;
+
+    /** Settings that read the process's own environment. */
+    public DefaultEngineSettings() {
+        this(System::getenv);
+    }
+
+    /** Settings that read the environment through {@code environment}, which answers null for a variable that is not set. */
+    DefaultEngineSettings(java.util.function.UnaryOperator<String> environment) {
+        this.environment = environment;
+    }
+
     @Override
     public Optional<String> get(String key) {
         String property = System.getProperty(key);
         if (property != null) {
             return Optional.of(property);
         }
-        String variable = ENVIRONMENT.get(key);
-        return variable == null ? Optional.empty() : Optional.ofNullable(System.getenv(variable));
+        String variable = SettingKeys.environmentOf(key).orElse(ENVIRONMENT.get(key));
+        return variable == null ? Optional.empty() : Optional.ofNullable(environment.apply(variable));
     }
 }

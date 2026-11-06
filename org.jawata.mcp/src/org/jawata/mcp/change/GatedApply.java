@@ -48,8 +48,9 @@ import org.eclipse.ltk.core.refactoring.Change;
 public final class GatedApply {
 
     /**
-     * How the gate takes back a change it refuses: as a trial, so a host with an undo history of its own (Eclipse's Edit &gt; Undo) does not
-     * list the gate's own rollback as a step the person made (28k contract §16, ledger 28k-A18-1).
+     * How the gate applies a change forward and how it takes back one it refuses: as a trial, so a host with an undo history of its own
+     * (Eclipse's Edit &gt; Undo) lists neither the change before it is judged nor the gate's own rollback as a step the person made; a
+     * change the gate accepts is kept through {@code WorkspaceWrites#keep} (28k contract §16, ledger 28k-A18-1).
      */
     private static final org.jawata.spi.host.WorkspaceWrites.WriteMode TAKING_BACK = org.jawata.spi.host.WorkspaceWrites.WriteMode.TRIAL;
 
@@ -96,13 +97,21 @@ public final class GatedApply {
         Map<String, Set<String>> before = CompileVerify.errorMessagesByFile(
             context.verdict(), ChangeEngine.affectedFilePaths(change, context));
 
-        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, context);
+        // Forward as a TRIAL (28k contract §16): until the gate has judged it, the change is not a step the person made, so a change the gate
+        // refuses and takes back never reaches the host's Edit > Undo. A change the gate accepts is kept below.
+        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(change, context, TAKING_BACK);
         if (outcome.validationError() != null) {
             return new Result(outcome, List.of(), outcome.validationError(), true);
         }
 
         try {
-            return judge(context, mode, before, outcome);
+            Result judged = judge(context, mode, before, outcome);
+            if (!judged.refused() && !context.writes().keep(outcome.applied(), change.getName())) {
+                org.slf4j.LoggerFactory.getLogger(GatedApply.class).warn(
+                    "The host could not keep '{}' as an ordinary undoable edit; the change stands, and the engine's own undo still holds it",
+                    change.getName());
+            }
+            return judged;
         } catch (RuntimeException thrown) {
             // The change is on disk and its undo handle is held only here: anything that throws between applying and answering
             // would leave it applied with nobody able to undo it (28k ledger C2b-19). Undo it, then let the throw go on.

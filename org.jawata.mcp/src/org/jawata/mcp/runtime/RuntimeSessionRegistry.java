@@ -54,8 +54,12 @@ public final class RuntimeSessionRegistry {
             "pid " + pid, vm, null, capabilities, pid));
     }
 
-    /** Launch a JVM under the dev/sim preset and connect to it. */
-    public RuntimeSession launch(List<String> command, Path workingDirectory,
+    /**
+     * Launch a JVM under the dev/sim preset and connect to it.
+     *
+     * @param projectName the project the program belongs to, so the host's runtime for it runs the JVM; null runs it on the engine's own
+     */
+    public RuntimeSession launch(String projectName, List<String> command, Path workingDirectory,
                                  List<String> extraJvmArgs) throws Exception {
         evictIfFull();
 
@@ -75,7 +79,7 @@ public final class RuntimeSessionRegistry {
         Process[] out = new Process[1];
         VirtualMachine vm;
         try {
-            vm = JvmTargets.launch(command, workingDirectory, jvmArgs, out);
+            vm = JvmTargets.launch(projectName, command, workingDirectory, jvmArgs, out);
         } catch (Exception e) {
             // A launch that failed halfway must not leave the JVM — or its repo — behind.
             if (out[0] != null) {

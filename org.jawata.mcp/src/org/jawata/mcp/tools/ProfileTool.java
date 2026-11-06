@@ -1900,7 +1900,9 @@ public class ProfileTool extends AbstractTool {
                 return ToolResponse.success(data);
             }
 
-            Path javaBinary = Path.of(System.getProperty("java.home"), "bin", "java");
+            // Not a launch of a JVM: the debugger reads the crashed program's core dump against this binary's symbols, and the crashed
+            // JVM belongs to no project the engine knows, so it asks with no project (28k-C5-15).
+            Path javaBinary = org.jawata.mcp.runtime.ChildJvm.binary(null, "java");
             String backtrace = GdbAdapter.runBacktrace(adapterCommand, javaBinary, corePath,
                 ADAPTER_TIMEOUT_SECONDS);
             List<Map<String, Object>> threads = GdbAdapter.parseBacktrace(backtrace);

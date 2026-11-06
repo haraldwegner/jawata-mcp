@@ -42,13 +42,20 @@ public final class ChangeEngine {
     /**
      * Result of {@link #perform}. {@code validationError} is non-null when
      * LTK rejected the change — nothing was modified in that case and
-     * {@code undoChange} is null.
+     * {@code undoChange} is null. {@code applied} is what the host answered when it performed the change, handed back to the host when
+     * the gate keeps the change; null when nothing was performed.
      */
     public record ApplyOutcome(
         Change undoChange,
         List<String> modifiedFilePaths,
-        String validationError
-    ) {}
+        String validationError,
+        WorkspaceWrites.Applied applied
+    ) {
+        /** An outcome of a change that was not performed, or whose host answer nobody asks about again: no applied answer is held. */
+        public ApplyOutcome(Change undoChange, List<String> modifiedFilePaths, String validationError) {
+            this(undoChange, modifiedFilePaths, validationError, null);
+        }
+    }
 
     /**
      * Render a unified diff of what the change WOULD do, without applying.
@@ -310,7 +317,7 @@ public final class ChangeEngine {
             modified.addAll(modifiedFilePaths);
 
             Change undoChange = applied.undo();
-            return new ApplyOutcome(undoChange, new ArrayList<>(modified), null);
+            return new ApplyOutcome(undoChange, new ArrayList<>(modified), null, applied);
         } catch (CoreException e) {
             log.warn("Change.perform failed for '{}': {}", change.getName(), e.getMessage(), e);
             return new ApplyOutcome(null, List.of(), e.getMessage());

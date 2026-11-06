@@ -45,7 +45,8 @@ final class HeapHistogram {
     /** class name → live instance count. Empty map when jcmd is unavailable or fails. */
     static Map<String, Long> of(long pid) {
         Map<String, Long> counts = new LinkedHashMap<>();
-        Path jcmd = Path.of(System.getProperty("java.home"), "bin", "jcmd");
+        // Not a launch of a project's JVM: it asks a JVM that is already running, so it asks with no project (28k-C5-15).
+        Path jcmd = org.jawata.mcp.runtime.ChildJvm.binary(null, "jcmd");
         if (!Files.isExecutable(jcmd)) {
             log.debug("no jcmd at {} — the exact heap count is unavailable", jcmd);
             return counts;

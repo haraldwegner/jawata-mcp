@@ -81,6 +81,8 @@ public final class ForkedTestRunner {
         public java.util.function.Consumer<JsonNode> eventConsumer;
         /** Per-test coverage segments land here when set (Stage 9). */
         public Path attributionDir;
+        /** The project the run is for, so the host's runtime for it runs the JVM; null runs it on the engine's own runtime. */
+        public String projectName;
     }
 
     public static final class CaseResult {
@@ -216,18 +218,7 @@ public final class ForkedTestRunner {
         spec.selectPackages.forEach(p -> args.append("select-package=").append(p).append('\n'));
         Files.writeString(argFile, args.toString(), StandardCharsets.UTF_8);
 
-        List<String> cmd = new ArrayList<>();
-        cmd.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
-        cmd.add("-ea");
-        boolean callerXmx = spec.vmArgs.stream().anyMatch(a -> a.startsWith("-Xmx"));
-        if (!callerXmx) cmd.add("-Xmx512m");
-        cmd.addAll(spec.vmArgs);
-        cmd.add("-Djava.io.tmpdir=" + childTmp);
-        cmd.add("-cp");
-        cmd.add(String.join(java.io.File.pathSeparator,
-            spec.classpath.stream().map(Path::toString).toList()));
-        cmd.add("org.jawata.testrunner.Main");
-        cmd.add(argFile.toString());
+        List<String> cmd = command(spec, argFile, childTmp);
 
         java.util.Map<String, String> allowed = new java.util.LinkedHashMap<>();
         for (String key : ENV_ALLOWLIST) {
@@ -277,6 +268,31 @@ public final class ForkedTestRunner {
             deleteRecursively(session);
         }
         return result;
+    }
+
+    /**
+     * The command line of the runner JVM: the java of the project's runtime (the host's for that project, else the engine's own), the
+     * bounds, the project's classpath and the runner's argument file.
+     *
+     * @param spec    what to run; {@link Spec#projectName} names the project whose runtime runs it
+     * @param argFile the runner's argument file
+     * @param childTmp the {@code java.io.tmpdir} of the child
+     * @return the command, program first
+     */
+    public static List<String> command(Spec spec, Path argFile, Path childTmp) {
+        List<String> cmd = new ArrayList<>();
+        cmd.add(org.jawata.mcp.runtime.ChildJvm.binary(spec.projectName, "java").toString());
+        cmd.add("-ea");
+        boolean callerXmx = spec.vmArgs.stream().anyMatch(a -> a.startsWith("-Xmx"));
+        if (!callerXmx) cmd.add("-Xmx512m");
+        cmd.addAll(spec.vmArgs);
+        cmd.add("-Djava.io.tmpdir=" + childTmp);
+        cmd.add("-cp");
+        cmd.add(String.join(java.io.File.pathSeparator,
+            spec.classpath.stream().map(Path::toString).toList()));
+        cmd.add("org.jawata.testrunner.Main");
+        cmd.add(argFile.toString());
+        return cmd;
     }
 
     /** Kill the whole tree, children first, then the root — never orphan a JVM. */

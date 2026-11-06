@@ -472,7 +472,7 @@ public class DebugTool extends AbstractTool {
             return switch (action) {
                 case "discover" -> discover();
                 case "attach" -> attach(arguments);
-                case "launch" -> launch(arguments);
+                case "launch" -> launch(arguments, projectNameOf(service, arguments));
                 case "status" -> status(arguments);
                 case "detach", "cancel" -> detach(arguments);
                 case "preset_args" -> presetArgs();
@@ -495,7 +495,7 @@ public class DebugTool extends AbstractTool {
                 case "probe_clear" -> probeClear(arguments);
                 case "probe_list" -> probeList(arguments);
                 case "probe_read" -> probeRead(arguments);
-                case "replay" -> replay(arguments);
+                case "replay" -> replay(arguments, projectNameOf(service, arguments));
                 case "artifacts" -> listArtifacts(arguments);
                 case "artifact_delete" -> deleteArtifact(arguments);
                 default -> ToolResponse.invalidParameter("action",
@@ -1039,7 +1039,7 @@ public class DebugTool extends AbstractTool {
      * between "here is a log of everything that happened" and "here is the moment it went
      * wrong, with the program still standing in it".</p>
      */
-    private ToolResponse replay(JsonNode arguments) throws Exception {
+    private ToolResponse replay(JsonNode arguments, String projectName) throws Exception {
         String mainClass = getStringParam(arguments, "mainClass");
         String classpath = getStringParam(arguments, "classpath");
         String invariant = getStringParam(arguments, "invariant");
@@ -1055,7 +1055,7 @@ public class DebugTool extends AbstractTool {
 
         List<String> command = new ArrayList<>(List.of("-cp", classpath, mainClass));
         command.addAll(stringList(arguments, "args"));
-        RuntimeSession session = sessions.launch(command, null, List.of());
+        RuntimeSession session = sessions.launch(projectName, command, null, List.of());
         DebugController debugger = debuggerOf(session);
 
         // Armed as the NEGATION: we do not want every event, we want the broken one.
@@ -1234,7 +1234,7 @@ public class DebugTool extends AbstractTool {
             + "it keeps running.", getStringParam(arguments, "projectKey"));
     }
 
-    private ToolResponse launch(JsonNode arguments) throws Exception {
+    private ToolResponse launch(JsonNode arguments, String projectName) throws Exception {
         ToolResponse refused = refusedWhilePersonDebugs();
         if (refused != null) {
             return refused;
@@ -1270,6 +1270,7 @@ public class DebugTool extends AbstractTool {
 
         String workingDirectory = getStringParam(arguments, "workingDirectory");
         RuntimeSession session = sessions.launch(
+            projectName,
             command,
             workingDirectory == null ? null : Path.of(workingDirectory),
             stringList(arguments, "jvmArgs"));
@@ -1463,6 +1464,18 @@ public class DebugTool extends AbstractTool {
                 + "Capabilities are read from the JVM, never assumed — hot-swap and pop-frame "
                 + "are not universal. Preset capabilities: " + DevSimPreset.CAPABILITIES + ".")
             .build());
+    }
+
+    /**
+     * The Eclipse project name of the project the call names with {@code projectKey}: the project a launched program belongs to, whose
+     * runtime the host says. Null when the call names none or none is loaded under that key, which launches on the engine's own runtime.
+     */
+    private String projectNameOf(IJdtService service, JsonNode arguments) {
+        String projectKey = getStringParam(arguments, "projectKey");
+        if (projectKey == null || projectKey.isBlank()) {
+            return null;
+        }
+        return service.getProject(projectKey).map(loaded -> loaded.javaProject().getProject().getName()).orElse(null);
     }
 
     private List<String> stringList(JsonNode arguments, String field) {

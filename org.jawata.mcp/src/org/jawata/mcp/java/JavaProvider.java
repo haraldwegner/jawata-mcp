@@ -102,6 +102,9 @@ public final class JavaProvider implements LanguageProvider, ToolSource {
         // when the engine assembles, which lets an engine with no Java assemble. E15: it stands down when the host did the setup itself.
         org.jawata.mcp.tools.shared.HeadlessJdtConfig.hostedBy(host.binding(JavaBinding.class).orElseThrow());
         org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
+        // The runtime a child JVM runs on is the host's to say, by project (contract §4.2): the test runner, the mutation run and the
+        // debug launch ask the resolver, which asks the runtimes the host's Java binding supplies.
+        org.jawata.mcp.runtime.ChildJvm.hostedBy(host.binding(JavaBinding.class).orElseThrow().runtimes(), model);
     }
 
     @Override

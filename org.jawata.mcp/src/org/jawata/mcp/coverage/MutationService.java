@@ -19,6 +19,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.java.RunnerClasspath;
+import org.jawata.mcp.runtime.ChildJvm;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Document;
@@ -78,6 +79,48 @@ public final class MutationService {
     }
 
     /**
+     * The command line of the PIT JVM: the java of the project's runtime (the host's for that project, else the engine's own), PIT's
+     * toolchain plus the project's classpath, and PIT's arguments.
+     *
+     * @param projectName   the project the run is for, or null for the engine's own runtime
+     * @param toolClasspath PIT's own jars
+     * @param projectCp     the project's classpath
+     * @param reportDir     where PIT writes its report
+     * @param targetClasses production classes to mutate
+     * @param targetTests   the exercising tests
+     * @param sourceRoots   where the project's sources are
+     * @return the command, program first
+     */
+    public static List<String> command(String projectName, List<Path> toolClasspath, Set<String> projectCp, Path reportDir,
+                                       List<String> targetClasses, List<String> targetTests, List<String> sourceRoots) {
+        List<String> cmd = new ArrayList<>();
+        cmd.add(ChildJvm.binary(projectName, "java").toString());
+        cmd.add("-cp");
+        cmd.add(String.join(File.pathSeparator,
+            toolClasspath.stream().map(Path::toString).toList())
+            + File.pathSeparator + String.join(File.pathSeparator, projectCp));
+        cmd.add("org.pitest.mutationtest.commandline.MutationCoverageReport");
+        cmd.add("--reportDir");
+        cmd.add(reportDir.toString());
+        cmd.add("--targetClasses");
+        cmd.add(String.join(",", targetClasses));
+        cmd.add("--targetTests");
+        cmd.add(String.join(",", targetTests));
+        cmd.add("--sourceDirs");
+        cmd.add(String.join(",", sourceRoots));
+        cmd.add("--outputFormats");
+        cmd.add("XML");
+        cmd.add("--timestampedReports");
+        cmd.add("false");
+        // The file PIT's coverage JVM writes the tests that abort UNMUTATED to, and its mutation JVM
+        // reads: such a test aborts under every mutation too, so it converted nothing.
+        cmd.add("--jvmArgs");
+        cmd.add("-D" + ABORT_BASELINE_PROPERTY + "=" + reportDir.resolve("aborting-before-mutation.txt"));
+        return cmd;
+    }
+
+    /**
+     * @param projectName      the project the run is for, so the host's runtime for it runs PIT; null runs it on the engine's own runtime
      * @param projectClasspath what the project's own code needs at run time, as paths (the language's answer)
      * @param projectFolder    the folder PIT starts in
      * @param targetClasses    production classes to mutate (globs ok)
@@ -85,7 +128,7 @@ public final class MutationService {
      * @param sourceRoots      where the project's sources are
      * @param timeoutSeconds   how long PIT may run before it is reaped
      */
-    public Result run(List<String> projectClasspath, java.nio.file.Path projectFolder, List<String> targetClasses, List<String> targetTests, List<String> sourceRoots, int timeoutSeconds)
+    public Result run(String projectName, List<String> projectClasspath, java.nio.file.Path projectFolder, List<String> targetClasses, List<String> targetTests, List<String> sourceRoots, int timeoutSeconds)
             throws Exception {
         Result result = new Result();
         Path reportDir = Files.createTempDirectory("jawata-pit-");
@@ -109,29 +152,7 @@ public final class MutationService {
         cp.add(RunnerClasspath.toolJar("commons-lang3-"));
         Set<String> projectCp = new LinkedHashSet<>(projectClasspath);
 
-        List<String> cmd = new ArrayList<>();
-        cmd.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
-        cmd.add("-cp");
-        cmd.add(String.join(File.pathSeparator,
-            cp.stream().map(Path::toString).toList())
-            + File.pathSeparator + String.join(File.pathSeparator, projectCp));
-        cmd.add("org.pitest.mutationtest.commandline.MutationCoverageReport");
-        cmd.add("--reportDir");
-        cmd.add(reportDir.toString());
-        cmd.add("--targetClasses");
-        cmd.add(String.join(",", targetClasses));
-        cmd.add("--targetTests");
-        cmd.add(String.join(",", targetTests));
-        cmd.add("--sourceDirs");
-        cmd.add(String.join(",", sourceRoots));
-        cmd.add("--outputFormats");
-        cmd.add("XML");
-        cmd.add("--timestampedReports");
-        cmd.add("false");
-        // The file PIT's coverage JVM writes the tests that abort UNMUTATED to, and its mutation JVM
-        // reads: such a test aborts under every mutation too, so it converted nothing.
-        cmd.add("--jvmArgs");
-        cmd.add("-D" + ABORT_BASELINE_PROPERTY + "=" + reportDir.resolve("aborting-before-mutation.txt"));
+        List<String> cmd = command(projectName, cp, projectCp, reportDir, targetClasses, targetTests, sourceRoots);
 
         long start = System.nanoTime();
         // The SPAWN crosses the boundary; the two streams stay here, because

@@ -43,9 +43,13 @@ class GatedApplyHostWritesTest {
 
     /** Writes that apply as the host-less default does and write down how and over what they were asked. */
     private static final class Recording implements WorkspaceWrites {
-        private final WorkspaceWrites direct = new FakeHost.Applying();
+        private final FakeHost.Applying direct = new FakeHost.Applying();
         final List<WriteMode> modes = new CopyOnWriteArrayList<>();
         final List<String> asked = new CopyOnWriteArrayList<>();
+        /** The names the gate asked the host to keep, and what it handed over, beside what {@code perform} answered. */
+        final List<String> kept = new CopyOnWriteArrayList<>();
+        final List<Applied> keptApplied = new CopyOnWriteArrayList<>();
+        final List<Applied> performed = new CopyOnWriteArrayList<>();
         volatile String refuseWith;
 
         @Override
@@ -56,7 +60,16 @@ class GatedApplyHostWritesTest {
         @Override
         public Applied perform(Change change, WriteMode mode, IProgressMonitor monitor) throws CoreException {
             modes.add(mode);
-            return direct.perform(change, monitor);
+            Applied applied = direct.perform(change, monitor);
+            performed.add(applied);
+            return applied;
+        }
+
+        @Override
+        public boolean keep(Applied applied, String name) {
+            kept.add(name);
+            keptApplied.add(applied);
+            return direct.keep(applied, name);
         }
 
         @Override
@@ -101,19 +114,31 @@ class GatedApplyHostWritesTest {
     }
 
     @Test
-    @DisplayName("a change that builds stands, is performed as ACCEPTED, and the host was asked about its file first")
-    void aChangeThatStandsIsAcceptedAfterTheHostWasAsked() throws Exception {
+    @DisplayName("a change that builds stands: it is performed as a TRIAL and then kept exactly once, and the host was asked about its file first")
+    void aChangeThatStandsIsKeptAfterTheHostWasAsked() throws Exception {
         Recording writes = new Recording();
         inAProject(writes, (context, folder) -> {
             Path good = folder.resolve("good.txt");
+            PlainTextChange change = new PlainTextChange(good, "nothing wrong here");
 
-            GatedApply.Result result = GatedApply.perform(new PlainTextChange(good, "nothing wrong here"), context, GatedApply.Mode.UNDO);
+            GatedApply.Result result = GatedApply.perform(change, context, GatedApply.Mode.UNDO);
 
             assertAll(
                 () -> assertFalse(result.refused(), "got: " + result.failure()),
-                () -> assertEquals(List.of(WorkspaceWrites.WriteMode.ACCEPTED), writes.modes, "kept by the person: not a trial"),
+                () -> assertEquals(List.of(WorkspaceWrites.WriteMode.TRIAL), writes.modes,
+                    "applied forward as a trial, so a change the gate refuses never reaches the host's undo history"),
+                () -> assertEquals(List.of(change.getName()), writes.kept, "kept exactly once, under the change's own name"),
+                () -> assertTrue(writes.performed.get(0) == writes.keptApplied.get(0),
+                    "the host is handed what it answered when it performed the trial"),
                 () -> assertEquals(List.of("good.txt"), writes.asked, "the host was asked about the file the change acts on"));
         });
+    }
+
+    @Test
+    @DisplayName("a host with no undo history of its own keeps nothing and answers kept: the default does nothing")
+    void theDefaultKeepAnswersKept() {
+        assertTrue(WorkspaceWrites.DIRECT.keep(new WorkspaceWrites.Applied(null, null), "any change"),
+            "a host that has no separate undo has nothing to keep and nothing to refuse");
     }
 
     @Test
@@ -135,7 +160,7 @@ class GatedApplyHostWritesTest {
     }
 
     @Test
-    @DisplayName("a change the gate refuses is written as ACCEPTED and taken back as a TRIAL, so the rollback is not a step the person made")
+    @DisplayName("a change the gate refuses is written as a TRIAL and taken back as a TRIAL and never kept, so neither is a step the person made")
     void theGatesRollbackIsATrial() throws Exception {
         Recording writes = new Recording();
         inAProject(writes, (context, folder) -> {
@@ -147,8 +172,9 @@ class GatedApplyHostWritesTest {
             assertAll(
                 () -> assertTrue(result.refused() && result.undone(), "the verdict refused it and it was undone: " + result.failure()),
                 () -> assertFalse(Files.exists(bad)),
-                () -> assertEquals(List.of(WorkspaceWrites.WriteMode.ACCEPTED, WorkspaceWrites.WriteMode.TRIAL), writes.modes,
-                    "the change, then its rollback"));
+                () -> assertEquals(List.of(WorkspaceWrites.WriteMode.TRIAL, WorkspaceWrites.WriteMode.TRIAL), writes.modes,
+                    "the change, then its rollback: both trials"),
+                () -> assertTrue(writes.kept.isEmpty(), "a refused change is never kept: " + writes.kept));
         });
     }
 }

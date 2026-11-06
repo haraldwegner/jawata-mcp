@@ -27,8 +27,8 @@ public final class Jcmd {
 
     private static final Logger log = LoggerFactory.getLogger(Jcmd.class);
 
-    private static final Path BINARY =
-        Path.of(System.getProperty("java.home"), "bin", "jcmd");
+    /** Not a launch of a project's JVM: jcmd attaches to a JVM that is already running, so it asks with no project (28k-C5-15). */
+    private static final Path BINARY = org.jawata.mcp.runtime.ChildJvm.binary(null, "jcmd");
 
     private Jcmd() {
     }

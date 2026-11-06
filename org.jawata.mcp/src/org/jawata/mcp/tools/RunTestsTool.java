@@ -425,6 +425,7 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
             }
 
             ForkedTestRunner.Spec spec = new ForkedTestRunner.Spec();
+            spec.projectName = projectName;
             int timeout = getIntParam(arguments, "timeoutSeconds", 120);
             spec.timeoutSeconds = Math.min(600, Math.max(1, timeout));
             if (arguments.has("vmArgs") && arguments.get("vmArgs").isArray()) {
@@ -1947,7 +1948,7 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
             int timeout = Math.min(600, Math.max(30,
                 getIntParam(arguments, "timeoutSeconds", 300)));
             org.jawata.mcp.coverage.MutationService.Result r =
-                new org.jawata.mcp.coverage.MutationService().run(tests.runtimeClasspath(projectName),
+                new org.jawata.mcp.coverage.MutationService().run(projectName, tests.runtimeClasspath(projectName),
                     tests.workingFolder(projectName), targetClasses, targetTests, sourceRoots, timeout);
 
             Map<String, Object> data = new LinkedHashMap<>();
