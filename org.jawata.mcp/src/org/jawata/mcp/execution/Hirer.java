@@ -162,9 +162,9 @@ public final class Hirer {
         return new Hirer(tree, next, engineCodeChangingTools);
     }
 
-    /** Where a seat that could not do its task goes next: a developer escalates to the senior developer, and nothing else escalates. */
+    /** Where a seat that could not do its task goes next, as the tree says (D51): by default a developer escalates to the senior developer, and nothing else escalates. */
     public Optional<String> escalateTo(String seat) {
-        return "developer".equals(seat) ? Optional.of("senior-developer") : Optional.empty();
+        return tree.escalatesTo(seat);
     }
 
     /**

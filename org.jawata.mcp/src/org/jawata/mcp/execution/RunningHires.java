@@ -34,6 +34,8 @@ public final class RunningHires {
         final Thread thread;
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
+        /** Whether the brain is compacting its own context right now, as its stream last said. */
+        volatile boolean compacting;
 
         Running(String seat, String brief, Thread thread) {
             this.seat = seat;
@@ -125,6 +127,25 @@ public final class RunningHires {
                     costUsd.isPresent() ? costUsd : seen.costUsd());
             }
         }
+    }
+
+    /** Records that the brain of the hire running on the current thread began or ended compacting its context; a thread running no hire is ignored. */
+    public void noteCompaction(boolean compacting) {
+        for (Running hire : running) {
+            if (hire.thread == Thread.currentThread()) {
+                hire.compacting = compacting;
+            }
+        }
+    }
+
+    /** Whether the running hire of this seat for this brief is compacting its context at this moment; false when no such hire is running. */
+    public boolean compacting(String seat, String brief) {
+        for (Running hire : running) {
+            if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
+                return hire.compacting;
+            }
+        }
+        return false;
     }
 
     /** What the running hire of this seat for this brief has reported so far; none when no such hire is running. */

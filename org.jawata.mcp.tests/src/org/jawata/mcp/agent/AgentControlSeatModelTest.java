@@ -85,6 +85,25 @@ class AgentControlSeatModelTest {
     }
 
     @Test
+    @DisplayName("a seat only a seat file declares (D51) also gets a model select, and the person's pick for it is accepted")
+    void aSeatTheFilesAddAlsoGetsAModelSelect(@org.junit.jupiter.api.io.TempDir java.nio.file.Path folder) throws java.io.IOException {
+        java.nio.file.Files.writeString(folder.resolve("scribe.md"), "---\nname: scribe\nparent: chief-engineer\nrole: reviewer\n---\nbody\n");
+        Connection connection = new Connection();
+        connection.server.offerSeats(() -> SeatTree.in(folder, java.util.Set.of()).tree());
+        connection.said.clear();
+        connection.server.receive(JsonRpcMessage.request(2, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+        JsonNode options = connection.said.stream().filter(m -> m.path("id").asInt() == 2).findFirst().orElseThrow().path("result").path("configOptions");
+
+        assertNotNull(optionOf(options, "seat-model:scribe"), options.toString());
+        assertEquals(SeatTree.standard().seats().size() + 2, options.size(), "autonomy, the signed seats and the one new seat");
+        try {
+            assertNull(connection.set(Channel.HOST, "seat-model:scribe", "claude-code").get("error"));
+        } finally {
+            SeatBrainPicks.shared().forget("scribe");
+        }
+    }
+
+    @Test
     @DisplayName("the person's pick of a brain is answered in the response with that brain as current value, kept for the seat's next hire with the registry's model, and undone by choosing the seat file")
     void aPickIsAnsweredAndRememberedAndUndone() {
         Connection connection = new Connection();

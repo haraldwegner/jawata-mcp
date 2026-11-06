@@ -9,6 +9,7 @@ import org.jawata.mcp.engine.RoutedFace;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.ScheduledHires;
 import org.jawata.mcp.execution.SeatPrompts;
+import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.jawata.mcp.protocol.MessageRoute;
 import org.jawata.spi.host.EngineSettings;
@@ -151,6 +152,10 @@ public final class AgentFace implements RoutedFace {
         Supplier<List<AdvertisedCommand>> advertised = commands != null ? commands : () -> servedSeats(attached);
         AcpServer server = new AcpServer(brain, advertised, out, boundary, recorder, sideBrains, reviewer);
         server.offerBrains(() -> attached.settings() == null ? "" : attached.settings().get(Hirer.BRAINS_SETTING).orElse(""));
+        server.offerSeats(() -> SeatTree.forSetting(attached.settings() == null ? java.util.Optional.empty()
+            : attached.settings().get(ScheduledHires.SEATS_SETTING),
+            // An engine attached with no tool registry publishes no tool that changes code.
+            attached.tools() == null ? java.util.Set.of() : SeatTree.codeChangingIn(attached.tools().getToolDefinitions())).tree());
         return server;
     }
 }

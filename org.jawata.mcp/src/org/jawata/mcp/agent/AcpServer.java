@@ -163,6 +163,14 @@ public final class AcpServer {
         this.brainRegistry = registry == null ? () -> "" : registry;
     }
 
+    /** Where the tree of seats is read from, each time it is asked for (D51); none offered reads as the signed tree. */
+    private volatile Supplier<SeatTree> seatTree = SeatTree::standard;
+
+    /** Installs the source of the seat tree whose seats get a brain-and-model choice (application wiring). */
+    void offerSeats(Supplier<SeatTree> tree) {
+        this.seatTree = tree == null ? SeatTree::standard : tree;
+    }
+
     /**
      * The brains the studio offers with their models, for the Agent Control panel's brain control (S9; his ruling 2026-10-31). The method name is
      * provisional until the chat's recording R12 carries it. A registry that is not readable offers none, which is an empty list and not an error.
@@ -324,7 +332,7 @@ public final class AcpServer {
     private ArrayNode configOptions(PrincipalSession session) {
         ArrayNode options = JSON.createArrayNode();
         addAutonomy(options, session);
-        SeatTree.standard().seats().forEach(seat -> addSeatModel(options, seat));
+        seatTree.get().seats().forEach(seat -> addSeatModel(options, seat));
         return options;
     }
 
@@ -395,7 +403,7 @@ public final class AcpServer {
             return JsonRpcMessage.errorResponse(id, NOT_PERMITTED,
                 "Only the person chooses a seat's brain; a message from a hired agent does not change it.", null);
         }
-        if (!SeatTree.standard().seats().contains(seat)) {
+        if (!seatTree.get().seats().contains(seat)) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown seat: " + seat, null);
         }
         if (SEAT_FILE.equals(value)) {
@@ -684,7 +692,7 @@ public final class AcpServer {
      */
     private void replayCard(String sessionId, ObjectNode card, java.util.Set<String> shownBefore) {
         String state = card.path("state").asText("");
-        if (HireEntry.RUNNING.equals(state) || "compacting".equals(state)) {
+        if (HireEntry.RUNNING.equals(state) || HireEntry.COMPACTING.equals(state)) {
             card.put("state", HireEntry.FAILED);
             state = HireEntry.FAILED;
         }

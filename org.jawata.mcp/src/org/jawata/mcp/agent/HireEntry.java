@@ -52,6 +52,8 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
     public static final String RUNNING = "running";
     public static final String DONE = "done";
     public static final String FAILED = "failed";
+    /** The hired brain is compacting its own context, read off its stream while it does; the hire is still running and says so (D6, D40). */
+    public static final String COMPACTING = "compacting";
     public static final String ACCEPTED = "accepted";
     public static final String REJECTED = "rejected";
     /** The superior accepted the result and sent a follow-up hire naming what to correct; set by that hire's {@code fixes} argument. */

@@ -16,6 +16,7 @@ import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.Hirer;
+import org.jawata.mcp.execution.ScheduledHires;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
@@ -90,7 +91,9 @@ public final class PrincipalBrain implements AgentBrain {
         SelfEndpoint self = engine.mcp().map(PrincipalBrain::endpointOf).orElse(null);
         List<Map<String, Object>> definitions = engine.tools().getToolDefinitions();
         List<String> tools = definitions.stream().map(d -> String.valueOf(d.get("name"))).toList();
-        Hirer hirer = new Hirer(SeatTree.standard(), Map.of(), codeChangingTools(definitions));
+        Set<String> codeChanging = codeChangingTools(definitions);
+        // D51: who hires whom is what the seat files of the seats folder declare, laid over the signed tree.
+        Hirer hirer = new Hirer(SeatTree.forSetting(engine.settings().get(ScheduledHires.SEATS_SETTING), codeChanging).tree(), Map.of(), codeChanging);
         return new PrincipalBrain(HostProcesses.system(), program, HireSite.in(workingDirectory), self, tools, hirer,
             HiredBrain.Ceilings.of(Duration.ofMinutes(30)));
     }
@@ -102,16 +105,8 @@ public final class PrincipalBrain implements AgentBrain {
      * code. The principal is a lead: it carries every other tool and none of these, so the code is changed by the seats that are allowed
      * to, never by the one that decides, and a tool added later is held back from it the day it says it changes code.
      */
-    @SuppressWarnings("unchecked")
     static Set<String> codeChangingTools(List<Map<String, Object>> definitions) {
-        Set<String> names = new java.util.TreeSet<>();
-        for (Map<String, Object> definition : definitions) {
-            Object meta = definition.get("_meta");
-            if (meta instanceof Map<?, ?> published && Boolean.TRUE.equals(((Map<String, Object>) published).get("jawata/changesCode"))) {
-                names.add(String.valueOf(definition.get("name")));
-            }
-        }
-        return names;
+        return SeatTree.codeChangingIn(definitions);
     }
 
     /**

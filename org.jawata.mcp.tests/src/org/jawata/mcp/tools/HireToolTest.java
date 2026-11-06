@@ -602,6 +602,84 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("S18a (D51): a seat file that declares another parent moves the seat in the tree: the new parent hires it and the signed parent no longer does")
+    void aSeatFileThatDeclaresAnotherParentMovesTheSeat() throws Exception {
+        String moved = CATALOGUER_SEAT.replaceFirst("---\n", "---\nparent: pm\nrole: reviewer\n");
+        java.nio.file.Path file = seatFile(moved);
+
+        StandsIn byTheOldParent = new StandsIn(host, aBrainThatAnswers());
+        ObjectNode old = (ObjectNode) hireArgs(file);
+        old.put("hirer", "chief-engineer");
+        ToolResponse refused = toolWith(byTheOldParent, events, aRegistryWithACleanGate()).execute(old);
+
+        ObjectNode fresh = (ObjectNode) hireArgs(file);
+        fresh.put("hirer", "pm");
+        ToolResponse allowed = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(fresh);
+
+        assertAll(
+            () -> assertFalse(refused.isSuccess(), "the signed parent no longer hires the cataloguer"),
+            () -> assertTrue(refused.getError().getMessage().contains("its hirer is pm"), refused.getError().getMessage()),
+            () -> assertTrue(byTheOldParent.asked().isEmpty(), "nothing was started: " + byTheOldParent.asked()),
+            () -> assertTrue(allowed.isSuccess(), String.valueOf(allowed.getError())));
+    }
+
+    @Test
+    @DisplayName("S18a (D51): a seat tree that breaks a rule is refused as a whole: the hire goes by the signed tree and its answer names the broken rule")
+    void aRefusedTreeIsNamedInTheHireAnswer() throws Exception {
+        String lead = CATALOGUER_SEAT.replaceFirst("---\n", "---\nparent: pm\nrole: lead\ntools: [rename_symbol]\nchanges_code: true\n");
+        ObjectNode args = (ObjectNode) hireArgs(seatFile(lead));
+        args.put("hirer", "chief-engineer");
+
+        ToolResponse response = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(args);
+
+        assertTrue(response.isSuccess(), "the signed tree is in force, and by it the chief engineer hires the cataloguer: " + response.getError());
+        assertTrue(String.valueOf(dataOf(response).get("seatTreeRefused")).contains("changes_code"), String.valueOf(dataOf(response)));
+    }
+
+    @Test
+    @DisplayName("S18a (D51): a lead that lists a tool the engine publishes as changing code is refused on the hire path itself, and the answer names it")
+    void aLeadListingTheEnginesCodeChangingToolIsRefused() throws Exception {
+        ToolRegistry registry = aRegistryWithACleanGate();
+        registry.register(new Tool() {
+            @Override
+            public String getName() {
+                return "rename_symbol";
+            }
+
+            @Override
+            public String getDescription() {
+                return "a code-changing tool fixture";
+            }
+
+            @Override
+            public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+
+            @Override
+            public boolean changesCode() {
+                return true;
+            }
+
+            @Override
+            public ToolResponse execute(JsonNode arguments) {
+                return ToolResponse.success(Map.of());
+            }
+        });
+        // The fixture's own tools line is replaced: with two such lines the file's last one would win and this would test nothing.
+        String lead = CATALOGUER_SEAT.replaceFirst("(?m)^tools:.*$", "tools: [rename_symbol]").replaceFirst("---\n", "---\nparent: pm\nrole: lead\n");
+        assertTrue(lead.contains("tools: [rename_symbol]"), "premise: the fixture has a tools line to replace");
+        ObjectNode args = (ObjectNode) hireArgs(seatFile(lead));
+        args.put("hirer", "chief-engineer");
+
+        ToolResponse response = toolWith(new StandsIn(host, aBrainThatAnswers()), events, registry).execute(args);
+
+        assertTrue(response.isSuccess(), String.valueOf(response.getError()));
+        String refused = String.valueOf(dataOf(response).get("seatTreeRefused"));
+        assertTrue(refused.contains("'rename_symbol', a tool that changes code"), refused);
+    }
+
+    @Test
     @DisplayName("S12 (D9), the control: a name the signed tree does not know is neither refused nor vouched for by it")
     void aHirerOutsideTheTreeIsNotRefusedByIt() throws Exception {
         HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());

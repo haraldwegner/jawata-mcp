@@ -260,6 +260,30 @@ public final class AcpBrainSession {
      * The tool name inside a permission title in the form Cursor's agent uses for a tool of the resident, or null for any other title, so a
      * tool of another server is never taken for one of ours.
      */
+    /**
+     * Whether an update from the brain says it began or ended compacting its context (D6, D40): the tool call the Claude adapter shows for
+     * it, named {@code compact} in {@code _meta.claudeCode.toolName}, in progress while it runs and completed after. Measured on
+     * 2026-11-06 with {@code @agentclientprotocol/claude-agent-acp} 0.101.0 answering {@code /compact}: a {@code tool_call} titled
+     * "Compact conversation" with status {@code in_progress}, then a {@code tool_call_update} {@code completed}, then one carrying the
+     * sizes before and after and no status. Another brain that sends no such call is never shown as compacting: its state stays running.
+     *
+     * @return true for began, false for ended, none for any other update
+     */
+    static Optional<Boolean> compactionIn(JsonNode update) {
+        String kind = update.path("sessionUpdate").asText();
+        if (!"tool_call".equals(kind) && !"tool_call_update".equals(kind)) {
+            return Optional.empty();
+        }
+        if (!"compact".equals(update.path("_meta").path("claudeCode").path("toolName").asText())) {
+            return Optional.empty();
+        }
+        String status = update.path("status").asText("");
+        if ("in_progress".equals(status) || "pending".equals(status)) {
+            return Optional.of(true);
+        }
+        return "completed".equals(status) || "failed".equals(status) ? Optional.of(false) : Optional.empty();
+    }
+
     static String residentToolIn(String title) {
         java.util.regex.Matcher matched = RESIDENT_TITLE.matcher(title);
         return matched.matches() ? matched.group(1) : null;
@@ -407,7 +431,11 @@ public final class AcpBrainSession {
          */
         private static void noteProgress(JsonNode update) {
             String kind = update.path("sessionUpdate").asText();
-            if ("tool_call".equals(kind)) {
+            Optional<Boolean> compaction = compactionIn(update);
+            if (compaction.isPresent()) {
+                // The brain compacting its context is not a tool call of the hire's work.
+                RunningHires.shared().noteCompaction(compaction.get());
+            } else if ("tool_call".equals(kind)) {
                 RunningHires.shared().noteToolStep();
             } else if ("usage_update".equals(kind)) {
                 JsonNode used = update.path("used");

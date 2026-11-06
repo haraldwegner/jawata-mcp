@@ -356,7 +356,10 @@ final class HireWatch {
         OptionalDouble cost = live.isPresent() && live.get().costUsd().isPresent() ? live.get().costUsd() : hire.cost;
         int steps = live.map(RunningHires.Progress::toolSteps).orElse(hire.toolSteps);
         OptionalLong context = live.map(RunningHires.Progress::contextTokens).orElse(OptionalLong.empty());
-        return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, hire.state, end - hire.startedMs, hire.tokens, cost,
+        // A hire whose brain is compacting its context is still running; its card says what it is doing.
+        String state = HireEntry.RUNNING.equals(hire.state) && RunningHires.shared().compacting(hire.seat, hire.task)
+            ? HireEntry.COMPACTING : hire.state;
+        return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, state, end - hire.startedMs, hire.tokens, cost,
             hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand,
             hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan));
     }

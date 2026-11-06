@@ -210,7 +210,7 @@ public final class ScheduledHires implements SeatScheduler.Firing {
             log.info(() -> "no seat in " + seatsDirectory + " declares a schedule, so nothing is scheduled");
             return Optional.empty();
         }
-        ScheduledHires firing = new ScheduledHires(tools, workingDirectory, read.files(), SeatTree.standard());
+        ScheduledHires firing = new ScheduledHires(tools, workingDirectory, read.files(), SeatTree.in(seatsDirectory, SeatTree.codeChangingIn(tools.getToolDefinitions())).tree());
         SeatScheduler scheduler = new SeatScheduler(read.seats(), firing, clock, tickMillis);
         scheduler.start();
         return Optional.of(scheduler);

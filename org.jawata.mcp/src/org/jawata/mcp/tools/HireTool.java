@@ -140,9 +140,6 @@ public class HireTool extends NeutralTool {
 
     private final Supplier<EngineSettings> settings;
 
-    /** Who hires whom (Sprint 28h, S12, D9): a hire between two seats of the signed tree is refused unless the hirer is the seat's parent. */
-    private final Hirer hiring = new Hirer(SeatTree.standard(), Map.of(), Set.of());
-
     /** A hire with no endpoint of its own to hand the brain — the stdio resident's case. */
     public HireTool(HostProcesses host,
             RuntimeArtifactStore artifacts, PlanLedger plans,
@@ -383,6 +380,12 @@ public class HireTool extends NeutralTool {
         String brainLabel = seat.brain().label();
         Optional<Hirer.Brain> brainOffered = brainsRegistry.flatMap(text -> Hirer.brainIn(text, brainLabel));
         seat = seat.withRegistryModel(brainOffered.orElse(null));
+        // D51: who hires whom is what the seat files of the hired seat's folder declare, laid over the signed tree; a tree that breaks a rule is
+        // refused as a whole, the signed tree is used in its place and the hire's answer says which rules it broke.
+        ToolRegistry known = registry.get();
+        Set<String> codeChanging = known == null ? Set.of() : SeatTree.codeChangingIn(known.getToolDefinitions());
+        SeatTree.Loaded declaredTree = SeatTree.in(Path.of(getStringParam(arguments, "seatFile")).toAbsolutePath().getParent(), codeChanging);
+        Hirer hiring = new Hirer(declaredTree.tree(), Map.of(), Set.of());
         Hirer deciding = settings.get().get(Hirer.MAIN_BRAIN_SETTING).flatMap(Hirer::brainOf)
             .map(main -> hiring.withBrain("main", main)).orElse(hiring);
         if (brainOffered.isPresent()) {
@@ -695,7 +698,13 @@ public class HireTool extends NeutralTool {
         seat.budgetReport().ifPresent(report -> data.put("budget", report));
         // S12 (D11): a hire that did not pass its gates goes up one rung where the tree has one (a developer to the senior developer).
         if (!proposal.complete()) {
-            hiring.escalateTo(hired).ifPresent(next -> data.put("escalation", escalate(arguments, next, proposal.plan().value())));
+            deciding.escalateTo(hired).ifPresent(next -> data.put("escalation", escalate(arguments, next, proposal.plan().value())));
+        }
+        if (declaredTree.refused()) {
+            data.put("seatTreeRefused", declaredTree.refusals());
+        }
+        if (!declaredTree.unreadable().isEmpty()) {
+            data.put("seatFilesNotRead", declaredTree.unreadable());
         }
         return ToolResponse.success(data);
     }
