@@ -11,6 +11,7 @@ import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.spi.host.WorkspaceWrites;
 import org.jawata.spi.lang.LoadedWorkspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,7 +84,8 @@ public class UndoRefactoringTool extends WorkspaceTool<LoadedWorkspace> {
                     + "already been used, or the id belongs to a staged change.");
         }
 
-        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(entry.get().change(), changes.get());
+        // A take-back is not a step the person made: the host is told so, and keeps it off its own undo history (28k A18-2).
+        ChangeEngine.ApplyOutcome outcome = ChangeEngine.perform(entry.get().change(), changes.get(), WorkspaceWrites.WriteMode.UNDO);
         if (outcome.validationError() != null) {
             return ToolResponse.error(
                 "REFACTORING_FAILED",

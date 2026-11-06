@@ -27,7 +27,12 @@ public interface WorkspaceWrites {
         /** Applied to be judged and normally undone; a host must not let it reach the person's Edit › Undo history. */
         TRIAL,
         /** Applied for good; the person may undo it. */
-        ACCEPTED
+        ACCEPTED,
+        /**
+         * The engine takes back a change it kept (its own undo). It is not a step the person made, so a host with an undo history of its
+         * own must not list it there, and the step the kept change left is the host's to settle (28k ledger row A18-2, the double undo).
+         */
+        UNDO
     }
 
     /** Performs the change in this mode; a host with no undo history of its own performs it exactly as {@link #perform(Change, IProgressMonitor)}. */

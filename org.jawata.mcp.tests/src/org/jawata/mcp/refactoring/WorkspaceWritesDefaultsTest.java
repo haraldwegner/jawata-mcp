@@ -50,8 +50,8 @@ class WorkspaceWritesDefaultsTest {
     }
 
     @Test
-    @DisplayName("the two modes are a trial that is judged and a change that is kept")
+    @DisplayName("the modes are a trial that is judged, a change that is kept, and the engine's own take-back of a kept change (28k A18-2)")
     void theTwoModes() {
-        assertArrayEquals(new WriteMode[] {WriteMode.TRIAL, WriteMode.ACCEPTED}, WriteMode.values());
+        assertArrayEquals(new WriteMode[] {WriteMode.TRIAL, WriteMode.ACCEPTED, WriteMode.UNDO}, WriteMode.values());
     }
 }
