@@ -174,6 +174,23 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("D22, the loop for lookups: a seat that may use the shell is refused a text search over Java source, and is allowed a build and a declared fallback")
+    void aShellSearchOverJavaSourceIsRefusedAtThePermissionRequest() throws Exception {
+        HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(Duration.ofSeconds(60));
+        List<String> shellSeat = List.of("Bash");
+
+        HiredBrain.Outcome search = hire("SHELL:grep -rn 'Foo' src/Foo.java", shellSeat, Optional.empty(), ceilings, null);
+        HiredBrain.Outcome build = hire("SHELL:mvn -q -Dtest=FooTest test", shellSeat, Optional.empty(), ceilings, null);
+        HiredBrain.Outcome declared = hire("SHELL:grep -rn 'Foo' src/Foo.java # jawata-fallback: inside a comment", shellSeat, Optional.empty(), ceilings, null);
+        HiredBrain.Outcome notListed = hire("SHELL:mvn -q test", List.of(), Optional.empty(), ceilings, null);
+
+        assertEquals("permission:reject_once", search.text(), "a shell search over Java source was allowed");
+        assertEquals("permission:allow_once", build.text(), "CONTROL: a build was refused by the lookup driver");
+        assertEquals("permission:allow_once", declared.text(), "CONTROL: a search that declares its fallback was refused");
+        assertEquals("permission:reject_once", notListed.text(), "CONTROL: the allowlist still refuses what it does not list");
+    }
+
+    @Test
     @DisplayName("a tool-step ceiling stops the run while it is going, not after: the brain is reaped well before its wall clock")
     void aStepCeilingBoundsTheRun() throws Exception {
         long started = System.nanoTime();

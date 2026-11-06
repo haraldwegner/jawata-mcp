@@ -470,8 +470,10 @@ public final class AcpBrainSession {
                 JsonNode tool = request.path("params").path("toolCall");
                 String name = tool.path("title").asText(tool.path("kind").asText(""));
                 String ofTheResident = residentToolIn(name);
-                String wanted = allowed.contains(name) || allowed.contains(RunEffects.bareName(name))
-                    || ofTheResident != null && allowed.contains(ofTheResident) ? "allow" : "reject";
+                // D22, the loop for lookups: a seat that may use the shell is still refused a text search over Java source
+                boolean listed = allowed.contains(name) || allowed.contains(RunEffects.bareName(name))
+                    || ofTheResident != null && allowed.contains(ofTheResident);
+                String wanted = listed && LookupDriver.refusal(tool.path("rawInput")).isEmpty() ? "allow" : "reject";
                 String chosen = null;
                 for (JsonNode option : request.path("params").path("options")) {
                     if (option.path("kind").asText("").startsWith(wanted)) {

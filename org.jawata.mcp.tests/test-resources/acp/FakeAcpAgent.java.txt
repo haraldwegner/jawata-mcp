@@ -114,6 +114,19 @@ public class FakeAcpAgent {
             String answer = in.readLine();
             String chosen = answer == null ? "none" : field(answer, "optionId");
             chunk(session, "permission:" + (chosen == null ? "cancelled" : chosen));
+        } else if (text.startsWith("SHELL:")) {
+            // the brain's own shell: the title is "Bash" and the permission request carries the command in rawInput, as the Claude adapter sends it
+            String command = text.substring("SHELL:".length());
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"s1\",\"title\":\"Bash\",\"kind\":\"execute\",\"status\":\"pending\","
+                + "\"rawInput\":{\"command\":\"" + command + "\"}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"id\":901,\"method\":\"session/request_permission\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"toolCall\":{\"toolCallId\":\"s1\",\"title\":\"Bash\",\"rawInput\":{\"command\":\"" + command + "\"}},\"options\":["
+                + "{\"optionId\":\"allow_once\",\"name\":\"Allow\",\"kind\":\"allow_once\"},"
+                + "{\"optionId\":\"reject_once\",\"name\":\"Reject\",\"kind\":\"reject_once\"}]}}");
+            String answer = in.readLine();
+            String chosen = answer == null ? "none" : field(answer, "optionId");
+            chunk(session, "permission:" + (chosen == null ? "cancelled" : chosen));
         } else if (text.startsWith("CURSORCALL")) {
             // As Cursor's agent opens a tool call of an MCP server: a placeholder title and no input, named in a later update.
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
