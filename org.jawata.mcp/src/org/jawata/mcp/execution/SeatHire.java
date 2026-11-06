@@ -7,6 +7,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
+import org.jawata.mcp.access.LookupDriver;
+
 /**
  * A seat definition's own declaration of WHICH BRAIN it is hired as, and under what bounds
  * (Sprint 28g S16, D37).
@@ -306,7 +308,13 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         if (!known.isEmpty()) {
             text.append("## The ground you work on\n\n").append(known).append("\n\n---\n\n");
         }
-        if (stance.isEmpty() && rules.isEmpty() && known.isEmpty()) {
+        // HOW A BRAIN LOOKS THINGS UP (Sprint 28h, S14, D22): a seat that changes code is refused a shell text search over Java source where the
+        // engine answers its permission requests, and a refused permission carries no words, so the rule is said here, once, in the one channel the
+        // brain reads.
+        if (changesCode) {
+            text.append("## How you look things up\n\n").append(LookupDriver.RULE).append("\n\n---\n\n");
+        }
+        if (stance.isEmpty() && rules.isEmpty() && known.isEmpty() && !changesCode) {
             return asked;
         }
         return text.append("## Your brief\n\n").append(asked).toString();
