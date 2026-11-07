@@ -69,6 +69,8 @@ class LookupDriverTest {
         assertEquals(Optional.empty(), refusalFor("sed -i s/a/b/ src/Foo.java # jawata-author: the rename tool failed on this case"));
         assertTrue(refusalFor("sed -i s/a/b/ src/Foo.java # jawata-fallback: the rename tool failed on this case").isPresent(),
             "the fallback declaration is for reads: it must not open a command that rewrites a file in place, as the guest hook does not let it");
+        assertEquals(Optional.empty(), refusalFor("grep -i Foo src/Foo.java # jawata-fallback: a case-insensitive read in a comment"),
+            "-i means ignore case for grep: the fallback declaration the rule promises must open it");
         assertTrue(refusalFor("grep -rn 'Foo' src/Foo.java # fallback because I like it").isPresent(),
             "CONTROL: a comment that is not the declaration opened the door");
     }

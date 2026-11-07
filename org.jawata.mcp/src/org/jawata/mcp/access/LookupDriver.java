@@ -28,7 +28,10 @@ public final class LookupDriver {
         + "Ask the compiler-aware tools instead: search_symbols finds a symbol by name, find_references finds who uses it, inspect lists a type's "
         + "members, analyze answers the rest. If they cannot answer this one case, say why with jawata-fallback: in the command.";
 
-    private static final Set<String> SEARCH_VERBS = Set.of("grep", "egrep", "fgrep", "rg", "ag", "ack", "find", "sed", "awk");
+    private static final Set<String> SEARCH_VERBS = Set.of("grep", "egrep", "fgrep", "rg", "ag", "ack", "find", "sed", "awk", "gawk");
+
+    /** The programs for which {@code -i} means rewrite the file in place; for grep, rg and their kin it means ignore case, and opens like any read. */
+    private static final Set<String> IN_PLACE_VERBS = Set.of("sed", "awk", "gawk");
 
     /** A Java source file as a word on its own; {@code Foo.java.bak} is not one, and a quoted sentence that ends in a file name is not one word. */
     private static final Pattern JAVA_FILE = Pattern.compile("\\S*\\.java");
@@ -56,7 +59,8 @@ public final class LookupDriver {
         }
         boolean author = AUTHOR.matcher(command).find();
         boolean declared = author || FALLBACK.matcher(command).find();
-        boolean rewrites = words.stream().anyMatch(word -> word.equals("--in-place") || word.equals("-i") || word.startsWith("-i."));
+        boolean rewrites = words.stream().anyMatch(word -> IN_PLACE_VERBS.contains(word.substring(word.lastIndexOf('/') + 1)))
+            && words.stream().anyMatch(word -> word.equals("--in-place") || word.equals("-i") || word.startsWith("-i."));
         if (rewrites ? author : declared) {
             return Optional.empty();
         }
