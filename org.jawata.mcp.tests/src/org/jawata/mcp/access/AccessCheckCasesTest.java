@@ -51,7 +51,17 @@ class AccessCheckCasesTest {
             cases = JSON.readTree(in);
         }
         policyFile = root.resolve("access-policy.json");
-        Files.writeString(policyFile, cases.get("policy").toString());
+        Files.writeString(policyFile, cases.get("policy").toString().replace("/dev/null", declaredDevice()));
+    }
+
+    /**
+     * The place the shared file declares "by name". It is /dev/null for the POSIX parsers; Windows has no such absolute path (a policy entry
+     * that is not absolute makes the whole policy unusable, as it should), so there the case declares an absolute place of this machine instead,
+     * which is what the case is about.
+     */
+    private String declaredDevice() {
+        boolean windows = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
+        return windows ? inJson(home.resolve("declared-device")) : "/dev/null";
     }
 
     @AfterEach
@@ -63,12 +73,15 @@ class AccessCheckCasesTest {
 
     private String bound(String text) {
         return text.replace("${home}", inJson(home)).replace("${workspace}", inJson(workspace))
-            .replace("${sibling}", inJson(sibling)).replace("${temp}", inJson(temp));
+            .replace("${sibling}", inJson(sibling)).replace("${temp}", inJson(temp)).replace("/dev/null", declaredDevice());
     }
 
-    /** A path as it is written inside a JSON string: on Windows its backslashes must be doubled, or {@code \Users} is not JSON. */
+    /**
+     * A path as the case file writes one, inside JSON and inside a shell command: with forward slashes, which Windows accepts as a separator.
+     * A backslash would have to be doubled in JSON, and in a command the shell reader takes it for an escape and drops it ({@code \Users}).
+     */
     private static String inJson(Path path) {
-        return path.toString().replace("\\", "\\\\");
+        return path.toString().replace('\\', '/');
     }
 
     private AccessCheck check() {
