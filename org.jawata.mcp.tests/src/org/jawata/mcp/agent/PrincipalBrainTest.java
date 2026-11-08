@@ -112,6 +112,10 @@ class PrincipalBrainTest {
         ask(unnamed, "REMEMBER:bluebird", new ArrayList<>());
         assertEquals(Optional.empty(), unnamed.records().get(0).vendor(), "CONTROL: a stand-in that names no vendor was given one");
 
+        // A brain is named by the program's own file name, so the test needs an executable called "agent". On Windows a program is found by its
+        // extension and a link to java.exe cannot run from another place (it looks for its runtime beside itself), so the cell cannot be built.
+        org.junit.jupiter.api.Assumptions.assumeFalse(System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win"),
+            "the fixture is a symbolic link to java named agent, which Windows cannot run");
         Path agent = dir.resolve("agent");
         try {
             Files.createSymbolicLink(agent, Path.of(System.getProperty("java.home"), "bin", "java"));
@@ -270,8 +274,9 @@ class PrincipalBrainTest {
     @Test
     @DisplayName("built from the engine, the principal brain reads the host setting and the engine's tools and address")
     void builtFromTheEngine() {
-        String setting = "{\"command\":[\"" + fake.command().get(0) + "\",\"" + fake.command().get(1) + "\"],\"env\":{\"FAKE_ACP_STATE\":\""
-            + dir + "\"}}";
+        // paths go into JSON text: on Windows their backslashes must be doubled, or \Users is not JSON and the setting names no brain
+        String setting = "{\"command\":[\"" + inJson(fake.command().get(0)) + "\",\"" + inJson(fake.command().get(1)) + "\"],\"env\":{\"FAKE_ACP_STATE\":\""
+            + inJson(dir.toString()) + "\"}}";
         List<String> pieces = new ArrayList<>();
         List<String> none = new ArrayList<>();
 
@@ -280,6 +285,10 @@ class PrincipalBrainTest {
 
         assertEquals("noted", String.join("", pieces));
         assertEquals(List.of(AgentFace.NO_BRAIN), none);
+    }
+
+    private static String inJson(String text) {
+        return text.replace("\\", "\\\\");
     }
 
     private static EngineApi engineWith(Map<String, String> settings) {

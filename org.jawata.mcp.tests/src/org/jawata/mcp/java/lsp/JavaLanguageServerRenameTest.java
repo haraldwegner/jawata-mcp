@@ -563,7 +563,9 @@ class JavaLanguageServerRenameTest {
 
         JsonNode edits = session.ask("textDocument/formatting", formattingOf(calculator));
 
-        assertEquals(byTool, applied(typed, edits), "the editor's text is the tool's text");
+        // Same text, line endings aside: the two texts printed in the Windows CI log are identical line for line (tabs, same wording) and differ
+        // only in the end of line, which a Windows checkout writes as CR LF into the fixture. The claim is about what the formatter writes.
+        assertEquals(byTool.replace("\r\n", "\n"), applied(typed, edits).replace("\r\n", "\n"), "the editor's text is the tool's text");
     }
 
     @Test

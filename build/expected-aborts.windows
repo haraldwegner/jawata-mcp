@@ -124,3 +124,9 @@ no POSIX permissions here
 the brain fixture is a POSIX shell script
 the fixtures are POSIX shell scripts
 the fixture is a POSIX shell; the Windows path has no equivalent one-liner
+
+# PrincipalBrainTest names a brain by the file name of its program, so its fixture is a symbolic link to java called "agent". Windows finds a
+# program by its extension and a link to java.exe cannot start from another place (it looks for its runtime beside itself), so the cell cannot
+# be posed here; the test says so rather than passing a vendor it never saw named. The same naming is proven on Linux and macOS, and the
+# command-line reading itself (aCommandLineNamesTheBrainsVendor, including a Windows .exe path) runs here.
+the fixture is a symbolic link to java named agent, which Windows cannot run

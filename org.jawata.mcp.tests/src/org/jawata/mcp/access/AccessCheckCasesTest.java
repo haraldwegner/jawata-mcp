@@ -62,8 +62,13 @@ class AccessCheckCasesTest {
     }
 
     private String bound(String text) {
-        return text.replace("${home}", home.toString()).replace("${workspace}", workspace.toString())
-            .replace("${sibling}", sibling.toString()).replace("${temp}", temp.toString());
+        return text.replace("${home}", inJson(home)).replace("${workspace}", inJson(workspace))
+            .replace("${sibling}", inJson(sibling)).replace("${temp}", inJson(temp));
+    }
+
+    /** A path as it is written inside a JSON string: on Windows its backslashes must be doubled, or {@code \Users} is not JSON. */
+    private static String inJson(Path path) {
+        return path.toString().replace("\\", "\\\\");
     }
 
     private AccessCheck check() {

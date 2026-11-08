@@ -88,7 +88,11 @@ class HiredRunSessionFolderTest {
         HiredRun.Proposal proposal = hire(run, seenDuring);
 
         assertAll(
-            () -> assertEquals(List.of(Optional.of(dir)), seenDuring, "the gate that ran during the brain's work did not see the hire's folder"),
+            // the registry keeps a place under its one name (case folded where the filesystem ignores case, as on macOS), so the folder is
+            // compared as the same place, not as the same spelling
+            () -> assertEquals(1, seenDuring.size(), "the gate that ran during the brain's work was not asked once"),
+            () -> assertTrue(seenDuring.get(0).isPresent() && java.nio.file.Files.isSameFile(seenDuring.get(0).get(), dir),
+                "the gate that ran during the brain's work did not see the hire's folder: " + seenDuring),
             () -> assertTrue(folders.of(proposal.plan().value()).isEmpty(), "the binding outlived the run"));
     }
 

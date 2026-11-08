@@ -180,21 +180,29 @@ class ThePriorWorkBlockSaysWhenItDidNotLookTest {
             // 39257830782). It is paid here, undelayed, so the measured lookup costs the delay and
             // a few milliseconds. The delay stays above the 200 ms the old budget gave.
             steeringOf(new ExperienceAdvisor(real, () -> null));
-            java.util.concurrent.atomic.AtomicBoolean first = new java.util.concurrent.atomic.AtomicBoolean(true);
-            ExperienceStore slowFirstRead = (ExperienceStore) java.lang.reflect.Proxy.newProxyInstance(
-                ExperienceStore.class.getClassLoader(), new Class<?>[] {ExperienceStore.class},
-                (proxy, method, args) -> {
-                    if (first.compareAndSet(true, false)) {
-                        Thread.sleep(250);
-                    }
-                    try {
-                        return method.invoke(real, args);
-                    } catch (java.lang.reflect.InvocationTargetException e) {
-                        throw e.getCause();
-                    }
-                });
-
-            String steer = steeringOf(new ExperienceAdvisor(slowFirstRead, () -> null));
+            // THE MEASURED LOOKUP IS TRIED UP TO THREE TIMES. A wall-clock margin of 150 ms is lost on a runner that stalls for that long
+            // (two macOS CI runs in a row), and a stall is not a store that is slow. The claim cannot be satisfied by luck: the 200 ms floor
+            // this test guards against throws a 250 ms answer away on EVERY attempt, so a floor that came back would still turn all three red.
+            String steer = null;
+            for (int attempt = 0; attempt < 3; attempt++) {
+                java.util.concurrent.atomic.AtomicBoolean first = new java.util.concurrent.atomic.AtomicBoolean(true);
+                ExperienceStore slowFirstRead = (ExperienceStore) java.lang.reflect.Proxy.newProxyInstance(
+                    ExperienceStore.class.getClassLoader(), new Class<?>[] {ExperienceStore.class},
+                    (proxy, method, args) -> {
+                        if (first.compareAndSet(true, false)) {
+                            Thread.sleep(250);
+                        }
+                        try {
+                            return method.invoke(real, args);
+                        } catch (java.lang.reflect.InvocationTargetException e) {
+                            throw e.getCause();
+                        }
+                    });
+                steer = steeringOf(new ExperienceAdvisor(slowFirstRead, () -> null));
+                if (steer != null && !steer.contains(DID_NOT)) {
+                    break;
+                }
+            }
 
             assertFalse(steer != null && steer.contains(DID_NOT),
                 "250 ms is a healthy answer at this size, not an outage: " + steer);

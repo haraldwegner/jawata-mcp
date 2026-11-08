@@ -118,7 +118,8 @@ class AccessPolicyTest {
     @Test
     @DisplayName("an entry whose variable stands for no place holds nothing: it allows nothing, and the rest of the policy still works")
     void aVariableWithNoValueAllowsNothing() throws IOException {
-        Files.writeString(file, "{\"allow\":[\"${workspace}\",\"" + elsewhere + "\"],\"deny\":[]}");
+        // the path goes into JSON text: on Windows its backslashes must be doubled, or \Temp is a tab
+        Files.writeString(file, "{\"allow\":[\"${workspace}\",\"" + elsewhere.toString().replace("\\", "\\\\") + "\"],\"deny\":[]}");
         AccessPolicy policy = AccessPolicy.read(file, Map.of("workspace", List.of()));
 
         assertFalse(policy.check(project.resolve("A.java")).allowed(), "a session with no workspace was allowed the project");

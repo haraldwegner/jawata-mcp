@@ -129,8 +129,9 @@ class ChildJvmTest {
         Path childTmp = Path.of("/s/tmp");
 
         // Without a host runtime: the command as it was built before the host was asked.
-        List<String> before = List.of(engineJava(), "-ea", "-Xmx512m", "-Dfoo=bar", "-Djava.io.tmpdir=/s/tmp", "-cp",
-            "/p/classes" + java.io.File.pathSeparator + "/p/test-classes", "org.jawata.testrunner.Main", "/s/run.args");
+        // each path as this machine spells it: on Windows /s/tmp is \s\tmp
+        List<String> before = List.of(engineJava(), "-ea", "-Xmx512m", "-Dfoo=bar", "-Djava.io.tmpdir=" + childTmp, "-cp",
+            Path.of("/p/classes") + java.io.File.pathSeparator + Path.of("/p/test-classes"), "org.jawata.testrunner.Main", argFile.toString());
         assertEquals(before, ForkedTestRunner.command(runSpec("alpha"), argFile, childTmp));
         assertEquals(before, ForkedTestRunner.command(runSpec(null), argFile, childTmp));
 

@@ -162,6 +162,11 @@ class BuildSystemLoadTest {
     @Test
     @DisplayName("gradle P2: jars from the Gradle model reach the classpath (skips without a Gradle distribution)")
     void gradleResolvesModelJars() throws Exception {
+        // The matrix jobs set -Djawata.skip.gradle=true because they have no Gradle distribution and the Tooling API would download one
+        // mid-suite; the separate gradle-cell job does not set it, and there a skip is a failure. The reason text is the siblings' own,
+        // so the one allowance in build/expected-aborts.* covers it.
+        Assumptions.assumeFalse("true".equalsIgnoreCase(System.getProperty("jawata.skip.gradle", "false")),
+            "Gradle Tooling API tests skipped via jawata.skip.gradle=true");
         Path fixture = helper.copyFixture("simple-gradle");   // Gradle writes .gradle/ beside it
         Optional<ProjectImporter.GradleProjectModel> model =
             ProjectImporter.readGradleProjectModel(fixture);

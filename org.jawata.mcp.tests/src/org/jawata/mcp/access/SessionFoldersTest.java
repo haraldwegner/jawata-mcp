@@ -105,7 +105,8 @@ class SessionFoldersTest {
     @DisplayName("ACL4: the binding lasts the run: after it closes the session is concerned with the whole manifest again, and a run that states no folder binds nothing")
     void theBindingEndsWithTheRun() throws IOException {
         SessionFolders.Binding binding = folders.bind("hire-1", alpha);
-        assertEquals(alpha, folders.of("hire-1").orElseThrow());
+        // the registry keeps a place under its one name (case folded where the filesystem ignores case, as on macOS), not as it was spelled
+        assertEquals(PlaceNames.normalise(alpha), folders.of("hire-1").orElseThrow());
         binding.close();
         assertAll(
             () -> assertTrue(folders.of("hire-1").isEmpty(), "the binding outlived the run"),

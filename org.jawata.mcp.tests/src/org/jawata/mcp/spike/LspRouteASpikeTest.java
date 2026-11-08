@@ -187,20 +187,25 @@ class LspRouteASpikeTest {
 
     /** What the one process holds: the machine's load, this process's resident memory and the Java processes on the machine. */
     private static void processEvidence(String label) throws Exception {
-        obs(label + " load=" + Files.readString(Path.of("/proc/loadavg")).trim());
-        for (String line : Files.readAllLines(Path.of("/proc/self/status"))) {
-            if (line.startsWith("VmRSS") || line.startsWith("VmHWM")) {
-                obs(label + " this-process " + line.replaceAll("\\s+", " "));
+        if (Files.isReadable(Path.of("/proc/loadavg"))) {
+            obs(label + " load=" + Files.readString(Path.of("/proc/loadavg")).trim());
+            for (String line : Files.readAllLines(Path.of("/proc/self/status"))) {
+                if (line.startsWith("VmRSS") || line.startsWith("VmHWM")) {
+                    obs(label + " this-process " + line.replaceAll("\\s+", " "));
+                }
             }
-        }
-        Process ps = new ProcessBuilder("ps", "-eo", "pid,rss,etime,args", "--sort=-rss").redirectErrorStream(true).start();
-        String all = new String(ps.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        ps.waitFor();
-        int shown = 0;
-        for (String line : all.split("\n")) {
-            if (line.contains("java") && shown++ < 6) {
-                obs(label + " ps " + (line.length() > 170 ? line.substring(0, 170) : line));
+            Process ps = new ProcessBuilder("ps", "-eo", "pid,rss,etime,args", "--sort=-rss").redirectErrorStream(true).start();
+            String all = new String(ps.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            ps.waitFor();
+            int shown = 0;
+            for (String line : all.split("\n")) {
+                if (line.contains("java") && shown++ < 6) {
+                    obs(label + " ps " + (line.length() > 170 ? line.substring(0, 170) : line));
+                }
             }
+        } else {
+            // the machine's load and the process table are read from Linux's /proc and GNU ps; elsewhere they are not observed
+            obs(label + " no /proc on this machine: the load and the process table are not observed");
         }
         long jdt = 0;
         List<String> foreign = new ArrayList<>();
