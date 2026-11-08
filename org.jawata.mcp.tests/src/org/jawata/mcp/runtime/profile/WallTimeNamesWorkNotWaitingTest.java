@@ -160,32 +160,40 @@ class WallTimeNamesWorkNotWaitingTest {
         Path jfr = Files.createTempFile("s15-wall-", ".jfr");
         Timer idleByConstruction = new Timer("s15-idle", true);
         try {
-            Recording recording = new Recording();
-            recording.enable("jdk.ThreadPark").withThreshold(Duration.ofMillis(1));
-            recording.enable("jdk.JavaMonitorWait").withThreshold(Duration.ofMillis(1));
-            recording.start();
+            // THE RECORDING IS TAKEN UP TO THREE TIMES, until the file holds any event at all. On a Windows runner one run wrote a recording with no
+            // events (census {}) where the run before it, with the same code, did not: the host's JFR gave nothing, which is not the parser's
+            // doing. A file WITH events and no rows still fails at once below, because the parser is then what is wrong.
+            for (int attempt = 0; attempt < 3; attempt++) {
+                Recording recording = new Recording();
+                recording.enable("jdk.ThreadPark").withThreshold(Duration.ofMillis(1));
+                recording.enable("jdk.JavaMonitorWait").withThreshold(Duration.ofMillis(1));
+                recording.start();
 
-            // THE TIMER'S WAIT MUST END INSIDE THE WINDOW OR IT IS NEVER EMITTED, and this is
-            // the version of the fixture that works. JFR records a wait when it COMPLETES,
-            // because that is when the duration is known — so a Timer with nothing scheduled
-            // waits indefinitely, the wait is still in progress when the recording stops, and
-            // no event exists at all. The first version of this case relied on that and its
-            // idle clauses were `assertNotNull`, which pass at zero; a mutation showed the
-            // clauses reddening for a reason unrelated to idleness, which is what exposed it.
-            // Scheduling a task makes the thread wake, which ENDS the preceding wait — and the
-            // wait's own stack is still TimerThread#mainLoop, all JDK, which is the shape under
-            // test. The task body is irrelevant and runs after the wait it closes.
-            idleByConstruction.schedule(new java.util.TimerTask() {
-                @Override public void run() {
-                    // nothing: its only job is to end the wait that preceded it
+                // THE TIMER'S WAIT MUST END INSIDE THE WINDOW OR IT IS NEVER EMITTED, and this is
+                // the version of the fixture that works. JFR records a wait when it COMPLETES,
+                // because that is when the duration is known — so a Timer with nothing scheduled
+                // waits indefinitely, the wait is still in progress when the recording stops, and
+                // no event exists at all. The first version of this case relied on that and its
+                // idle clauses were `assertNotNull`, which pass at zero; a mutation showed the
+                // clauses reddening for a reason unrelated to idleness, which is what exposed it.
+                // Scheduling a task makes the thread wake, which ENDS the preceding wait — and the
+                // wait's own stack is still TimerThread#mainLoop, all JDK, which is the shape under
+                // test. The task body is irrelevant and runs after the wait it closes.
+                idleByConstruction.schedule(new java.util.TimerTask() {
+                    @Override public void run() {
+                        // nothing: its only job is to end the wait that preceded it
+                    }
+                }, 60);
+
+                parkInsideAMethodOfThisClass();
+
+                recording.stop();
+                recording.dump(jfr);
+                recording.close();
+                if (!censusOf(jfr).isEmpty()) {
+                    break;
                 }
-            }, 60);
-
-            parkInsideAMethodOfThisClass();
-
-            recording.stop();
-            recording.dump(jfr);
-            recording.close();
+            }
 
             Map<String, Object> result = JfrParser.wallHotspots(jfr, 0, 50);
             @SuppressWarnings("unchecked")
