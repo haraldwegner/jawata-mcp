@@ -594,6 +594,8 @@ public class HireTool extends NeutralTool {
                 file.put("path", change.path());
                 file.put("oldText", change.oldText());
                 file.put("newText", change.newText());
+                // whether the file held nothing but HEAD when the run began: only such a file can be put back exactly (a rejected proposal)
+                file.put("cleanBefore", change.cleanBefore());
                 return file;
             }).toList());
             data.put("changesOmitted", changes.omitted());

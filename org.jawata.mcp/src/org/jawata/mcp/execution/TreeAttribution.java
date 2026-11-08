@@ -122,7 +122,11 @@ public final class TreeAttribution {
      * One changed file as a client draws a diff: its text at HEAD ({@code null} when git had none, a new file) and its text now ({@code null}
      * when the file is gone). Against HEAD, so a file already modified before the run shows that earlier change too.
      */
-    public record FileChange(String path, String oldText, String newText) {
+    public record FileChange(String path, String oldText, String newText, boolean cleanBefore) {
+
+        public FileChange(String path, String oldText, String newText) {
+            this(path, oldText, newText, false);
+        }
     }
 
     /** What the run changed file by file: the files whose texts fit, and the names of those that did not (too large, or not text). */
@@ -139,11 +143,12 @@ public final class TreeAttribution {
         }
         List<FileChange> shown = new ArrayList<>();
         List<String> omitted = new ArrayList<>();
+        Path root = repositoryRoot(host, directory);
         for (String path : changed) {
             String oldText = "??".equals(now.get(path)) ? null : textAtHead(path);
             String newText;
             try {
-                Path file = directory.resolve(path);
+                Path file = root.resolve(path);
                 newText = Files.exists(file) ? Files.readString(file) : null;
             } catch (java.io.IOException | RuntimeException e) {
                 omitted.add(path);
@@ -151,12 +156,32 @@ public final class TreeAttribution {
             }
             boolean fits = (oldText == null || oldText.length() <= FILE_TEXT_LIMIT) && (newText == null || newText.length() <= FILE_TEXT_LIMIT);
             if (fits) {
-                shown.add(new FileChange(path, oldText, newText));
+                // clean before the run: the census had no entry for it, so HEAD is exactly what the file held when the run began
+                shown.add(new FileChange(path, oldText, newText, !before.containsKey(path)));
             } else {
                 omitted.add(path);
             }
         }
         return Optional.of(new Changes(List.copyOf(shown), List.copyOf(omitted)));
+    }
+
+    /**
+     * The top folder of the git working tree that holds {@code directory}, or {@code directory} itself when git cannot say. {@code git status}
+     * and {@code git show HEAD:} name a path from that folder and not from the one they ran in, so a hire that ran in a subfolder of a
+     * repository must read and put back its changed files from here.
+     */
+    public static Path repositoryRoot(HostProcesses host, Path directory) {
+        try {
+            HostProcessOutcome outcome = host.run(HostCommand.of(List.of("git", "rev-parse", "--show-toplevel")).in(directory));
+            String top = outcome.succeeded() ? outcome.output().trim() : "";
+            return top.isEmpty() ? directory : Path.of(top);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return directory;
+        } catch (RuntimeException e) {
+            log.log(Level.WARNING, "could not find the top folder of the working tree of " + directory, e);
+            return directory;
+        }
     }
 
     /** The file's text at HEAD, or null when git has none (a new file, or no commit yet). */

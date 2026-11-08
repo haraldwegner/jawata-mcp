@@ -31,8 +31,10 @@
         <sourceDirectory>${project.basedir}/../../org.jawata.resident.tests/src</sourceDirectory>
         <plugins>
             <!-- 28k Stage 8: the abstract port contracts and the fake host live in the mcp test sources (org.jawata.mcp.contract), where
-                 the engine's own tests use them. The headless host's ports run the same contracts, so the one folder is compiled into
-                 this fragment too; a class carries no source folder, only its package, and the model sees both as one project. -->
+                 the engine's own tests use them. The headless host's ports run the same contracts, so that package is compiled into
+                 this fragment too. The source root added is the mcp tests' own src, never the contract folder: a root inside the package
+                 path makes every file there read as sitting in the root package, which javac accepts and an editor's Java support
+                 reports as an error on each file. The includes below keep the rest of that root out. -->
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
@@ -43,7 +45,7 @@
                         <phase>generate-sources</phase>
                         <goals><goal>add-source</goal></goals>
                         <configuration>
-                            <sources><source>${project.basedir}/../../org.jawata.mcp.tests/src/org/jawata/mcp/contract</source></sources>
+                            <sources><source>${project.basedir}/../../org.jawata.mcp.tests/src</source></sources>
                         </configuration>
                     </execution>
                 </executions>
@@ -53,6 +55,10 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
+                    <includes>
+                        <include>org/jawata/resident/**/*.java</include>
+                        <include>org/jawata/mcp/contract/**/*.java</include>
+                    </includes>
                     <excludes>
                         <exclude>**/FakeHostPortsContractTest.java</exclude>
                         <exclude>**/StandInLanguageContractTest.java</exclude>

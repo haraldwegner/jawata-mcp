@@ -1,0 +1,92 @@
+name: Pages
+
+# Publishes jawata.org: the site in docs/ (built by Jekyll exactly as GitHub's own "deploy from a branch" build did) plus the Eclipse update
+# site under /eclipse/, which is assembled from the releases of haraldwegner/jawata-eclipse (see .github/scripts/assemble-eclipse-site.sh).
+#
+# SWITCHING THE SOURCE. This workflow only takes over when the repository's Pages source is "GitHub Actions" (Settings > Pages > Build and
+# deployment > Source), or once, from a shell:  gh api -X PUT repos/haraldwegner/jawata-mcp/pages -f build_type=workflow
+# While the source is still "Deploy from a branch" (main, /docs) the deploy step below fails with "Pages is not enabled for this workflow" and
+# jawata.org is served as before; nothing breaks. After the switch the branch build stops, and THIS workflow is what updates the site.
+#
+# WHEN IT RUNS. A push to main that touches docs/ or this file; a manual run; and every six hours, because a tag in jawata-eclipse cannot start
+# a workflow here without a credential. The scheduled run asks which jawata-eclipse releases belong on the site and compares that list with the
+# one jawata.org serves now (eclipse/releases.txt); when they are the same it stops before building anything. jawata-eclipse's release workflow can
+# start this one at once when the secret JAWATA_PAGES_DISPATCH_TOKEN exists there (it is optional).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/pages.yml'
+      - '.github/scripts/assemble-eclipse-site.sh'
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# one deploy at a time; a deploy that has started is never cancelled
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Which jawata-eclipse releases belong on the site
+        id: plan
+        run: |
+          set -euo pipefail
+          .github/scripts/assemble-eclipse-site.sh list | tee eclipse-releases.txt
+          skip=false
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            live="$(curl -fsS https://jawata.org/eclipse/releases.txt 2>/dev/null || true)"
+            if [ "$live" = "$(cat eclipse-releases.txt)" ]; then skip=true; fi
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+          echo "scheduled run, same releases as the live site: skip=$skip"
+
+      - name: Setup Pages
+        if: steps.plan.outputs.skip != 'true'
+        uses: actions/configure-pages@v5
+
+      # The same Jekyll build the branch deployment ran, so every page and Markdown file under docs/ is served as before.
+      - name: Build the site (Jekyll)
+        if: steps.plan.outputs.skip != 'true'
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./docs
+          destination: ./_site
+
+      - name: Add the Eclipse update site
+        if: steps.plan.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          # assembled beside the Jekyll output and copied in with sudo: the Jekyll action runs in a container and may leave _site owned by root
+          .github/scripts/assemble-eclipse-site.sh assemble _extra
+          if [ -d _extra/eclipse ]; then sudo cp -a _extra/eclipse _site/eclipse; fi
+          du -sh _site _site/eclipse 2>/dev/null || true
+
+      - name: Upload the site
+        if: steps.plan.outputs.skip != 'true'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+      - name: Deploy
+        id: deployment
+        if: steps.plan.outputs.skip != 'true'
+        uses: actions/deploy-pages@v4

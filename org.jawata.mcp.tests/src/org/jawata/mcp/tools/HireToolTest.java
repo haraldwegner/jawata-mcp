@@ -1077,7 +1077,10 @@ class HireToolTest {
         assertAll(
             () -> assertTrue(String.valueOf(data.get("changedFiles")).contains("proposed.txt"), String.valueOf(data.get("changedFiles"))),
             () -> assertTrue(String.valueOf(data.get("changes")).contains("path=proposed.txt")
-                && String.valueOf(data.get("changes")).contains("newText=written"), String.valueOf(data.get("changes"))));
+                && String.valueOf(data.get("changes")).contains("newText=written"), String.valueOf(data.get("changes"))),
+            // a file the census had no entry for was clean when the run began: the answer says so, because a rejected proposal puts back only
+            // such a file (a link of the take-back the agent's own tests cannot see, since they hand it the answer as written text)
+            () -> assertTrue(String.valueOf(data.get("changes")).contains("cleanBefore=true"), String.valueOf(data.get("changes"))));
     }
 
     @Test

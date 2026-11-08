@@ -71,6 +71,46 @@ class TreeAttributionTest {
     }
 
     @Test
+    @DisplayName("each shown change says whether the file was clean before the run: only such a file can be put back exactly (a rejected proposal)")
+    void eachChangeSaysWhetherTheFileWasCleanBeforeTheRun() throws Exception {
+        Path repo = aRepository();
+        Files.writeString(repo.resolve("other.txt"), "x\n");
+        host.run(HostCommand.of(List.of("git", "add", "other.txt")).in(repo));
+        host.run(HostCommand.of(List.of("git", "-c", "user.email=p@p", "-c", "user.name=probe", "commit", "-qm", "second")).in(repo));
+        // the person edited other.txt before the run: " M" in the census
+        Files.writeString(repo.resolve("other.txt"), "x edited by the person\n");
+        TreeAttribution census = TreeAttribution.before(host, repo);
+        // the run edits tracked.txt, which was clean, and stages the person's edit (" M" becomes "M "), so both are listed
+        Files.writeString(repo.resolve("tracked.txt"), "one\ntwo\n");
+        host.run(HostCommand.of(List.of("git", "add", "other.txt")).in(repo));
+
+        List<TreeAttribution.FileChange> shown = census.after().changes().orElseThrow().shown();
+
+        assertAll(
+            () -> assertTrue(shown.stream().filter(c -> c.path().equals("tracked.txt")).findFirst().orElseThrow().cleanBefore(),
+                "a file that was clean before the run must say so: " + shown),
+            () -> assertFalse(shown.stream().filter(c -> c.path().equals("other.txt")).findFirst().orElseThrow().cleanBefore(),
+                "a file the person had edited before the run must not say it was clean: " + shown));
+    }
+
+    @Test
+    @DisplayName("a hire that ran in a subfolder of a repository has its changed files read and named from the repository's top folder")
+    void aHireInASubfolderIsAttributedFromTheRepositoryRoot() throws Exception {
+        Path repo = aRepository();
+        Path sub = Files.createDirectory(repo.resolve("sub"));
+        TreeAttribution census = TreeAttribution.before(host, sub);
+        Files.writeString(sub.resolve("nested.txt"), "deep\n");
+
+        List<TreeAttribution.FileChange> shown = census.after().changes().orElseThrow().shown();
+
+        TreeAttribution.FileChange change = shown.stream().filter(c -> c.path().equals("sub/nested.txt")).findFirst()
+            .orElseThrow(() -> new AssertionError("git names the file from the top folder, and so must the answer: " + shown));
+        assertAll(
+            () -> assertEquals("deep\n", change.newText(), "the text now was read from the wrong base folder: " + shown),
+            () -> assertTrue(change.cleanBefore()));
+    }
+
+    @Test
     @DisplayName("THE PAIR: a clean tree reports an EMPTY list, and an uncensusable one reports NO list")
     void nothingChangedAndNobodyLookedAreDifferentAnswers() throws Exception {
         Path repo = aRepository();

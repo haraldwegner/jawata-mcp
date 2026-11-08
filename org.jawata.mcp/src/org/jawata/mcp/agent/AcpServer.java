@@ -425,7 +425,7 @@ public final class AcpServer {
     }
 
     /** A proposal put to the person and not yet answered: the session it was put in, and the hire it is about. */
-    private record Asked(PrincipalSession session, String planId, String seat) {
+    private record Asked(PrincipalSession session, String planId, String seat, HireWatch.Proposal proposal) {
     }
 
     /** The proposals put to the person and waiting for the answer, by the id of the request that carries each. */
@@ -441,7 +441,7 @@ public final class AcpServer {
         hires.proposalToAsk(entry.planId()).ifPresent(proposal -> {
             List<String> files = proposal.files();
             String requestId = "jawata-proposal-" + proposalRequests.incrementAndGet();
-            proposals.put(requestId, new Asked(session, entry.planId(), entry.seat()));
+            proposals.put(requestId, new Asked(session, entry.planId(), entry.seat(), proposal));
             ObjectNode params = JSON.createObjectNode();
             params.put("sessionId", session.id());
             ObjectNode call = params.putObject("toolCall");
@@ -479,7 +479,8 @@ public final class AcpServer {
     /**
      * The person's answer to a proposal put to them: it is kept on the hire's entry, shown to the host as an update of the hire's tool call,
      * and recorded in the transcript lane as the person's verdict. A response to anything else is ignored, and so is an answer that chose
-     * nothing (the host cancelled the question): no choice is no verdict, and none is invented. The agent changes no file on a verdict.
+     * nothing (the host cancelled the question): no choice is no verdict, and none is invented. A yes changes no file. A no puts back the files
+     * the hire changed that can be put back exactly ({@link TakeBack}) and the card says which it kept and why.
      */
     private void answerProposal(JsonRpcMessage response) {
         Asked asked = proposals.remove(String.valueOf(response.getId()));
@@ -493,17 +494,22 @@ public final class AcpServer {
             return;
         }
         java.util.Optional<HireEntry> answered = hires.answered(asked.planId(), verdict);
+        // The files are put back before the host is told, so what it is shown is what is on disk.
+        String tookBack = HireEntry.REJECTED.equals(verdict) ? asked.proposal().takeBack(org.jawata.core.host.HostProcesses.system()).sentence() : "";
         answered.ifPresent(entry -> {
             ObjectNode shown = JSON.createObjectNode();
             shown.put("sessionUpdate", "tool_call_update");
             shown.put("toolCallId", asked.planId());
             shown.putObject("_meta").set("jawata/hire", entry.toMeta());
+            if (!tookBack.isEmpty()) {
+                shown.putArray("content").addObject().put("type", "content").putObject("content").put("type", "text").put("text", tookBack);
+            }
             update(asked.session().id(), shown);
         });
         // The card with the verdict goes into the same turn, so a session loaded later shows the answer on the hire's card.
         recorder.record(AgentRecorder.Level.HIRED, asked.session(), "verdict_" + asked.planId(),
-            "The person's answer to the proposal of " + asked.seat() + " (" + asked.planId() + "): " + verdict,
-            "Recorded the person's verdict on the proposal of " + asked.seat() + ": " + verdict,
+            "The person's answer to the proposal of " + asked.seat() + " (" + asked.planId() + "): " + verdict + (tookBack.isEmpty() ? "" : ". " + tookBack),
+            "Recorded the person's verdict on the proposal of " + asked.seat() + ": " + verdict + (tookBack.isEmpty() ? "" : ". " + tookBack),
             answered.map(entry -> List.of(entry.cardLine())).orElse(List.of()));
     }
 

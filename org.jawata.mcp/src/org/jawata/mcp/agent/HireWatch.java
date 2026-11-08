@@ -42,6 +42,8 @@ final class HireWatch {
         String seat = "";
         String task = "";
         String hirer = "";
+        /** The folder the hire ran in, from its call's {@code workingDirectory}: where a rejected proposal's files are put back. */
+        String workingDirectory = "";
         String answer = "";
         String seatFile = "";
         /** The engine's own plan id for this hire, from its answer; the name a later hire gives in {@code fixes}. */
@@ -163,11 +165,22 @@ final class HireWatch {
             return Optional.empty();
         }
         hire.asked = true;
-        return Optional.of(new Proposal(hire.changedFiles, hire.changes, hire.changesOmitted));
+        return Optional.of(new Proposal(hire.changedFiles, hire.changes, hire.changesOmitted, hire.workingDirectory));
     }
 
-    /** What a hire proposes: the files it changed, each with its old and new text where the hire's answer carried it, and those it could not show. */
-    record Proposal(List<String> files, List<TreeAttribution.FileChange> changes, List<String> omitted) {
+    /**
+     * What a hire proposes: the files it changed, each with its old and new text where the hire's answer carried it, those it could not show,
+     * and the folder it ran in (empty when its call named none).
+     */
+    record Proposal(List<String> files, List<TreeAttribution.FileChange> changes, List<String> omitted, String directory) {
+
+        /**
+         * What the person's no does: puts back, in the folder the hire ran in, the files this proposal changed, each only when that is exact and
+         * safe, and says what it left and why ({@link TakeBack}).
+         */
+        TakeBack.Result takeBack(org.jawata.core.host.HostProcesses host) {
+            return TakeBack.of(host, directory, this);
+        }
     }
 
     /**
@@ -233,6 +246,9 @@ final class HireWatch {
         if (input.hasNonNull("hirer")) {
             hire.hirer = input.get("hirer").asText();
         }
+        if (input.hasNonNull("workingDirectory")) {
+            hire.workingDirectory = input.get("workingDirectory").asText();
+        }
         if (input.hasNonNull("fixes") && !input.get("fixes").asText().isEmpty()) {
             // This hire corrects an earlier one, named by the plan id that hire's answer gave: the earlier one was accepted, with a fix to come.
             String corrected = input.get("fixes").asText();
@@ -294,7 +310,8 @@ final class HireWatch {
         hire.changedFiles = List.copyOf(files);
         List<TreeAttribution.FileChange> shown = new java.util.ArrayList<>();
         answer.path("changes").forEach(file -> shown.add(new TreeAttribution.FileChange(file.path("path").asText(),
-            file.hasNonNull("oldText") ? file.get("oldText").asText() : null, file.hasNonNull("newText") ? file.get("newText").asText() : null)));
+            file.hasNonNull("oldText") ? file.get("oldText").asText() : null, file.hasNonNull("newText") ? file.get("newText").asText() : null,
+            file.path("cleanBefore").asBoolean(false))));
         hire.changes = List.copyOf(shown);
         List<String> omitted = new java.util.ArrayList<>();
         answer.path("changesOmitted").forEach(name -> omitted.add(name.asText()));

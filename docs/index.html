@@ -168,6 +168,7 @@
     .copy:hover { border-color: var(--gold); color: var(--gold); }
     .install-note { font-size: .92rem; color: var(--text-dim); margin: .9rem 0 0; max-width: 46rem; }
     .install-note code { font-size: .82rem; }
+    .install-sub { font: 600 1rem var(--sans); color: var(--text); margin: 1.6rem 0 .6rem; }
 
     /* feature cards */
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.1rem; }
@@ -309,6 +310,17 @@
       <a href="https://github.com/haraldwegner/jawata-studio/releases">grab the installer</a> or
       <code>scoop bucket add jawata https://github.com/haraldwegner/scoop-jawata &amp;&amp;
       scoop install jawata-studio</code>.</p>
+      <div id="eclipse-install" hidden>
+      <h3 class="install-sub">In Eclipse</h3>
+      <div class="install">
+        <code id="eclipse-site">https://jawata.org/eclipse/</code>
+        <button class="copy" type="button" data-copy="eclipse-site" hidden>Copy</button>
+      </div>
+      <p class="install-note">Paste this address under <strong>Help &gt; Install New Software &gt; Add&hellip;</strong>,
+      choose <strong>jawata</strong> and install; Eclipse offers later versions from the same address under
+      <strong>Help &gt; Check for Updates</strong>. The plug-in is not listed in any marketplace; this address is where to get it.
+      It is built for Eclipse 2026-09 (4.41) and needs Java 21.</p>
+      </div>
     </section>
 
     <section id="brings">
@@ -440,16 +452,28 @@
 </div>
 
 <script>
+  // The Eclipse block is shown only when the update site is really there: the address answers with its list of
+  // releases. Until the first release is published, a page that named an address which serves nothing would send a
+  // reader to a dead link.
+  (function () {
+    if (!window.fetch) return;
+    fetch('/eclipse/releases.txt', { cache: 'no-store' }).then(function (r) {
+      if (r.ok) document.getElementById('eclipse-install').hidden = false;
+    }).catch(function () {});
+  })();
+</script>
+<script>
   // Progressive enhancement: the copy button only appears when the browser can copy.
   (function () {
-    var btn = document.querySelector('.copy');
-    if (!btn || !navigator.clipboard) return;
-    btn.hidden = false;
-    btn.addEventListener('click', function () {
-      var text = document.getElementById(btn.dataset.copy).textContent;
-      navigator.clipboard.writeText(text).then(function () {
-        btn.textContent = 'Copied';
-        setTimeout(function () { btn.textContent = 'Copy'; }, 1600);
+    if (!navigator.clipboard) return;
+    Array.prototype.forEach.call(document.querySelectorAll('.copy'), function (btn) {
+      btn.hidden = false;
+      btn.addEventListener('click', function () {
+        var text = document.getElementById(btn.dataset.copy).textContent;
+        navigator.clipboard.writeText(text).then(function () {
+          btn.textContent = 'Copied';
+          setTimeout(function () { btn.textContent = 'Copy'; }, 1600);
+        });
       });
     });
   })();
