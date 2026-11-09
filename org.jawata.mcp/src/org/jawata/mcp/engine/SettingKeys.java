@@ -140,6 +140,19 @@ public final class SettingKeys {
         "A measurement arm: when true the recorded symptoms are added to the text of each lesson before it is embedded, under an identity of its own.",
         null, Audience.EXPERIMENT);
 
+    /** The seats switched off. */
+    public static final SettingKey SEATS_OFF = register("jawata.seats.off", "none",
+        "The seats switched off, separated by commas; a seat that is off is not offered and a hire of it is refused.", null, Audience.OWN_SCREEN);
+
+    /** The brain each seat runs on. */
+    public static final SettingKey SEATS_BRAINS = register("jawata.seats.brains", "the brain each seat file names",
+        "The brain each seat runs on, as seat=brain or seat=brain/model, separated by semicolons.", null, Audience.OWN_SCREEN);
+
+    /** Where each seat sits in the workflow. */
+    public static final SettingKey SEATS_WORKFLOW = register("jawata.seats.workflow", "the signed workflow",
+        "Where each seat sits in the workflow, as seat=parent,role or seat=parent,role,escalates-to, separated by semicolons.", null,
+        Audience.OWN_SCREEN);
+
     private SettingKeys() {
     }
 

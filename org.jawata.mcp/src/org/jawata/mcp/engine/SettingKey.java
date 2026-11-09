@@ -23,7 +23,9 @@ public record SettingKey(String name, String fallback, String meaning, String en
         /** The program that starts the engine sets it, and the person has nothing to choose. */
         LAUNCHER,
         /** A measurement arm of the engine's own development, which the person is never asked about. */
-        EXPERIMENT
+        EXPERIMENT,
+        /** The person chooses it, on a screen of its own, so the list of general settings leaves it out. */
+        OWN_SCREEN
     }
 
     /** A key says who it is for: a key nobody classified would be shown to the person by a screen that cannot tell. */

@@ -32,4 +32,9 @@ public interface EngineApi {
 
     /** Where a process on this machine reaches the engine's MCP face, or nothing when it has none (stdio, or not listening yet). */
     Optional<McpEndpoint> mcp();
+
+    /** The seats and the check of a change to them, for a host's settings screen. Not a tool: an agent has no way to it. */
+    default SeatSettings seats() {
+        return org.jawata.mcp.execution.SeatSettingsService.forEngine(settings(), tools());
+    }
 }

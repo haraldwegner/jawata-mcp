@@ -31,9 +31,12 @@ class SettingKeyAudienceTest {
         assertEquals(Audience.LAUNCHER, SettingKeys.DIST_ROOT.audience());
         assertEquals(Audience.LAUNCHER, SettingKeys.WORKSPACE_ROOT.audience());
         assertEquals(Audience.EXPERIMENT, SettingKeys.EMBED_SYMPTOMS.audience());
+        assertEquals(Audience.OWN_SCREEN, SettingKeys.SEATS_OFF.audience());
+        assertEquals(Audience.OWN_SCREEN, SettingKeys.SEATS_BRAINS.audience());
+        assertEquals(Audience.OWN_SCREEN, SettingKeys.SEATS_WORKFLOW.audience());
 
         List<String> forThePerson = SettingKeys.all().stream().filter(k -> k.audience() == Audience.PERSON).map(SettingKey::name).toList();
-        assertEquals(SettingKeys.all().size() - 3, forThePerson.size(), "the other keys are the person's: " + forThePerson);
+        assertEquals(SettingKeys.all().size() - 6, forThePerson.size(), "the other keys are the person's: " + forThePerson);
         assertFalse(forThePerson.contains("jawata.dist.root") || forThePerson.contains("jawata.workspace.root")
             || forThePerson.contains("jawata.embed.symptoms"));
     }
@@ -113,7 +116,13 @@ class SettingKeyAudienceTest {
         Map.entry("jawata.embed.disabled",
             "When true the knowledge store answers by keywords only and loads no embedding model."),
         Map.entry("jawata.embed.symptoms",
-            "A measurement arm: when true the recorded symptoms are added to the text of each lesson before it is embedded, under an identity of its own."));
+            "A measurement arm: when true the recorded symptoms are added to the text of each lesson before it is embedded, under an identity of its own."),
+        Map.entry("jawata.seats.off",
+            "The seats switched off, separated by commas; a seat that is off is not offered and a hire of it is refused."),
+        Map.entry("jawata.seats.brains",
+            "The brain each seat runs on, as seat=brain or seat=brain/model, separated by semicolons."),
+        Map.entry("jawata.seats.workflow",
+            "Where each seat sits in the workflow, as seat=parent,role or seat=parent,role,escalates-to, separated by semicolons."));
 
     @Test
     @DisplayName("the wording for the engine that runs alone is, for every key, exactly what it was before the sentence about the variable moved")

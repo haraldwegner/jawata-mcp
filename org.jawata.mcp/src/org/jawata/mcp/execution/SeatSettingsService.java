@@ -1,0 +1,259 @@
+package org.jawata.mcp.execution;
+
+import java.io.IOException;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.function.Supplier;
+
+import org.jawata.mcp.engine.SeatSettings;
+import org.jawata.mcp.engine.SettingKeys;
+import org.jawata.mcp.engine.ToolCalls;
+import org.jawata.spi.host.EngineSettings;
+
+/**
+ * The engine's door to the seats for a host's settings screen (Sprint 28k, Amendment 3, D15). The seat files are read and never written: on or
+ * off, the brain and the place in the workflow are the three settings of {@link SettingKeys}, laid over what the files say. A proposed
+ * change is judged by the engine's own {@link SeatTree}, so a screen can only say what the engine would say.
+ */
+public final class SeatSettingsService implements SeatSettings {
+
+    private static final String BRAIN_NAMES = "claude-code, cursor, copilot, codex";
+
+    private final Supplier<SeatFiles.Listing> source;
+    private final EngineSettings settings;
+    private final Set<String> codeChangingTools;
+
+    private SeatSettingsService(Supplier<SeatFiles.Listing> source, EngineSettings settings, Set<String> codeChangingTools) {
+        this.source = source;
+        this.settings = settings;
+        this.codeChangingTools = Set.copyOf(codeChangingTools);
+    }
+
+    /**
+     * The door over a folder of seat files.
+     *
+     * @param folder            the folder
+     * @param settings          where the three settings are read from, per call
+     * @param codeChangingTools the engine's tools that change code, which the tree check needs
+     * @return the door
+     */
+    public static SeatSettings overFolder(Path folder, EngineSettings settings, Set<String> codeChangingTools) {
+        return new SeatSettingsService(() -> SeatFiles.read(folder), settings, codeChangingTools);
+    }
+
+    /**
+     * The door over the seats sealed in an installed jar, read from inside it and never extracted.
+     *
+     * @param jar               the jar, whose {@code seats} folder holds the seat files
+     * @param settings          where the three settings are read from, per call
+     * @param codeChangingTools the engine's tools that change code, which the tree check needs
+     * @return the door
+     */
+    public static SeatSettings sealedIn(Path jar, EngineSettings settings, Set<String> codeChangingTools) {
+        return new SeatSettingsService(() -> readJar(jar), settings, codeChangingTools);
+    }
+
+    /**
+     * The door for a running engine: the folder {@code jawata.agent.seatsDir} names, as a studio-started engine has, else no seat files.
+     * The seats sealed in the plug-in are handed in through {@link #sealedIn} by the stage that ships them.
+     *
+     * @param settings the engine's settings
+     * @param tools    the engine's tools
+     * @return the door
+     */
+    public static SeatSettings forEngine(EngineSettings settings, ToolCalls tools) {
+        Set<String> codeChanging = SeatTree.codeChangingIn(tools.getToolDefinitions());
+        Optional<String> folder = settings.get(ScheduledHires.SEATS_SETTING).filter(value -> !value.isBlank());
+        return folder.map(path -> overFolder(Path.of(path), settings, codeChanging))
+            .orElseGet(() -> new SeatSettingsService(() -> new SeatFiles.Listing(List.of(), List.of()), settings, codeChanging));
+    }
+
+    private static SeatFiles.Listing readJar(Path jar) {
+        try (FileSystem inside = FileSystems.newFileSystem(jar)) {
+            return SeatFiles.read(inside.getPath("/seats"));
+        } catch (IOException | RuntimeException unreadable) {
+            return new SeatFiles.Listing(List.of(), List.of(jar + ": " + unreadable.getMessage()));
+        }
+    }
+
+    @Override
+    public View seats() {
+        SeatFiles.Listing listing = source.get();
+        Overrides overrides = Overrides.parse(stored(SettingKeys.SEATS_OFF.name()), stored(SettingKeys.SEATS_BRAINS.name()),
+            stored(SettingKeys.SEATS_WORKFLOW.name()));
+        List<String> errors = new ArrayList<>(listing.unreadable());
+        errors.addAll(overrides.problems());
+        SeatTree.Loaded loaded = SeatTree.fromSeatFiles(withWorkflow(listing.seats(), overrides.workflow()), codeChangingTools);
+        errors.addAll(loaded.refusals());
+        List<Seat> rows = new ArrayList<>();
+        for (SeatFiles.SeatFile file : listing.seats()) {
+            rows.add(row(file, overrides, loaded.tree(), errors));
+        }
+        rows.sort(Comparator.comparing(Seat::name));
+        return new View(rows, errors);
+    }
+
+    private Seat row(SeatFiles.SeatFile file, Overrides overrides, SeatTree tree, List<String> errors) {
+        String name = file.name();
+        Map<String, String> front = file.front();
+        boolean on = !overrides.off().contains(name) && declaredOn(name, front, errors);
+        String[] picked = overrides.brains().get(name);
+        String declaredBrain = Frontmatter.emptyToNull(Frontmatter.unquote(front.getOrDefault("brain", "")));
+        String brain = picked != null ? picked[0]
+            : declaredBrain == null ? SeatHire.Brain.CLAUDE_CODE.label() : SeatHire.Brain.named(declaredBrain).map(SeatHire.Brain::label).orElse(declaredBrain);
+        Optional<String> model = picked != null ? Optional.ofNullable(picked[1]) : textOf(front, "model");
+        return new Seat(name, textOf(front, "command"), textOf(front, "purpose").orElse(""), on, brain, model, tree.parentOf(name),
+            tree.roleOf(name).map(SeatTree.Role::spelling).orElse(""), tree.escalatesTo(name));
+    }
+
+    private static boolean declaredOn(String name, Map<String, String> front, List<String> errors) {
+        try {
+            return Frontmatter.readSwitch("enabled", front.get("enabled"), true);
+        } catch (IllegalArgumentException misspelled) {
+            errors.add(name + ": " + misspelled.getMessage());
+            return false;
+        }
+    }
+
+    private static Optional<String> textOf(Map<String, String> front, String key) {
+        return Optional.ofNullable(Frontmatter.emptyToNull(Frontmatter.unquote(front.getOrDefault(key, ""))));
+    }
+
+    @Override
+    public Optional<String> check(Map<String, String> proposed) {
+        Overrides overrides = Overrides.parse(value(proposed, SettingKeys.SEATS_OFF.name()), value(proposed, SettingKeys.SEATS_BRAINS.name()),
+            value(proposed, SettingKeys.SEATS_WORKFLOW.name()));
+        List<String> problems = new ArrayList<>(overrides.problems());
+        List<SeatFiles.SeatFile> files = source.get().seats();
+        Set<String> known = new LinkedHashSet<>(SeatTree.standard().seats());
+        known.add(SeatTree.TOP);
+        files.forEach(file -> known.add(file.name()));
+        for (String seat : overrides.named()) {
+            if (!known.contains(seat)) {
+                problems.add("no seat named '" + seat + "'");
+            }
+        }
+        if (!problems.isEmpty()) {
+            return Optional.of(String.join("; ", problems));
+        }
+        SeatTree.Loaded loaded = SeatTree.fromSeatFiles(withWorkflow(files, overrides.workflow()), codeChangingTools);
+        return loaded.refused() ? Optional.of("the engine would refuse this tree: " + String.join("; ", loaded.refusals())) : Optional.empty();
+    }
+
+    private String stored(String key) {
+        return settings.get(key).orElse("");
+    }
+
+    private String value(Map<String, String> proposed, String key) {
+        return proposed.containsKey(key) ? proposed.get(key) : stored(key);
+    }
+
+    /** The seat files with each stored place in the workflow laid over them, as the three lines of a seat file the tree reads. */
+    private static List<SeatFiles.SeatFile> withWorkflow(List<SeatFiles.SeatFile> files, Map<String, String[]> workflow) {
+        Map<String, String[]> left = new LinkedHashMap<>(workflow);
+        List<SeatFiles.SeatFile> laid = new ArrayList<>();
+        for (SeatFiles.SeatFile file : files) {
+            String[] place = left.remove(file.name());
+            if (place == null) {
+                laid.add(file);
+                continue;
+            }
+            Map<String, String> front = new LinkedHashMap<>(file.front());
+            placeInto(front, place);
+            laid.add(new SeatFiles.SeatFile(file.name(), file.file(), front, file.body()));
+        }
+        left.forEach((seat, place) -> {
+            Map<String, String> front = new LinkedHashMap<>();
+            placeInto(front, place);
+            laid.add(new SeatFiles.SeatFile(seat, Path.of(seat + ".md"), front, ""));
+        });
+        return laid;
+    }
+
+    private static void placeInto(Map<String, String> front, String[] place) {
+        front.put(SeatTree.PARENT_KEY, place[0]);
+        front.put(SeatTree.ROLE_KEY, place[1]);
+        if (place.length > 2) {
+            front.put(SeatTree.ESCALATES_KEY, place[2]);
+        }
+    }
+
+    /**
+     * The three settings read: seats that are off, each seat's brain and model, and each seat's place as parent, role and, when stored, where
+     * failures go.
+     */
+    private record Overrides(Set<String> off, Map<String, String[]> brains, Map<String, String[]> workflow, List<String> problems) {
+
+        /** Every seat the three settings name. */
+        Set<String> named() {
+            Set<String> seats = new LinkedHashSet<>(off);
+            seats.addAll(brains.keySet());
+            seats.addAll(workflow.keySet());
+            return seats;
+        }
+
+        static Overrides parse(String offValue, String brainsValue, String workflowValue) {
+            List<String> problems = new ArrayList<>();
+            Set<String> off = new LinkedHashSet<>();
+            for (String seat : offValue.split(",")) {
+                if (!seat.isBlank()) {
+                    off.add(seat.strip());
+                }
+            }
+            return new Overrides(off, brains(brainsValue, problems), workflow(workflowValue, problems), problems);
+        }
+
+        private static Map<String, String[]> brains(String value, List<String> problems) {
+            Map<String, String[]> brains = new LinkedHashMap<>();
+            for (String entry : value.split(";")) {
+                if (entry.isBlank()) {
+                    continue;
+                }
+                int equals = entry.indexOf('=');
+                if (equals <= 0) {
+                    problems.add("'" + entry.strip() + "' is not seat=brain or seat=brain/model");
+                    continue;
+                }
+                String[] brainAndModel = entry.substring(equals + 1).split("/", 2);
+                Optional<SeatHire.Brain> brain = SeatHire.Brain.named(brainAndModel[0]).filter(named -> named != SeatHire.Brain.SCRIPT);
+                if (brain.isEmpty()) {
+                    problems.add("'" + brainAndModel[0].strip() + "' is not a brain a hire can start (known: " + BRAIN_NAMES + ")");
+                } else if (brainAndModel.length > 1 && brainAndModel[1].isBlank()) {
+                    problems.add("an empty model name is not a model; leave it out for the default");
+                } else {
+                    brains.put(entry.substring(0, equals).strip(), new String[] {brain.get().label(), brainAndModel.length > 1 ? brainAndModel[1].strip() : null});
+                }
+            }
+            return brains;
+        }
+
+        private static Map<String, String[]> workflow(String value, List<String> problems) {
+            Map<String, String[]> workflow = new LinkedHashMap<>();
+            for (String entry : value.split(";")) {
+                if (entry.isBlank()) {
+                    continue;
+                }
+                int equals = entry.indexOf('=');
+                String[] place = equals > 0 ? entry.substring(equals + 1).split(",", -1) : new String[0];
+                if (place.length < 2 || place.length > 3) {
+                    problems.add("'" + entry.strip() + "' is not seat=parent,role or seat=parent,role,escalates-to");
+                    continue;
+                }
+                for (int i = 0; i < place.length; i++) {
+                    place[i] = place[i].strip();
+                }
+                workflow.put(entry.substring(0, equals).strip(), place);
+            }
+            return workflow;
+        }
+    }
+}
