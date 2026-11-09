@@ -426,6 +426,81 @@ class PrincipalBrainTest {
         assertEquals(List.of(), brain.records());
     }
 
+    /** The stand-in agent, offering two models and on the first (D54 (a)). */
+    private AcpBrainSession.Program fakeWithModels() {
+        Map<String, String> environment = new java.util.LinkedHashMap<>(fake.environment());
+        environment.put("FAKE_ACP_MODELS", "a=Alpha,b=Beta");
+        return new AcpBrainSession.Program(fake.command(), environment);
+    }
+
+    @Test
+    @DisplayName("D54 (a): the brain reports the models it offers and the one it is on, once its session is open, and none before")
+    void theBrainReportsTheModelsAndTheOneItIsOn() {
+        PrincipalBrain brain = brain(Optional.of(fakeWithModels()));
+        assertEquals(Optional.empty(), brain.currentModel(), "a model the brain has not confirmed is not named");
+        assertEquals(List.of(), brain.models());
+
+        ask(brain, "hello", new ArrayList<>());
+
+        assertEquals(Optional.of("Alpha"), brain.currentModel());
+        assertEquals(Optional.of("a"), brain.currentModelValue());
+        assertEquals(List.of(new AcpBrainSession.Model("a", "Alpha"), new AcpBrainSession.Model("b", "Beta")), brain.models());
+        brain.close();
+    }
+
+    @Test
+    @DisplayName("D54 (a): a model chosen before the session opens is applied once it is open")
+    void aModelChosenBeforeTheSessionOpensIsAppliedWhenItOpens() {
+        PrincipalBrain brain = brain(Optional.of(fakeWithModels()));
+
+        assertEquals(true, brain.useModel("b"), "with no session open the choice is kept for the one that opens");
+        String answer = ask(brain, "WHICHMODEL", new ArrayList<>());
+
+        assertEquals("b", answer, "the brain answered from the model it was moved to");
+        assertEquals(Optional.of("Beta"), brain.currentModel());
+        brain.close();
+    }
+
+    @Test
+    @DisplayName("D54 (a): a model chosen while the conversation runs moves the same session, and one the brain does not offer changes nothing")
+    void aModelChosenWhileTheConversationRunsMovesItAndAnUnofferedOneDoesNot() {
+        PrincipalBrain brain = brain(Optional.of(fakeWithModels()));
+        ask(brain, "REMEMBER:kept", new ArrayList<>());
+
+        assertEquals(true, brain.useModel("Beta"), "a name is matched as well as a value");
+        assertEquals("b", ask(brain, "WHICHMODEL", new ArrayList<>()));
+        assertEquals("kept", ask(brain, "RECALL", new ArrayList<>()), "the same session, so what it was told is still known");
+
+        assertEquals(false, brain.useModel("no-such-model"));
+        assertEquals("b", ask(brain, "WHICHMODEL", new ArrayList<>()), "refused, so it stays where it was");
+        brain.close();
+    }
+
+    @Test
+    @DisplayName("D54 (a): a preferred model the brain does not offer leaves the session on the brain's own default and ends no conversation")
+    void aPreferredModelTheBrainDoesNotOfferLeavesTheDefault() {
+        PrincipalBrain brain = brain(Optional.of(fakeWithModels()));
+
+        brain.useModel("no-such-model");
+        String answer = ask(brain, "WHICHMODEL", new ArrayList<>());
+
+        assertEquals("a", answer);
+        assertEquals(Optional.of("Alpha"), brain.currentModel());
+        brain.close();
+    }
+
+    @Test
+    @DisplayName("D54 (a): the model the principal's setting names beside its command line is the one the session is moved to")
+    void theModelTheSettingNamesIsAppliedToTheSession() {
+        String setting = "{\"command\":[\"" + inJson(fake.command().get(0)) + "\",\"" + inJson(fake.command().get(1)) + "\"],\"model\":\"Beta\",\"env\":{\"FAKE_ACP_STATE\":\""
+            + inJson(dir.toString()) + "\",\"FAKE_ACP_MODELS\":\"a=Alpha,b=Beta\"}}";
+        PrincipalBrain brain = PrincipalBrain.over(engineWith(Map.of(PrincipalBrain.SETTING, setting)), dir);
+
+        assertEquals("b", ask(brain, "WHICHMODEL", new ArrayList<>()));
+        assertEquals(Optional.of("Beta"), brain.currentModel());
+        brain.close();
+    }
+
     @Test
     @DisplayName("the setting names the brain: a command line is read, text that is not one names none")
     void theSettingNamesTheBrain() {

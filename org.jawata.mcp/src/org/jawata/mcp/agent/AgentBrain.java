@@ -47,6 +47,29 @@ public interface AgentBrain {
         return java.util.Optional.empty();
     }
 
+    /**
+     * The name of the model this brain is on (D54 (a)), as the brain itself reports it for its session: what is running, and not what a registry
+     * says the brain would start with. None when the brain has not said, which a row shows as the brain's name alone.
+     */
+    default java.util.Optional<String> currentModel() {
+        return java.util.Optional.empty();
+    }
+
+    /** The value the brain's own model option takes for the model it is on; the one a choice of that model is sent back as. None when it has not said. */
+    default java.util.Optional<String> currentModelValue() {
+        return java.util.Optional.empty();
+    }
+
+    /** The models the brain offers for the session it has open: none before it has one, and none for a brain that offers none. */
+    default java.util.List<org.jawata.mcp.execution.AcpBrainSession.Model> models() {
+        return java.util.List.of();
+    }
+
+    /** Moves to the model named (a value the brain offered, or its name), from the next prompt; false when the brain offers no such model or this answerer cannot. */
+    default boolean useModel(String model) {
+        return false;
+    }
+
     /** Moves to the brain the registry names, from the next prompt; false when this answerer cannot, or the registry has no such program. */
     default boolean useBrain(String registry, String name) {
         return false;
@@ -62,6 +85,15 @@ public interface AgentBrain {
 
     /** A conversation has opened and a first prompt is coming: an answerer that needs a slow start begins it now (D53 (g)). */
     default void prepare() {
+    }
+
+    /**
+     * {@link #prepare()}, and {@code whenReady} is run once the brain's session is open (or has failed to open), so the face can tell the host what
+     * only then becomes known: the models the brain offers and the one it is on (D54 (a)). An answerer with no slow start runs it at once.
+     */
+    default void prepare(Runnable whenReady) {
+        prepare();
+        whenReady.run();
     }
 
     /** The person stopped the turn: an answerer that is reading a brain's answer tells that brain, and its turn ends with the brain's reply (D53 (f)). */

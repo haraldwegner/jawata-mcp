@@ -74,6 +74,11 @@ public final class PrincipalBrain implements AgentBrain {
     private final Object starting = new Object();
     /** Set when the person has chosen another brain: the process goes at the next prompt, so the prompt running now is not cut off. */
     private boolean brainChanged;
+    /**
+     * The model to move the brain's session to once it is open: what the principal's setting names beside its command line, or what the person
+     * chose on the row. A model the brain does not offer is left alone, and the session stays on the brain's own default.
+     */
+    private Optional<String> preferredModel = Optional.empty();
     /** Pictures that go with the next prompt. */
     private volatile List<JsonNode> images = List.of();
     /** What has been said, so a brain the person moves the principal onto knows the conversation (D53 (i)). */
@@ -109,7 +114,11 @@ public final class PrincipalBrain implements AgentBrain {
      * connection.
      */
     public static PrincipalBrain over(EngineApi engine, Path workingDirectory) {
-        Optional<AcpBrainSession.Program> program = programOfSeat(engine, "main").or(() -> engine.settings().get(SETTING).flatMap(AcpBrainSession::parseProgram));
+        Optional<AcpBrainSession.Program> seatProgram = programOfSeat(engine, "main");
+        Optional<AcpBrainSession.Program> program = seatProgram.or(() -> engine.settings().get(SETTING).flatMap(AcpBrainSession::parseProgram));
+        // The model the setting names beside its command line is the principal's own; a brain the seat file chose is not the one it describes.
+        Optional<String> model = seatProgram.isPresent() ? Optional.empty()
+            : engine.settings().get(SETTING).flatMap(Hirer::brainOf).map(Hirer.Brain::model).filter(name -> !name.isBlank());
         SelfEndpoint self = engine.mcp().map(PrincipalBrain::endpointOf).orElse(null);
         List<Map<String, Object>> definitions = engine.tools().getToolDefinitions();
         List<String> tools = definitions.stream().map(d -> String.valueOf(d.get("name"))).toList();
@@ -117,8 +126,10 @@ public final class PrincipalBrain implements AgentBrain {
         // D51: who hires whom is what the seat files of the seats folder declare, laid over the signed tree.
         Hirer hirer = new Hirer(SeatTree.forSetting(engine.settings().get(ScheduledHires.SEATS_SETTING), codeChanging).tree(), Map.of(), codeChanging);
         SeatPrompts seats = new SeatPrompts(() -> engine.settings().get(ScheduledHires.SEATS_SETTING).filter(folder -> !folder.isBlank()).map(Path::of));
-        return new PrincipalBrain(HostProcesses.system(), program, HireSite.in(workingDirectory), self, tools, hirer,
+        PrincipalBrain principal = new PrincipalBrain(HostProcesses.system(), program, HireSite.in(workingDirectory), self, tools, hirer,
             HiredBrain.Ceilings.of(Duration.ofMinutes(30)), () -> seats.text("main"));
+        principal.preferredModel = model;
+        return principal;
     }
 
     /**
@@ -257,6 +268,8 @@ public final class PrincipalBrain implements AgentBrain {
             if (conversation == null || !conversation.alive()) {
                 conversation = AcpBrainSession.Conversation.start(host, program.get(), site, self == null ? null : self.forSession(sessionKey),
                     hirer.allowlist("main", engineTools), resume, ceilings);
+                // The model the person or the studio chose, applied through the brain's own model option once its session is open (D54 (a)).
+                preferredModel.ifPresent(conversation::selectModel);
             }
             return conversation;
         }
@@ -295,6 +308,51 @@ public final class PrincipalBrain implements AgentBrain {
         return program.flatMap(known -> vendorOf(known.command()));
     }
 
+    /**
+     * The model the brain's session is on, as the brain reported it when it opened the session and as it was last changed: what is running.
+     * Before a session is open there is none to name, because a model the brain has not confirmed is not one a row may claim.
+     */
+    @Override
+    public Optional<String> currentModel() {
+        synchronized (starting) {
+            return liveConversation().flatMap(AcpBrainSession.Conversation::currentModel).map(AcpBrainSession.Model::name);
+        }
+    }
+
+    @Override
+    public Optional<String> currentModelValue() {
+        synchronized (starting) {
+            return liveConversation().flatMap(AcpBrainSession.Conversation::currentModel).map(AcpBrainSession.Model::value);
+        }
+    }
+
+    @Override
+    public List<AcpBrainSession.Model> models() {
+        synchronized (starting) {
+            return liveConversation().map(AcpBrainSession.Conversation::models).orElse(List.of());
+        }
+    }
+
+    /**
+     * Moves to {@code model} for the rest of the conversation and for the next one this principal opens. A session that is open is moved at once,
+     * and keeps what was said; a brain that does not offer the model stays where it was and the answer is false.
+     */
+    @Override
+    public boolean useModel(String model) {
+        synchronized (starting) {
+            Optional<AcpBrainSession.Conversation> open = liveConversation();
+            boolean moved = open.isPresent() && open.get().selectModel(model);
+            if (moved || open.isEmpty()) {
+                preferredModel = Optional.ofNullable(model).filter(name -> !name.isBlank());
+            }
+            return moved || open.isEmpty();
+        }
+    }
+
+    private Optional<AcpBrainSession.Conversation> liveConversation() {
+        return conversation != null && conversation.alive() ? Optional.of(conversation) : Optional.empty();
+    }
+
     @Override
     public boolean useBrain(String registry, String name) {
         Optional<AcpBrainSession.Program> next = AcpBrainSession.programFor(registry, name);
@@ -304,6 +362,8 @@ public final class PrincipalBrain implements AgentBrain {
         synchronized (starting) {
             program = next;
             brainChanged = true;
+            // A model chosen for the brain that was running is not a model of the one that takes over; the registry may name one for it.
+            preferredModel = Hirer.brainIn(registry, name).map(Hirer.Brain::model).filter(model -> !model.isBlank());
         }
         return true;
     }
@@ -352,7 +412,13 @@ public final class PrincipalBrain implements AgentBrain {
     /** Starts the brain beside the opening of the conversation, so the first message does not wait for it; a failure is reported by that message. */
     @Override
     public void prepare() {
+        prepare(() -> { });
+    }
+
+    @Override
+    public void prepare(Runnable whenReady) {
         if (program.isEmpty()) {
+            whenReady.run();
             return;
         }
         forgetTheLastConversation();
@@ -362,6 +428,7 @@ public final class PrincipalBrain implements AgentBrain {
             } catch (IOException | RuntimeException e) {
                 // the first prompt starts it again and tells the person what went wrong
             }
+            whenReady.run();
         }, "jawata-principal-warm");
         warm.setDaemon(true);
         warm.start();

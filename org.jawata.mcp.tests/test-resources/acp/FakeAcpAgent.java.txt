@@ -23,6 +23,22 @@ public class FakeAcpAgent {
     /** With FAKE_ACP_LOGIN set, a session is refused with "Authentication required" until the client has called authenticate. */
     static final boolean loginRequired = System.getenv("FAKE_ACP_LOGIN") != null;
     static boolean authenticated;
+    /**
+     * With FAKE_ACP_MODELS set to {@code value=Name,value=Name,...} the agent offers those models in a "model" config option when it opens a session,
+     * is on the first, and moves to another when told through session/set_config_option. A prompt WHICHMODEL answers the value it is on (D54 (a)).
+     */
+    static final String[] offeredModels = System.getenv().getOrDefault("FAKE_ACP_MODELS", "").isBlank() ? new String[0]
+        : System.getenv("FAKE_ACP_MODELS").split(",");
+    static String modelNow = offeredModels.length == 0 ? "" : offeredModels[0].split("=")[0];
+
+    static String modelOption() {
+        StringBuilder options = new StringBuilder();
+        for (String offered : offeredModels) {
+            String[] pair = offered.split("=", 2);
+            options.append(options.length() == 0 ? "" : ",").append("{\"value\":\"").append(pair[0]).append("\",\"name\":\"").append(pair[1]).append("\"}");
+        }
+        return "{\"id\":\"model\",\"name\":\"Model\",\"category\":\"model\",\"type\":\"select\",\"currentValue\":\"" + modelNow + "\",\"options\":[" + options + "]}";
+    }
     static final BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
 
     public static void main(String[] args) throws Exception {
@@ -48,7 +64,18 @@ public class FakeAcpAgent {
                     }
                     String session = "fake-" + (++counter) + "-" + Long.toHexString(System.nanoTime());
                     servers.put(session, between(line, "\"mcpServers\":"));
-                    reply(id, "{\"sessionId\":\"" + session + "\"}");
+                    reply(id, "{\"sessionId\":\"" + session + "\""
+                        + (offeredModels.length == 0 ? "" : ",\"configOptions\":[" + modelOption() + "]") + "}");
+                }
+                case "session/set_config_option" -> {
+                    String wanted = field(line, "value");
+                    boolean offered = "model".equals(field(line, "configId")) && java.util.Arrays.stream(offeredModels).anyMatch(m -> m.split("=")[0].equals(wanted));
+                    if (offered) {
+                        modelNow = wanted;
+                        reply(id, "{\"configOptions\":[" + modelOption() + "]}");
+                    } else {
+                        send("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":-32602,\"message\":\"no such model\"}}");
+                    }
                 }
                 case "session/load" -> {
                     String session = field(line, "sessionId");
@@ -97,6 +124,8 @@ public class FakeAcpAgent {
             chunk(session, Files.exists(memory) ? Files.readString(memory) : "nothing");
         } else if (text.contains("ASKTRANSCRIPT")) {
             chunk(session, text.contains("EARLIERWORD") ? "knows" : "does not know");
+        } else if (text.contains("WHICHMODEL")) {
+            chunk(session, modelNow);
         } else if (text.contains("WHICHFOLDER")) {
             chunk(session, java.nio.file.Path.of("").toAbsolutePath().toString());
         } else if (text.contains("ASKGREETING")) {

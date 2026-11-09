@@ -92,6 +92,13 @@ public final class AcpBrainSession {
     }
 
     /**
+     * One model a brain offers for its session: the {@code value} the brain's own model option takes, and the {@code name} a person reads. They
+     * differ (Cursor's agent offers {@code grok-4.5[effort=high,fast=true]} as "grok-4.5"), and the value is the one that is sent back.
+     */
+    public record Model(String value, String name) {
+    }
+
+    /**
      * Runs one prompt.
      *
      * @param host         the process boundary
@@ -136,6 +143,9 @@ public final class AcpBrainSession {
         private boolean takesImages;
         private String sessionId;
         private int promptId = 3;
+        /** The models the brain offered when it opened this session, and the value of the one it is on; empty when it offers none. */
+        private List<Model> models = List.of();
+        private String modelValue = "";
 
         private StringBuilder said = new StringBuilder();
         private List<String> toolNames = new ArrayList<>();
@@ -238,7 +248,65 @@ public final class AcpBrainSession {
                     }
                 }
                 sessionId = created == null ? null : created.path("sessionId").asText(null);
+                readModels(created);
             }
+        }
+
+        /** The brain's own model option, from the answer that opened the session: its values, and the one it is on. Nothing when it has none. */
+        private void readModels(JsonNode created) {
+            if (created == null) {
+                return;
+            }
+            for (JsonNode option : created.path("configOptions")) {
+                if ("model".equals(option.path("id").asText()) || "model".equals(option.path("category").asText())) {
+                    List<Model> offered = new ArrayList<>();
+                    option.path("options").forEach(choice -> offered.add(new Model(choice.path("value").asText(), choice.path("name").asText(choice.path("value").asText()))));
+                    models = List.copyOf(offered);
+                    modelValue = option.path("currentValue").asText("");
+                    return;
+                }
+            }
+        }
+
+        /** The models this brain offers for the session, in the order it listed them. */
+        public List<Model> models() {
+            return models;
+        }
+
+        /** The model this session is on: the one the brain said it was on when it opened, or the one last selected. None when the brain offers no models. */
+        public Optional<Model> currentModel() {
+            return models.stream().filter(model -> model.value().equals(modelValue)).findFirst();
+        }
+
+        /**
+         * Moves the session to the model named {@code wanted}, matched against the brain's offered values and then its names, ignoring case, through
+         * the brain's own model option. False when the brain offers no such model or does not accept the change, and then the session stays on the
+         * model it was on: a model the account does not have is never an error that ends a conversation.
+         */
+        public boolean selectModel(String wanted) {
+            if (sessionId == null || wanted == null || wanted.isBlank()) {
+                return false;
+            }
+            Optional<Model> found = models.stream().filter(model -> model.value().equalsIgnoreCase(wanted.strip())).findFirst()
+                .or(() -> models.stream().filter(model -> model.name().equalsIgnoreCase(wanted.strip())).findFirst());
+            if (found.isEmpty()) {
+                return false;
+            }
+            String id = sessionId;
+            String value = found.get().value();
+            try {
+                if (wire.call(promptId++, "session/set_config_option", params -> {
+                    params.put("sessionId", id);
+                    params.put("configId", "model");
+                    params.put("value", value);
+                }) == null) {
+                    return false;
+                }
+            } catch (IOException e) {
+                return false;
+            }
+            modelValue = value;
+            return true;
         }
 
         /** What the brain said when it would not open a session, such as that its user must sign in; empty when it said nothing. */

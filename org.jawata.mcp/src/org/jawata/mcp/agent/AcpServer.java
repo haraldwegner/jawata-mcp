@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import org.jawata.mcp.agent.ReviewBeforeSend.Reviewer;
+import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.RunningHires;
 import org.jawata.mcp.execution.SeatHire;
@@ -320,7 +321,8 @@ public final class AcpServer {
         if (!session.side()) {
             result.set("configOptions", configOptions(session));
             brain.workIn(cwd);
-            brain.prepare();
+            // The brain's own models and the one it is on are known only once its session is open: the host is told then (D54 (a)).
+            brain.prepare(() -> update(session.id(), configOptionUpdate(session)));
         }
         return result;
     }
@@ -353,6 +355,10 @@ public final class AcpServer {
             running.remove(session.id());
             Thread.interrupted();
         }
+        if (!session.side()) {
+            // The brain may have opened its session during this turn, which is when its model becomes known (D54 (a)).
+            update(session.id(), configOptionUpdate(session));
+        }
         ObjectNode result = JSON.createObjectNode();
         result.put("stopReason", stopReason);
         return JsonRpcMessage.successResponse(id, result);
@@ -374,16 +380,40 @@ public final class AcpServer {
         option.put("id", PRINCIPAL_BRAIN);
         option.put("name", "Brain of the principal");
         option.put("category", "model");
-        option.put("description", "The brain the principal runs on. A change holds from the next message.");
+        option.put("description", "The brain the principal runs on, and the model. A change holds from the next message.");
         option.put("type", "select");
-        option.put("currentValue", current);
+        // The brain that is running is named with the model it is on, which is what answers (D54 (a)); when it offers models each is a choice, so
+        // the row shows them and a pick moves the session to one. The other brains are named with the model the registry says they would start with.
+        java.util.Optional<String> running = brain.currentModel();
+        java.util.List<AcpBrainSession.Model> models = brain.models();
+        boolean choosable = !models.isEmpty() && brain.currentModelValue().isPresent();
+        option.put("currentValue", choosable ? current + MODEL_SEPARATOR + brain.currentModelValue().get() : current);
         ArrayNode values = option.putArray("options");
         Map<String, Hirer.Brain> offered = Hirer.brainsIn(brainRegistry.get());
         if (!offered.containsKey(current)) {
-            values.addObject().put("value", current).put("name", current);
+            addChoices(values, current, running, models);
         }
-        offered.forEach((name, offeredBrain) -> values.addObject().put("value", name)
-            .put("name", offeredBrain.model().isBlank() ? name : name + " · " + offeredBrain.model()));
+        offered.forEach((name, offeredBrain) -> {
+            if (name.equals(current)) {
+                addChoices(values, name, running, models);
+            } else {
+                values.addObject().put("value", name).put("name", offeredBrain.model().isBlank() ? name : name + " · " + offeredBrain.model());
+            }
+        });
+    }
+
+    /** What separates a brain from a model in a choice of the principal's brain option: {@code cursor|grok-4.5[effort=high]}. */
+    static final String MODEL_SEPARATOR = "|";
+
+    /** The choices for the brain that is running: one per model it offers, or the brain alone, named with the model it is on when it has said. */
+    private static void addChoices(ArrayNode values, String name, java.util.Optional<String> running, java.util.List<AcpBrainSession.Model> models) {
+        if (models.isEmpty()) {
+            values.addObject().put("value", name).put("name", running.map(model -> name + " · " + model).orElse(name));
+            return;
+        }
+        for (AcpBrainSession.Model model : models) {
+            values.addObject().put("value", name + MODEL_SEPARATOR + model.value()).put("name", name + " · " + model.name());
+        }
     }
 
     private static void addAutonomy(ArrayNode options, PrincipalSession session) {
@@ -434,9 +464,17 @@ public final class AcpServer {
                 "Only the person chooses the principal's brain; a message from a hired agent does not change it.", null);
         }
         Map<String, Hirer.Brain> offered = Hirer.brainsIn(brainRegistry.get());
-        if (value == null || !offered.containsKey(value) || !brain.useBrain(brainRegistry.get(), value)) {
+        // A pick is a brain, or a brain and one of the models it offers: `cursor|<model value>` (D54 (a)).
+        int separator = value == null ? -1 : value.indexOf(MODEL_SEPARATOR);
+        String picked = separator < 0 ? value : value.substring(0, separator);
+        String model = separator < 0 ? "" : value.substring(separator + MODEL_SEPARATOR.length());
+        boolean running = picked != null && brain.currentBrain().filter(picked::equals).isPresent();
+        if (picked == null || !offered.containsKey(picked) || (!(running && !model.isEmpty()) && !brain.useBrain(brainRegistry.get(), picked))) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
                 "A brain the registry offers, not: " + value + " (offered: " + String.join(", ", offered.keySet()) + ")", null);
+        }
+        if (!model.isEmpty() && !brain.useModel(model)) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, picked + " does not offer the model " + model, null);
         }
         ObjectNode result = JSON.createObjectNode();
         result.set("configOptions", configOptions(session));
