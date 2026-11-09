@@ -33,8 +33,12 @@ public interface EngineApi {
     /** Where a process on this machine reaches the engine's MCP face, or nothing when it has none (stdio, or not listening yet). */
     Optional<McpEndpoint> mcp();
 
-    /** The seats and the check of a change to them, for a host's settings screen. Not a tool: an agent has no way to it. */
+    /**
+     * The seats and the check of a change to them, for a host's settings screen. Not a tool: an agent has no way to it.
+     *
+     * @throws UnsupportedOperationException when this API has no seats, as a stand-in in a test does not; an empty answer would read as "no seats"
+     */
     default SeatSettings seats() {
-        return org.jawata.mcp.execution.SeatSettingsService.forEngine(settings(), tools());
+        throw new UnsupportedOperationException("this engine has no seats to show");
     }
 }

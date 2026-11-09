@@ -597,6 +597,11 @@ public class JawataEngine {
 			}
 
 			@Override
+			public SeatSettings seats() {
+				return org.jawata.mcp.execution.SeatSettingsService.forEngine(settings(), tools());
+			}
+
+			@Override
 			public EngineState state() {
 				return EngineState.current();
 			}

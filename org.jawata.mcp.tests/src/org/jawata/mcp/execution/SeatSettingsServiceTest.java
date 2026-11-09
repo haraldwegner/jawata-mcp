@@ -18,7 +18,12 @@ import java.util.zip.ZipOutputStream;
 
 import org.jawata.mcp.engine.SeatSettings;
 import org.jawata.mcp.engine.SettingKeys;
+import org.jawata.mcp.engine.ToolCalls;
+import org.jawata.mcp.models.CallerIdentity;
+import org.jawata.mcp.models.ToolResponse;
 import org.jawata.spi.host.EngineSettings;
+
+import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -161,6 +166,32 @@ class SeatSettingsServiceTest {
         try (Stream<Path> files = Files.walk(sealedHome)) {
             assertEquals(List.of(sealedHome, jar), files.sorted().toList(), "nothing was extracted beside the jar");
         }
+    }
+
+    private static final ToolCalls NO_TOOLS = new ToolCalls() {
+        @Override
+        public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {
+            throw new AssertionError("the door calls no tool");
+        }
+
+        @Override
+        public List<Map<String, Object>> getToolDefinitions() {
+            return List.of();
+        }
+    };
+
+    @Test
+    void anEngineWithASeatsFolderReadsThatFolder() {
+        stored.put(ScheduledHires.SEATS_SETTING, folder.toString());
+        List<String> names = SeatSettingsService.forEngine(settings, NO_TOOLS).seats().seats().stream().map(SeatSettings.Seat::name).toList();
+        assertEquals(List.of("architect", "developer"), names);
+    }
+
+    @Test
+    void anEngineWithoutASeatsFolderHasNoSeatFilesToShow() {
+        SeatSettings.View view = SeatSettingsService.forEngine(settings, NO_TOOLS).seats();
+        assertEquals(List.of(), view.seats());
+        assertEquals(List.of(), view.errors());
     }
 
     @Test

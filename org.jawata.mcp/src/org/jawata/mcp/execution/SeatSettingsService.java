@@ -26,8 +26,6 @@ import org.jawata.spi.host.EngineSettings;
  */
 public final class SeatSettingsService implements SeatSettings {
 
-    private static final String BRAIN_NAMES = "claude-code, cursor, copilot, codex";
-
     private final Supplier<SeatFiles.Listing> source;
     private final EngineSettings settings;
     private final Set<String> codeChangingTools;
@@ -134,11 +132,10 @@ public final class SeatSettingsService implements SeatSettings {
             value(proposed, SettingKeys.SEATS_WORKFLOW.name()));
         List<String> problems = new ArrayList<>(overrides.problems());
         List<SeatFiles.SeatFile> files = source.get().seats();
-        Set<String> known = new LinkedHashSet<>(SeatTree.standard().seats());
-        known.add(SeatTree.TOP);
-        files.forEach(file -> known.add(file.name()));
+        Set<String> inFiles = new LinkedHashSet<>();
+        files.forEach(file -> inFiles.add(file.name()));
         for (String seat : overrides.named()) {
-            if (!known.contains(seat)) {
+            if (!inFiles.contains(seat) && !SeatTree.standard().knows(seat)) {
                 problems.add("no seat named '" + seat + "'");
             }
         }
@@ -226,7 +223,8 @@ public final class SeatSettingsService implements SeatSettings {
                 String[] brainAndModel = entry.substring(equals + 1).split("/", 2);
                 Optional<SeatHire.Brain> brain = SeatHire.Brain.named(brainAndModel[0]).filter(named -> named != SeatHire.Brain.SCRIPT);
                 if (brain.isEmpty()) {
-                    problems.add("'" + brainAndModel[0].strip() + "' is not a brain a hire can start (known: " + BRAIN_NAMES + ")");
+                    problems.add("'" + brainAndModel[0].strip() + "' is not a brain a hire can start (known: " + java.util.Arrays.stream(SeatHire.Brain.values())
+                        .filter(known -> known != SeatHire.Brain.SCRIPT).map(SeatHire.Brain::label).collect(java.util.stream.Collectors.joining(", ")) + ")");
                 } else if (brainAndModel.length > 1 && brainAndModel[1].isBlank()) {
                     problems.add("an empty model name is not a model; leave it out for the default");
                 } else {
