@@ -4,16 +4,22 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -85,15 +91,19 @@ public final class BrainRoster {
     private static final List<Spec> SPECS = List.of(new Spec("claude-code", "Claude Code", "claude", "claude auth login"),
         new Spec("codex", "Codex", "codex", "codex login"), new Spec("cursor", "Cursor", "cursor-agent", "cursor-agent login"),
         new Spec("copilot", "Copilot", "copilot", "copilot login"), new Spec("grok", "Grok", "grok", "grok login"));
-    private static final List<String> HIRABLE = List.of("claude-code", "codex", "cursor", "copilot");
+    /** What a hire can start and which of those take a model are the engine's own answers, not a second list. */
+    private static final List<String> HIRABLE = Arrays.stream(SeatHire.Brain.values()).filter(brain -> brain != SeatHire.Brain.SCRIPT).map(SeatHire.Brain::label).toList();
+    private static final List<String> TAKES_MODEL = Arrays.stream(SeatHire.Brain.values()).filter(SeatHire.Brain::takesAModel).map(SeatHire.Brain::label).toList();
+    /** Each dialect holds this answer, which needs a running resident's address to ask; BrainRosterTest pins this line to it. */
     private static final List<String> HELD_BY_AN_INSTRUCTION = List.of("cursor");
-    private static final List<String> TAKES_MODEL = List.of("claude-code", "cursor");
+    private static final ExecutorService WORK = Executors.newVirtualThreadPerTaskExecutor();
     private static final Duration CHECK_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(120);
     private static final String PROBE_PROMPT = "Reply with the single word OK.";
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final String path;
+    private final Duration checkTimeout;
 
     /**
      * A roster that looks for programs on the given path.
@@ -101,7 +111,13 @@ public final class BrainRoster {
      * @param path the value of the program search path, as {@code PATH} holds it; null when it is not set
      */
     public BrainRoster(String path) {
+        this(path, CHECK_TIMEOUT);
+    }
+
+    /** A roster whose status checks give up sooner, for a test of a program that hangs. */
+    BrainRoster(String path, Duration checkTimeout) {
         this.path = path;
+        this.checkTimeout = checkTimeout;
     }
 
     /** A roster over this process's own {@code PATH}. */
@@ -111,7 +127,7 @@ public final class BrainRoster {
 
     /** Every known brain, checked in parallel. */
     public List<Status> statuses() {
-        List<CompletableFuture<Status>> checks = SPECS.stream().map(spec -> CompletableFuture.supplyAsync(() -> check(spec))).toList();
+        List<CompletableFuture<Status>> checks = SPECS.stream().map(spec -> CompletableFuture.supplyAsync(() -> check(spec), WORK)).toList();
         return checks.stream().map(CompletableFuture::join).toList();
     }
 
@@ -119,7 +135,7 @@ public final class BrainRoster {
         boolean hirable = HIRABLE.contains(spec.id());
         boolean takesModel = TAKES_MODEL.contains(spec.id());
         boolean held = HELD_BY_AN_INSTRUCTION.contains(spec.id());
-        Optional<Outcome> version = run(spec.program(), List.of("--version"), null, CHECK_TIMEOUT);
+        Optional<Outcome> version = run(spec.program(), List.of("--version"), null, checkTimeout);
         if (version.isEmpty()) {
             return new Status(spec.id(), spec.label(), false, Optional.empty(), Login.UNKNOWN, Optional.of("`" + spec.program() + "` is not installed on this machine."),
                 spec.loginCommand(), Optional.empty(), hirable, takesModel, held);
@@ -129,16 +145,16 @@ public final class BrainRoster {
         Optional<List<String>> models = Optional.empty();
         switch (spec.id()) {
             case "claude-code" -> {
-                Optional<Outcome> answer = run(spec.program(), List.of("auth", "status"), null, CHECK_TIMEOUT);
+                Optional<Outcome> answer = run(spec.program(), List.of("auth", "status"), null, checkTimeout);
                 if (answer.isPresent()) {
                     Optional<Boolean> loggedIn = parsed(answer.get().text()).map(tree -> tree.get("loggedIn")).filter(JsonNode::isBoolean).map(JsonNode::asBoolean);
                     login = loggedIn.map(yes -> yes ? Login.LOGGED_IN : Login.NOT_LOGGED_IN).orElse(Login.UNKNOWN);
                     reason = loggedIn.isEmpty() ? firstLine(answer.get().text()) : loggedIn.get() ? Optional.empty() : Optional.of("Claude Code says it is not logged in.");
-                    models = run(spec.program(), List.of("--help"), null, CHECK_TIMEOUT).map(help -> claudeModelNames(help.text())).filter(names -> !names.isEmpty());
+                    models = run(spec.program(), List.of("--help"), null, checkTimeout).map(help -> claudeModelNames(help.text())).filter(names -> !names.isEmpty());
                 }
             }
             case "codex" -> {
-                Optional<Outcome> answer = run(spec.program(), List.of("login", "status"), null, CHECK_TIMEOUT);
+                Optional<Outcome> answer = run(spec.program(), List.of("login", "status"), null, checkTimeout);
                 if (answer.isPresent()) {
                     boolean in = answer.get().text().lines().anyMatch(line -> line.stripLeading().startsWith("Logged in"));
                     login = in ? Login.LOGGED_IN : Login.NOT_LOGGED_IN;
@@ -146,7 +162,7 @@ public final class BrainRoster {
                 }
             }
             case "cursor" -> {
-                Optional<Outcome> answer = run(spec.program(), List.of("models"), null, CHECK_TIMEOUT);
+                Optional<Outcome> answer = run(spec.program(), List.of("models"), null, checkTimeout);
                 if (answer.isPresent()) {
                     boolean in = answer.get().success() && !answer.get().text().contains("Authentication required");
                     login = in ? Login.LOGGED_IN : Login.NOT_LOGGED_IN;
@@ -154,7 +170,7 @@ public final class BrainRoster {
                 }
             }
             case "grok" -> {
-                Optional<Outcome> answer = run(spec.program(), List.of("models"), null, CHECK_TIMEOUT);
+                Optional<Outcome> answer = run(spec.program(), List.of("models"), null, checkTimeout);
                 if (answer.isPresent() && answer.get().text().contains("You are logged in")) {
                     login = Login.LOGGED_IN;
                     models = Optional.of(answer.get().text().lines().map(String::strip).filter(line -> line.startsWith("* ") || line.startsWith("- "))
@@ -245,6 +261,11 @@ public final class BrainRoster {
         return interpreted(brain, wanted, outcome.get(), seconds, spec.loginCommand());
     }
 
+    /**
+     * DELIBERATE DUPLICATE of what each {@link BrainDialect} knows about starting its program: a hire's command gives the brain tools and the
+     * resident's address, and this one exists to take them away, because the same Claude run with its tools costs thirty times as much. A flag a
+     * dialect changes is not followed here, and the test of this list is what shows it.
+     */
     private static List<String> probeArguments(String brain, String model) {
         List<String> args = new ArrayList<>(switch (brain) {
             case "claude-code" -> List.of("-p", PROBE_PROMPT, "--output-format", "json", "--max-turns", "1", "--no-session-persistence", "--strict-mcp-config",
@@ -359,7 +380,7 @@ public final class BrainRoster {
         if (path == null) {
             return new AgentSettings(Map.of(), Optional.of("no agent brain was configured: PATH is not set, so `cursor-agent` could not be looked for"));
         }
-        Optional<Path> found = locate("agent").or(() -> locate("cursor-agent"));
+        Optional<Path> found = locate("agent", true).or(() -> locate("cursor-agent", true));
         if (found.isEmpty()) {
             return new AgentSettings(Map.of(), Optional.of("no agent brain was configured: Cursor's agent program is not installed on this machine"));
         }
@@ -369,29 +390,46 @@ public final class BrainRoster {
         return new AgentSettings(Map.of("jawata.agent.brain", one, "jawata.agent.hireBrains", registry, "jawata.agent.reviewer", one), Optional.empty());
     }
 
-    private Optional<Path> locate(String name) {
+    /**
+     * Finds a program on the path, in the order the path gives.
+     *
+     * @param name         the program
+     * @param absoluteOnly true for a value that is written down and read later: a relative folder means something else from another directory.
+     *                     A status check looks where the operating system would, a relative folder included.
+     */
+    private Optional<Path> locate(String name, boolean absoluteOnly) {
         if (path == null) {
             return Optional.empty();
         }
         boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
         List<String> files = windows ? List.of(name + ".exe", name + ".cmd", name + ".bat") : List.of(name);
-        for (String folder : path.split(java.io.File.pathSeparator)) {
-            if (folder.isBlank() || !Path.of(folder).isAbsolute()) {
-                continue;
-            }
-            for (String file : files) {
-                Path candidate = Path.of(folder, file);
+        for (String entry : path.split(java.io.File.pathSeparator)) {
+            Optional<Path> folder = folderOf(entry).filter(found -> !absoluteOnly || found.isAbsolute());
+            for (String file : folder.isEmpty() ? List.<String>of() : files) {
+                Path candidate = folder.get().resolve(file);
                 if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
-                    return Optional.of(candidate);
+                    return Optional.of(candidate.toAbsolutePath());
                 }
             }
         }
         return Optional.empty();
     }
 
+    /** One entry of the path as a folder; empty for a blank entry or one no path can be made of, such as a quoted entry on Windows. */
+    private static Optional<Path> folderOf(String entry) {
+        if (entry.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(Path.of(entry));
+        } catch (InvalidPathException illegal) {
+            return Optional.empty();
+        }
+    }
+
     /** Runs one command. Empty means the program could not be started: it is not installed. */
     private Optional<Outcome> run(String program, List<String> args, Path folder, Duration timeout) {
-        Optional<Path> found = locate(program);
+        Optional<Path> found = locate(program, false);
         if (found.isEmpty()) {
             return Optional.empty();
         }
@@ -409,23 +447,41 @@ public final class BrainRoster {
         } catch (IOException cannot) {
             return Optional.empty();
         }
-        CompletableFuture<String> out = CompletableFuture.supplyAsync(() -> read(process.getInputStream()));
-        CompletableFuture<String> err = CompletableFuture.supplyAsync(() -> read(process.getErrorStream()));
+        CompletableFuture<String> out = CompletableFuture.supplyAsync(() -> read(process.getInputStream()), WORK);
+        CompletableFuture<String> err = CompletableFuture.supplyAsync(() -> read(process.getErrorStream()), WORK);
         boolean success;
         try {
             if (process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
                 success = process.exitValue() == 0;
             } else {
-                process.destroyForcibly();
+                stop(process);
                 process.waitFor();
                 success = false;
             }
         } catch (InterruptedException interrupted) {
-            process.destroyForcibly();
+            stop(process);
             Thread.currentThread().interrupt();
             success = false;
         }
-        return Optional.of(new Outcome(success, out.join() + err.join()));
+        return Optional.of(new Outcome(success, collected(out) + collected(err)));
+    }
+
+    /** Stops a program and what it started: a child left running holds the pipes open, and the answer would never finish being read. */
+    private static void stop(Process process) {
+        process.descendants().forEach(ProcessHandle::destroyForcibly);
+        process.destroyForcibly();
+    }
+
+    /** What a reader has, not waiting long: the program has ended, and only something it left behind can still hold the pipe open. */
+    private static String collected(CompletableFuture<String> reader) {
+        try {
+            return reader.get(2, TimeUnit.SECONDS);
+        } catch (ExecutionException | TimeoutException unfinished) {
+            return "";
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return "";
+        }
     }
 
     private static String read(InputStream stream) {

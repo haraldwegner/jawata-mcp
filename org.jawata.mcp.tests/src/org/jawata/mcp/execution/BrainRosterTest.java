@@ -3,28 +3,51 @@ package org.jawata.mcp.execution;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.jawata.core.host.HostOS;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /** Sprint 28k, Amendment 3, Stage 25e: what each agent program says of itself, read from fake programs on a test path. */
 class BrainRosterTest {
 
-    private static final String CLAUDE_HELP = "Usage\n  --model <model>  'fable', 'opus' or a model's full name\n  --other  x\n";
+    private static final String PROMPT = "Reply with the single word OK.";
+    /** What Claude Code's own help said when it was measured, 2026-10-12: the apostrophe in "model's" must not pair with the quote after it. */
+    private static final String CLAUDE_HELP = """
+          --model <model>                       Model for the current session. Provide
+                                                an alias for the latest model (e.g.
+                                                'fable', 'opus', or 'sonnet') or a
+                                                model's full name (e.g.
+                                                'claude-fable-5').
+          -n, --name <name>                     Set a display name for this session
+        """;
 
     @TempDir
     Path bin;
 
+    @BeforeEach
+    void onlyWhereAShellScriptIsAProgram() {
+        assumeTrue(!HostOS.current().isWindows(), "the fixtures are POSIX shell scripts");
+    }
+
     private void program(String name, String body) throws IOException {
-        Path file = bin.resolve(name);
+        program(bin, name, body);
+    }
+
+    private static void program(Path folder, String name, String body) throws IOException {
+        Path file = folder.resolve(name);
         Files.writeString(file, "#!/bin/sh\n" + body + "\n");
         assertTrue(file.toFile().setExecutable(true));
     }
@@ -34,7 +57,19 @@ class BrainRosterTest {
     }
 
     private BrainRoster.Status status(String id) {
-        return roster().statuses().stream().filter(row -> row.id().equals(id)).findFirst().orElseThrow();
+        return statusIn(roster(), id);
+    }
+
+    private static BrainRoster.Status statusIn(BrainRoster roster, String id) {
+        return roster.statuses().stream().filter(row -> row.id().equals(id)).findFirst().orElseThrow();
+    }
+
+    /** The arguments one test run really passes, one per line as the fake program received them. */
+    private List<String> argumentsOf(String brain, String programName, String model, String answer) throws IOException {
+        Path seen = bin.resolve("seen.txt");
+        program(programName, "printf '%s\\n' \"$@\" > '" + seen + "'; " + answer);
+        roster().probe(brain, model);
+        return Files.readAllLines(seen);
     }
 
     @Test
@@ -53,6 +88,18 @@ class BrainRosterTest {
         assertTrue(status("cursor").takesModel());
         assertFalse(status("codex").takesModel());
         assertFalse(status("grok").hirable());
+        assertTrue(status("copilot").hirable());
+    }
+
+    @Test
+    void whoseWritesAreHeldOnlyByAnInstructionIsWhatEachDialectAnswers() {
+        SelfEndpoint self = new SelfEndpoint("http://127.0.0.1:1/mcp", "t");
+        for (BrainRoster.Status brain : roster().statuses()) {
+            if (brain.hirable()) {
+                boolean contained = SeatHire.read("---\nname: probe\nbrain: " + brain.id() + "\n---\n").dialect(self, List.of()).writeContainment().isContained();
+                assertEquals(!contained, brain.writesHeldByInstruction(), brain.id());
+            }
+        }
     }
 
     @Test
@@ -62,7 +109,15 @@ class BrainRosterTest {
         assertTrue(claude.installed());
         assertEquals(Optional.of("2.1.0"), claude.version());
         assertEquals(BrainRoster.Login.LOGGED_IN, claude.login());
-        assertEquals(Optional.of(List.of("fable", "opus")), claude.models());
+        assertEquals(Optional.of(List.of("fable", "opus", "sonnet", "claude-fable-5")), claude.models());
+    }
+
+    @Test
+    void aModelNamedTwiceIsListedOnceAndAHelpNamingNoneGivesNoList() throws IOException {
+        program("claude", "case \"$1\" in --version) echo 2;; auth) echo '{\"loggedIn\": true}';; --help) echo \"  --model <model>  'opus' or 'opus' again\";; esac");
+        assertEquals(Optional.of(List.of("opus")), status("claude-code").models());
+        program("claude", "case \"$1\" in --version) echo 2;; auth) echo '{\"loggedIn\": true}';; --help) echo 'no such option here';; esac");
+        assertEquals(Optional.empty(), status("claude-code").models());
     }
 
     @Test
@@ -92,7 +147,19 @@ class BrainRosterTest {
     void cursorIsReadFromItsModelList() throws IOException {
         program("cursor-agent", "case \"$1\" in --version) echo 1;; models) echo gpt;; esac");
         assertEquals(BrainRoster.Login.LOGGED_IN, status("cursor").login());
-        program("cursor-agent", "case \"$1\" in --version) echo 1;; models) echo \"Error: Authentication required. Run 'agent login'\"; exit 1;; esac");
+    }
+
+    @Test
+    void aCursorThatExitsCleanlyButAsksForALoginIsNotSignedIn() throws IOException {
+        program("cursor-agent", "case \"$1\" in --version) echo 1;; models) echo \"Error: Authentication required. Run 'agent login'\";; esac");
+        BrainRoster.Status cursor = status("cursor");
+        assertEquals(BrainRoster.Login.NOT_LOGGED_IN, cursor.login());
+        assertEquals(Optional.of("Error: Authentication required. Run 'agent login'"), cursor.reason());
+    }
+
+    @Test
+    void aCursorThatFailsForAnyReasonIsNotSignedIn() throws IOException {
+        program("cursor-agent", "case \"$1\" in --version) echo 1;; models) echo 'the network is down'; exit 1;; esac");
         assertEquals(BrainRoster.Login.NOT_LOGGED_IN, status("cursor").login());
     }
 
@@ -109,6 +176,15 @@ class BrainRosterTest {
         program("grok", "case \"$1\" in --version) echo 1;; models) printf 'You are logged in with x\\n* grok-1 (default)\\n- grok-2\\n';; esac");
         assertEquals(BrainRoster.Login.LOGGED_IN, status("grok").login());
         assertEquals(Optional.of(List.of("grok-1", "grok-2")), status("grok").models());
+    }
+
+    @Test
+    void aGrokThatIsNotSignedInSaysSoAndNamesNoModels() throws IOException {
+        program("grok", "case \"$1\" in --version) echo 1;; models) echo 'Please sign in.';; esac");
+        BrainRoster.Status grok = status("grok");
+        assertEquals(BrainRoster.Login.NOT_LOGGED_IN, grok.login());
+        assertEquals(Optional.of("Please sign in."), grok.reason());
+        assertEquals(Optional.empty(), grok.models());
     }
 
     @Test
@@ -129,14 +205,60 @@ class BrainRosterTest {
         assertEquals(Optional.of("credit balance too low"), probe.error());
     }
 
+    private void assertAnswered(String brain, String answer) {
+        BrainRoster.Probe probe = roster().probe(brain, null);
+        assertTrue(probe.ok(), brain + ": " + probe);
+        assertEquals(Optional.of(answer), probe.answer(), brain);
+        assertEquals(Optional.empty(), probe.error(), brain);
+    }
+
+    private void assertFailed(String brain, String words) {
+        BrainRoster.Probe probe = roster().probe(brain, null);
+        assertFalse(probe.ok(), brain + ": " + probe);
+        assertEquals(Optional.of(words), probe.error(), brain);
+    }
+
     @Test
-    void codexAndCopilotAndCursorAreReadFromTheirOwnFormats() throws IOException {
+    void codexAnswersInItsOwnFormat() throws IOException {
         program("codex", "echo '{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"OK\"}}'");
-        assertTrue(roster().probe("codex", null).ok());
+        assertAnswered("codex", "OK");
+    }
+
+    @Test
+    void codexFailsInItsOwnWords() throws IOException {
+        program("codex", "echo '{\"type\":\"error\",\"message\":\"usage limit reached\"}'");
+        assertFailed("codex", "usage limit reached");
+        program("codex", "echo '{\"type\":\"turn.failed\",\"error\":{\"message\":\"model refused\"}}'");
+        assertFailed("codex", "model refused");
+    }
+
+    @Test
+    void copilotAnswersInItsOwnFormat() throws IOException {
         program("copilot", "echo '{\"type\":\"assistant.message\",\"data\":{\"content\":\"OK\",\"model\":\"gpt\"}}'");
+        assertAnswered("copilot", "OK");
         assertEquals(List.of("gpt"), roster().probe("copilot", null).modelsUsed());
-        program("cursor-agent", "echo 'Error: Authentication required.'; exit 1");
-        assertFalse(roster().probe("cursor", null).ok());
+    }
+
+    @Test
+    void copilotFailsInItsOwnWords() throws IOException {
+        program("copilot", "echo '{\"type\":\"session.error\",\"data\":{\"message\":\"no subscription\"}}'");
+        assertFailed("copilot", "no subscription");
+    }
+
+    @Test
+    void cursorAnswersInJsonOrInPlainText() throws IOException {
+        program("cursor-agent", "echo '{\"result\":\"OK\"}'");
+        assertAnswered("cursor", "OK");
+        program("cursor-agent", "echo plain");
+        assertAnswered("cursor", "plain");
+    }
+
+    @Test
+    void aCursorTestRunThatFailsOrAsksForALoginDidNotPass() throws IOException {
+        program("cursor-agent", "echo 'Error: Authentication required.'");
+        assertFailed("cursor", "Error: Authentication required.");
+        program("cursor-agent", "echo 'the network is down'; exit 1");
+        assertFailed("cursor", "the network is down");
     }
 
     @Test
@@ -154,11 +276,25 @@ class BrainRosterTest {
     }
 
     @Test
-    void theModelReachesTheBrainThatTakesOne() throws IOException {
-        Path seen = bin.resolve("seen.txt");
-        program("claude", "echo \"$@\" > '" + seen + "'; echo '{\"is_error\": false, \"result\": \"OK\"}'");
-        roster().probe("claude-code", "opus");
-        assertTrue(Files.readString(seen).contains("--model opus"), Files.readString(seen));
+    void aClaudeTestRunIsStrippedOfEverythingThatCosts() throws IOException {
+        assertEquals(List.of("-p", PROMPT, "--output-format", "json", "--max-turns", "1", "--no-session-persistence", "--strict-mcp-config", "--setting-sources", "project",
+            "--system-prompt", PROMPT, "--tools", "", "--model", "opus"),
+            argumentsOf("claude-code", "claude", "opus", "echo '{\"is_error\": false, \"result\": \"OK\"}'"));
+    }
+
+    @Test
+    void aCodexTestRunCannotWrite() throws IOException {
+        assertEquals(List.of("exec", "--json", "--sandbox", "read-only", "--skip-git-repo-check", PROMPT), argumentsOf("codex", "codex", null, "echo x"));
+    }
+
+    @Test
+    void aCursorTestRunOnlyPlansAndThePromptComesLast() throws IOException {
+        assertEquals(List.of("--print", "--output-format", "json", "--trust", "--mode", "plan", "--model", "fast", PROMPT), argumentsOf("cursor", "cursor-agent", "fast", "echo x"));
+    }
+
+    @Test
+    void aCopilotTestRunHasNoBuiltInServers() throws IOException {
+        assertEquals(List.of("-p", PROMPT, "--output-format", "json", "--disable-builtin-mcps"), argumentsOf("copilot", "copilot", null, "echo x"));
     }
 
     @Test
@@ -170,12 +306,83 @@ class BrainRosterTest {
     }
 
     @Test
+    void aProgramThatHangsIsStoppedAtItsTimeoutAndWhatItStartedWithIt() throws Exception {
+        Path child = bin.resolve("child.pid");
+        program("claude", "sleep 300 & echo $! > '" + child + "'; wait");
+        BrainRoster.Status claude = assertTimeoutPreemptively(Duration.ofSeconds(30), () -> statusIn(new BrainRoster(bin.toString(), Duration.ofSeconds(1)), "claude-code"));
+        assertTrue(claude.installed(), "it started, so it is there");
+        long pid = Long.parseLong(Files.readString(child).strip());
+        for (int i = 0; i < 50 && ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false); i++) {
+            Thread.sleep(100);
+        }
+        assertFalse(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false), "the program's child was stopped too");
+    }
+
+    @Test
+    void aProgramThatLeavesSomethingRunningDoesNotHoldItsAnswerUp() throws Exception {
+        program("copilot", "sleep 30 & echo 1");
+        BrainRoster.Status copilot = assertTimeoutPreemptively(Duration.ofSeconds(20), () -> status("copilot"));
+        assertTrue(copilot.installed());
+    }
+
+    @Test
     void aMachineWithCursorsAgentNamesItForAllThreeSettings() throws IOException {
         program("agent", "exit 0");
         BrainRoster.AgentSettings settings = roster().agentSettings();
         assertEquals(Optional.empty(), settings.note());
         String one = "{\"command\":[\"" + bin.resolve("agent") + "\",\"acp\"],\"env\":{}}";
         assertEquals(Map.of("jawata.agent.brain", one, "jawata.agent.hireBrains", "{\"cursor\":" + one + "}", "jawata.agent.reviewer", one), settings.settings());
+    }
+
+    @Test
+    void whatIsWrittenForAHireIsWhatAHireReads() throws IOException {
+        program("agent", "exit 0");
+        String registry = roster().agentSettings().settings().get("jawata.agent.hireBrains");
+        assertEquals(Optional.of(new AcpBrainSession.Program(List.of(bin.resolve("agent").toString(), "acp"), Map.of())), AcpBrainSession.programFor(registry, "cursor"));
+    }
+
+    @Test
+    void theLongNameIsTakenWhereTheShortOneIsMissing() throws IOException {
+        program("cursor-agent", "exit 0");
+        assertTrue(roster().agentSettings().settings().get("jawata.agent.brain").contains(bin.resolve("cursor-agent").toString()));
+    }
+
+    @Test
+    void theShortNameWinsOverTheLongOne() throws IOException {
+        program("cursor-agent", "exit 0");
+        program("agent", "exit 0");
+        assertTrue(roster().agentSettings().settings().get("jawata.agent.brain").contains("\"" + bin.resolve("agent") + "\""));
+    }
+
+    @Test
+    void theEarlierFolderOnThePathWins(@TempDir Path later) throws IOException {
+        program("agent", "exit 0");
+        program(later, "agent", "exit 0");
+        String value = new BrainRoster(bin + java.io.File.pathSeparator + later).agentSettings().settings().get("jawata.agent.brain");
+        assertTrue(value.contains(bin.resolve("agent").toString()), value);
+    }
+
+    @Test
+    void aFileThatCannotBeRunIsNotAProgram() throws IOException {
+        program("agent", "exit 0");
+        assertTrue(bin.resolve("agent").toFile().setExecutable(false));
+        assertEquals(Map.of(), roster().agentSettings().settings());
+    }
+
+    @Test
+    void aSettingIsNeverWrittenFromARelativeFolderButAStatusCheckStillFindsThere() throws IOException {
+        program("agent", "exit 0");
+        program("codex", "case \"$1\" in --version) echo 1;; login) echo 'Logged in';; esac");
+        BrainRoster relative = new BrainRoster(Path.of("").toAbsolutePath().relativize(bin.toAbsolutePath()).toString());
+        assertEquals(Map.of(), relative.agentSettings().settings(), "a relative folder means something else from another directory");
+        assertTrue(statusIn(relative, "codex").installed(), "the operating system would find it there");
+    }
+
+    @Test
+    void anEntryNoPathCanBeMadeOfIsSkipped() throws IOException {
+        program("agent", "exit 0");
+        BrainRoster roster = new BrainRoster("bad\0entry" + java.io.File.pathSeparator + bin);
+        assertEquals(Optional.empty(), roster.agentSettings().note());
     }
 
     @Test
