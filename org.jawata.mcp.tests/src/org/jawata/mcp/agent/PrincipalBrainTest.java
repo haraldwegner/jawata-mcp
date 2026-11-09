@@ -100,15 +100,16 @@ class PrincipalBrainTest {
     void theBrainRunsInTheFolderTheHostOpened(@org.junit.jupiter.api.io.TempDir java.nio.file.Path opened) throws Exception {
         PrincipalBrain brain = brain(Optional.of(fake));
         try {
-            assertEquals(dir.toRealPath().toString(), ask(brain, "WHICHFOLDER", new ArrayList<>()), "before a host names a folder the brain runs where the engine said");
+            // both sides resolved: Windows may report the same folder under its short name (RUNNER~1)
+            assertEquals(dir.toRealPath(), java.nio.file.Path.of(ask(brain, "WHICHFOLDER", new ArrayList<>())).toRealPath(), "before a host names a folder the brain runs where the engine said");
             brain.close();
 
             brain.workIn(opened.toString());
 
-            assertEquals(opened.toRealPath().toString(), ask(brain, "WHICHFOLDER", new ArrayList<>()), "the brain did not run in the folder the person opened");
+            assertEquals(opened.toRealPath(), java.nio.file.Path.of(ask(brain, "WHICHFOLDER", new ArrayList<>())).toRealPath(), "the brain did not run in the folder the person opened");
             brain.workIn("");
             brain.close();
-            assertEquals(opened.toRealPath().toString(), ask(brain, "WHICHFOLDER", new ArrayList<>()), "a host that names no folder moved the conversation");
+            assertEquals(opened.toRealPath(), java.nio.file.Path.of(ask(brain, "WHICHFOLDER", new ArrayList<>())).toRealPath(), "a host that names no folder moved the conversation");
         } finally {
             brain.close();
         }
@@ -185,15 +186,18 @@ class PrincipalBrainTest {
     @Test
     @DisplayName("D53 (g): prepare starts the brain before the first message, and the first message uses that process")
     void prepareStartsTheBrainAheadOfTheFirstMessage() throws Exception {
+        // by process id and not by command line: Windows does not report another process's command line
+        java.util.Set<Long> before = ProcessHandle.current().descendants().map(ProcessHandle::pid).collect(java.util.stream.Collectors.toSet());
         PrincipalBrain brain = brain(Optional.of(fake));
         try {
             brain.prepare();
             long deadline = System.currentTimeMillis() + 30_000;
-            while (System.currentTimeMillis() < deadline && ProcessHandle.current().descendants().noneMatch(p -> p.info().commandLine().orElse("").contains(dir.toString()))) {
+            java.util.Set<Long> warm = java.util.Set.of();
+            while (System.currentTimeMillis() < deadline && warm.isEmpty()) {
+                warm = ProcessHandle.current().descendants().map(ProcessHandle::pid).filter(pid -> !before.contains(pid)).collect(java.util.stream.Collectors.toSet());
                 Thread.sleep(20);
             }
-            long warm = ProcessHandle.current().descendants().filter(p -> p.info().commandLine().orElse("").contains(dir.toString())).findFirst().orElseThrow().pid();
-            assertEquals(String.valueOf(warm), asked(brain, "WHICHPROCESS"));
+            assertTrue(warm.contains(Long.valueOf(asked(brain, "WHICHPROCESS"))), "the first message did not use the process prepare started: " + warm);
         } finally {
             brain.close();
         }
