@@ -77,6 +77,60 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("the person's stop reaches the brain, whose reply ends the turn that an interrupt cannot end (D53 (f))")
+    void aStopEndsTheTurnThroughTheBrain() throws Exception {
+        PrincipalBrain brain = brain(Optional.of(fake));
+        java.util.concurrent.CountDownLatch waiting = new java.util.concurrent.CountDownLatch(1);
+        Thread turn = new Thread(() -> brain.answer("WAITCANCEL", piece -> waiting.countDown()));
+        turn.start();
+        try {
+            assertTrue(waiting.await(60, java.util.concurrent.TimeUnit.SECONDS), "the brain never began its turn");
+
+            brain.cancel();
+
+            turn.join(15_000);
+            assertFalse(turn.isAlive(), "the turn went on after the person stopped it");
+        } finally {
+            brain.close();
+        }
+    }
+
+    @Test
+    @DisplayName("D53: the conversation runs in the folder the host opened, and without one in the folder the engine started in")
+    void theBrainRunsInTheFolderTheHostOpened(@org.junit.jupiter.api.io.TempDir java.nio.file.Path opened) throws Exception {
+        PrincipalBrain brain = brain(Optional.of(fake));
+        try {
+            assertEquals(dir.toRealPath().toString(), ask(brain, "WHICHFOLDER", new ArrayList<>()), "before a host names a folder the brain runs where the engine said");
+            brain.close();
+
+            brain.workIn(opened.toString());
+
+            assertEquals(opened.toRealPath().toString(), ask(brain, "WHICHFOLDER", new ArrayList<>()), "the brain did not run in the folder the person opened");
+            brain.workIn("");
+            brain.close();
+            assertEquals(opened.toRealPath().toString(), ask(brain, "WHICHFOLDER", new ArrayList<>()), "a host that names no folder moved the conversation");
+        } finally {
+            brain.close();
+        }
+    }
+
+    @Test
+    @DisplayName("a new conversation on the same connection knows nothing of the last one (D53 (g))")
+    void aNewConversationStartsFresh() {
+        PrincipalBrain brain = brain(Optional.of(fake));
+        try {
+            ask(brain, "REMEMBER:EARLIERWORD", new ArrayList<>());
+
+            brain.prepare();
+
+            assertEquals("nothing", ask(brain, "RECALL", new ArrayList<>()), "the new conversation went on in the brain session of the last one");
+            assertEquals("does not know", ask(brain, "ASKTRANSCRIPT", new ArrayList<>()), "what was said in the last conversation was carried into this one");
+        } finally {
+            brain.close();
+        }
+    }
+
+    @Test
     @DisplayName("a prompt reaches the hired brain, its answer reaches the host as text, and a hire record names the program that ran")
     void aPromptIsAnsweredByTheHiredBrainAndRecorded() {
         PrincipalBrain brain = brain(Optional.of(fake));
@@ -91,6 +145,114 @@ class PrincipalBrainTest {
         assertEquals("main", record.seat());
         assertTrue(record.command().get(1).endsWith("FakeAcpAgent.java"), "the record does not name the program that ran: " + record.command());
         assertTrue(record.brainSessionId().isPresent() && record.clean(), record.toString());
+    }
+
+    private PrincipalBrain brainWithStance(AcpBrainSession.Program program) {
+        return new PrincipalBrain(HostProcesses.system(), Optional.of(program), HireSite.in(dir), null, List.of("inspect"),
+            new Hirer(SeatTree.standard(), Map.of(), java.util.Set.of()), HiredBrain.Ceilings.of(Duration.ofSeconds(60)), () -> Optional.of("THE-MAIN-STANCE"));
+    }
+
+    private static String asked(PrincipalBrain brain, String prompt) {
+        return ask(brain, prompt, new ArrayList<>());
+    }
+
+    @Test
+    @DisplayName("D53 (g): a conversation is answered by one brain process, however many messages it has")
+    void aConversationKeepsOneBrainProcess() {
+        PrincipalBrain brain = brain(Optional.of(fake));
+        try {
+            assertEquals(asked(brain, "WHICHPROCESS"), asked(brain, "WHICHPROCESS"));
+        } finally {
+            brain.close();
+        }
+    }
+
+    @Test
+    @DisplayName("D53 (g): closing the conversation ends its brain process, and a message afterwards starts a new one on the same brain session")
+    void closingTheConversationEndsItsProcess() {
+        PrincipalBrain brain = brain(Optional.of(fake));
+        try {
+            String first = asked(brain, "WHICHPROCESS");
+            long pid = Long.parseLong(first);
+            brain.close();
+            assertFalse(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false), "the brain's process outlived its conversation");
+            assertFalse(first.equals(asked(brain, "WHICHPROCESS")), "no new process was started");
+        } finally {
+            brain.close();
+        }
+    }
+
+    @Test
+    @DisplayName("D53 (g): prepare starts the brain before the first message, and the first message uses that process")
+    void prepareStartsTheBrainAheadOfTheFirstMessage() throws Exception {
+        PrincipalBrain brain = brain(Optional.of(fake));
+        try {
+            brain.prepare();
+            long deadline = System.currentTimeMillis() + 30_000;
+            while (System.currentTimeMillis() < deadline && ProcessHandle.current().descendants().noneMatch(p -> p.info().commandLine().orElse("").contains(dir.toString()))) {
+                Thread.sleep(20);
+            }
+            long warm = ProcessHandle.current().descendants().filter(p -> p.info().commandLine().orElse("").contains(dir.toString())).findFirst().orElseThrow().pid();
+            assertEquals(String.valueOf(warm), asked(brain, "WHICHPROCESS"));
+        } finally {
+            brain.close();
+        }
+    }
+
+    @Test
+    @DisplayName("D53 (h): the main seat's instructions reach the brain with the first message and not with the later ones")
+    void theMainSeatsTextGoesWithTheFirstMessageOnly() {
+        PrincipalBrain brain = brainWithStance(fake);
+        try {
+            assertEquals("with stance", asked(brain, "ASKSTANCE"));
+            assertEquals("no stance", asked(brain, "ASKSTANCE"));
+        } finally {
+            brain.close();
+        }
+        PrincipalBrain greeted = brainWithStance(fake);
+        try {
+            assertEquals("told", asked(greeted, "ASKGREETING"), "D53 (g): the rules ran on a greeting, 15 to 28 s to the first word");
+        } finally {
+            greeted.close();
+        }
+    }
+
+    @Test
+    @DisplayName("D53 (i): the principal moved to another brain takes effect at the next message, with the seat's instructions and what was said")
+    void anotherBrainTakesOverAtTheNextMessageWithTheConversation() throws Exception {
+        PrincipalBrain brain = brainWithStance(fake);
+        String registry = "{\"other\":" + new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(Map.of("command", fake.command(), "env", fake.environment())) + "}";
+        try {
+            String before = asked(brain, "WHICHPROCESS EARLIERWORD");
+            assertTrue(brain.useBrain(registry, "other"));
+            assertTrue(ProcessHandle.of(Long.parseLong(before)).orElseThrow().isAlive(), "the choice ended the running process at once");
+            assertEquals("knows", asked(brain, "ASKTRANSCRIPT"));
+            assertFalse(before.equals(asked(brain, "WHICHPROCESS")), "the message after the choice still went to the old process");
+            assertFalse(brain.useBrain(registry, "not-offered"), "a brain the registry does not name was accepted");
+        } finally {
+            brain.close();
+        }
+    }
+
+    @Test
+    @DisplayName("D53 (e): a picture goes to a brain that takes pictures, and a brain that does not is sent none and the person is told")
+    void aPictureGoesOnlyToABrainThatTakesIt() {
+        JsonNode picture = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("type", "image").put("mimeType", "image/png").put("data", "AAA");
+        Map<String, String> env = new java.util.HashMap<>(fake.environment());
+        env.put("FAKE_ACP_IMAGES", "yes");
+        PrincipalBrain takes = brain(Optional.of(new AcpBrainSession.Program(fake.command(), env)));
+        PrincipalBrain doesNot = brain(Optional.of(fake));
+        try {
+            takes.attachImages(List.of(picture));
+            assertEquals("1", asked(takes, "COUNTIMAGES"));
+            assertEquals("0", asked(takes, "COUNTIMAGES"), "a picture was sent again with the next message");
+            doesNot.attachImages(List.of(picture));
+            String said = asked(doesNot, "COUNTIMAGES");
+            assertTrue(said.contains("does not take pictures") && said.endsWith("0"), said);
+        } finally {
+            takes.close();
+            doesNot.close();
+        }
     }
 
     @Test

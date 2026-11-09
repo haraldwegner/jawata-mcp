@@ -51,8 +51,25 @@ public final class SeatPrompts implements PromptSource {
         return found == null ? Optional.empty() : Optional.of(found.text());
     }
 
-    /** A seat that is on offer: what the list shows of it and what a get returns. */
-    private record Offered(Prompt prompt, String text) {
+    /** The brain a seat's own file names, when it names one (D53 (j)). */
+    public Optional<String> brainNamedBy(String seatName) {
+        return folder.get().flatMap(where -> SeatFiles.read(where).seats().stream().filter(seat -> seatName.equals(seat.name())).findFirst())
+            .map(seat -> seat.front().get("brain")).filter(brain -> brain != null && !brain.isBlank()).map(String::strip);
+    }
+
+    /** The seats a person starts by typing their word (D53 (d)): those whose file does not say {@code typed: false}. */
+    public List<Prompt> typedByAPerson() {
+        List<Prompt> prompts = new ArrayList<>();
+        for (Offered offered : offered().values()) {
+            if (offered.typed()) {
+                prompts.add(offered.prompt());
+            }
+        }
+        return prompts;
+    }
+
+    /** A seat that is on offer: what the list shows of it, what a get returns, and whether a person starts it by typing. */
+    private record Offered(Prompt prompt, String text, boolean typed) {
     }
 
     /** The seats on offer now, by prompt name, in the order of their files. A name two seats claim goes to the first, and the log says so. */
@@ -84,7 +101,7 @@ public final class SeatPrompts implements PromptSource {
             String name = command == null ? seat.name() : command;
             String title = command == null ? seat.name() : seat.name() + " (/" + command + ")";
             String purpose = Frontmatter.emptyToNull(seat.front().get("purpose"));
-            Offered prompt = new Offered(new Prompt(name, title, purpose == null ? "" : purpose), stance);
+            Offered prompt = new Offered(new Prompt(name, title, purpose == null ? "" : purpose), stance, Frontmatter.readSwitch("typed", seat.front().get("typed"), true));
             if (offered.putIfAbsent(name, prompt) != null) {
                 log.warning(() -> seat.file().getFileName() + " claims the prompt name '" + name + "' that another seat already has, so it is NOT offered");
             }

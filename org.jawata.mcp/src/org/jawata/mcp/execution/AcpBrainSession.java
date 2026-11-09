@@ -110,131 +110,248 @@ public final class AcpBrainSession {
      */
     public static HiredBrain.Outcome run(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
             List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate, Consumer<JsonNode> onThinking) throws IOException, InterruptedException {
-        Map<String, String> environment = new LinkedHashMap<>(base.environment());
-        environment.putAll(program.environment());
-        Process child = host.start(new HostCommand(program.command(), base.workingDirectory(), environment,
-            ceilings.wallClock(), false, base.cleanEnvironment()));
-        // A stop from the Agent Control panel kills this process: the read of its output is blocked and a thread interrupt cannot end it.
-        RunningHires.shared().onStop(() -> HostProcesses.reap(child));
-        StringBuilder stderrTail = new StringBuilder();
-        Thread drain = drain(child, stderrTail);
-        boolean[] reaped = {false};
-        Thread watchdog = new Thread(() -> {
-            try {
-                if (!child.waitFor(ceilings.wallClock().toMillis(), TimeUnit.MILLISECONDS)) {
-                    reaped[0] = true;
-                    HostProcesses.reap(child);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }, "jawata-acp-watchdog");
-        watchdog.setDaemon(true);
-        watchdog.start();
-
-        Wire wire = new Wire(child, new HashSet<>(allowedTools == null ? List.of() : allowedTools), ceilings);
-        wire.onText = onText;
-        wire.onToolUpdate = onToolUpdate;
-        wire.onThinking = onThinking;
-        StringBuilder said = new StringBuilder();
-        List<String> toolNames = new ArrayList<>();
-        List<ToolCall> toolCalls = new ArrayList<>();
-        OptionalDouble cost = OptionalDouble.empty();
-        String stoppedBy = null;
-        String sessionId = null;
-        boolean answered = false;
-        boolean endedByUs = false;
-
+        Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings);
         try {
+            conversation.turn(prompt, List.of(), ceilings, onText, onToolUpdate, onThinking);
+        } finally {
+            conversation.end();
+        }
+        return conversation.outcome();
+    }
+
+    /**
+     * One brain process kept for a whole conversation (D53 (g)): started once, and prompted as often as the conversation has something to say.
+     * Measured on 2026-11-08 with Cursor's agent, a process started for every message took 10.9 s to the first word of a conversation and over
+     * 3 s to the first word of each later one, and a process kept running 1.4 to 1.9 s.
+     */
+    public static final class Conversation implements AutoCloseable {
+
+        private final Process child;
+        private final Wire wire;
+        private final Thread drain;
+        private final StringBuilder stderrTail;
+        private Thread watchdog;
+        private volatile boolean reaped;
+        private boolean endedByUs;
+        private boolean takesImages;
+        private String sessionId;
+        private int promptId = 3;
+
+        private StringBuilder said = new StringBuilder();
+        private List<String> toolNames = new ArrayList<>();
+        private List<ToolCall> toolCalls = new ArrayList<>();
+        private OptionalDouble cost = OptionalDouble.empty();
+        private String stoppedBy;
+        private boolean answered;
+
+        private Conversation(Process child, Set<String> allowed, HiredBrain.Ceilings ceilings) {
+            this.child = child;
+            this.stderrTail = new StringBuilder();
+            this.drain = AcpBrainSession.drain(child, stderrTail);
+            this.wire = new Wire(child, allowed, ceilings);
+        }
+
+        /** Starts the brain and opens its session, with no ceiling running afterwards: the conversation waits for its first prompt. */
+        public static Conversation start(HostProcesses host, Program program, HireSite base, SelfEndpoint mcp, List<String> allowedTools,
+                Optional<String> resume, HiredBrain.Ceilings ceilings) throws IOException {
+            Conversation conversation = open(host, program, base, mcp, allowedTools, resume, ceilings);
+            conversation.disarm();
+            return conversation;
+        }
+
+        private static Conversation open(HostProcesses host, Program program, HireSite base, SelfEndpoint mcp, List<String> allowedTools,
+                Optional<String> resume, HiredBrain.Ceilings ceilings) throws IOException {
+            Map<String, String> environment = new LinkedHashMap<>(base.environment());
+            environment.putAll(program.environment());
+            Process child = host.start(new HostCommand(program.command(), base.workingDirectory(), environment,
+                ceilings.wallClock(), false, base.cleanEnvironment()));
+            // A stop from the Agent Control panel kills this process: the read of its output is blocked and a thread interrupt cannot end it.
+            RunningHires.shared().onStop(() -> HostProcesses.reap(child));
+            Conversation conversation = new Conversation(child, new HashSet<>(allowedTools == null ? List.of() : allowedTools), ceilings);
+            conversation.arm(ceilings);
+            try {
+                conversation.handshake(base, mcp, resume);
+            } catch (IOException e) {
+                conversation.close();
+                throw e;
+            }
+            return conversation;
+        }
+
+        private void arm(HiredBrain.Ceilings ceilings) {
+            watchdog = new Thread(() -> {
+                try {
+                    if (!child.waitFor(ceilings.wallClock().toMillis(), TimeUnit.MILLISECONDS)) {
+                        reaped = true;
+                        HostProcesses.reap(child);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }, "jawata-acp-watchdog");
+            watchdog.setDaemon(true);
+            watchdog.start();
+        }
+
+        private void disarm() {
+            if (watchdog != null) {
+                watchdog.interrupt();
+                watchdog = null;
+            }
+        }
+
+        private void handshake(HireSite base, SelfEndpoint mcp, Optional<String> resume) throws IOException {
             JsonNode init = wire.call(1, "initialize", params -> {
                 params.put("protocolVersion", 1);
                 params.putObject("clientCapabilities");
             });
-            if (init != null) {
-                JsonNode capabilities = init.path("agentCapabilities");
-                String cwd = base.workingDirectory() == null ? "" : base.workingDirectory().toString();
-                ArrayNode servers = mcpServers(mcp, capabilities.path("mcpCapabilities").path("http").asBoolean(false));
-                if (resume.isPresent() && capabilities.path("loadSession").asBoolean(false)) {
-                    String earlier = resume.get();
-                    if (wire.call(2, "session/load", params -> {
-                        params.put("sessionId", earlier);
-                        params.put("cwd", cwd);
-                        params.set("mcpServers", servers);
-                    }) != null) {
-                        sessionId = earlier;
-                    }
-                }
-                if (sessionId == null) {
-                    Consumer<ObjectNode> newSession = params -> {
-                        params.put("cwd", cwd);
-                        params.set("mcpServers", servers);
-                    };
-                    JsonNode created = wire.call(2, "session/new", newSession);
-                    if (created == null && wire.refusedForWantOfLogin() && init.path("authMethods").size() > 0) {
-                        // A brain that wants its user logged in says so on session/new and lists how (Cursor's agent: cursor_login).
-                        // Login is tried once, with the first method it listed, and only after the refusal, so a brain that never
-                        // refuses is never sent authenticate.
-                        String method = init.path("authMethods").get(0).path("id").asText();
-                        if (wire.call(4, "authenticate", params -> params.put("methodId", method)) != null) {
-                            created = wire.call(5, "session/new", newSession);
-                        }
-                    }
-                    sessionId = created == null ? null : created.path("sessionId").asText(null);
+            if (init == null) {
+                return;
+            }
+            JsonNode capabilities = init.path("agentCapabilities");
+            takesImages = capabilities.path("promptCapabilities").path("image").asBoolean(false);
+            String cwd = base.workingDirectory() == null ? "" : base.workingDirectory().toString();
+            ArrayNode servers = mcpServers(mcp, capabilities.path("mcpCapabilities").path("http").asBoolean(false));
+            if (resume.isPresent() && capabilities.path("loadSession").asBoolean(false)) {
+                String earlier = resume.get();
+                if (wire.call(2, "session/load", params -> {
+                    params.put("sessionId", earlier);
+                    params.put("cwd", cwd);
+                    params.set("mcpServers", servers);
+                }) != null) {
+                    sessionId = earlier;
                 }
             }
+            if (sessionId == null) {
+                Consumer<ObjectNode> newSession = params -> {
+                    params.put("cwd", cwd);
+                    params.set("mcpServers", servers);
+                };
+                JsonNode created = wire.call(2, "session/new", newSession);
+                if (created == null && wire.refusedForWantOfLogin() && init.path("authMethods").size() > 0) {
+                    // A brain that wants its user logged in says so on session/new and lists how (Cursor's agent: cursor_login).
+                    // Login is tried once, with the first method it listed, and only after the refusal, so a brain that never
+                    // refuses is never sent authenticate.
+                    String method = init.path("authMethods").get(0).path("id").asText();
+                    if (wire.call(4, "authenticate", params -> params.put("methodId", method)) != null) {
+                        created = wire.call(5, "session/new", newSession);
+                    }
+                }
+                sessionId = created == null ? null : created.path("sessionId").asText(null);
+            }
+        }
 
-            if (sessionId != null) {
+        /** What the brain said when it would not open a session, such as that its user must sign in; empty when it said nothing. */
+        public String refusal() {
+            return wire.lastError == null ? "" : wire.lastError.path("message").asText("");
+        }
+
+        /** Whether the brain is still there to be prompted: a process that died between two messages is started again by whoever holds this. */
+        public boolean alive() {
+            return child.isAlive() && sessionId != null;
+        }
+
+        /** Tells the brain the person stopped its turn; the brain ends the turn with its reply, and the read waiting for that reply returns. */
+        public void cancel() {
+            if (sessionId == null) {
+                return;
+            }
+            try {
+                wire.notifyBrain("session/cancel", params -> params.put("sessionId", sessionId));
+            } catch (IOException e) {
+                HostProcesses.reap(child); // the brain cannot be told, so the read is ended the only other way there is
+            }
+        }
+
+        /** Answers one prompt in this conversation, pictures included where the brain takes them, within {@code ceilings}. */
+        public HiredBrain.Outcome prompt(String prompt, List<JsonNode> images, HiredBrain.Ceilings ceilings, Consumer<String> onText,
+                Consumer<JsonNode> onToolUpdate, Consumer<JsonNode> onThinking) throws IOException {
+            turn(prompt, images, ceilings, onText, onToolUpdate, onThinking);
+            return outcome();
+        }
+
+        private void turn(String prompt, List<JsonNode> images, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate,
+                Consumer<JsonNode> onThinking) throws IOException {
+            said = new StringBuilder();
+            toolNames = new ArrayList<>();
+            toolCalls = new ArrayList<>();
+            cost = OptionalDouble.empty();
+            stoppedBy = null;
+            answered = false;
+            if (sessionId == null) {
+                return;
+            }
+            if (watchdog == null) {
+                arm(ceilings);
+            }
+            wire.beginTurn(ceilings, onText, onToolUpdate, onThinking);
+            if (!images.isEmpty() && !takesImages && onText != null) {
+                onText.accept("This brain does not take pictures, so the picture was not sent to it.\n\n");
+            }
+            try {
                 String id = sessionId;
-                wire.collect = true; // what streams from here on is this run's answer, not the history a load replayed
-                JsonNode stop = wire.call(3, "session/prompt", params -> {
+                JsonNode stop = wire.call(promptId++, "session/prompt", params -> {
                     params.put("sessionId", id);
-                    params.putArray("prompt").addObject().put("type", "text").put("text", prompt);
-                });
-                Map<String, Integer> callAt = new HashMap<>();
-                for (JsonNode update : wire.events) {
-                    switch (update.path("sessionUpdate").asText()) {
-                        case "agent_message_chunk" -> said.append(update.path("content").path("text").asText(""));
-                        case "tool_call" -> {
-                            String name = update.path("title").asText(update.path("kind").asText("tool"));
-                            callAt.put(update.path("toolCallId").asText(""), toolNames.size());
-                            toolNames.add(name);
-                            toolCalls.add(new ToolCall(name, update.has("rawInput") ? update.get("rawInput") : JSON.createObjectNode()));
-                        }
-                        case "tool_call_update" -> {
-                            // Cursor's agent opens a tool call as "MCP: tool" with no input and names it in a later update (measured
-                            // 2026-11-03): the server and the tool arrive in rawInput, and the call is known from then on by the form the
-                            // classification reads, mcp__<server>__<tool>.
-                            Integer index = callAt.get(update.path("toolCallId").asText(""));
-                            JsonNode raw = update.path("rawInput");
-                            if (index != null && raw.hasNonNull("providerIdentifier") && raw.hasNonNull("toolName")) {
-                                String name = "mcp__" + raw.get("providerIdentifier").asText() + "__" + raw.get("toolName").asText();
-                                toolNames.set(index, name);
-                                toolCalls.set(index, new ToolCall(name, raw.has("args") ? raw.get("args") : JSON.createObjectNode()));
-                            }
-                        }
-                        case "usage_update" -> {
-                            JsonNode amount = update.path("cost").path("amount");
-                            if (amount.isNumber()) {
-                                cost = OptionalDouble.of(amount.asDouble());
-                            }
-                        }
-                        default -> { }
+                    ArrayNode blocks = params.putArray("prompt");
+                    blocks.addObject().put("type", "text").put("text", prompt);
+                    if (takesImages) {
+                        images.forEach(blocks::add);
                     }
-                }
-                stoppedBy = wire.stoppedBy;
-                answered = stop != null;
-                if (stop == null && !reaped[0] && stoppedBy == null) {
-                    said.append(said.length() == 0 ? "" : "\n").append("(the brain ended before it answered the prompt)");
+                });
+                read(stop);
+            } finally {
+                disarm();
+            }
+        }
+
+        private void read(JsonNode stop) {
+            Map<String, Integer> callAt = new HashMap<>();
+            for (JsonNode update : wire.events) {
+                switch (update.path("sessionUpdate").asText()) {
+                    case "agent_message_chunk" -> said.append(update.path("content").path("text").asText(""));
+                    case "tool_call" -> {
+                        String name = update.path("title").asText(update.path("kind").asText("tool"));
+                        callAt.put(update.path("toolCallId").asText(""), toolNames.size());
+                        toolNames.add(name);
+                        toolCalls.add(new ToolCall(name, update.has("rawInput") ? update.get("rawInput") : JSON.createObjectNode()));
+                    }
+                    case "tool_call_update" -> {
+                        // Cursor's agent opens a tool call as "MCP: tool" with no input and names it in a later update (measured
+                        // 2026-11-03): the server and the tool arrive in rawInput, and the call is known from then on by the form the
+                        // classification reads, mcp__<server>__<tool>.
+                        Integer index = callAt.get(update.path("toolCallId").asText(""));
+                        JsonNode raw = update.path("rawInput");
+                        if (index != null && raw.hasNonNull("providerIdentifier") && raw.hasNonNull("toolName")) {
+                            String name = "mcp__" + raw.get("providerIdentifier").asText() + "__" + raw.get("toolName").asText();
+                            toolNames.set(index, name);
+                            toolCalls.set(index, new ToolCall(name, raw.has("args") ? raw.get("args") : JSON.createObjectNode()));
+                        }
+                    }
+                    case "usage_update" -> {
+                        JsonNode amount = update.path("cost").path("amount");
+                        if (amount.isNumber()) {
+                            cost = OptionalDouble.of(amount.asDouble());
+                        }
+                    }
+                    default -> { }
                 }
             }
-        } finally {
-            watchdog.interrupt();
+            stoppedBy = wire.stoppedBy;
+            answered = stop != null;
+            if (stop == null && !reaped && stoppedBy == null) {
+                said.append(said.length() == 0 ? "" : "\n").append("(the brain ended before it answered the prompt)");
+            }
+        }
+
+        private void end() throws InterruptedException {
+            disarm();
             try {
                 child.getOutputStream().close();
             } catch (IOException ignored) {
                 // the child is already gone
             }
-            if (!child.waitFor(5, TimeUnit.SECONDS)) {
+            // A brain that has answered has nothing left to finish that is worth a person's wait (Cursor's agent does not exit at all when its input closes).
+            if (!child.waitFor(answered ? 1 : 5, TimeUnit.SECONDS)) {
                 endedByUs = true;
                 HostProcesses.reap(child);
                 child.waitFor(2, TimeUnit.SECONDS);
@@ -242,15 +359,29 @@ public final class AcpBrainSession {
             drain.join(2_000);
         }
 
-        OptionalInt exit = child.isAlive() ? OptionalInt.empty() : OptionalInt.of(child.exitValue());
-        // A brain that answered its prompt and then did not exit when its input closed (measured with Cursor's agent) was ended by this client,
-        // and the status of that kill is not a verdict on its work: the run is clean when the answer came, no ceiling and no clock ended it.
-        if (answered && endedByUs && !reaped[0] && stoppedBy == null) {
-            exit = OptionalInt.of(0);
+        private HiredBrain.Outcome outcome() {
+            OptionalInt exit = child.isAlive() ? OptionalInt.empty() : OptionalInt.of(child.exitValue());
+            // A brain that answered its prompt and then did not exit when its input closed (measured with Cursor's agent) was ended by this client,
+            // and the status of that kill is not a verdict on its work: the run is clean when the answer came, no ceiling and no clock ended it.
+            // The same holds for a brain still running because the conversation goes on.
+            if (answered && (endedByUs || child.isAlive()) && !reaped && stoppedBy == null) {
+                exit = OptionalInt.of(0);
+            }
+            return new HiredBrain.Outcome(said.toString(), cost, toolNames.size(), wire.unreadable, cost.isPresent(), reaped, exit,
+                stderrTail.toString(), Optional.ofNullable(stoppedBy), List.copyOf(toolNames), Optional.empty(), Optional.empty(),
+                List.copyOf(toolCalls), Optional.ofNullable(sessionId));
         }
-        return new HiredBrain.Outcome(said.toString(), cost, toolNames.size(), wire.unreadable, cost.isPresent(), reaped[0], exit,
-            stderrTail.toString(), Optional.ofNullable(stoppedBy), List.copyOf(toolNames), Optional.empty(), Optional.empty(),
-            List.copyOf(toolCalls), Optional.ofNullable(sessionId));
+
+        /** Ends the brain's process. */
+        @Override
+        public void close() {
+            try {
+                end();
+            } catch (InterruptedException e) {
+                HostProcesses.reap(child);
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     /** How Cursor's agent titles a permission request for a tool of an MCP server: "jawata-health_check: health_check" (measured against the real agent, S7a). */
@@ -338,7 +469,7 @@ public final class AcpBrainSession {
         private final Set<String> allowed;
         final List<JsonNode> events = new ArrayList<>();
         private final Process child;
-        private final HiredBrain.Ceilings ceilings;
+        private HiredBrain.Ceilings ceilings;
         private int steps;
         private double spent;
         int unreadable;
@@ -359,9 +490,31 @@ public final class AcpBrainSession {
             this.ceilings = ceilings;
         }
 
-        private void send(ObjectNode message) throws IOException {
+        /** Readies the wire for the next prompt's answer: what streams from here on is that answer, not an earlier one or a history a load replayed. */
+        void beginTurn(HiredBrain.Ceilings turnCeilings, Consumer<String> text, Consumer<JsonNode> toolUpdate, Consumer<JsonNode> thinking) {
+            ceilings = turnCeilings;
+            onText = text;
+            onToolUpdate = toolUpdate;
+            onThinking = thinking;
+            events.clear();
+            steps = 0;
+            spent = 0;
+            stoppedBy = null;
+            collect = true;
+        }
+
+        private synchronized void send(ObjectNode message) throws IOException {
             out.write((message.toString() + "\n").getBytes(StandardCharsets.UTF_8));
             out.flush();
+        }
+
+        /** Sends a notification, from any thread: the answer to a request being read on another thread is not waited for here. */
+        void notifyBrain(String method, Consumer<ObjectNode> fill) throws IOException {
+            ObjectNode notification = JSON.createObjectNode();
+            notification.put("jsonrpc", "2.0");
+            notification.put("method", method);
+            fill.accept(notification.putObject("params"));
+            send(notification);
         }
 
         /** The next line the brain wrote, or null at the end of its output. Lines that are not JSON are counted. */

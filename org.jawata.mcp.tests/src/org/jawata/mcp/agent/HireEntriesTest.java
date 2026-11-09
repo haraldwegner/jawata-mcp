@@ -92,6 +92,22 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("D53 (i): after a Replace the card and its line name the brain that answered, not the one the seat file named")
+    void theCardNamesTheBrainThatAnswered(@TempDir java.nio.file.Path dir) throws Exception {
+        java.nio.file.Path plain = Files.writeString(dir.resolve("plain.md"), "---\nname: pm\nbrain: cursor\n---\n\nbody\n");
+        ObjectNode call = withInput(hireCall("tool_call", "b1", "pending"), "main", "pm", "plan it");
+        ((ObjectNode) call.get("rawInput")).put("seatFile", plain.toString());
+        assertEquals("cursor", watch.observe(call).orElseThrow().toMeta().path("brain").asText());
+
+        HireEntry done = watch.observe(answered(hireCall("tool_call_update", "b1", "completed"),
+            "{\"cleanExit\":true,\"brain\":{\"brain\":\"claude-code\",\"vendor\":\"anthropic\",\"model\":\"THE BRAIN'S OWN DEFAULT\"}}")).orElseThrow();
+
+        assertEquals("claude-code", done.toMeta().path("brain").asText());
+        assertTrue(done.title().contains("claude-code"), done.title());
+        assertFalse(done.title().contains("cursor"), done.title());
+    }
+
+    @Test
     @DisplayName("the card carries the engine's plan id from the hire's answer, the key the hire's journal row is written under, and nothing before the answer or when the answer names none")
     void theCardCarriesTheEnginePlanTheJournalIsKeyedBy() {
         HireEntry running = watch.observe(withInput(hireCall("tool_call", "e1", "pending"), "chief-engineer", "worker", "do it")).orElseThrow();

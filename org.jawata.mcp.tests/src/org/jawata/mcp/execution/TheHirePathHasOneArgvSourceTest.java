@@ -170,10 +170,11 @@ class TheHirePathHasOneArgvSourceTest {
             }
         });
 
-        assertEquals(Map.of("HireTool.java", List.of("programFor"), "PrincipalBrain.java", List.of("parseProgram"),
+        // D53 (i) and (j): the principal also reads the registry, for the brain its seat file names and the brain the person picks on its row.
+        assertEquals(Map.of("HireTool.java", List.of("programFor"), "PrincipalBrain.java", List.of("parseProgram", "programFor"),
             "BrainReviewer.java", List.of("parseProgram")), readers,
             "a new reader of a brain's program appeared: a hired brain's program comes from the registry setting through HireTool alone;"
-                + " the principal's and the reviewer's settings are the only others");
+                + " the principal's own setting and its registry names, and the reviewer's setting, are the only others");
     }
 
     @Test

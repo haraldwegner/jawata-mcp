@@ -302,6 +302,11 @@ final class HireWatch {
         if (!ran.isBlank() && !NO_MODEL_NAMED.equals(ran)) {
             hire.model = Optional.of(ran);
         }
+        // The same for the brain: after a Replace it is another brain than the one the seat file named when the hire began (D53 (i)).
+        String answeredBy = answer.path("brain").path("brain").asText("");
+        if (!answeredBy.isBlank()) {
+            hire.brain = Optional.of(answeredBy);
+        }
         hire.enginePlan = answer.path("plan").asText("");
         hire.answer = answer.path("answer").asText("");
         hire.brainSessionId = answer.hasNonNull("brainSessionId") ? Optional.of(answer.get("brainSessionId").asText()) : Optional.empty();

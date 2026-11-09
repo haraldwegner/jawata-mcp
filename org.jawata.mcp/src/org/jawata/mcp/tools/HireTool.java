@@ -24,7 +24,7 @@ import org.jawata.mcp.execution.Instructions;
 import org.jawata.mcp.execution.Observer;
 import org.jawata.mcp.execution.RunEffects;
 import org.jawata.mcp.execution.RunningHires;
-import org.jawata.mcp.execution.SeatBrainPicks;
+import org.jawata.mcp.execution.RunningHires.Replacement;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
@@ -299,7 +299,7 @@ public class HireTool extends NeutralTool {
      */
     @Override
     public ToolResponse execute(JsonNode arguments) {
-        ToolResponse response = hire(arguments);
+        ToolResponse response = hire(arguments, null, "");
         // Every exit of the hire, a refusal included, is kept for the agent face, which cannot rely on a brain echoing the answer back.
         JsonNode outcome = response.isSuccess() ? JSON.valueToTree(response.getData())
             : JSON.createObjectNode().put("cleanExit", false).put("error", response.getError().getMessage());
@@ -307,7 +307,7 @@ public class HireTool extends NeutralTool {
         return response;
     }
 
-    private ToolResponse hire(JsonNode arguments) {
+    private ToolResponse hire(JsonNode arguments, Replacement replacing, String saidBefore) {
         LearnerEventStore landsIn = journal.get();
         if (landsIn == null) {
             // DEGRADATION ON THE RESPONSE CHANNEL, which is the only one a client can see. A hire
@@ -365,11 +365,10 @@ public class HireTool extends NeutralTool {
                 "check its brain: field — an unknown brain is refused rather than defaulted");
         }
 
-        // THE PERSON'S PICK (S9, his ruling 2026-10-31): the brain and model picked for this seat in the Agent Control panel replace the seat file's,
-        // before the registry fills a model the seat names none of, so the pick wins over the registry's default for the brain.
-        Optional<SeatBrainPicks.Pick> picked = SeatBrainPicks.shared().forSeat(hired);
-        if (picked.isPresent()) {
-            seat = seat.withBrain(picked.get().brain(), picked.get().model());
+        // THE PERSON'S REPLACE (D53 (i)): a hire moved onto another brain in the Agent Control panel runs on that brain this once; the seat file, its
+        // default, is not touched. It comes before the registry fills a model the seat names none of, so the person's choice wins over the registry's default.
+        if (replacing != null) {
+            seat = seat.withBrain(replacing.brain(), replacing.model());
         }
 
         // THE MODEL REGISTRY AND THE VENDOR RULE (S12, D11, D48). The registry setting offers each brain with its vendor and model; the seat file's own
@@ -480,7 +479,8 @@ public class HireTool extends NeutralTool {
             .filter(caller -> caller.origin() == org.jawata.mcp.models.CallerIdentity.Origin.CLIENT_SUPPLIED)
             .map(org.jawata.mcp.models.CallerIdentity::id);
         HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area)
-            .resuming(principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
+            // A replacement starts on another brain, which cannot continue the session of the one it replaces.
+            .resuming(replacing != null ? Optional.empty() : principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
             // The plan this hire opens belongs to the session that issued it, whoever it is: only that session's turn waits on its step (S10).
             .ownedBy(org.jawata.mcp.models.CallerIdentity.serving().map(org.jawata.mcp.models.CallerIdentity::id))
             .labelled(hired, hirer)
@@ -491,6 +491,10 @@ public class HireTool extends NeutralTool {
         // run the way any interruption does, and the answer says the person stopped it.
         RunningHires.Registration running = RunningHires.shared().begin(hired, brief);
         boolean stoppedByPerson = false;
+        Optional<RunningHires.Replacement> replacement = Optional.empty();
+        // The registration keeps the brief the principal gave, so the panel still finds this hire; the brain is also told what was said before it took over.
+        String briefToBrain = saidBefore.isBlank() ? brief
+            : brief + "\n\nYou are taking over this work from another brain, which was stopped. What it had said so far:\n\n" + saidBefore;
         try {
             // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
             // The registry names a brain by its product name, as the panel's choices and the vendor rule do ("cursor"); the dialect names itself
@@ -499,7 +503,7 @@ public class HireTool extends NeutralTool {
             Optional<AcpBrainSession.Program> acp = brainsRegistry
                 .flatMap(registryText -> AcpBrainSession.programFor(registryText, productName)
                     .or(() -> AcpBrainSession.programFor(registryText, dialect.name())));
-            proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()),
+            proposal = run.issue(seat, base, briefToBrain, steps, new ToolGateRunner(registry.get()),
                 hiddenTools, acp);
         } catch (IOException e) {
             return ToolResponse.error("INTERNAL_ERROR",
@@ -508,6 +512,12 @@ public class HireTool extends NeutralTool {
                     + " that CLI is installed and on the resident's PATH. Which executable a brain"
                     + " IS cannot be set per call; it is the dialect's, chosen by the seat's brain");
         } catch (InterruptedException e) {
+            replacement = running.replacement();
+            if (replacement.isPresent()) {
+                running.wasStopped();
+                running.close();
+                return hire(arguments, replacement.get(), saidBefore);
+            }
             if (running.wasStopped()) {
                 // The person's stop is handled here and ends with this answer, so the thread is left as it is for the next request.
                 return ToolResponse.error("HIRE_STOPPED",
@@ -520,6 +530,7 @@ public class HireTool extends NeutralTool {
                 "the child process is reaped; nothing is left running");
         } finally {
             // A killed process ends the read normally and no interrupt exception follows, so the stop is looked for here as well.
+            replacement = replacement.or(running::replacement);
             stoppedByPerson = running.wasStopped() || stoppedByPerson;
             running.close();
             if (stoppedByPerson) {
@@ -527,6 +538,10 @@ public class HireTool extends NeutralTool {
                 // served on this thread must not start interrupted.
                 Thread.interrupted();
             }
+        }
+        if (replacement.isPresent()) {
+            // D53 (i): the same seat and task again, on the brain the person chose, with what the stopped brain had said. The answer tells the principal.
+            return hire(arguments, replacement.get(), saidBefore + proposal.outcome().text());
         }
         if (stoppedByPerson) {
             return ToolResponse.error("HIRE_STOPPED",
@@ -539,6 +554,9 @@ public class HireTool extends NeutralTool {
         // answered is not an attribution.
         data.put("hirer", hirer);
         data.put("hired", hired);
+        if (replacing != null) {
+            data.put("replaced", "the person moved this agent onto " + seat.brain().label() + " while it worked: its first brain was stopped and this seat was hired again with what had been said; this answer is the replacement's, and the seat's default brain is unchanged");
+        }
         String corrects = getStringParam(arguments, "fixes");
         if (corrects != null && !corrects.isBlank()) {
             data.put("fixes", corrects.strip());

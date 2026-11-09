@@ -9,7 +9,6 @@ import org.jawata.mcp.engine.RoutedFace;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.ScheduledHires;
 import org.jawata.mcp.execution.SeatPrompts;
-import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.jawata.mcp.protocol.MessageRoute;
 import org.jawata.spi.host.EngineSettings;
@@ -31,6 +30,9 @@ public final class AgentFace implements RoutedFace {
     static final String PATH = "/acp";
 
     private static final long KEEPALIVE_SECONDS = 15;
+
+    /** The engine setting naming the folder of the skills a person starts by typing their word (D53 (d)). */
+    static final String SKILLS_SETTING = "jawata.agent.skillsDir";
 
     /** What a prompt is answered with until a brain is attached to the agent (plan S7a); it says so rather than staying silent. */
     static final String NO_BRAIN = "jawata's agent has no brain attached yet.";
@@ -84,8 +86,23 @@ public final class AgentFace implements RoutedFace {
         if (settings == null) {
             return List.of();
         }
-        SeatPrompts seats = new SeatPrompts(() -> settings.get(ScheduledHires.SEATS_SETTING).filter(folder -> !folder.isBlank()).map(java.nio.file.Path::of));
-        return seats.list().stream().map(seat -> new AdvertisedCommand(seat.name(), seat.description(), "seat")).toList();
+        List<AdvertisedCommand> served = new java.util.ArrayList<>();
+        promptsIn(settings, ScheduledHires.SEATS_SETTING).typedByAPerson().forEach(seat -> served.add(new AdvertisedCommand(seat.name(), seat.description(), "seat")));
+        promptsIn(settings, SKILLS_SETTING).typedByAPerson().forEach(skill -> served.add(new AdvertisedCommand(skill.name(), skill.description(), "skill")));
+        return served;
+    }
+
+    private static SeatPrompts promptsIn(EngineSettings settings, String folderSetting) {
+        return new SeatPrompts(() -> settings.get(folderSetting).filter(folder -> !folder.isBlank()).map(java.nio.file.Path::of));
+    }
+
+    /** The text a seat's or a skill's word stands for, when a person types it (D53 (d)). */
+    private static java.util.Optional<String> commandText(EngineApi attached, String name) {
+        EngineSettings settings = attached.settings();
+        if (settings == null) {
+            return java.util.Optional.empty();
+        }
+        return promptsIn(settings, ScheduledHires.SEATS_SETTING).text(name).or(() -> promptsIn(settings, SKILLS_SETTING).text(name));
     }
 
     @Override
@@ -95,12 +112,47 @@ public final class AgentFace implements RoutedFace {
 
     @Override
     public HttpHandler handler() {
-        return route(brains != null ? brains : this::principal, KEEPALIVE_SECONDS);
+        return route(brains != null ? brains : this::principal, brains != null ? brains : this::sideBrain, KEEPALIVE_SECONDS);
+    }
+
+    /** The brain a side thread is answered by (D53 (b)): the one the side setting names, and the principal's where it names none. */
+    private AgentBrain sideBrain() {
+        EngineApi attached = engine;
+        if (attached == null) {
+            return (prompt, chunks) -> chunks.accept(NO_BRAIN);
+        }
+        try {
+            return PrincipalBrain.forSide(attached, java.nio.file.Path.of(System.getProperty("user.dir")));
+        } catch (RuntimeException e) {
+            return (prompt, chunks) -> chunks.accept(NO_BRAIN);
+        }
     }
 
     /** The agent's door on the listener: a connection per host program, each answered by a server over the brain {@code brains} supplies. */
     MessageRoute route(Supplier<AgentBrain> brains, long keepaliveSeconds) {
-        return new MessageRoute(PATH, out -> open(brains.get(), out, brains)::receive, AgentFace::runsAtOnce, keepaliveSeconds);
+        return route(brains, brains, keepaliveSeconds);
+    }
+
+    private MessageRoute route(Supplier<AgentBrain> brains, Supplier<AgentBrain> sideBrains, long keepaliveSeconds) {
+        return new MessageRoute(PATH, out -> {
+            AcpServer server = open(brains.get(), out, sideBrains);
+            return new MessageRoute.Session() {
+                @Override
+                public void receive(JsonRpcMessage message) {
+                    server.receive(message);
+                }
+
+                @Override
+                public void closed() {
+                    server.closed();
+                }
+
+                @Override
+                public boolean worksBeside(JsonRpcMessage message) {
+                    return server.worksBeside(message);
+                }
+            };
+        }, AgentFace::runsAtOnce, keepaliveSeconds);
     }
 
     /**
@@ -152,10 +204,7 @@ public final class AgentFace implements RoutedFace {
         Supplier<List<AdvertisedCommand>> advertised = commands != null ? commands : () -> servedSeats(attached);
         AcpServer server = new AcpServer(brain, advertised, out, boundary, recorder, sideBrains, reviewer);
         server.offerBrains(() -> attached.settings() == null ? "" : attached.settings().get(Hirer.BRAINS_SETTING).orElse(""));
-        server.offerSeats(() -> SeatTree.forSetting(attached.settings() == null ? java.util.Optional.empty()
-            : attached.settings().get(ScheduledHires.SEATS_SETTING),
-            // An engine attached with no tool registry publishes no tool that changes code.
-            attached.tools() == null ? java.util.Set.of() : SeatTree.codeChangingIn(attached.tools().getToolDefinitions())).tree());
+        server.offerCommandTexts(name -> commandText(attached, name));
         return server;
     }
 }

@@ -1942,32 +1942,53 @@ class HireToolTest {
     }
 
     @Test
-    @DisplayName("S9: the model a person picked for a seat in the Agent Control panel is used by that seat's next hire over the seat file's own, and with the pick forgotten the seat file stands again")
-    void aPickedModelIsUsedByTheSeatsNextHire() throws Exception {
-        // A seat of its own: the picks are one store for the whole process, and a pick on the cataloguer would reach every later hire of it.
-        String seat = "pick-test-seat";
-        String seatMarkdown = CATALOGUER_SEAT.replace("name: cataloguer", "name: " + seat);
-        org.jawata.mcp.execution.SeatBrainPicks picks = org.jawata.mcp.execution.SeatBrainPicks.shared();
+    @DisplayName("D53 (i): a hire moved onto another brain is stopped and hired again on that brain with what was said; the answer says so and the seat's next hire is back on its own brain")
+    void aReplacedHireRunsAgainOnTheNewBrainAndTheSeatDefaultStands() throws Exception {
+        org.jawata.mcp.execution.RunningHires running = org.jawata.mcp.execution.RunningHires.shared();
+        Path started = dir.resolve("replaced-brain-started");
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        Files.writeString(file, """
+            #!/bin/sh
+            if [ -e '%1$s' ]; then
+              echo '{"type":"result","result":"done","total_cost_usd":0.01}'
+              exit 0
+            fi
+            echo '{"type":"result","result":"half way through the package","total_cost_usd":0.01}'
+            touch '%1$s'
+            sleep 60
+            """.formatted(started));
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        StandsIn processes = new StandsIn(host, HostCommand.of(file.toString()));
+        HireTool hire = toolWithSettings(processes, Map.of());
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newSingleThreadExecutor(task -> {
+            Thread thread = new Thread(task);
+            thread.setDaemon(true);
+            return thread;
+        });
+        try {
+            java.util.concurrent.Future<ToolResponse> response = pool.submit(() -> hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+            for (int i = 0; i < 200 && !Files.exists(started); i++) {
+                Thread.sleep(50);
+            }
+            assertTrue(Files.exists(started), "the brain never started");
 
-        StandsIn forgotten = new StandsIn(host, aBrainThatAnswers());
-        toolWithSettings(forgotten, Map.of()).execute(hireArgs(seatFile(seatMarkdown), seat));
+            int replaced = running.replace("cataloguer", "Describe every member of org.jawata.mcp.execution.", org.jawata.mcp.execution.SeatHire.Brain.CLAUDE_CODE, "replaced-model");
+            ToolResponse answer = response.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            Map<String, Object> data = dataOf(answer);
 
-        picks.pick(seat, org.jawata.mcp.execution.SeatHire.Brain.CLAUDE_CODE, "picked-model");
-        StandsIn picked = new StandsIn(host, aBrainThatAnswers());
-        Map<String, Object> pickedData = dataOf(toolWithSettings(picked, Map.of()).execute(hireArgs(seatFile(seatMarkdown), seat)));
+            assertAll(
+                () -> assertEquals(1, replaced),
+                () -> assertTrue(String.valueOf(data.get("replaced")).contains("hired again"), String.valueOf(data)),
+                () -> assertEquals("replaced-model", ((Map<?, ?>) data.get("brain")).get("model"), String.valueOf(data)),
+                () -> assertTrue(String.valueOf(processes.asked()).contains("replaced-model"), "the second hire was not on the new brain: " + processes.asked()),
+                () -> assertTrue(String.valueOf(processes.asked()).contains("half way through the package"), "the new brain was not told what was said: " + processes.asked()));
 
-        picks.pick(seat, org.jawata.mcp.execution.SeatHire.Brain.CLAUDE_CODE, "");
-        StandsIn sameBrainNoModel = new StandsIn(host, aBrainThatAnswers());
-        toolWithSettings(sameBrainNoModel, Map.of()).execute(hireArgs(seatFile(seatMarkdown), seat));
-
-        assertAll(
-            () -> assertEquals("claude-sonnet-5", modelOf(forgotten.asked()), "with no pick the seat file did not stand: " + forgotten.asked()),
-            () -> assertEquals("claude-sonnet-5", modelOf(sameBrainNoModel.asked()),
-                "a pick of the same brain with no model dropped the seat's model: " + sameBrainNoModel.asked()),
-            () -> assertEquals("picked-model", modelOf(picked.asked()), "the pick was not used: " + picked.asked()),
-            () -> assertEquals("picked-model", ((Map<?, ?>) pickedData.get("brain")).get("model"), String.valueOf(pickedData)),
-            // The control for the session id: a brain started by its dialect has none to give, and none is invented.
-            () -> assertFalse(pickedData.containsKey("brainSessionId"), String.valueOf(pickedData)));
+            StandsIn next = new StandsIn(host, aBrainThatAnswers());
+            toolWithSettings(next, Map.of()).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+            assertFalse(String.valueOf(next.asked()).contains("replaced-model"), "the Replace changed the seat's default: " + next.asked());
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     /** A brain that says one thing and then keeps running for a minute, so a hire of it is still going when something stops it. */

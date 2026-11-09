@@ -45,6 +45,11 @@ public final class MessageRoute implements HttpHandler {
         /** The host's connection ended, on purpose or not: whatever the session holds for that host (open buffers, pending work) goes now. */
         default void closed() {
         }
+
+        /** Whether this message belongs to a conversation beside the main one, so it is worked on a second thread and does not wait for the turn on the first. */
+        default boolean worksBeside(JsonRpcMessage message) {
+            return false;
+        }
     }
 
     /** Opens the session of a new connection; what the session says goes out through {@code out}. May refuse with an IllegalStateException. */
@@ -182,11 +187,9 @@ public final class MessageRoute implements HttpHandler {
     private final class Connection {
 
         final BlockingQueue<String> outbox = new LinkedBlockingQueue<>();
-        final ExecutorService worker = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "connection" + path);
-            t.setDaemon(true);
-            return t;
-        });
+        final ExecutorService worker = thread("connection" + path);
+        /** Works what {@link Session#worksBeside} names, in order among themselves; idle and without a thread until the first such message. */
+        final ExecutorService beside = thread("connection-beside" + path);
         final Session session;
         volatile boolean closed;
 
@@ -206,9 +209,19 @@ public final class MessageRoute implements HttpHandler {
                 // The person's switch and cancel must act while a prompt is running; queued behind it, they would arrive after the turn
                 // they were for.
                 work.run();
+            } else if (session.worksBeside(message)) {
+                beside.execute(work);
             } else {
                 worker.execute(work);
             }
+        }
+
+        private static ExecutorService thread(String name) {
+            return Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, name);
+                t.setDaemon(true);
+                return t;
+            });
         }
 
         private void send(JsonRpcMessage message) {
@@ -223,6 +236,7 @@ public final class MessageRoute implements HttpHandler {
         void close() {
             closed = true;
             worker.shutdownNow();
+            beside.shutdownNow();
             outbox.add("");
             endSession();
         }
@@ -241,18 +255,23 @@ public final class MessageRoute implements HttpHandler {
          * what is queued and ends, so a host that writes its last message and closes its input still gets the answer.
          */
         void finish() {
-            worker.shutdown();
-            try {
-                if (!worker.awaitTermination(FINISH_SECONDS, TimeUnit.SECONDS)) {
-                    worker.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                worker.shutdownNow();
-            }
+            finished(worker);
+            finished(beside);
             closed = true;
             outbox.add("");
             endSession();
+        }
+
+        private void finished(ExecutorService thread) {
+            thread.shutdown();
+            try {
+                if (!thread.awaitTermination(FINISH_SECONDS, TimeUnit.SECONDS)) {
+                    thread.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                thread.shutdownNow();
+            }
         }
     }
 }

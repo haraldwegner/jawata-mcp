@@ -41,4 +41,34 @@ public interface AgentBrain {
     default java.util.Optional<String> toolSessionKey() {
         return java.util.Optional.empty();
     }
+
+    /** The name of the brain this runs on, the way the registry names it; none for an answerer with no named brain (D53 (i)). */
+    default java.util.Optional<String> currentBrain() {
+        return java.util.Optional.empty();
+    }
+
+    /** Moves to the brain the registry names, from the next prompt; false when this answerer cannot, or the registry has no such program. */
+    default boolean useBrain(String registry, String name) {
+        return false;
+    }
+
+    /** Pictures that go with the next prompt, as ACP image blocks (D53 (e)); an answerer that takes none ignores them. */
+    default void attachImages(java.util.List<JsonNode> images) {
+    }
+
+    /** The folder the person opened, which the conversation works in (D53): an answerer that starts a brain starts it there. */
+    default void workIn(String folder) {
+    }
+
+    /** A conversation has opened and a first prompt is coming: an answerer that needs a slow start begins it now (D53 (g)). */
+    default void prepare() {
+    }
+
+    /** The person stopped the turn: an answerer that is reading a brain's answer tells that brain, and its turn ends with the brain's reply (D53 (f)). */
+    default void cancel() {
+    }
+
+    /** The conversation is over: whatever this answerer started for it, a process among it, goes now. */
+    default void close() {
+    }
 }

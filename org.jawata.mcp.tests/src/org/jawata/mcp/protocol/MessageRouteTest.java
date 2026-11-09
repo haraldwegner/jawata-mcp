@@ -32,6 +32,49 @@ class MessageRouteTest {
     }
 
     @Test
+    @DisplayName("a message the session says belongs beside the main conversation is worked while the main turn runs")
+    void aMessageBesideTheTurnDoesNotWaitForIt() throws Exception {
+        CountDownLatch slowStarted = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch besideSeen = new CountDownLatch(1);
+        MessageRoute route = new MessageRoute("/echo", out -> new MessageRoute.Session() {
+            @Override
+            public void receive(JsonRpcMessage message) {
+                if ("beside".equals(message.getMethod())) {
+                    besideSeen.countDown();
+                    return;
+                }
+                slowStarted.countDown();
+                try {
+                    release.await(60, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            @Override
+            public boolean worksBeside(JsonRpcMessage message) {
+                return "beside".equals(message.getMethod());
+            }
+        }, method -> false, 1);
+        HttpTransport transport = new HttpTransport(TransportFixtures.plainEndpoint(0, "127.0.0.1", "tok"), new TransportFixtures.RecordingLifecycle());
+        transport.mount("/echo", route);
+        TransportFixtures.runInBackground(transport);
+        try {
+            int port = transport.getActualPort();
+            assertEquals(202, post(port, "slow"));
+            assertTrue(slowStarted.await(30, TimeUnit.SECONDS), "the slow message never started");
+
+            assertEquals(202, post(port, "beside"));
+
+            assertTrue(besideSeen.await(10, TimeUnit.SECONDS), "the message beside the turn waited behind it");
+        } finally {
+            release.countDown();
+            transport.close();
+        }
+    }
+
+    @Test
     @DisplayName("a method the caller names acts while an earlier message is still being worked; every other message waits its turn")
     void aNamedMethodActsAtOnce() throws Exception {
         CountDownLatch slowStarted = new CountDownLatch(1);

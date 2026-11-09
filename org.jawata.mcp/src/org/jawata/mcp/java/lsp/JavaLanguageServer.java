@@ -266,6 +266,7 @@ public final class JavaLanguageServer {
         requests.register("typeHierarchy/subtypes", null, null, navigation::subtypes);
         requests.register("workspace/executeCommand", "executeCommandProvider", Map.of("commands", navigation.commands()), navigation::executeCommand);
         requests.register("java/classFileContents", null, null, navigation::classFileContents);
+        requests.register("jawata/javaProjects", null, null, new LspProjects(service)::projects);
         LspEdits lspEdits = new LspEdits(this::viewOf, this::hasUnsavedText);
         MovedFileEdits movedFileEdits = new MovedFileEdits(lspEdits);
         LspRename rename = new LspRename(tools, caller, lspEdits, movedFileEdits);

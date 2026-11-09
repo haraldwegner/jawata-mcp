@@ -17,6 +17,7 @@ public final class DefaultEngineSettings implements EngineSettings {
      */
     private static final Map<String, String> ENVIRONMENT = Map.ofEntries(
         Map.entry("jawata.agent.brain", "JAWATA_AGENT_BRAIN"),
+        Map.entry("jawata.agent.skillsDir", "JAWATA_AGENT_SKILLS_DIR"),
         Map.entry("jawata.agent.recording", "JAWATA_AGENT_RECORDING"),
         Map.entry("jawata.agent.reviewer", "JAWATA_AGENT_REVIEWER"),
         Map.entry("jawata.agent.reviewerRules", "JAWATA_AGENT_REVIEWER_RULES"),

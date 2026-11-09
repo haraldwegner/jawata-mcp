@@ -69,6 +69,41 @@ class AgentFaceAdvertisesSeatsTest {
     }
 
     @Test
+    @DisplayName("D53 (d): a seat whose file says typed: false is off the list, and the skills of the skills folder are on it in the group skill")
+    void theListCarriesTheTypedSeatsAndTheSkills(@TempDir Path dir) throws Exception {
+        Path seats = Files.createDirectory(dir.resolve("seats"));
+        Path skills = Files.createDirectory(dir.resolve("skills"));
+        Files.writeString(seats.resolve("report.md"), "---\nname: report\ncommand: report\npurpose: Drafts a bug report.\n---\n\nYou are the report seat.\n");
+        Files.writeString(seats.resolve("observer.md"), "---\nname: observer\ncommand: observer\ntyped: false\npurpose: Watches.\n---\n\nYou watch.\n");
+        Files.writeString(skills.resolve("sprint.md"), "---\nname: sprint\npurpose: Runs the pipeline.\n---\n\nThe sprint text.\n");
+        EngineSettings settings = key -> switch (key) {
+            case ScheduledHires.SEATS_SETTING -> Optional.of(seats.toString());
+            case AgentFace.SKILLS_SETTING -> Optional.of(skills.toString());
+            default -> Optional.empty();
+        };
+        EngineApi engine = (EngineApi) Proxy.newProxyInstance(EngineApi.class.getClassLoader(), new Class<?>[] {EngineApi.class},
+            (proxy, method, args) -> "settings".equals(method.getName()) ? settings : null);
+        List<JsonNode> said = new ArrayList<>();
+        List<String> prompts = new ArrayList<>();
+        AgentFace face = new AgentFace();
+        face.attach(engine);
+        AcpServer server = face.open((prompt, chunks) -> prompts.add(prompt), message -> said.add(JSON.valueToTree(message)), null);
+        server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+        List<String> listed = new ArrayList<>();
+        String sessionId = null;
+        for (JsonNode message : said) {
+            sessionId = message.path("result").path("sessionId").asText(sessionId);
+            message.path("params").path("update").path("availableCommands").forEach(c -> listed.add(c.path("_meta").path("jawata/group").asText() + ":" + c.path("name").asText()));
+        }
+        assertEquals(List.of("seat:report", "skill:sprint"), listed);
+
+        var prompt = JSON.createObjectNode().put("sessionId", sessionId);
+        prompt.putArray("prompt").addObject().put("type", "text").put("text", "/sprint the plan");
+        server.receive(JsonRpcMessage.request(2, "session/prompt", prompt));
+        assertTrue(prompts.get(0).startsWith("The sprint text.") && prompts.get(0).endsWith("ARGUMENTS: the plan"), "picking a word runs what it stands for: " + prompts);
+    }
+
+    @Test
     @DisplayName("the control: with no seats folder set the agent advertises no command")
     void withNoFolderNoCommandIsAdvertised() {
         assertEquals(List.of(), advertisedBy(null));

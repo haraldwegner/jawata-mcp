@@ -113,6 +113,7 @@ STALE_SRC=$(find "$ROOT" \( -name '*.java' -o -path '*/resources/*' \) \
                 -not -path '*/target/*' \
                 -not -path '*/test-resources/*' \
                 -not -path '*/.git/*' \
+                -not -path '*/.worktrees/*' \
                 -newer "$OLDEST_ARTIFACT" -print -quit 2>/dev/null)
 if [ -n "$STALE_SRC" ]; then
     echo "FATAL: the dist is OLDER than the source, so this run would test the PREVIOUS build."

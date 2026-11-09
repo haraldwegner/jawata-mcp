@@ -178,7 +178,7 @@ class AgentContractLevel1Test {
             JsonNode options = msg.path("result").has("configOptions") ? msg.path("result").path("configOptions") : update.path("configOptions");
             for (JsonNode option : options) {
                 String id = option.path("id").asText("");
-                if (id.startsWith("seat-model:")) {
+                if (id.equals(AcpServer.PRINCIPAL_BRAIN)) {
                     if (!"model".equals(option.path("category").asText(null))) {
                         out.add(at + ": option " + id + ": category is " + option.get("category") + ", not \"model\"");
                     }
@@ -241,6 +241,19 @@ class AgentContractLevel1Test {
 
         Wire(List<Hire> hires) {
             AgentBrain brain = new AgentBrain() {
+                private String current = "cursor";
+
+                @Override
+                public java.util.Optional<String> currentBrain() {
+                    return java.util.Optional.of(current);
+                }
+
+                @Override
+                public boolean useBrain(String registry, String name) {
+                    current = name;
+                    return true;
+                }
+
                 @Override
                 public void answer(String prompt, Consumer<String> chunks) {
                     answer(prompt, chunks, call -> { });
@@ -385,7 +398,7 @@ class AgentContractLevel1Test {
     }
 
     @Test
-    @DisplayName("R12: the brains the agent offers and the pick of one for a hire's seat pass the checker, and the answer to the pick is the hire as it now is")
+    @DisplayName("R12: the brains the agent offers and the Replace of a running hire's brain pass the checker, and the answer is the hire as it now is")
     void r12TheBrainsAndABrainPickPassTheChecker(@TempDir Path dir) throws Exception {
         List<Line> r12 = recording("R12");
         Wire wire = new Wire(List.of(new Hire("p-pm", "pm", "Run sprint 28i.", seatFile(dir, "pm-r12", "pm"), null)));
@@ -395,8 +408,24 @@ class AgentContractLevel1Test {
         JsonNode brains = wire.send(JSON.convertValue(brainsRequest, JsonRpcMessage.class));
         ObjectNode pick = sentRequest(r12, "_jawata/hire/brain").msg().deepCopy();
         ((ObjectNode) pick.get("params")).put("planId", "p-pm").put("brain", "claude-code").put("model", "sonnet");
+        // The Replace ends the brain process of a hire the engine is running, so the hire stands on a thread of its own, waiting for that end.
+        java.util.concurrent.CountDownLatch registered = new java.util.concurrent.CountDownLatch(1);
+        Thread hire = new Thread(() -> {
+            try (var running = org.jawata.mcp.execution.RunningHires.shared().begin("pm", "Run sprint 28i.")) {
+                java.util.concurrent.CountDownLatch brainEnded = new java.util.concurrent.CountDownLatch(1);
+                org.jawata.mcp.execution.RunningHires.shared().onStop(brainEnded::countDown);
+                registered.countDown();
+                brainEnded.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        hire.setDaemon(true);
+        hire.start();
+        registered.await();
         JsonNode picked = wire.send(JSON.convertValue(pick, JsonRpcMessage.class));
-        org.jawata.mcp.execution.SeatBrainPicks.shared().forget("pm");
+        hire.join(5_000);
+        assertFalse(hire.isAlive(), "the Replace did not stop the hire");
 
         assertEquals(List.of(), violations(wire.lines));
         assertEquals(2, brains.path("result").path("brains").size(), brains.toString());
@@ -407,44 +436,24 @@ class AgentContractLevel1Test {
     }
 
     @Test
-    @DisplayName("R5: the model of one seat is a select option per seat in the category model, and setting it is answered with the options as they now stand")
-    void r5ASeatsModelChangePassesTheChecker() throws Exception {
-        List<Line> r5 = recording("R5");
+    @DisplayName("D53 (i): the principal's brain is one select option in the category model, no per-seat option is offered, and setting it is answered with the options as they now stand")
+    void thePrincipalsBrainIsTheOnlyBrainOption() {
         Wire wire = new Wire(List.of());
-        ObjectNode change = sentRequest(r5, "session/set_config_option").msg().deepCopy();
-        ((ObjectNode) change.get("params")).put("sessionId", wire.session).put("configId", "seat-model:test-writer").put("value", "claude-code");
+        ObjectNode params = JSON.createObjectNode().put("sessionId", wire.session).put("configId", AcpServer.PRINCIPAL_BRAIN).put("value", "claude-code");
 
-        JsonNode answer;
-        try {
-            answer = wire.send(JSON.convertValue(change, JsonRpcMessage.class));
-        } finally {
-            ObjectNode back = change.deepCopy();
-            ((ObjectNode) back.get("params")).put("value", "seat-file");
-            wire.send(JSON.convertValue(back, JsonRpcMessage.class));
-        }
+        JsonNode answer = wire.send(JsonRpcMessage.request(90, "session/set_config_option", params));
 
         assertEquals(List.of(), violations(wire.lines));
         JsonNode option = null;
         for (JsonNode candidate : answer.path("result").path("configOptions")) {
-            if ("seat-model:test-writer".equals(candidate.path("id").asText())) {
+            assertFalse(candidate.path("id").asText().startsWith("seat-model:"), candidate.toString());
+            if (AcpServer.PRINCIPAL_BRAIN.equals(candidate.path("id").asText())) {
                 option = candidate;
             }
         }
         assertNotNull(option, answer.toString());
         assertEquals("claude-code", option.path("currentValue").asText());
-        JsonNode recordedOption = null;
-        for (Line line : r5) {
-            for (JsonNode candidate : line.msg().path("result").path("configOptions")) {
-                if ("seat-model:test-writer".equals(candidate.path("id").asText())) {
-                    recordedOption = candidate;
-                }
-            }
-        }
-        assertNotNull(recordedOption);
-        for (String field : List.of("id", "name", "category", "type", "currentValue", "options")) {
-            assertTrue(option.has(field), "the option the engine sent has no " + field + ": " + option);
-            assertEquals(recordedOption.get(field).getNodeType(), option.get(field).getNodeType(), field);
-        }
+        assertEquals("model", option.path("category").asText());
     }
 
     @Test

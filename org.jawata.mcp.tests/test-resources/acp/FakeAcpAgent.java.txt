@@ -34,7 +34,8 @@ public class FakeAcpAgent {
             String method = field(line, "method");
             String id = idOf(line);
             switch (method == null ? "" : method) {
-                case "initialize" -> reply(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"mcpCapabilities\":{\"http\":true}}"
+                case "initialize" -> reply(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"mcpCapabilities\":{\"http\":true},\"promptCapabilities\":{\"image\":"
+                    + (System.getenv("FAKE_ACP_IMAGES") != null) + "}}"
                     + (loginRequired ? ",\"authMethods\":[{\"id\":\"fake_login\",\"name\":\"Fake login\"}]" : "") + "}");
                 case "authenticate" -> {
                     authenticated = "fake_login".equals(field(line, "methodId"));
@@ -94,6 +95,18 @@ public class FakeAcpAgent {
             chunk(session, "noted");
         } else if (text.contains("HIRERECALL")) {
             chunk(session, Files.exists(memory) ? Files.readString(memory) : "nothing");
+        } else if (text.contains("ASKTRANSCRIPT")) {
+            chunk(session, text.contains("EARLIERWORD") ? "knows" : "does not know");
+        } else if (text.contains("WHICHFOLDER")) {
+            chunk(session, java.nio.file.Path.of("").toAbsolutePath().toString());
+        } else if (text.contains("ASKGREETING")) {
+            chunk(session, text.contains("answered at once") ? "told" : "not told");
+        } else if (text.contains("WHICHPROCESS")) {
+            chunk(session, String.valueOf(ProcessHandle.current().pid()));
+        } else if (text.contains("ASKSTANCE")) {
+            chunk(session, text.contains("THE-MAIN-STANCE") ? "with stance" : "no stance");
+        } else if (text.contains("COUNTIMAGES")) {
+            chunk(session, String.valueOf(line.split("\"type\":\"image\"", -1).length - 1));
         } else if (text.startsWith("REMEMBER:")) {
             Files.writeString(memory, text.substring("REMEMBER:".length()));
             chunk(session, "noted");
@@ -160,6 +173,13 @@ public class FakeAcpAgent {
             chunk(session, "first");
             Thread.sleep(1500);
             chunk(session, "second");
+        } else if (text.startsWith("WAITCANCEL")) {
+            // says it is waiting, then reads until the client cancels the turn, which is how a real brain ends one
+            chunk(session, "waiting");
+            for (String next = in.readLine(); next != null && !"session/cancel".equals(field(next, "method")); next = in.readLine()) {
+            }
+            reply(id, "{\"stopReason\":\"cancelled\"}");
+            return;
         } else if (text.startsWith("HANG")) {
             Thread.sleep(60_000);
         } else if (text.startsWith("DIE")) {

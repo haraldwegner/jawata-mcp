@@ -10,9 +10,7 @@ import java.util.function.Supplier;
 import org.jawata.mcp.agent.ReviewBeforeSend.Reviewer;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.RunningHires;
-import org.jawata.mcp.execution.SeatBrainPicks;
 import org.jawata.mcp.execution.SeatHire;
-import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -35,13 +33,11 @@ public final class AcpServer {
 
     static final int PROTOCOL_VERSION = 1;
     static final String AGENT_NAME = "jawata";
-    static final String AGENT_VERSION = "5.0-dev";
+    static final String AGENT_VERSION = versionOfThisBundle();
     /** The id of the select config option that carries the grant of autonomy (agreed with the 28i chat). */
     static final String AUTONOMY = "autonomy";
-    /** The prefix of the select config options that carry one seat's brain and model: the id is this and the seat's name (contract E6). */
-    static final String SEAT_MODEL = "seat-model:";
-    /** The value of a seat's option that leaves the choice to the seat's own file. */
-    static final String SEAT_FILE = "seat-file";
+    /** The id of the select config option that shows the principal's brain and changes it from the next message (D53 (i)). */
+    static final String PRINCIPAL_BRAIN = "principal-brain";
 
     private static final int METHOD_NOT_FOUND = -32601;
     private static final int INVALID_PARAMS = -32602;
@@ -105,12 +101,36 @@ public final class AcpServer {
         }
     }
 
+    /** The host's connection ended: what the brains hold for it, a running process among them, goes now. */
+    public void closed() {
+        brain.close();
+        sideBrainOf.values().forEach(AgentBrain::close);
+    }
+
+    /** What a side thread sends is worked beside the main turn, because a person asks it while that turn is running (D53 (b)). */
+    boolean worksBeside(JsonRpcMessage message) {
+        if ("session/new".equals(message.getMethod())) {
+            return isSide(message.getParams());
+        }
+        if ("session/prompt".equals(message.getMethod())) {
+            PrincipalSession session = sessionOf(message.getParams());
+            return session != null && session.side();
+        }
+        return false;
+    }
+
     private void cancel(JsonRpcMessage message) {
         String target = textField(message.getParams(), "sessionId");
         if (target != null) {
             cancelled.add(target);
             Thread working = running.get(target);
             if (working != null) {
+                // The brain's answer is read from its process, which an interrupt cannot end: the brain itself is told, and its turn ends with its reply.
+                PrincipalSession session = sessions.get(target);
+                AgentBrain answering = session != null && session.side() ? sideBrainOf.get(target) : brain;
+                if (answering != null) {
+                    answering.cancel();
+                }
                 working.interrupt();
             }
         }
@@ -163,14 +183,6 @@ public final class AcpServer {
         this.brainRegistry = registry == null ? () -> "" : registry;
     }
 
-    /** Where the tree of seats is read from, each time it is asked for (D51); none offered reads as the signed tree. */
-    private volatile Supplier<SeatTree> seatTree = SeatTree::standard;
-
-    /** Installs the source of the seat tree whose seats get a brain-and-model choice (application wiring). */
-    void offerSeats(Supplier<SeatTree> tree) {
-        this.seatTree = tree == null ? SeatTree::standard : tree;
-    }
-
     /**
      * The brains the studio offers with their models, for the Agent Control panel's brain control (S9; his ruling 2026-10-31). The method name is
      * provisional until the chat's recording R12 carries it. A registry that is not readable offers none, which is an empty list and not an error.
@@ -206,11 +218,11 @@ public final class AcpServer {
     }
 
     /**
-     * The Agent Control panel's brain control (S9; his ruling 2026-10-31): the pick sets the brain and model of that agent's seat for its next hire
-     * and every hire after it, because a process already started cannot change its brain. The answer is the agent's hire entry as it will be.
-     * The method name is provisional until the chat's recording R12 carries it. A hire the agent never saw, a brain this product has no dialect
-     * for, and the script brain (which needs a program of its own) are bad requests. A model named for a brain whose command line takes none
-     * is not applied and is not echoed.
+     * The Agent Control panel's brain control (D53 (i)), which is a Replace: the running hire is stopped and the same seat and task are hired again
+     * on the new brain with what was said so far; the principal is told it was a replacement, and the seat's default is untouched. The answer is
+     * the agent's hire entry as it will be. The method name is provisional until the chat's recording R12 carries it. A hire the agent never saw or
+     * that has ended, a brain this product has no dialect for, and the script brain (which needs a program of its own) are bad requests. A model
+     * named for a brain whose command line takes none is not applied and is not echoed.
      */
     private JsonRpcMessage hireBrain(Object id, JsonNode params) {
         String planId = textField(params, "planId");
@@ -225,7 +237,13 @@ public final class AcpServer {
         }
         String model = textField(params, "model");
         String applied = model != null && !model.isBlank() && brain.get().takesAModel() ? model.strip() : "";
-        SeatBrainPicks.shared().pick(entry.get().seat(), brain.get(), applied);
+        if (!HireEntry.RUNNING.equals(entry.get().state())) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "hire " + planId + " has already " + entry.get().state() + "; there is nothing to replace", null);
+        }
+        if (RunningHires.shared().replace(entry.get().seat(), entry.get().task(), brain.get(), applied) == 0) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
+                "this engine is not running a hire of " + entry.get().seat() + " for that brief, so there is nothing here to replace", null);
+        }
         ObjectNode meta = entry.get().toMeta();
         meta.put("brain", brain.get().label());
         if (applied.isEmpty()) {
@@ -262,6 +280,16 @@ public final class AcpServer {
         return JsonRpcMessage.successResponse(id, result);
     }
 
+    /** This bundle's own version, so the agent reports what is really running (D53 (s)); "dev" outside the framework. */
+    private static String versionOfThisBundle() {
+        org.osgi.framework.Bundle bundle = org.osgi.framework.FrameworkUtil.getBundle(AcpServer.class);
+        if (bundle == null) {
+            return "dev";
+        }
+        org.osgi.framework.Version version = bundle.getVersion();
+        return version.getMajor() + "." + version.getMinor() + "." + version.getMicro();
+    }
+
     private ObjectNode initializeResult() {
         ObjectNode result = JSON.createObjectNode();
         result.put("protocolVersion", PROTOCOL_VERSION);
@@ -269,7 +297,7 @@ public final class AcpServer {
         capabilities.put("loadSession", true);
         capabilities.putObject("sessionCapabilities").putObject("list");
         ObjectNode prompt = capabilities.putObject("promptCapabilities");
-        prompt.put("image", false);
+        prompt.put("image", true); // whether the brain takes the picture is said at the moment of sending, because a brain can be changed live
         prompt.put("audio", false);
         prompt.put("embeddedContext", false);
         ObjectNode mcp = capabilities.putObject("mcpCapabilities");
@@ -291,6 +319,8 @@ public final class AcpServer {
         result.put("sessionId", session.id());
         if (!session.side()) {
             result.set("configOptions", configOptions(session));
+            brain.workIn(cwd);
+            brain.prepare();
         }
         return result;
     }
@@ -305,7 +335,11 @@ public final class AcpServer {
      * step ledger is not asked, no try is spent, the grant of autonomy is neither read nor ended, and nothing is recorded or listed.
      */
     private JsonRpcMessage sidePrompt(Object id, JsonNode params, PrincipalSession session) {
-        AgentBrain own = sideBrainOf.computeIfAbsent(session.id(), key -> sideBrains == null ? brain : sideBrains.get());
+        AgentBrain own = sideBrainOf.computeIfAbsent(session.id(), key -> {
+            AgentBrain made = sideBrains == null ? brain : sideBrains.get();
+            made.workIn(session.cwd());
+            return made;
+        });
         String messageId = "msg_" + UUID.randomUUID();
         cancelled.remove(session.id());
         running.put(session.id(), Thread.currentThread());
@@ -325,34 +359,31 @@ public final class AcpServer {
     }
 
     /**
-     * The session's config options as ACP shows them: the select {@code autonomy} with the grant as its current value, then one select per hired
-     * seat, {@code seat-model:<seat>} (category {@code model}), whose choices are the brains the registry offers and whose current value is the
-     * brain picked for the seat or {@value #SEAT_FILE} while nobody has picked (contract E6; R5).
+     * The session's config options as ACP shows them: the select {@code autonomy} with the grant as its current value and, when the principal
+     * runs in a brain the engine knows the name of, the select {@value #PRINCIPAL_BRAIN} (D53 (c), (i)).
      */
     private ArrayNode configOptions(PrincipalSession session) {
         ArrayNode options = JSON.createArrayNode();
         addAutonomy(options, session);
-        seatTree.get().seats().forEach(seat -> addSeatModel(options, seat));
+        brain.currentBrain().ifPresent(current -> addPrincipalBrain(options, current));
         return options;
     }
 
-    private void addSeatModel(ArrayNode options, String seat) {
+    private void addPrincipalBrain(ArrayNode options, String current) {
         ObjectNode option = options.addObject();
-        option.put("id", SEAT_MODEL + seat);
-        option.put("name", "Brain and model for " + seat);
+        option.put("id", PRINCIPAL_BRAIN);
+        option.put("name", "Brain of the principal");
         option.put("category", "model");
-        option.put("description", "Which brain, with which model, the " + seat + " seat uses for its next hire and every hire after it. "
-            + "'As the seat file says' leaves the choice to the seat's own file. A hire already running keeps the brain it started with.");
+        option.put("description", "The brain the principal runs on. A change holds from the next message.");
         option.put("type", "select");
-        option.put("currentValue", SeatBrainPicks.shared().forSeat(seat).map(pick -> pick.brain().label()).orElse(SEAT_FILE));
+        option.put("currentValue", current);
         ArrayNode values = option.putArray("options");
-        values.addObject().put("value", SEAT_FILE).put("name", "As the seat file says");
-        Hirer.brainsIn(brainRegistry.get()).forEach((name, brain) -> {
-            // Only a brain a hire can use is offered: the registry may name a program for one this product has no dialect for.
-            if (SeatHire.Brain.named(name).filter(dialect -> dialect != SeatHire.Brain.SCRIPT).isPresent()) {
-                values.addObject().put("value", name).put("name", brain.model().isBlank() ? name : name + " · " + brain.model());
-            }
-        });
+        Map<String, Hirer.Brain> offered = Hirer.brainsIn(brainRegistry.get());
+        if (!offered.containsKey(current)) {
+            values.addObject().put("value", current).put("name", current);
+        }
+        offered.forEach((name, offeredBrain) -> values.addObject().put("value", name)
+            .put("name", offeredBrain.model().isBlank() ? name : name + " · " + offeredBrain.model()));
     }
 
     private static void addAutonomy(ArrayNode options, PrincipalSession session) {
@@ -374,8 +405,8 @@ public final class AcpServer {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown session: " + textField(params, "sessionId"), null);
         }
         String configId = textField(params, "configId");
-        if (configId != null && configId.startsWith(SEAT_MODEL)) {
-            return setSeatModel(id, session, configId.substring(SEAT_MODEL.length()), textField(params, "value"), from);
+        if (PRINCIPAL_BRAIN.equals(configId)) {
+            return setPrincipalBrain(id, session, textField(params, "value"), from);
         }
         if (!AUTONOMY.equals(configId)) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown config option: " + configId, null);
@@ -394,30 +425,18 @@ public final class AcpServer {
     }
 
     /**
-     * The person's choice of brain and model for one seat (contract R5, E6): {@link #SEAT_FILE} hands the seat back to its own file, and any
-     * other value must be a brain the registry offers, taken with the model the registry names for it (none for a brain whose command line
-     * takes none). The answer carries the options as they now stand, because a host that sets an option is answered in its own response.
+     * The person's choice of the principal's brain (D53 (i)): a brain the registry offers, from the next message. The answer carries the options
+     * as they now stand, because a host that sets an option is answered in its own response.
      */
-    private JsonRpcMessage setSeatModel(Object id, PrincipalSession session, String seat, String value, Channel from) {
+    private JsonRpcMessage setPrincipalBrain(Object id, PrincipalSession session, String value, Channel from) {
         if (from != Channel.HOST) {
             return JsonRpcMessage.errorResponse(id, NOT_PERMITTED,
-                "Only the person chooses a seat's brain; a message from a hired agent does not change it.", null);
+                "Only the person chooses the principal's brain; a message from a hired agent does not change it.", null);
         }
-        if (!seatTree.get().seats().contains(seat)) {
-            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown seat: " + seat, null);
-        }
-        if (SEAT_FILE.equals(value)) {
-            SeatBrainPicks.shared().forget(seat);
-        } else {
-            Map<String, Hirer.Brain> offered = Hirer.brainsIn(brainRegistry.get());
-            java.util.Optional<SeatHire.Brain> brain = value == null || !offered.containsKey(value)
-                ? java.util.Optional.empty() : SeatHire.Brain.named(value);
-            if (brain.isEmpty() || brain.get() == SeatHire.Brain.SCRIPT) {
-                return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
-                    "A brain the registry offers, or " + SEAT_FILE + ", not: " + value + " (offered: " + String.join(", ", offered.keySet()) + ")", null);
-            }
-            String model = brain.get().takesAModel() ? offered.get(value).model().strip() : "";
-            SeatBrainPicks.shared().pick(seat, brain.get(), model);
+        Map<String, Hirer.Brain> offered = Hirer.brainsIn(brainRegistry.get());
+        if (value == null || !offered.containsKey(value) || !brain.useBrain(brainRegistry.get(), value)) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
+                "A brain the registry offers, not: " + value + " (offered: " + String.join(", ", offered.keySet()) + ")", null);
         }
         ObjectNode result = JSON.createObjectNode();
         result.set("configOptions", configOptions(session));
@@ -542,8 +561,8 @@ public final class AcpServer {
             return sidePrompt(id, params, session);
         }
         String messageId = "msg_" + UUID.randomUUID();
-        String text = textOf(params.get("prompt"));
-        String typed = text;
+        String typed = textOf(params.get("prompt"));
+        String text = expanded(typed);
         if (from == Channel.HOST) {
             // Only the person's message is the person's word: it restarts the tries and ends a grant. The same call from a hired agent
             // does neither.
@@ -574,6 +593,9 @@ public final class AcpServer {
                 // A client with no jawata view still shows each running agent as one tool-call line with its status (contract E3).
                 forwarded.put("kind", "execute");
                 forwarded.put("title", entry.title());
+                if (HireEntry.FAILED.equals(entry.state())) {
+                    forwarded.put("status", "failed"); // the call itself returned, and what it says is that the hire failed
+                }
             });
             update(session.id(), forwarded);
             seen.ifPresent(entry -> askAboutProposal(session, entry));
@@ -589,6 +611,7 @@ public final class AcpServer {
         cancelled.remove(session.id());
         running.put(session.id(), Thread.currentThread());
         try {
+            brain.attachImages(imagesOf(params.get("prompt")));
             while (true) {
                 brain.answer(text, chunks, toolCalls, thought -> update(session.id(), ((ObjectNode) thought).deepCopy()));
                 if (cancelled.contains(session.id())) {
@@ -620,6 +643,43 @@ public final class AcpServer {
         ObjectNode result = JSON.createObjectNode();
         result.put("stopReason", stopReason);
         return JsonRpcMessage.successResponse(id, result);
+    }
+
+    /** Where the text of a seat's or a skill's word comes from; none offered leaves every prompt as it was typed. */
+    private volatile java.util.function.Function<String, java.util.Optional<String>> commandTexts = name -> java.util.Optional.empty();
+
+    /** Installs the source of the texts of the words a person types (application wiring). */
+    void offerCommandTexts(java.util.function.Function<String, java.util.Optional<String>> texts) {
+        this.commandTexts = texts;
+    }
+
+    private static final java.util.regex.Pattern A_TYPED_WORD = java.util.regex.Pattern.compile("^/([\\w-]+)(?:\\s+([\\s\\S]*))?$");
+
+    /**
+     * The prompt the brain is sent for what the person typed (D53 (d)): a {@code /word} of a seat or a skill becomes the text of that seat or
+     * skill, followed by what was typed after the word. Anything else is sent as it was typed.
+     */
+    private String expanded(String typed) {
+        java.util.regex.Matcher word = A_TYPED_WORD.matcher(typed.strip());
+        if (!word.matches()) {
+            return typed;
+        }
+        return commandTexts.apply(word.group(1))
+            .map(text -> word.group(2) == null || word.group(2).isBlank() ? text : text + "\n\nARGUMENTS: " + word.group(2))
+            .orElse(typed);
+    }
+
+    /** The picture blocks of a prompt, as the host sent them. */
+    private static List<JsonNode> imagesOf(JsonNode prompt) {
+        List<JsonNode> images = new java.util.ArrayList<>();
+        if (prompt != null) {
+            prompt.forEach(block -> {
+                if ("image".equals(block.path("type").asText())) {
+                    images.add(block);
+                }
+            });
+        }
+        return images;
     }
 
     /**
@@ -659,6 +719,7 @@ public final class AcpServer {
         }
         String cwd = textField(params, "cwd");
         PrincipalSession session = sessions.computeIfAbsent(sessionId, key -> new PrincipalSession(key, cwd == null ? "" : cwd, false));
+        brain.workIn(session.cwd());
         int turnNo = 0;
         java.util.Set<String> replayedCards = new java.util.HashSet<>();
         for (AgentRecorder.Turn turn : turns) {
