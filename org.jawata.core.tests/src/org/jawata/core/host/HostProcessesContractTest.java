@@ -208,7 +208,9 @@ class HostProcessesContractTest {
         }
         assertTrue(gone, "reap must take the tree: pid " + grandchild
             + " was the shell's own child and is still alive");
-        assertFalse(shell.isAlive(), "and the root itself is gone");
+        // The root's exit is as asynchronous as the grandchild's: macOS reported the shell alive in the instant after the sleeper was
+        // seen gone (CI run 42711843742, the 4.6.1 push), so the root is waited for like the grandchild was, not read once.
+        assertTrue(shell.waitFor(10, java.util.concurrent.TimeUnit.SECONDS), "and the root itself is gone");
     }
 
     @Test
