@@ -280,7 +280,6 @@ class LatencySeamTest {
 
         long baselineP50 = millis(baselineRaw, "p50Millis");
         long slowP50 = millis(slowRaw, "p50Millis");
-        long baselineP99 = millis(baselineRaw, "p99Millis");
         long slowP99 = millis(slowRaw, "p99Millis");
         long slowP999 = millis(slowRaw, "p999Millis");
 
@@ -288,9 +287,14 @@ class LatencySeamTest {
             "baseline p50 must be near the seam's real (low) cost: " + baselineRaw);
         assertTrue(slowP50 < 20,
             "p50 (98% of calls) must NOT move — the slowdown is a TAIL event: " + slowRaw);
-        assertTrue(slowP99 >= baselineP99 + 30,
-            "p99 MUST reflect the injected +50ms tail: baseline=" + baselineRaw + " slow=" + slowRaw);
-        assertTrue(slowP999 >= baselineP99 + 30,
+        // AGAINST THE INJECTED VALUE, NOT AGAINST THE BASELINE'S OWN TAIL. This asserted `slowP99 >= baselineP99 + 30`, which is a comparison of two
+        // measurements: when the baseline run happened to catch a stall of the machine's own (in the whole suite, beside three shards, with swap full:
+        // p99 150 ms against 70 ms for the slowed run) the test failed though the seam was measured correctly, and passed alone three times out of
+        // three. What the test is about is that the injected 50 ms tail is visible, so the floor is that tail less a little timer slack.
+        long injectedTailFloorMillis = 45;
+        assertTrue(slowP99 >= injectedTailFloorMillis,
+            "p99 MUST reflect the injected +50ms tail (at least " + injectedTailFloorMillis + " ms): baseline=" + baselineRaw + " slow=" + slowRaw);
+        assertTrue(slowP999 >= injectedTailFloorMillis,
             "p999 MUST reflect it too: " + slowRaw);
     }
 
