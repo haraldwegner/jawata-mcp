@@ -20,6 +20,7 @@ import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.SelfEndpoint;
+import org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.LearnerEvent;
@@ -190,7 +191,7 @@ class HireToolTest {
             ToolRegistry gates) {
         // WITH the resident's endpoint, as a resident serving HTTP has. A claude hire without one
         // is refused (S16-36); the case that pins that builds its tool without one on purpose.
-        return new HireTool(processes, artifacts, plans, () -> journal, () -> gates,
+        return new Finishing(processes, artifacts, plans, () -> journal, () -> gates,
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"));
     }
 
@@ -1000,7 +1001,7 @@ class HireToolTest {
         // keeps the machine's own MCP servers, settings and hooks: measured $2.26 for a one-word
         // answer, and --tools "" (the editors-absent containment) is only sent WITH an endpoint.
         // An unbounded hire is refused rather than run and reported.
-        HireTool hire = new HireTool(aHostThatMustNotSpawn(), artifacts, plans,
+        HireTool hire = new Finishing(aHostThatMustNotSpawn(), artifacts, plans,
             () -> events, () -> aRegistryWithACleanGate());
 
         ToolResponse response = hire.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
@@ -1017,7 +1018,7 @@ class HireToolTest {
     @Test
     @DisplayName("S17: what the hire tool answers is kept for the agent face, a refusal included, because a brain may echo back nothing but success")
     void theAnswerOfEveryHireIsKeptForTheAgentFace() throws Exception {
-        HireTool hire = new HireTool(aHostThatMustNotSpawn(), artifacts, plans,
+        HireTool hire = new Finishing(aHostThatMustNotSpawn(), artifacts, plans,
             () -> events, () -> aRegistryWithACleanGate());
         JsonNode args = hireArgs(seatFile(CATALOGUER_SEAT));
 
@@ -1033,7 +1034,7 @@ class HireToolTest {
     @Test
     @DisplayName("architect F1: a brain whose writes are held only by an INSTRUCTION is refused before it spawns, unless the seat opts in")
     void anInstructionOnlyBrainIsRefusedUnlessTheSeatOptsIn() throws Exception {
-        HireTool hire = new HireTool(aHostThatMustNotSpawn(), artifacts, plans,
+        HireTool hire = new Finishing(aHostThatMustNotSpawn(), artifacts, plans,
             () -> events, () -> aRegistryWithACleanGate());
 
         ToolResponse response = hire.execute(hireArgs(seatFile(CURSOR_SEAT_WITHOUT_OPT_IN)));
@@ -1135,7 +1136,7 @@ class HireToolTest {
     @Test
     @DisplayName("S16-36: the refusal is claude's alone — a brain that does not attach the resident still hires without an endpoint")
     void aBrainThatDoesNotUseTheEndpointStillHiresWithoutOne() throws Exception {
-        HireTool hire = new HireTool(new StandsIn(host, aBrainThatAnswers()), artifacts,
+        HireTool hire = new Finishing(new StandsIn(host, aBrainThatAnswers()), artifacts,
             plans, () -> events, () -> aRegistryWithACleanGate());
 
         ToolResponse response = hire.execute(hireArgs(seatFile(CURSOR_SEAT)));
@@ -1711,7 +1712,7 @@ class HireToolTest {
     }
 
     private HireTool toolWithBrainsSetting(HostProcesses processes, String registryJson) {
-        return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
+        return new Finishing(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
             () -> key -> HireTool.BRAINS_SETTING.equals(key) && registryJson != null ? java.util.Optional.of(registryJson) : java.util.Optional.empty(),
             null);
@@ -1758,7 +1759,7 @@ class HireToolTest {
             }
         });
         String brains = JSON.writeValueAsString(Map.of("claude-code", theStandInAcpProgram()));
-        HireTool overAcp = new HireTool(host, artifacts, plans, () -> events, () -> registry,
+        HireTool overAcp = new Finishing(host, artifacts, plans, () -> events, () -> registry,
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
             () -> key -> HireTool.BRAINS_SETTING.equals(key) ? java.util.Optional.of(brains) : java.util.Optional.empty(), null);
         dataOf(overAcp.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
@@ -1945,16 +1946,17 @@ class HireToolTest {
             return thread;
         });
         try {
-            // THE CONTROL: the setting is off, the brain takes four seconds, and the caller's own request gives up after one. The call is
-            // still waiting then: this is the failure the long hire showed under Cursor's agent, a call that outlives its caller's patience.
-            HireTool foreground = toolWithSettings(new StandsIn(host, aBrainThatTakes(4)), Map.of());
+            // THE CONTROL: a tool that waits for the hire, the brain takes four seconds, and the caller's own request gives up after one. The call
+            // is still waiting then: this is the failure the long hire showed under Cursor's agent, a call that outlives its caller's patience.
+            HireTool foreground = new Finishing(new StandsIn(host, aBrainThatTakes(4)), artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
+                () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null, () -> key -> java.util.Optional.empty(), null);
             java.util.concurrent.Future<ToolResponse> waiting = caller.submit(() -> foreground.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
             org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.TimeoutException.class, () -> waiting.get(1, java.util.concurrent.TimeUnit.SECONDS),
-                "with the setting off the call was expected to still be running after a second");
+                "a call that waits for the hire was expected to still be running after a second");
             waiting.get(30, java.util.concurrent.TimeUnit.SECONDS);
 
-            // THE HIRE ON THE ENGINE'S OWN THREAD: the same hire answers inside the caller's second with who it is and no result.
-            HireTool background = toolWithSettings(new StandsIn(host, aBrainThatTakes(4)), Map.of(HireTool.BACKGROUND_SETTING, "true"));
+            // THE PLAIN TOOL: the same hire runs on the engine's own thread and answers inside the caller's second with who it is and no result.
+            HireTool background = plainToolWithSettings(new StandsIn(host, aBrainThatTakes(4)), Map.of());
             java.util.concurrent.Future<ToolResponse> answering = caller.submit(() -> background.execute(hireWithBrief(seatFile(CATALOGUER_SEAT), brief)));
             Map<String, Object> started = dataOf(answering.get(1, java.util.concurrent.TimeUnit.SECONDS));
 
@@ -2042,11 +2044,11 @@ class HireToolTest {
             assertTrue(out.await(5, java.util.concurrent.TimeUnit.SECONDS), "the running hire did not start");
             int already = org.jawata.mcp.execution.HireRegistry.shared().runningCount();
 
-            HireTool capped = toolWithSettings(new StandsIn(host, aBrainThatAnswers()),
-                Map.of(HireTool.BACKGROUND_SETTING, "true", HireTool.MAX_RUNNING_SETTING, String.valueOf(already)));
+            HireTool capped = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()),
+                Map.of(HireTool.MAX_RUNNING_SETTING, String.valueOf(already)));
             ToolResponse refused = capped.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
-            HireTool roomy = toolWithSettings(new StandsIn(host, aBrainThatAnswers()),
-                Map.of(HireTool.BACKGROUND_SETTING, "true", HireTool.MAX_RUNNING_SETTING, String.valueOf(already + 5)));
+            HireTool roomy = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()),
+                Map.of(HireTool.MAX_RUNNING_SETTING, String.valueOf(already + 5)));
             ToolResponse started = roomy.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
 
             assertAll(
@@ -2060,8 +2062,44 @@ class HireToolTest {
         }
     }
 
-    /** A hire tool whose host settings are exactly these, by key. */
+    /**
+     * A hire tool that runs the hire on the calling thread and answers with its finished result, which is what {@code execute} did before a hire
+     * answered at once. The cases that read gates, journals and brains in the answer use it; the at-once answer has its own cases, on the plain tool.
+     */
+    private static final class Finishing extends HireTool {
+
+        Finishing(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans, java.util.function.Supplier<LearnerEventStore> journal,
+                  java.util.function.Supplier<ToolRegistry> registry) {
+            super(host, artifacts, plans, journal, registry);
+        }
+
+        Finishing(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans, java.util.function.Supplier<LearnerEventStore> journal,
+                  java.util.function.Supplier<ToolRegistry> registry, java.util.function.Supplier<SelfEndpoint> self) {
+            super(host, artifacts, plans, journal, registry, self);
+        }
+
+        Finishing(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans, java.util.function.Supplier<LearnerEventStore> journal,
+                  java.util.function.Supplier<ToolRegistry> registry, java.util.function.Supplier<SelfEndpoint> self,
+                  java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> rules,
+                  java.util.function.Supplier<org.jawata.spi.host.EngineSettings> settings, java.util.function.Function<String, AreaMap> area) {
+            super(host, artifacts, plans, journal, registry, self, rules, settings, area);
+        }
+
+        @Override
+        public ToolResponse execute(JsonNode arguments) {
+            return runAndKeep(arguments, new HireCall(arguments, null, "", org.jawata.mcp.models.CallerIdentity.serving()));
+        }
+    }
+
+    /** A hire tool that runs the hire to its end, whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
+        return new Finishing(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
+            () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
+            () -> key -> java.util.Optional.ofNullable(settings.get(key)), null);
+    }
+
+    /** The plain hire tool, which answers at once with who the hire is, whose host settings are exactly these, by key. */
+    private HireTool plainToolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
             () -> key -> java.util.Optional.ofNullable(settings.get(key)), null);

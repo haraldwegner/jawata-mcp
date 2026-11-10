@@ -304,11 +304,8 @@ public class HireTool extends NeutralTool {
     public ToolResponse execute(JsonNode arguments) {
         // The caller is read here, on the thread the call arrived on: a hire started on an engine thread would find no caller there.
         HireCall call = new HireCall(arguments, null, "", org.jawata.mcp.models.CallerIdentity.serving());
-        return backgroundIsOn() ? startInBackground(arguments, call) : runAndKeep(arguments, call);
+        return startInBackground(arguments, call);
     }
-
-    /** The host setting that makes a hire run on the engine's own thread and answer its caller at once (Stage 24, M7); it goes at M16. */
-    public static final String BACKGROUND_SETTING = "jawata.hire.background";
 
     /** The host setting that caps how many hires run at once when they run in the background (Stage 24, ND7); zero or less means no cap. */
     public static final String MAX_RUNNING_SETTING = "jawata.hire.maxRunning";
@@ -329,10 +326,6 @@ public class HireTool extends NeutralTool {
             return thread;
         }
     });
-
-    private boolean backgroundIsOn() {
-        return settings.get().get(BACKGROUND_SETTING).map("true"::equalsIgnoreCase).orElse(false);
-    }
 
     /**
      * Runs the hire on one of the engine's threads and answers once its plan is open, with the hire's identity and no result: the hire's plan id, its
@@ -391,7 +384,7 @@ public class HireTool extends NeutralTool {
         }
     }
 
-    private ToolResponse runAndKeep(JsonNode arguments, HireCall call) {
+    ToolResponse runAndKeep(JsonNode arguments, HireCall call) {
         ToolResponse response = hire(call);
         // Every exit of the hire, a refusal included, is kept for the agent face, which cannot rely on a brain echoing the answer back.
         JsonNode outcome = response.isSuccess() ? JSON.valueToTree(response.getData())
