@@ -174,6 +174,19 @@ class LspTestsTest {
     }
 
     @Test
+    @DisplayName("a run whose status the engine can no longer answer is an error carrying the reason, and the run is cancelled so no test JVM is left running")
+    void aRunWhoseStatusFailsIsCancelled() {
+        Fake fake = new Fake();
+        fake.statuses.add(ToolResponse.error("NOT_FOUND", "no such run", "start it again"));
+
+        IllegalStateException refused = assertThrows(IllegalStateException.class,
+            () -> over(fake).run(JSON.createObjectNode().set("scope", JSON.createObjectNode().put("kind", "class"))));
+
+        assertTrue(refused.getMessage().contains("no such run"), refused.getMessage());
+        assertTrue(fake.actions.contains("cancel"), fake.actions.toString());
+    }
+
+    @Test
     @DisplayName("the source line of a failure is the test class's own frame; a trace with none, or only another class's frames, gives no line")
     void theLineOfAFailureIsTheTestClassOwnFrame() {
         String trace = "x\n\tat a.Other.run(Other.java:7)\n\tat com.x.FooTest$Inner.t(FooTest.java:15)\n";

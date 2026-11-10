@@ -116,6 +116,7 @@ final class LspTests {
         String session = JSON.valueToTree(started.getData()).path("sessionId").asText();
         Object token = params.has("token") ? params.get("token") : null;
         String last = "";
+        boolean ended = false;
         try {
             while (true) {
                 ToolResponse status = tools.callTool("run_tests", JSON.createObjectNode().put("action", "status").put("sessionId", session), caller);
@@ -129,13 +130,16 @@ final class LspTests {
                     push(token, session, data);
                 }
                 if (!"RUNNING".equals(data.path("state").asText())) {
+                    ended = true;
                     return resultOf(session, data);
                 }
                 Thread.sleep(pollMillis);
             }
-        } catch (InterruptedException e) {
-            tools.callTool("run_tests", JSON.createObjectNode().put("action", "cancel").put("sessionId", session), caller);
-            throw e;
+        } finally {
+            if (!ended) {
+                // the editor stopped waiting, or the run could not be followed: the runner JVM must not be left running
+                tools.callTool("run_tests", JSON.createObjectNode().put("action", "cancel").put("sessionId", session), caller);
+            }
         }
     }
 
