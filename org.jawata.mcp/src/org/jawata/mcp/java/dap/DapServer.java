@@ -438,7 +438,9 @@ public final class DapServer {
             try {
                 answer = callDebug(JSON.createObjectNode().put("action", "wait").put("sessionId", mine).put("timeoutMillis", WAIT_MILLIS));
             } catch (RuntimeException e) {
-                endedBecause("the debugger lost its link to the engine: " + e.getMessage());
+                if (!ending && mine.equals(sessionId)) {
+                    endedBecause("the debugger lost its link to the engine: " + e.getMessage());
+                }
                 return;
             }
             if (ending || !mine.equals(sessionId)) {

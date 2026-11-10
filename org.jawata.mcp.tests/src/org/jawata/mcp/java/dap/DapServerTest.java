@@ -264,6 +264,34 @@ class DapServerTest {
     }
 
     @Test
+    @DisplayName("a stop the engine reports for a launch that was replaced meanwhile is not told to the editor as a stop of the new launch")
+    void aLateStopOfAnOlderLaunchIsNotToldAsTheNewOnes() throws Exception {
+        java.util.concurrent.CountDownLatch waiting = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        tools.byAction.put("wait", arguments -> {
+            waiting.countDown();
+            try {
+                release.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return aHit(42);
+        });
+        launched();
+        send("configurationDone", null);
+        assertTrue(waiting.await(10, TimeUnit.SECONDS), "the first launch's loop is waiting for a stop");
+        send("disconnect", null);
+        tools.answer = arguments -> ToolResponse.success(Map.of("sessionId", "s-2"));
+        launched();
+
+        release.countDown();
+        Thread.sleep(300);
+
+        assertFalse(saidEvent("stopped"), "the late stop belongs to the first launch: " + said);
+        send("disconnect", null);
+    }
+
+    @Test
     @DisplayName("continue resumes the thread through the debug tool, and next, stepIn and stepOut step it by their modes; the stop that follows a step says so")
     void continueAndTheStepsReachTheTool() throws Exception {
         armWait();
