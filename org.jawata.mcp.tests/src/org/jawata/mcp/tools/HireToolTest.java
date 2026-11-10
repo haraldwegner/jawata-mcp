@@ -935,6 +935,9 @@ class HireToolTest {
             // 28h item (c): what a cost view or a choice of model reads from the row, besides the model and the tokens above.
             () -> assertEquals(data.get("hired"), detail.path("seat").asText(), "which seat ran, so a cost can be read per seat"),
             () -> assertEquals(data.get("hirer"), detail.path("hirer").asText(), "who hired it, so the hires of one issuer can be summed"),
+            // Stage 24 (D55): the first name the hire was given is in the answer and in the row, the same one.
+            () -> org.junit.jupiter.api.Assertions.assertTrue(data.get("name") instanceof String name && !name.isBlank(), "the answer carries no first name: " + data),
+            () -> assertEquals(data.get("name"), detail.path("name").asText(), "the row names the hire differently from the answer"),
             () -> org.junit.jupiter.api.Assertions.assertTrue(detail.path("elapsedMs").isNumber() && detail.path("elapsedMs").asLong() >= 0,
                 "how long the brain ran: " + detail),
             // The stand-in brain always reports a cost, so the answer shows one and the row carries the same figure;

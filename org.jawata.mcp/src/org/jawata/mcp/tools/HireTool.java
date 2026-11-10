@@ -513,18 +513,20 @@ public class HireTool extends NeutralTool {
         Optional<String> principalSession = call.getServing()
             .filter(caller -> caller.origin() == org.jawata.mcp.models.CallerIdentity.Origin.CLIENT_SUPPLIED)
             .map(org.jawata.mcp.models.CallerIdentity::id);
+        // While the brain runs this hire can be stopped from the Agent Control panel (S9): the panel's stop interrupts this thread, which ends the
+        // run the way any interruption does, and the answer says the person stopped it. The hire is registered before the run is built because
+        // registering gives it its first name (Stage 24, D55), which the run writes into its journal row.
+        HireRegistry.Registration running = HireRegistry.shared().begin(hired, brief,
+            call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""));
         HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area)
             // A replacement starts on another brain, which cannot continue the session of the one it replaces.
             .resuming(call.getReplacing() != null ? Optional.empty() : principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
             // The plan this hire opens belongs to the session that issued it, whoever it is: only that session's turn waits on its step (S10).
             .ownedBy(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id))
-            .labelled(hired, hirer)
+            .labelled(hired, hirer, running.name())
             .fixing(getStringParam(call.getArguments(), "fixes"))
             .issuedFrom(getStringParam(call.getArguments(), "instructionsFrom"));
         HiredRun.Proposal proposal;
-        // While the brain runs this hire can be stopped from the Agent Control panel (S9): the panel's stop interrupts this thread, which ends the
-        // run the way any interruption does, and the answer says the person stopped it.
-        HireRegistry.Registration running = HireRegistry.shared().begin(hired, brief);
         boolean stoppedByPerson = false;
         Optional<HireRegistry.Replacement> replacement = Optional.empty();
         // The registration keeps the brief the principal gave, so the panel still finds this hire; the brain is also told what was said before it took over.
@@ -589,6 +591,7 @@ public class HireTool extends NeutralTool {
         // answered is not an attribution.
         data.put("hirer", hirer);
         data.put("hired", hired);
+        data.put("name", running.name());
         if (call.getReplacing() != null) {
             data.put("replaced", "the person moved this agent onto " + seat.brain().label() + " while it worked: its first brain was stopped and this seat was hired again with what had been said; this answer is the replacement's, and the seat's default brain is unchanged");
         }

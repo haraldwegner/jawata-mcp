@@ -51,6 +51,8 @@ final class HireWatch {
         Optional<String> model = Optional.empty();
         Optional<String> parent = Optional.empty();
         Optional<String> brainSessionId = Optional.empty();
+        /** The first name the hire carries: read from the registry while it runs and from its answer once it has answered (Stage 24, D55). */
+        Optional<String> name = Optional.empty();
         /** The slash command the seat file gives the seat, when it gives one. */
         Optional<String> seatCommand = Optional.empty();
         List<String> changedFiles = List.of();
@@ -307,6 +309,9 @@ final class HireWatch {
             hire.brain = Optional.of(answeredBy);
         }
         hire.enginePlan = answer.path("plan").asText("");
+        if (answer.hasNonNull("name")) {
+            hire.name = Optional.of(answer.get("name").asText());
+        }
         hire.answer = answer.path("answer").asText("");
         hire.brainSessionId = answer.hasNonNull("brainSessionId") ? Optional.of(answer.get("brainSessionId").asText()) : Optional.empty();
         List<String> files = new java.util.ArrayList<>();
@@ -380,9 +385,12 @@ final class HireWatch {
         // A hire whose brain is compacting its context is still running; its card says what it is doing.
         String state = HireEntry.RUNNING.equals(hire.state) && HireRegistry.shared().compacting(hire.seat, hire.task)
             ? HireEntry.COMPACTING : hire.state;
+        if (hire.name.isEmpty()) {
+            hire.name = HireRegistry.shared().nameOf(hire.seat, hire.task);
+        }
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, state, end - hire.startedMs, hire.tokens, cost,
             hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand,
-            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan));
+            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan), hire.name);
     }
 
     /** How many hires the agent saw above this one, so a root is level 0, the chief engineer it hires 1, and the developer under that 2. */

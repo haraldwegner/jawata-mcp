@@ -31,15 +31,18 @@ public final class HireRegistry {
     private static final class Running {
         final String seat;
         final String brief;
+        /** The first name this hire carries, given when it was registered (Stage 24, D55). */
+        final String name;
         final Thread thread;
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
         /** Whether the brain is compacting its own context right now, as its stream last said. */
         volatile boolean compacting;
 
-        Running(String seat, String brief, Thread thread) {
+        Running(String seat, String brief, String name, Thread thread) {
             this.seat = seat;
             this.brief = brief;
+            this.name = name;
             this.thread = thread;
         }
     }
@@ -50,6 +53,11 @@ public final class HireRegistry {
 
         private Registration(Running hire) {
             this.hire = hire;
+        }
+
+        /** The first name this hire was given when it was registered. */
+        public String name() {
+            return hire.name;
         }
 
         /** Whether the person stopped this hire; true once, then the mark is gone. */
@@ -93,7 +101,15 @@ public final class HireRegistry {
      * stop cannot mark a thread whose hire has just closed.
      */
     public synchronized Registration begin(String seat, String brief) {
-        Running hire = new Running(seat, normal(brief), Thread.currentThread());
+        return begin(seat, brief, "");
+    }
+
+    /**
+     * Registers the hire as {@link #begin(String, String)} does and gives it the next first name of this conversation, the id of the caller
+     * that issued it, so two hires of one seat in one conversation can be told apart.
+     */
+    public synchronized Registration begin(String seat, String brief, String conversationKey) {
+        Running hire = new Running(seat, normal(brief), HireNames.shared().assign(conversationKey), Thread.currentThread());
         stopped.remove(hire.thread);
         running.add(hire);
         return new Registration(hire);
@@ -164,6 +180,16 @@ public final class HireRegistry {
         for (Running hire : running) {
             if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
                 return Optional.of(hire.progress);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** The first name of the running hire of this seat for this brief; none when no such hire is running. */
+    public Optional<String> nameOf(String seat, String brief) {
+        for (Running hire : running) {
+            if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
+                return Optional.of(hire.name);
             }
         }
         return Optional.empty();

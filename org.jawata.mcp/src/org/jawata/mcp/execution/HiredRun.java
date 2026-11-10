@@ -392,10 +392,20 @@ public final class HiredRun {
     private String seatName = "";
     private String hirerName = "";
 
-    /** Names the seat that runs and the seat that hired it; a run is built for one hire, so the names belong to that hire alone. */
-    public HiredRun labelled(String seat, String hirer) {
+    private String hireName = "";
+
+    /**
+     * Names the seat that runs, the seat that hired it and the first name the hire carries; a run is built for one hire, so the names belong to
+     * that hire alone.
+     *
+     * @param seat     the seat that runs
+     * @param hirer    the seat that hired it
+     * @param hireName the first name the hire was given when it was registered, or empty
+     */
+    public HiredRun labelled(String seat, String hirer, String hireName) {
         this.seatName = seat == null ? "" : seat;
         this.hirerName = hirer == null ? "" : hirer;
+        this.hireName = hireName == null ? "" : hireName;
         return this;
     }
 
@@ -557,6 +567,9 @@ public final class HiredRun {
                 // when it said. A cost the brain did not send is absent from the row and never 0.
                 detail.put("seat", seatName);
                 detail.put("hirer", hirerName);
+                if (!hireName.isEmpty()) {
+                    detail.put("name", hireName);
+                }
                 if (!fixesPlan.isEmpty()) {
                     detail.put("fixes", fixesPlan);
                 }
