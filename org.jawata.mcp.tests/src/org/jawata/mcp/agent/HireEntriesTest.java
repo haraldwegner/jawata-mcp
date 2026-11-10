@@ -288,7 +288,7 @@ class HireEntriesTest {
         HireEntry idle = watch.entry("t1").orElseThrow();
 
         try (org.jawata.mcp.execution.HireRegistry.Registration running =
-                 org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "build the stage")) {
+                 org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "build the stage", "")) {
             org.jawata.mcp.execution.HireRegistry.shared().noteToolStep();
             org.jawata.mcp.execution.HireRegistry.shared().noteUsage(java.util.OptionalLong.of(4_000), java.util.OptionalDouble.of(0.25));
             HireEntry working = watch.entry("t1").orElseThrow();

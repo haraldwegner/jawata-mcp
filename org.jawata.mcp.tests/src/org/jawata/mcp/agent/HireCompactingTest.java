@@ -33,7 +33,7 @@ class HireCompactingTest {
     @DisplayName("running, then compacting while the brain compacts, then running again, then the hire's own state once it has answered")
     void theCardFollowsTheBrainsCompaction() {
         watch.observe(call("tool_call", "c1", "pending")).orElseThrow();
-        try (HireRegistry.Registration ignored = HireRegistry.shared().begin("chief-engineer", "a long task")) {
+        try (HireRegistry.Registration ignored = HireRegistry.shared().begin("chief-engineer", "a long task", "")) {
             assertEquals(HireEntry.RUNNING, watch.entry("c1").orElseThrow().state());
 
             HireRegistry.shared().noteCompaction(true);

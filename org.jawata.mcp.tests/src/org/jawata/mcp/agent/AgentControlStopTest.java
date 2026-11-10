@@ -79,7 +79,7 @@ class AgentControlStopTest {
     private static Thread aRunningHire(CountDownLatch interrupted) throws InterruptedException {
         CountDownLatch registered = new CountDownLatch(1);
         Thread worker = new Thread(() -> {
-            try (HireRegistry.Registration registration = HireRegistry.shared().begin(SEAT, BRIEF)) {
+            try (HireRegistry.Registration registration = HireRegistry.shared().begin(SEAT, BRIEF, "")) {
                 registered.countDown();
                 Thread.sleep(30_000);
             } catch (InterruptedException e) {
@@ -98,7 +98,7 @@ class AgentControlStopTest {
         CountDownLatch registered = new CountDownLatch(1);
         CountDownLatch ended = new CountDownLatch(1);
         Thread worker = new Thread(() -> {
-            try (HireRegistry.Registration registration = HireRegistry.shared().begin(SEAT, BRIEF)) {
+            try (HireRegistry.Registration registration = HireRegistry.shared().begin(SEAT, BRIEF, "")) {
                 registered.countDown();
                 try {
                     Thread.sleep(30_000);

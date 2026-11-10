@@ -218,7 +218,7 @@ class AcpBrainSessionTest {
     @DisplayName("S9: while a hire's brain works, the registry of running hires holds the tool calls it has made and the context size and cost its last usage report carried, and drops them when the hire ends")
     void aRunningHiresProgressFollowsItsBrainsStream() throws Exception {
         List<String> seen = new java.util.ArrayList<>();
-        try (HireRegistry.Registration running = HireRegistry.shared().begin("developer", "SPEND")) {
+        try (HireRegistry.Registration running = HireRegistry.shared().begin("developer", "SPEND", "")) {
             AcpBrainSession.run(host, agent, HireSite.in(dir), "SPEND", null, List.of(), Optional.empty(),
                 HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null, update -> {
                     HireRegistry.Progress now = HireRegistry.shared().progress("developer", "SPEND").orElseThrow();

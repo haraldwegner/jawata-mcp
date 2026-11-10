@@ -116,17 +116,10 @@ public final class HireRegistry {
     }
 
     /**
-     * Registers a hire of this seat for this brief as running on the current thread. A stop mark left on this thread by an earlier hire is
-     * dropped: it would otherwise end this hire the moment its brain's process started. Registering, stopping and closing take turns, so a
-     * stop cannot mark a thread whose hire has just closed.
-     */
-    public synchronized Registration begin(String seat, String brief) {
-        return begin(seat, brief, "");
-    }
-
-    /**
-     * Registers the hire as {@link #begin(String, String)} does and gives it the next first name of this conversation, the id of the caller
-     * that issued it, so two hires of one seat in one conversation can be told apart.
+     * Registers a hire of this seat for this brief as running on the current thread, and gives it the next first name of this conversation,
+     * the id of the caller that issued it, so two hires of one seat in one conversation can be told apart. A stop mark left on this thread by an
+     * earlier hire is dropped: it would otherwise end this hire the moment its brain's process started. Registering, stopping and closing take
+     * turns, so a stop cannot mark a thread whose hire has just closed.
      */
     public synchronized Registration begin(String seat, String brief, String conversationKey) {
         Running hire = new Running(seat, normal(brief), HireNames.shared().assign(conversationKey), conversationKey == null ? "" : conversationKey,

@@ -345,7 +345,7 @@ class AgentContractLevel1Test {
             new Hire("p-test-writer", "test-writer", "Write the tests the change owes.", seatFile(dir, "test-writer", "cover"), null)));
         CountDownLatch registered = new CountDownLatch(1);
         Thread running = new Thread(() -> {
-            try (HireRegistry.Registration registration = HireRegistry.shared().begin("test-writer", "Write the tests the change owes.")) {
+            try (HireRegistry.Registration registration = HireRegistry.shared().begin("test-writer", "Write the tests the change owes.", "")) {
                 registered.countDown();
                 Thread.sleep(30_000);
             } catch (InterruptedException stopped) {
@@ -411,7 +411,7 @@ class AgentContractLevel1Test {
         // The Replace ends the brain process of a hire the engine is running, so the hire stands on a thread of its own, waiting for that end.
         java.util.concurrent.CountDownLatch registered = new java.util.concurrent.CountDownLatch(1);
         Thread hire = new Thread(() -> {
-            try (var running = org.jawata.mcp.execution.HireRegistry.shared().begin("pm", "Run sprint 28i.")) {
+            try (var running = org.jawata.mcp.execution.HireRegistry.shared().begin("pm", "Run sprint 28i.", "")) {
                 java.util.concurrent.CountDownLatch brainEnded = new java.util.concurrent.CountDownLatch(1);
                 org.jawata.mcp.execution.HireRegistry.shared().onStop(brainEnded::countDown);
                 registered.countDown();
@@ -473,7 +473,7 @@ class AgentContractLevel1Test {
                 started.putObject("rawInput").put("hirer", "main").put("seat", "ctx-seat").put("brief", "ctx brief");
                 ObjectNode working = JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", "ctx-1").put("status", "in_progress")
                     .put("title", "mcp__jawata-javata-dev__hire");
-                try (HireRegistry.Registration running = HireRegistry.shared().begin("ctx-seat", "ctx brief")) {
+                try (HireRegistry.Registration running = HireRegistry.shared().begin("ctx-seat", "ctx brief", "")) {
                     toolCalls.accept(started);
                     HireRegistry.shared().noteUsage(java.util.OptionalLong.of(9_000), java.util.OptionalDouble.empty());
                     toolCalls.accept(working.deepCopy());

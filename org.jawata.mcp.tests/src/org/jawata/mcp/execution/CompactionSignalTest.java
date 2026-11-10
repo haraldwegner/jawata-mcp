@@ -55,7 +55,7 @@ class CompactionSignalTest {
     @DisplayName("a running hire is compacting from the moment its brain says so until it says it has finished, and not after the hire is closed")
     void aRunningHireKnowsWhenItsBrainIsCompacting() {
         HireRegistry hires = HireRegistry.shared();
-        try (HireRegistry.Registration ignored = hires.begin("compaction-probe", "a task")) {
+        try (HireRegistry.Registration ignored = hires.begin("compaction-probe", "a task", "")) {
             assertFalse(hires.compacting("compaction-probe", "a task"));
 
             hires.noteCompaction(true);

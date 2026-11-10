@@ -17,7 +17,7 @@ class HireRegistryReplaceTest {
     void aReplaceEndsTheProcessWithoutAnInterrupt() {
         HireRegistry hires = HireRegistry.shared();
         AtomicBoolean processEnded = new AtomicBoolean();
-        try (HireRegistry.Registration running = hires.begin("replace-test-seat", "replace-test-brief")) {
+        try (HireRegistry.Registration running = hires.begin("replace-test-seat", "replace-test-brief", "")) {
             hires.onStop(() -> processEnded.set(true));
 
             int replaced = hires.replace("replace-test-seat", "replace-test-brief", SeatHire.Brain.CURSOR, "");
