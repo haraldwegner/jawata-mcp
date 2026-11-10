@@ -365,7 +365,9 @@ final class HireWatch {
         Live hire = null;
         for (Live other : hires.values()) {
             boolean byPlan = !event.planId().isEmpty() && event.planId().equals(other.enginePlan);
-            boolean byCall = other.enginePlan.isEmpty() && other.seat.equals(event.seat()) && other.task.equals(event.brief());
+            // Only a card whose call is still open can be the one this event is for: a refused call's card has ended, and a retry of the same call
+            // (found by the C24 audit of the live runs) would otherwise have its events land on that failed card.
+            boolean byCall = other.endedMs < 0 && other.enginePlan.isEmpty() && other.seat.equals(event.seat()) && other.task.equals(event.brief());
             if (byPlan || byCall) {
                 hire = other;
                 break;

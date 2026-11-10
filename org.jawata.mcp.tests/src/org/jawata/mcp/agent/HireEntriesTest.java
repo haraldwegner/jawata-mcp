@@ -428,6 +428,31 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("C24 audit: a call the engine refused leaves a failed card, and the same call asked again and accepted gets its own card, which the engine's events then follow")
+    void theEventsOfAnAcceptedRetryDoNotLandOnTheRefusedCallsCard() {
+        watch.observe(withInput(hireCall("tool_call", "refused1", "pending"), "main", "retry-seat", "retry brief for the audit"));
+        HireEntry refused = watch.observe(hireCall("tool_call_update", "refused1", "failed")).orElseThrow();
+        watch.observe(withInput(hireCall("tool_call", "retry2", "pending"), "main", "retry-seat", "retry brief for the audit"));
+
+        java.util.List<org.jawata.mcp.execution.HireRegistry.Event> events = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Runnable unsubscribe = org.jawata.mcp.execution.HireRegistry.shared().subscribe(events::add);
+        try (org.jawata.mcp.execution.HireRegistry.Registration running =
+                 org.jawata.mcp.execution.HireRegistry.shared().begin("retry-seat", "retry brief for the audit", "audit-chat")) {
+            org.jawata.mcp.execution.HireRegistry.shared().planOpened("audit-plan-retry");
+            org.jawata.mcp.execution.HireRegistry.shared().record("retry-seat", "retry brief for the audit",
+                JSON.createObjectNode().put("plan", "audit-plan-retry").put("name", "Ida").put("cleanExit", true).put("answer", "ok"));
+        } finally {
+            unsubscribe.run();
+        }
+        // The engine's two events, started and finished, in the order it told them.
+        events.forEach(watch::engineEvent);
+
+        assertEquals(HireEntry.FAILED, watch.entry("refused1").orElseThrow().state(), "the refused call's card was taken by the retry's events");
+        assertEquals(HireEntry.DONE, watch.entry("retry2").orElseThrow().state(), "the retry's card did not follow the engine to its end");
+        assertEquals(HireEntry.FAILED, refused.state());
+    }
+
+    @Test
     @DisplayName("S24 (found live with Cursor): an echo that says only success does not end the card of a hire the engine still runs, and ends it once the engine has kept the hire's answer")
     void anEchoOfOnlySuccessLeavesARunningHireRunning() {
         watch.observe(withInput(hireCall("tool_call", "echo1", "pending"), "main", "echo-seat", "echo brief that no hire has answered"));

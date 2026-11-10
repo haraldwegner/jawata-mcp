@@ -431,9 +431,12 @@ printf -- '---\nname: e2e-ground-read\nbrain: claude-code\naccepts_uncontained_w
 GROUND_BRIEF="Change how the quokka ground carrier hands the settlement ledger its window."
 rm -f "$WS/ground-argv"
 G_CODE="$(call hire "{\"hirer\":\"e2e\",\"seat\":\"e2e-ground-code\",\"seatFile\":\"$WS/e2e-ground-code.md\",\"brief\":\"$GROUND_BRIEF\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}")"
+# A hire answers at once and runs on the engine's own thread (Stage 24), so the brain's command line is waited for, not assumed.
+for _ in $(seq 1 60); do [ -s "$WS/ground-argv" ] && break; sleep 1; done
 G_CODE_ARGV="$(cat "$WS/ground-argv" 2>/dev/null)"
 rm -f "$WS/ground-argv"
 G_READ="$(call hire "{\"hirer\":\"e2e\",\"seat\":\"e2e-ground-read\",\"seatFile\":\"$WS/e2e-ground-read.md\",\"brief\":\"$GROUND_BRIEF\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}")"
+for _ in $(seq 1 60); do [ -s "$WS/ground-argv" ] && break; sleep 1; done
 G_READ_ARGV="$(cat "$WS/ground-argv" 2>/dev/null)"
 case "$G_CODE_ARGV" in
     *"The ground you work on"*"E13 the quokka ground carrier"*"Your brief"*) pass "area-ground the area's job is in the prompt of a seat that changes code, before its brief" ;;
