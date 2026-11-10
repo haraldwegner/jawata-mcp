@@ -268,6 +268,10 @@ public class HireTool extends NeutralTool {
         properties.put("boardFile", Map.of("type", "string",
             "description", "Optional. The sprint's ...-plan.md. When given, the plan board in it is drawn from the plan"
                 + " ledger as soon as this hire's gates have run, and the answer carries what was drawn or why it was not."));
+        properties.put("claims", Map.of("type", "array", "items", Map.of("type", "string"),
+            "description", "Optional. The packages this hire will work in, such as org.jawata.mcp.execution. A claim that overlaps one that another"
+                + " running agent holds is refused, and the refusal names the agent that holds it; a claim an agent above this one holds admits"
+                + " this hire. The claim lasts until the hire ends, however it ends."));
         properties.put("workingDirectory", Map.of("type", "string",
             "description", "Where the brain runs — REQUIRED, never defaulted. It is the hire's"
                 + " blast radius: the brain reads and may write here, so a caller states it rather"
@@ -589,6 +593,18 @@ public class HireTool extends NeutralTool {
         // registering gives it its first name (Stage 24, D55), which the run writes into its journal row.
         HireRegistry.Registration running = HireRegistry.shared().begin(hired, brief,
             call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""));
+        // THE CLAIM (Stage 24, M13): the packages this hire will work in, taken before anything starts. An overlap with another running agent's
+        // claim is refused with who holds it, and nothing has been spent; the claim is released when the registration closes, however the hire ends.
+        List<String> claimed = new ArrayList<>();
+        call.getArguments().path("claims").forEach(claim -> claimed.add(claim.asText()));
+        if (!claimed.isEmpty()) {
+            Optional<String> refused = running.claim(claimed);
+            if (refused.isPresent()) {
+                running.close();
+                return ToolResponse.error("CLAIM_REFUSED", "refused: " + refused.get(),
+                    "wait for that agent to end, which releases its claim, or claim a package that does not overlap");
+            }
+        }
         HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area)
             // A replacement starts on another brain, which cannot continue the session of the one it replaces.
             .resuming(call.getReplacing() != null ? Optional.empty() : principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))

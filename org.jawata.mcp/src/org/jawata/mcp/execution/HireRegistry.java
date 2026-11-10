@@ -39,6 +39,10 @@ public final class HireRegistry {
         volatile String planId = "";
         /** Whether this hire runs on an engine thread started for it, so its result comes back as a new turn and not as the call's answer. */
         volatile boolean background;
+        /** The packages this hire has claimed to work in (Stage 24, M13); empty when it claimed none, and emptied when the hire ends. */
+        volatile java.util.Set<String> claims = java.util.Set.of();
+        /** When the claims were made, in milliseconds. */
+        volatile long claimedAtMs;
         final Thread thread;
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
@@ -67,6 +71,14 @@ public final class HireRegistry {
             return hire.name;
         }
 
+        /**
+         * Claims these packages for this hire (Stage 24, M13). The answer is a refusal naming the holder when another running hire that is not an
+         * ancestor of this one holds an overlapping package, and empty when the claim is made; a claim lasts until this hire ends.
+         */
+        public Optional<String> claim(java.util.Collection<String> packages) {
+            return HireRegistry.this.claim(hire, packages);
+        }
+
         /** Whether the person stopped this hire; true once, then the mark is gone. */
         public boolean wasStopped() {
             return stopped.remove(hire.thread);
@@ -80,6 +92,7 @@ public final class HireRegistry {
         @Override
         public void close() {
             synchronized (HireRegistry.this) {
+                hire.claims = java.util.Set.of();
                 running.remove(hire);
                 stopped.remove(hire.thread);
                 replacements.remove(hire.thread);
@@ -355,6 +368,45 @@ public final class HireRegistry {
             }
         }
         return Optional.empty();
+    }
+
+    private synchronized Optional<String> claim(Running claimant, java.util.Collection<String> packages) {
+        java.util.Set<String> wanted = new java.util.LinkedHashSet<>();
+        for (String name : packages) {
+            if (name != null && !name.isBlank()) {
+                wanted.add(name.strip());
+            }
+        }
+        for (Running holder : running) {
+            if (holder == claimant || holder.claims.isEmpty() || isAncestorOf(holder, claimant)) {
+                continue;
+            }
+            for (String held : holder.claims) {
+                for (String asked : wanted) {
+                    if (held.equals(asked) || held.startsWith(asked + ".") || asked.startsWith(held + ".")) {
+                        return Optional.of("package " + asked + " overlaps " + held + ", which is held by " + holder.name + " · " + holder.seat
+                            + (holder.planId.isEmpty() ? "" : " (hire " + holder.planId + ")") + " since "
+                            + java.time.LocalTime.ofInstant(java.time.Instant.ofEpochMilli(holder.claimedAtMs), java.time.ZoneId.systemDefault())
+                                .truncatedTo(java.time.temporal.ChronoUnit.MINUTES));
+                    }
+                }
+            }
+        }
+        claimant.claims = java.util.Set.copyOf(wanted);
+        claimant.claimedAtMs = System.currentTimeMillis();
+        return Optional.empty();
+    }
+
+    /** Whether the hire {@code maybe} is above {@code hire} in the chain of hires that issued it: an ancestor's claim admits what its hires claim. */
+    private boolean isAncestorOf(Running maybe, Running hire) {
+        String above = hire.leadId;
+        for (int steps = 0; steps < 16 && !above.isEmpty(); steps++) {
+            if (above.equals(maybe.planId)) {
+                return true;
+            }
+            above = issuedBy.getOrDefault(above, "");
+        }
+        return false;
     }
 
     /** The threads whose next hire is started in the background; read once, when that hire is registered. */

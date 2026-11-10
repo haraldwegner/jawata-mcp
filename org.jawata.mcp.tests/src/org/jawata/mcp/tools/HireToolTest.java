@@ -1982,6 +1982,45 @@ class HireToolTest {
         }
     }
 
+    @Test
+    @DisplayName("S24 (M13, T5): a hire whose claim overlaps a running agent's is refused naming the holder before anything starts, and a hire whose claim overlaps nothing runs")
+    void aClaimThatOverlapsIsRefusedBeforeAnythingStarts() throws Exception {
+        java.util.concurrent.CountDownLatch held = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Thread holder = new Thread(() -> {
+            try (org.jawata.mcp.execution.HireRegistry.Registration registration =
+                     org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "m13 tool holder", "m13-tool-chat")) {
+                registration.claim(List.of("org.m13.tool.held"));
+                org.jawata.mcp.execution.HireRegistry.shared().planOpened("m13-tool-holder-plan");
+                held.countDown();
+                release.await();
+            } catch (InterruptedException ended) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        holder.setDaemon(true);
+        holder.start();
+        try {
+            assertTrue(held.await(5, java.util.concurrent.TimeUnit.SECONDS), "the holder did not start");
+            ObjectNode overlapping = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+            overlapping.putArray("claims").add("org.m13.tool.held.sub");
+            ObjectNode apart = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+            apart.putArray("claims").add("org.m13.tool.other");
+
+            ToolResponse refused = toolWith(aHostThatMustNotSpawn(), events, aRegistryWithACleanGate()).execute(overlapping);
+            ToolResponse ran = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(apart);
+
+            assertAll(
+                () -> assertFalse(refused.isSuccess(), "an overlapping claim was accepted"),
+                () -> assertTrue(String.valueOf(refused.getError()).contains("developer") && String.valueOf(refused.getError()).contains("m13-tool-holder-plan"),
+                    "the refusal does not name who holds the package: " + refused.getError()),
+                () -> assertTrue(ran.isSuccess(), "the control: a claim that overlaps nothing was refused: " + ran.getError()));
+        } finally {
+            release.countDown();
+            holder.join(5_000);
+        }
+    }
+
     /** A hire tool whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
