@@ -42,8 +42,6 @@ final class RefactoringCatalogue {
         new Entry("inline.variable", "Inline variable", "refactor.inline", "inline", Map.of("kind", "variable"), Set.of("variable"), List.of()),
         new Entry("lambda.anonymous", "Convert anonymous class to lambda", "refactor.rewrite", "convert_anonymous_to_lambda", Map.of(),
             Set.of("method", "variable"), List.of()),
-        new Entry("cleanup.guards", "Replace nested conditions with guard clauses", "refactor.rewrite", "apply_cleanup", Map.of("kind", "guard_clauses"),
-            Set.of("method"), List.of()),
         new Entry("cleanup.final", "Make variables that are never reassigned final", "refactor.rewrite", "apply_cleanup", Map.of("kind", "add_final"),
             Set.of("method"), List.of()),
         new Entry("hierarchy.up", "Pull member up", "refactor.move", "hierarchy", Map.of("direction", "up"), Set.of("method", "field"), List.of()),
