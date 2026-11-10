@@ -299,7 +299,7 @@ public class HireTool extends NeutralTool {
      */
     @Override
     public ToolResponse execute(JsonNode arguments) {
-        ToolResponse response = hire(arguments, null, "");
+        ToolResponse response = hire(new HireCall(arguments, null, "", org.jawata.mcp.models.CallerIdentity.serving()));
         // Every exit of the hire, a refusal included, is kept for the agent face, which cannot rely on a brain echoing the answer back.
         JsonNode outcome = response.isSuccess() ? JSON.valueToTree(response.getData())
             : JSON.createObjectNode().put("cleanExit", false).put("error", response.getError().getMessage());
@@ -307,7 +307,43 @@ public class HireTool extends NeutralTool {
         return response;
     }
 
-    private ToolResponse hire(JsonNode arguments, Replacement replacing, String saidBefore) {
+    /**
+     * One request to hire: the arguments the caller sent, the replacement the person chose while an earlier brain worked, what that brain had
+     * said, and the caller who sent it. The caller is read from the thread's context when the call is made, because the context lives on the
+     * calling thread and an engine thread that carries the call out later would find it empty.
+     */
+    public static class HireCall {
+        private final JsonNode arguments;
+        private final Replacement replacing;
+        private final String saidBefore;
+        private final Optional<org.jawata.mcp.models.CallerIdentity> serving;
+
+        public HireCall(JsonNode arguments, Replacement replacing, String saidBefore, Optional<org.jawata.mcp.models.CallerIdentity> serving) {
+            this.arguments = arguments;
+            this.replacing = replacing;
+            this.saidBefore = saidBefore;
+            this.serving = serving;
+        }
+
+        public JsonNode getArguments() {
+            return arguments;
+        }
+
+        public Replacement getReplacing() {
+            return replacing;
+        }
+
+        public String getSaidBefore() {
+            return saidBefore;
+        }
+
+        /** The caller this hire serves, captured when the call was made; empty when none was identified. */
+        public Optional<org.jawata.mcp.models.CallerIdentity> getServing() {
+            return serving;
+        }
+    }
+
+    ToolResponse hire(HireCall call) {
         LearnerEventStore landsIn = journal.get();
         if (landsIn == null) {
             // DEGRADATION ON THE RESPONSE CHANNEL, which is the only one a client can see. A hire
@@ -324,10 +360,10 @@ public class HireTool extends NeutralTool {
         // real claude in the developer's repository. Deleting the input from the schema left the
         // same hole for any caller still sending it, because an ignored argument IS an inert
         // input. Which executable a brain is comes from the seat file alone.
-        if (arguments != null) {
+        if (call.getArguments() != null) {
             Set<String> read = schemaProperties();
             List<String> unread = new ArrayList<>();
-            arguments.fieldNames().forEachRemaining(name -> {
+            call.getArguments().fieldNames().forEachRemaining(name -> {
                 if (!read.contains(name)) {
                     unread.add(name);
                 }
@@ -340,18 +376,18 @@ public class HireTool extends NeutralTool {
             }
         }
         for (String required : List.of("hirer", "seat", "seatFile", "brief", "workingDirectory")) {
-            ToolResponse missing = requireParam(arguments, required);
+            ToolResponse missing = requireParam(call.getArguments(), required);
             if (missing != null) {
                 return missing;
             }
         }
-        String hirer = getStringParam(arguments, "hirer");
-        String hired = getStringParam(arguments, "seat");
-        String brief = getStringParam(arguments, "brief");
+        String hirer = getStringParam(call.getArguments(), "hirer");
+        String hired = getStringParam(call.getArguments(), "seat");
+        String brief = getStringParam(call.getArguments(), "brief");
 
         SeatHire seat;
         try {
-            seat = SeatHire.read(readSeatFile(getStringParam(arguments, "seatFile")));
+            seat = SeatHire.read(readSeatFile(getStringParam(call.getArguments(), "seatFile")));
         } catch (IOException | InvalidPathException e) {
             return ToolResponse.error("FILE_NOT_FOUND",
                 "the hired seat's file could not be read: " + e.getMessage(),
@@ -367,8 +403,8 @@ public class HireTool extends NeutralTool {
 
         // THE PERSON'S REPLACE (D53 (i)): a hire moved onto another brain in the Agent Control panel runs on that brain this once; the seat file, its
         // default, is not touched. It comes before the registry fills a model the seat names none of, so the person's choice wins over the registry's default.
-        if (replacing != null) {
-            seat = seat.withBrain(replacing.brain(), replacing.model());
+        if (call.getReplacing() != null) {
+            seat = seat.withBrain(call.getReplacing().brain(), call.getReplacing().model());
         }
 
         // THE MODEL REGISTRY AND THE VENDOR RULE (S12, D11, D48). The registry setting offers each brain with its vendor and model; the seat file's own
@@ -383,7 +419,7 @@ public class HireTool extends NeutralTool {
         // refused as a whole, the signed tree is used in its place and the hire's answer says which rules it broke.
         ToolRegistry known = registry.get();
         Set<String> codeChanging = known == null ? Set.of() : SeatTree.codeChangingIn(known.getToolDefinitions());
-        SeatTree.Loaded declaredTree = SeatTree.in(Path.of(getStringParam(arguments, "seatFile")).toAbsolutePath().getParent(), codeChanging);
+        SeatTree.Loaded declaredTree = SeatTree.in(Path.of(getStringParam(call.getArguments(), "seatFile")).toAbsolutePath().getParent(), codeChanging);
         Hirer hiring = new Hirer(declaredTree.tree(), Map.of(), Set.of());
         Hirer deciding = settings.get().get(Hirer.MAIN_BRAIN_SETTING).flatMap(Hirer::brainOf)
             .map(main -> hiring.withBrain("main", main)).orElse(hiring);
@@ -407,7 +443,7 @@ public class HireTool extends NeutralTool {
 
         List<GatedStep> steps;
         try {
-            steps = gatedSteps(arguments);
+            steps = gatedSteps(call.getArguments());
         } catch (IllegalArgumentException e) {
             return ToolResponse.invalidParameter("steps", e.getMessage());
         }
@@ -467,7 +503,7 @@ public class HireTool extends NeutralTool {
         // runs is the dialect's alone.)
         HireSite base;
         try {
-            base = HireSite.in(Path.of(getStringParam(arguments, "workingDirectory")));
+            base = HireSite.in(Path.of(getStringParam(call.getArguments(), "workingDirectory")));
         } catch (InvalidPathException e) {
             return ToolResponse.invalidParameter("workingDirectory", e.getMessage());
         }
@@ -475,17 +511,17 @@ public class HireTool extends NeutralTool {
         // D4: a later hire of the same seat in the same principal session continues the brain's own session. Only a caller that sent a session
         // id of its own has one: callers with none share a transport's anonymous bucket, and continuing one of them for another would hand a
         // stranger the earlier conversation.
-        Optional<String> principalSession = org.jawata.mcp.models.CallerIdentity.serving()
+        Optional<String> principalSession = call.getServing()
             .filter(caller -> caller.origin() == org.jawata.mcp.models.CallerIdentity.Origin.CLIENT_SUPPLIED)
             .map(org.jawata.mcp.models.CallerIdentity::id);
         HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area)
             // A replacement starts on another brain, which cannot continue the session of the one it replaces.
-            .resuming(replacing != null ? Optional.empty() : principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
+            .resuming(call.getReplacing() != null ? Optional.empty() : principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
             // The plan this hire opens belongs to the session that issued it, whoever it is: only that session's turn waits on its step (S10).
-            .ownedBy(org.jawata.mcp.models.CallerIdentity.serving().map(org.jawata.mcp.models.CallerIdentity::id))
+            .ownedBy(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id))
             .labelled(hired, hirer)
-            .fixing(getStringParam(arguments, "fixes"))
-            .issuedFrom(getStringParam(arguments, "instructionsFrom"));
+            .fixing(getStringParam(call.getArguments(), "fixes"))
+            .issuedFrom(getStringParam(call.getArguments(), "instructionsFrom"));
         HiredRun.Proposal proposal;
         // While the brain runs this hire can be stopped from the Agent Control panel (S9): the panel's stop interrupts this thread, which ends the
         // run the way any interruption does, and the answer says the person stopped it.
@@ -493,8 +529,8 @@ public class HireTool extends NeutralTool {
         boolean stoppedByPerson = false;
         Optional<RunningHires.Replacement> replacement = Optional.empty();
         // The registration keeps the brief the principal gave, so the panel still finds this hire; the brain is also told what was said before it took over.
-        String briefToBrain = saidBefore.isBlank() ? brief
-            : brief + "\n\nYou are taking over this work from another brain, which was stopped. What it had said so far:\n\n" + saidBefore;
+        String briefToBrain = call.getSaidBefore().isBlank() ? brief
+            : brief + "\n\nYou are taking over this work from another brain, which was stopped. What it had said so far:\n\n" + call.getSaidBefore();
         try {
             // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
             // The registry names a brain by its product name, as the panel's choices and the vendor rule do ("cursor"); the dialect names itself
@@ -516,7 +552,7 @@ public class HireTool extends NeutralTool {
             if (replacement.isPresent()) {
                 running.wasStopped();
                 running.close();
-                return hire(arguments, replacement.get(), saidBefore);
+                return hire(new HireCall(call.getArguments(), replacement.get(), call.getSaidBefore(), call.getServing()));
             }
             if (running.wasStopped()) {
                 // The person's stop is handled here and ends with this answer, so the thread is left as it is for the next request.
@@ -541,7 +577,7 @@ public class HireTool extends NeutralTool {
         }
         if (replacement.isPresent()) {
             // D53 (i): the same seat and task again, on the brain the person chose, with what the stopped brain had said. The answer tells the principal.
-            return hire(arguments, replacement.get(), saidBefore + proposal.outcome().text());
+            return hire(new HireCall(call.getArguments(), replacement.get(), call.getSaidBefore() + proposal.outcome().text(), call.getServing()));
         }
         if (stoppedByPerson) {
             return ToolResponse.error("HIRE_STOPPED",
@@ -554,10 +590,10 @@ public class HireTool extends NeutralTool {
         // answered is not an attribution.
         data.put("hirer", hirer);
         data.put("hired", hired);
-        if (replacing != null) {
+        if (call.getReplacing() != null) {
             data.put("replaced", "the person moved this agent onto " + seat.brain().label() + " while it worked: its first brain was stopped and this seat was hired again with what had been said; this answer is the replacement's, and the seat's default brain is unchanged");
         }
-        String corrects = getStringParam(arguments, "fixes");
+        String corrects = getStringParam(call.getArguments(), "fixes");
         if (corrects != null && !corrects.isBlank()) {
             data.put("fixes", corrects.strip());
         }
@@ -589,7 +625,7 @@ public class HireTool extends NeutralTool {
         data.put("gates", gateRows(proposal));
         // S10 (D18): the plan board is drawn from the ledger the moment the gates have run, by the
         // hire itself, so the plan file says what the gates say without anyone remembering to ask.
-        String boardFile = getStringParam(arguments, "boardFile");
+        String boardFile = getStringParam(call.getArguments(), "boardFile");
         if (boardFile != null && !boardFile.isBlank()) {
             ToolResponse drawn = new PlanBoardTool(plans).execute(JSON.createObjectNode().put("file", boardFile));
             data.put("board", drawn.isSuccess() ? drawn.getData() : "NOT DRAWN: " + drawn.getError());
@@ -681,9 +717,9 @@ public class HireTool extends NeutralTool {
             data.put("instructionFaults", instructionFaults);
         }
         // THE PM'S MEASURE, for a worker hired to carry those instructions out.
-        String instructionsFrom = getStringParam(arguments, "instructionsFrom");
+        String instructionsFrom = getStringParam(call.getArguments(), "instructionsFrom");
         if (instructionsFrom != null && !instructionsFrom.isBlank()) {
-            String observerSeatFile = getStringParam(arguments, "observerSeatFile");
+            String observerSeatFile = getStringParam(call.getArguments(), "observerSeatFile");
             Observer.Judge judge = observerSeatFile == null || observerSeatFile.isBlank()
                 ? null
                 : hiredJudge(observerSeatFile.trim(), landsIn, endpoint, base);
@@ -718,7 +754,7 @@ public class HireTool extends NeutralTool {
         seat.budgetReport().ifPresent(report -> data.put("budget", report));
         // S12 (D11): a hire that did not pass its gates goes up one rung where the tree has one (a developer to the senior developer).
         if (!proposal.complete()) {
-            deciding.escalateTo(hired).ifPresent(next -> data.put("escalation", escalate(arguments, next, proposal.plan().value())));
+            deciding.escalateTo(hired).ifPresent(next -> data.put("escalation", escalate(call.getArguments(), next, proposal.plan().value())));
         }
         if (declaredTree.refused()) {
             data.put("seatTreeRefused", declaredTree.refusals());

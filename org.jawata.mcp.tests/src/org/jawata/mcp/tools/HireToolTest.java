@@ -1879,6 +1879,47 @@ class HireToolTest {
             () -> assertEquals(0, otherSees.get(0), "another caller was told about a hire it did not issue, and would hold its turn on it"));
     }
 
+    @Test
+    @DisplayName("S24 (M3): the caller a hire serves is the one captured when the call was made, even when another thread carries the call out")
+    void theCallerIsTheOneCapturedWhenTheCallWasMadeNotTheOneOnTheThreadThatRunsIt() throws Exception {
+        java.util.List<Integer> issuerSees = new java.util.ArrayList<>();
+        java.util.List<Integer> otherSees = new java.util.ArrayList<>();
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new Tool() {
+            @Override public String getName() {
+                return "compile_workspace";
+            }
+            @Override public String getDescription() {
+                return "a gate fixture that notes whether the ledger says its plan is waiting for the captured caller or for another one";
+            }
+            @Override public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+            @Override public ToolResponse execute(JsonNode arguments) {
+                issuerSees.add(plans.pendingFor("principal-m3-captured").size());
+                otherSees.add(plans.pendingFor("principal-m3-someone-else").size());
+                return ToolResponse.success(Map.of("errorCount", 0));
+            }
+        });
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, registry);
+        HireTool.HireCall call = new HireTool.HireCall(hireArgs(seatFile(CATALOGUER_SEAT)), null, "",
+            java.util.Optional.of(org.jawata.mcp.models.CallerIdentity.supplied("principal-m3-captured")));
+
+        // The thread that runs the call has no caller of its own: whatever the hire knows of who asked it, it was given in the call.
+        java.util.concurrent.ExecutorService engineThread = java.util.concurrent.Executors.newSingleThreadExecutor();
+        try {
+            dataOf(engineThread.submit(() -> hire.hire(call)).get(60, java.util.concurrent.TimeUnit.SECONDS));
+        } finally {
+            engineThread.shutdownNow();
+        }
+
+        assertAll(
+            () -> assertTrue(!issuerSees.isEmpty(), "the gate never ran, so nothing was observed"),
+            () -> assertEquals(1, issuerSees.get(0), "the captured caller was not told its own hire's step is pending"),
+            // A plan nobody owns is listed to every caller, so the issuer seeing it proves nothing: the other caller seeing none does.
+            () -> assertEquals(0, otherSees.get(0), "the plan was listed to another caller: the hire read who asked from the thread running it, which had none"));
+    }
+
     /** A hire tool whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
