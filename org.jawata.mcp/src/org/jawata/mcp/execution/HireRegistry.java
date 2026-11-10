@@ -122,7 +122,9 @@ public final class HireRegistry {
      * turns, so a stop cannot mark a thread whose hire has just closed.
      */
     public synchronized Registration begin(String seat, String brief, String conversationKey) {
-        Running hire = new Running(seat, normal(brief), HireNames.shared().assign(conversationKey), conversationKey == null ? "" : conversationKey,
+        // The names are drawn for the whole chat the hire traces back to, not for the lead that issued it: two chief engineers under two project
+        // managers of one chat were given the same name by a run with Cursor, and a row must tell them apart.
+        Running hire = new Running(seat, normal(brief), HireNames.shared().assign(rootOf(conversationKey)), conversationKey == null ? "" : conversationKey,
             Thread.currentThread());
         stopped.remove(hire.thread);
         hire.background = backgroundNext.remove(hire.thread);

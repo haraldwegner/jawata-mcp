@@ -71,6 +71,27 @@ class HireNamesTest {
     }
 
     @Test
+    @DisplayName("found live with Cursor: hires of different leads of one chat are named from one sequence, so no two rows of the chat read the same")
+    void hiresUnderDifferentLeadsOfOneChatNeverShareAName() {
+        HireRegistry registry = HireRegistry.shared();
+        List<String> given = new ArrayList<>();
+        for (int lead = 0; lead < 12; lead++) {
+            String leadPlan = "names-lead-plan-" + lead;
+            registry.speaksFor(leadPlan, "names-one-chat");
+            try (HireRegistry.Registration child = registry.begin("chief-engineer", "names brief " + lead, leadPlan)) {
+                given.add(child.name());
+            }
+        }
+        // The names are the chat's own sequence, in order: drawn per issuing lead they would be twelve first names of twelve other sequences.
+        HireNames oneChat = new HireNames();
+        List<String> expected = new ArrayList<>();
+        for (int lead = 0; lead < 12; lead++) {
+            expected.add(oneChat.assign("names-one-chat"));
+        }
+        assertEquals(expected, given, "the hires of one chat were not named from the chat's one sequence");
+    }
+
+    @Test
     @DisplayName("an entry made without a name reads as before and its card has no name field")
     void anEntryWithoutANameIsUnchanged() {
         HireEntry entry = new HireEntry("call-2", "pm", Optional.empty(), Optional.empty(), HireEntry.RUNNING, 0, 0,
