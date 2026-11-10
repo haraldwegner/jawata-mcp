@@ -26,11 +26,18 @@ final class LspCodeActions {
     private final ToolCalls tools;
     private final CallerIdentity caller;
     private final LspEdits lspEdits;
+    private final LspRefactorings refactorings;
 
     LspCodeActions(ToolCalls tools, CallerIdentity caller, LspEdits lspEdits) {
         this.tools = tools;
         this.caller = caller;
         this.lspEdits = lspEdits;
+        this.refactorings = new LspRefactorings(tools, caller, lspEdits);
+    }
+
+    /** The catalogue refactorings this server offers, which the server also answers the staging of once their inputs are collected. */
+    LspRefactorings refactorings() {
+        return refactorings;
     }
 
     private static final int MOST_QUICK_FIXES = 8;
@@ -59,6 +66,7 @@ final class LspCodeActions {
         if (wanted(only, "refactor.extract") && !range.path("start").equals(range.path("end"))) {
             extractions(filePath, range, actions);
         }
+        refactorings.offered(uri, filePath, range.path("start"), kind -> wanted(only, kind), actions);
         return actions;
     }
 

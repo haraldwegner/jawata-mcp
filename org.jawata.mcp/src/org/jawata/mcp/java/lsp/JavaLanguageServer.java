@@ -58,6 +58,9 @@ public final class JavaLanguageServer {
     private static final int SEVERITY_WARNING = 2;
     private static final int MOST_PROBLEMS_PER_FILE = 500;
 
+    /** How often a running test session is looked at for the progress the editor is told of. */
+    private static final long TEST_POLL_MILLIS = 500;
+
     private final Supplier<IJdtService> service;
     private final ToolCalls tools;
     private final CallerIdentity caller;
@@ -267,14 +270,20 @@ public final class JavaLanguageServer {
         requests.register("workspace/executeCommand", "executeCommandProvider", Map.of("commands", navigation.commands()), navigation::executeCommand);
         requests.register("java/classFileContents", null, null, navigation::classFileContents);
         requests.register("jawata/javaProjects", null, null, new LspProjects(service)::projects);
+        LspTests tests = new LspTests(tools, caller, service, out, TEST_POLL_MILLIS);
+        requests.register("jawata/tests/list", null, null, tests::list);
+        requests.register("jawata/tests/run", null, null, tests::run);
+        requests.register("jawata/profile", null, null, new LspProfile(tools, caller, service)::profile);
         LspEdits lspEdits = new LspEdits(this::viewOf, this::hasUnsavedText);
         MovedFileEdits movedFileEdits = new MovedFileEdits(lspEdits);
         LspRename rename = new LspRename(tools, caller, lspEdits, movedFileEdits);
         requests.register("textDocument/prepareRename", "renameProvider", Map.of("prepareProvider", true), rename::prepareRename);
         requests.register("textDocument/rename", "renameProvider", Map.of("prepareProvider", true), rename::rename);
         LspCodeActions codeActions = new LspCodeActions(tools, caller, lspEdits);
-        requests.register("textDocument/codeAction", "codeActionProvider",
-            Map.of("codeActionKinds", List.of("quickfix", "source.organizeImports", "refactor.extract")), codeActions::codeAction);
+        List<String> actionKinds = new ArrayList<>(List.of("quickfix", "source.organizeImports", "refactor.extract"));
+        actionKinds.addAll(RefactoringCatalogue.kinds());
+        requests.register("textDocument/codeAction", "codeActionProvider", Map.of("codeActionKinds", actionKinds), codeActions::codeAction);
+        requests.register("jawata/refactor/stage", null, null, codeActions.refactorings()::stage);
         LspFileOperations fileOperations = new LspFileOperations(tools, caller, lspEdits, movedFileEdits);
         requests.register("workspace/willRenameFiles", null, null, fileOperations::willRenameFiles); // announced under workspace.fileOperations, which initializeResult owns
         LspFormatting formatting = new LspFormatting(lspEdits);
