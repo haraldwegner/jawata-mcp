@@ -645,6 +645,13 @@ public final class AcpServer {
                 text = "[jawata] autonomy: off (the person typed a message, which ends it)\n" + text;
             }
         }
+        String stopReason = conductTurn(params, session, messageId, typed, text);
+        ObjectNode result = JSON.createObjectNode();
+        result.put("stopReason", stopReason);
+        return JsonRpcMessage.successResponse(id, result);
+    }
+
+    private String conductTurn(JsonNode params, PrincipalSession session, String messageId, String typed, String text) {
         StringBuilder said = new StringBuilder();
         // WITH A REVIEWER, THE MAIN SEAT'S TEXT IS HELD AND ONLY THE REVIEWED TEXT IS SENT (S11, D25): the one road to the person is the
         // release below, so there is no way for a message to reach the person unreviewed.
@@ -683,23 +690,7 @@ public final class AcpServer {
         running.put(session.id(), Thread.currentThread());
         try {
             brain.attachImages(imagesOf(params.get("prompt")));
-            while (true) {
-                brain.answer(text, chunks, toolCalls, thought -> update(session.id(), ((ObjectNode) thought).deepCopy()));
-                if (cancelled.contains(session.id())) {
-                    stopReason = "cancelled";
-                    break;
-                }
-                TurnBoundary.Verdict verdict = boundary.atTurnEnd(session);
-                if (verdict.kind() == TurnBoundary.Kind.RESUME) {
-                    chunks.accept("\n\n" + verdict.text() + "\n\n");
-                    text = "[jawata] autonomy: " + (session.autonomy() ? "on" : "off") + "\n" + verdict.text();
-                    continue;
-                }
-                if (verdict.kind() == TurnBoundary.Kind.REPORT) {
-                    chunks.accept("\n\n" + verdict.text());
-                }
-                break;
-            }
+            stopReason = answerUntilTheTurnEnds(session, text, chunks, toolCalls, stopReason);
         } finally {
             running.remove(session.id());
             Thread.interrupted(); // a cancel that arrived after the brain finished must not poison the connection's worker
@@ -711,9 +702,29 @@ public final class AcpServer {
                 toolState.entrySet().stream()
                     .map(call -> hires.entry(call.getKey()).map(HireEntry::cardLine).orElseGet(() -> toolLine(call.getValue()))).toList());
         }
-        ObjectNode result = JSON.createObjectNode();
-        result.put("stopReason", stopReason);
-        return JsonRpcMessage.successResponse(id, result);
+        return stopReason;
+    }
+
+    private String answerUntilTheTurnEnds(PrincipalSession session, String text, Consumer<String> chunks,
+            Consumer<JsonNode> toolCalls, String stopReason) {
+        while (true) {
+            brain.answer(text, chunks, toolCalls, thought -> update(session.id(), ((ObjectNode) thought).deepCopy()));
+            if (cancelled.contains(session.id())) {
+                stopReason = "cancelled";
+                break;
+            }
+            TurnBoundary.Verdict verdict = boundary.atTurnEnd(session);
+            if (verdict.kind() == TurnBoundary.Kind.RESUME) {
+                chunks.accept("\n\n" + verdict.text() + "\n\n");
+                text = "[jawata] autonomy: " + (session.autonomy() ? "on" : "off") + "\n" + verdict.text();
+                continue;
+            }
+            if (verdict.kind() == TurnBoundary.Kind.REPORT) {
+                chunks.accept("\n\n" + verdict.text());
+            }
+            break;
+        }
+        return stopReason;
     }
 
     /** Where the text of a seat's or a skill's word comes from; none offered leaves every prompt as it was typed. */
