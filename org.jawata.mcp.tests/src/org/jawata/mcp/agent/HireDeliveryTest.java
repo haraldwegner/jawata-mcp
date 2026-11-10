@@ -155,6 +155,42 @@ class HireDeliveryTest {
     }
 
     @Test
+    @DisplayName("D55: with a report turn running and a second report in line, the person's message waits only for the running turn and is answered before the second report")
+    void thePersonsMessageGoesAheadOfAReportThatIsOnlyQueued() throws Exception {
+        connect();
+        personSays(2, "start the work");
+        aHireIsOut("developer", "queue brief first", "queue-plan-1", true);
+        aHireIsOut("developer", "queue brief second", "queue-plan-2", true);
+        holdTheReport = new CountDownLatch(1);
+        HireRegistry.shared().record("developer", "queue brief first", answered("queue-plan-1", "Joe", "first report text"));
+        assertTrue(reportTurnStarted.await(10, TimeUnit.SECONDS), "the first report turn never started");
+        HireRegistry.shared().record("developer", "queue brief second", answered("queue-plan-2", "Mira", "second report text"));
+        Thread.sleep(300); // the second report is now in line behind the running turn
+
+        Thread typing = new Thread(() -> personSays(3, "and what about the other thing?"));
+        typing.setDaemon(true);
+        threads.add(typing);
+        typing.start();
+        Thread.sleep(300);
+        holdTheReport.countDown();
+        typing.join(10_000);
+        waitUntil(() -> prompts.stream().anyMatch(p -> p.contains("second report text")), 10);
+
+        int person = -1;
+        int second = -1;
+        for (int i = 0; i < prompts.size(); i++) {
+            if (prompts.get(i).contains("the other thing")) {
+                person = i;
+            }
+            if (prompts.get(i).contains("second report text")) {
+                second = i;
+            }
+        }
+        assertTrue(person >= 0 && second >= 0 && person < second,
+            "the person's message was not answered before the queued report (person at " + person + ", second report at " + second + "): " + prompts);
+    }
+
+    @Test
     @DisplayName("found live with Cursor: a hire asked for by the brain's own key, which is not the chat's id, is shown on its chat and reported to its brain")
     void aHireAskedForByTheBrainsOwnKeyReportsToItsChat() throws Exception {
         connect();

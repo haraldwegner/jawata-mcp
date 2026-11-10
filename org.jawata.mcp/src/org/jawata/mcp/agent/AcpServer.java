@@ -616,6 +616,12 @@ public final class AcpServer {
      */
     private final Map<String, java.util.concurrent.locks.ReentrantLock> turnLocks = new ConcurrentHashMap<>();
 
+    /**
+     * How many messages of the person wait for a session's turn. A report that is only queued gives way to them: the person is answered after the
+     * turn that is running, not after every report in line (Stage 24, D55). A turn already running is not cut short.
+     */
+    private final Map<String, java.util.concurrent.atomic.AtomicInteger> personsWaiting = new ConcurrentHashMap<>();
+
     /** The threads that carry the reports of finished hires to the brains, one task per report; they end with the connection. */
     private final java.util.concurrent.ExecutorService deliveries = java.util.concurrent.Executors.newCachedThreadPool(job -> {
         Thread thread = new Thread(job, "jawata-report");
@@ -633,7 +639,9 @@ public final class AcpServer {
         HireRegistry.shared().markDelivered(event);
         deliveries.execute(() -> {
             java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());
-            turn.lock();
+            if (!takeTheTurnAfterThePersons(turn, session.id())) {
+                return;
+            }
             try {
                 conductTurn(JSON.createObjectNode(), session, "msg_" + UUID.randomUUID(), "[report of " + event.name() + " · " + event.seat() + "]",
                     note + reportOf(session, event));
@@ -643,6 +651,23 @@ public final class AcpServer {
                 turn.unlock();
             }
         });
+    }
+
+    /**
+     * Takes the session's turn for a report, but only while no message of the person waits for it: a report in line gives way to the person's
+     * message, which then waits only for the turn that is already running. Returns false when the connection ended while it waited.
+     */
+    private boolean takeTheTurnAfterThePersons(java.util.concurrent.locks.ReentrantLock turn, String sessionId) {
+        java.util.concurrent.atomic.AtomicInteger waiting = personsWaiting.computeIfAbsent(sessionId, key -> new java.util.concurrent.atomic.AtomicInteger());
+        try {
+            while (waiting.get() > 0 || !turn.tryLock()) {
+                Thread.sleep(50);
+            }
+            return true;
+        } catch (InterruptedException ended) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
     }
 
     /**
@@ -714,7 +739,18 @@ public final class AcpServer {
         }
         java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());
         String stopReason;
-        turn.lock();
+        java.util.concurrent.atomic.AtomicInteger waiting = personsWaiting.computeIfAbsent(session.id(), key -> new java.util.concurrent.atomic.AtomicInteger());
+        boolean person = from == Channel.HOST;
+        if (person) {
+            waiting.incrementAndGet();
+        }
+        try {
+            turn.lock();
+        } finally {
+            if (person) {
+                waiting.decrementAndGet();
+            }
+        }
         try {
             stopReason = conductTurn(params, session, messageId, typed, text);
         } finally {
