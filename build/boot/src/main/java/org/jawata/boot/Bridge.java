@@ -135,6 +135,130 @@ final class Bridge {
         }
     };
 
+    /**
+     * The debug adapter protocol's framing (Sprint 28i, Stage 25, step A1): the editor writes and reads plain {@code Content-Length} frames of
+     * debug messages, which are not JSON-RPC, while the resident's route reads every message as JSON-RPC. So each message read from the editor
+     * is handed to the route as the {@code params} of a JSON-RPC message whose method is {@code dap}, and each message the route sends is
+     * written to the editor as the {@code params} it carries; a route message that carries no debug message is not written.
+     */
+    static final Framing DAP = new Framing() {
+        @Override
+        public MessageReader reader(InputStream in) {
+            MessageReader frames = CONTENT_LENGTH.reader(in);
+            return () -> {
+                String message = frames.next();
+                return message == null ? null : "{\"jsonrpc\":\"2.0\",\"method\":\"dap\",\"params\":" + message + "}";
+            };
+        }
+
+        @Override
+        public void write(PrintStream out, String body) {
+            java.util.Map<String, String> members = topLevelMembers(body);
+            String params = members.get("params");
+            if ("\"dap\"".equals(members.get("method")) && params != null && params.startsWith("{")) {
+                CONTENT_LENGTH.write(out, params);
+            }
+        }
+    };
+
+    /**
+     * The text of each member at the top level of a JSON object, keyed by its name, or an empty map when the text is not an object this can
+     * read. The names it is asked about carry no escapes; a value is the exact text, so a string with braces in it is not cut short.
+     */
+    static java.util.Map<String, String> topLevelMembers(String json) {
+        java.util.Map<String, String> members = new java.util.HashMap<>();
+        int at = skipSpace(json, 0);
+        if (at >= json.length() || json.charAt(at) != '{') {
+            return java.util.Map.of();
+        }
+        at++;
+        while (true) {
+            at = skipSpace(json, at);
+            if (at >= json.length()) {
+                return java.util.Map.of();
+            }
+            char c = json.charAt(at);
+            if (c == '}') {
+                return members;
+            }
+            if (c == ',') {
+                at++;
+                continue;
+            }
+            int keyEnd = c == '"' ? endOfString(json, at) : -1;
+            if (keyEnd < 0) {
+                return java.util.Map.of();
+            }
+            String key = json.substring(at + 1, keyEnd);
+            at = skipSpace(json, keyEnd + 1);
+            if (at >= json.length() || json.charAt(at) != ':') {
+                return java.util.Map.of();
+            }
+            at = skipSpace(json, at + 1);
+            int end = endOfValue(json, at);
+            if (end < 0) {
+                return java.util.Map.of();
+            }
+            members.put(key, json.substring(at, end));
+            at = end;
+        }
+    }
+
+    private static int skipSpace(String json, int from) {
+        int at = from;
+        while (at < json.length() && Character.isWhitespace(json.charAt(at))) {
+            at++;
+        }
+        return at;
+    }
+
+    /** The index of the quote that closes the string opened at {@code open}, or -1. */
+    private static int endOfString(String json, int open) {
+        for (int at = open + 1; at < json.length(); at++) {
+            char c = json.charAt(at);
+            if (c == '\\') {
+                at++;
+            } else if (c == '"') {
+                return at;
+            }
+        }
+        return -1;
+    }
+
+    /** The index just after the value that starts at {@code start}, or -1 when it does not end. */
+    private static int endOfValue(String json, int start) {
+        if (start >= json.length()) {
+            return -1;
+        }
+        char first = json.charAt(start);
+        if (first == '"') {
+            int close = endOfString(json, start);
+            return close < 0 ? -1 : close + 1;
+        }
+        if (first == '{' || first == '[') {
+            int depth = 0;
+            for (int at = start; at < json.length(); at++) {
+                char c = json.charAt(at);
+                if (c == '"') {
+                    at = endOfString(json, at);
+                    if (at < 0) {
+                        return -1;
+                    }
+                } else if (c == '{' || c == '[') {
+                    depth++;
+                } else if ((c == '}' || c == ']') && --depth == 0) {
+                    return at + 1;
+                }
+            }
+            return -1;
+        }
+        int at = start;
+        while (at < json.length() && ",}] \t\r\n".indexOf(json.charAt(at)) < 0) {
+            at++;
+        }
+        return at;
+    }
+
     private final String flag;
     private final String route;
     private final Framing framing;
@@ -164,6 +288,11 @@ final class Bridge {
     /** Runs the language server's bridge ({@code --lsp}) for {@code args} and the process environment; returns the exit status. */
     static int runLsp(String[] args, InputStream in, PrintStream out, PrintStream err) throws IOException {
         return run("--lsp", "/lsp", CONTENT_LENGTH, args, in, out, err);
+    }
+
+    /** Runs the debugger's bridge ({@code --dap}) for {@code args} and the process environment; returns the exit status. */
+    static int runDap(String[] args, InputStream in, PrintStream out, PrintStream err) throws IOException {
+        return run("--dap", "/dap", DAP, args, in, out, err);
     }
 
     private static int run(String flag, String route, Framing framing, String[] args, InputStream in, PrintStream out, PrintStream err)
