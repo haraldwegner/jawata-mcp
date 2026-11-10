@@ -1922,6 +1922,66 @@ class HireToolTest {
             () -> assertEquals(0, otherSees.get(0), "the plan was listed to another caller: the hire read who asked from the thread running it, which had none"));
     }
 
+    /** A brain that takes this many seconds to answer, so a hire of it outlasts a caller that gives up sooner. */
+    private HostCommand aBrainThatTakes(int seconds) throws Exception {
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        Files.writeString(file, """
+            #!/bin/sh
+            sleep %d
+            echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I catalogued the execution package."}]}}'
+            echo '{"type":"result","result":"done","total_cost_usd":0.07}'
+            """.formatted(seconds));
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        return HostCommand.of(file.toString());
+    }
+
+    @Test
+    @DisplayName("S24 (M7, T1 and T11): with the background setting on a long hire answers its caller at once with its identity and still ends done after the caller gave up; with it off the same call is still waiting when the caller gives up")
+    void aBackgroundHireAnswersAtOnceAndEndsDoneWhateverTheCallerDid() throws Exception {
+        String brief = "S24 background brief";
+        java.util.concurrent.ExecutorService caller = java.util.concurrent.Executors.newCachedThreadPool(task -> {
+            Thread thread = new Thread(task);
+            thread.setDaemon(true);
+            return thread;
+        });
+        try {
+            // THE CONTROL: the setting is off, the brain takes four seconds, and the caller's own request gives up after one. The call is
+            // still waiting then: this is the failure the long hire showed under Cursor's agent, a call that outlives its caller's patience.
+            HireTool foreground = toolWithSettings(new StandsIn(host, aBrainThatTakes(4)), Map.of());
+            java.util.concurrent.Future<ToolResponse> waiting = caller.submit(() -> foreground.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+            org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.TimeoutException.class, () -> waiting.get(1, java.util.concurrent.TimeUnit.SECONDS),
+                "with the setting off the call was expected to still be running after a second");
+            waiting.get(30, java.util.concurrent.TimeUnit.SECONDS);
+
+            // THE HIRE ON THE ENGINE'S OWN THREAD: the same hire answers inside the caller's second with who it is and no result.
+            HireTool background = toolWithSettings(new StandsIn(host, aBrainThatTakes(4)), Map.of(HireTool.BACKGROUND_SETTING, "true"));
+            java.util.concurrent.Future<ToolResponse> answering = caller.submit(() -> background.execute(hireWithBrief(seatFile(CATALOGUER_SEAT), brief)));
+            Map<String, Object> started = dataOf(answering.get(1, java.util.concurrent.TimeUnit.SECONDS));
+
+            // AND IT ENDS DONE, not failed, although the caller has long since stopped waiting: its answer lands in the registry, under its brief.
+            com.fasterxml.jackson.databind.JsonNode ended = null;
+            for (int i = 0; i < 300 && ended == null; i++) {
+                java.util.Optional<com.fasterxml.jackson.databind.JsonNode> answer = org.jawata.mcp.execution.HireRegistry.shared().answerOf("cataloguer", brief);
+                if (answer.isPresent() && answer.get().has("plan")) {
+                    ended = answer.get();
+                } else {
+                    Thread.sleep(100);
+                }
+            }
+            com.fasterxml.jackson.databind.JsonNode recorded = ended;
+            assertAll(
+                () -> assertTrue(started.get("hireId") instanceof String id && !id.isBlank(), "the at-once answer has no plan id: " + started),
+                () -> assertTrue(started.get("name") instanceof String name && !name.isBlank(), "the at-once answer has no name: " + started),
+                () -> assertEquals("running", started.get("state"), "the at-once answer does not say the hire is running"),
+                () -> assertEquals("cataloguer", started.get("hired")),
+                () -> org.junit.jupiter.api.Assertions.assertNotNull(recorded, "the hire never recorded its answer after the caller stopped waiting"),
+                () -> assertEquals(started.get("hireId"), recorded == null ? null : recorded.path("plan").asText(), "the answer the hire recorded is for another plan"),
+                () -> assertTrue(recorded != null && recorded.path("cleanExit").asBoolean(true), "the long hire did not end done: " + recorded));
+        } finally {
+            caller.shutdownNow();
+        }
+    }
+
     /** A hire tool whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),

@@ -191,11 +191,31 @@ public final class HireRegistry {
         return Optional.empty();
     }
 
+    /** What the current thread asked to be told when the hire it is about to run opens its plan: the plan id and the hire's first name. */
+    private final java.util.Map<Thread, java.util.function.BiConsumer<String, String>> planListeners = new ConcurrentHashMap<>();
+
+    /**
+     * Asks to be told, once, which plan id and first name the hire this thread runs next is given when its plan opens (Stage 24, M7): a call
+     * that starts a hire on an engine thread answers the caller with that identity before the brain runs.
+     */
+    public void whenPlanOpened(java.util.function.BiConsumer<String, String> listener) {
+        planListeners.put(Thread.currentThread(), listener);
+    }
+
+    /** Drops what the current thread asked in {@link #whenPlanOpened}, once its hire has ended. */
+    public void forgetPlanListener() {
+        planListeners.remove(Thread.currentThread());
+    }
+
     /** Records the plan id of the hire running on the current thread, once its plan is open; a thread running no hire is ignored. */
     public void planOpened(String planId) {
         for (Running hire : running) {
             if (hire.thread == Thread.currentThread()) {
                 hire.planId = planId;
+                java.util.function.BiConsumer<String, String> told = planListeners.get(hire.thread);
+                if (told != null) {
+                    told.accept(planId, hire.name);
+                }
             }
         }
     }

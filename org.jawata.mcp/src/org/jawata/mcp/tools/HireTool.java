@@ -298,7 +298,77 @@ public class HireTool extends NeutralTool {
      */
     @Override
     public ToolResponse execute(JsonNode arguments) {
-        ToolResponse response = hire(new HireCall(arguments, null, "", org.jawata.mcp.models.CallerIdentity.serving()));
+        // The caller is read here, on the thread the call arrived on: a hire started on an engine thread would find no caller there.
+        HireCall call = new HireCall(arguments, null, "", org.jawata.mcp.models.CallerIdentity.serving());
+        return backgroundIsOn() ? startInBackground(arguments, call) : runAndKeep(arguments, call);
+    }
+
+    /** The host setting that makes a hire run on the engine's own thread and answer its caller at once (Stage 24, M7); it goes at M16. */
+    public static final String BACKGROUND_SETTING = "jawata.hire.background";
+
+    /** How long a call waits for a hire to open its plan before it gives up: opening a plan is quick, and nothing in it waits for a brain. */
+    private static final long OPENS_WITHIN_SECONDS = 30;
+
+    /** The engine's own threads that run hires started in the background; they end when the engine does. */
+    private static final java.util.concurrent.ExecutorService HIRES = java.util.concurrent.Executors.newCachedThreadPool(new java.util.concurrent.ThreadFactory() {
+        private final java.util.concurrent.atomic.AtomicInteger count = new java.util.concurrent.atomic.AtomicInteger();
+
+        @Override
+        public Thread newThread(Runnable job) {
+            Thread thread = new Thread(job, "jawata-hire-" + count.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        }
+    });
+
+    private boolean backgroundIsOn() {
+        return settings.get().get(BACKGROUND_SETTING).map("true"::equalsIgnoreCase).orElse(false);
+    }
+
+    /**
+     * Runs the hire on one of the engine's threads and answers once its plan is open, with the hire's identity and no result: the hire's plan id, its
+     * first name and the state running. A refusal, or a hire that ends before it opens a plan, is answered as it is. The brain's work is not waited
+     * for, so a caller whose own request times out after a minute is no longer a reason for a hire to fail.
+     */
+    private ToolResponse startInBackground(JsonNode arguments, HireCall call) {
+        java.util.concurrent.CompletableFuture<Map<String, Object>> opened = new java.util.concurrent.CompletableFuture<>();
+        java.util.concurrent.CompletableFuture<ToolResponse> ended = new java.util.concurrent.CompletableFuture<>();
+        HIRES.execute(() -> {
+            HireRegistry.shared().whenPlanOpened((plan, name) -> {
+                Map<String, Object> answer = new LinkedHashMap<>();
+                answer.put("hireId", plan);
+                answer.put("name", name);
+                answer.put("state", "running");
+                answer.put("hirer", getStringParam(arguments, "hirer"));
+                answer.put("hired", getStringParam(arguments, "seat"));
+                opened.complete(answer);
+            });
+            try {
+                ended.complete(runAndKeep(arguments, call));
+            } catch (RuntimeException | Error failure) {
+                ended.completeExceptionally(failure);
+            } finally {
+                HireRegistry.shared().forgetPlanListener();
+            }
+        });
+        try {
+            java.util.concurrent.CompletableFuture.anyOf(opened, ended).get(OPENS_WITHIN_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+            return opened.isDone() ? ToolResponse.success(opened.get()) : ended.get();
+        } catch (java.util.concurrent.ExecutionException failed) {
+            return ToolResponse.error("INTERNAL_ERROR", "the hire could not be started: " + failed.getCause(),
+                "the hire ran on the engine's own thread and ended with that error before it opened its plan");
+        } catch (java.util.concurrent.TimeoutException slow) {
+            return ToolResponse.error("INTERNAL_ERROR", "the hire did not open its plan within " + OPENS_WITHIN_SECONDS + " seconds",
+                "it is still starting on the engine's own thread; its record lands when it ends");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return ToolResponse.error("INTERNAL_ERROR", "the call was interrupted while the hire was starting",
+                "the hire goes on starting on the engine's own thread");
+        }
+    }
+
+    private ToolResponse runAndKeep(JsonNode arguments, HireCall call) {
+        ToolResponse response = hire(call);
         // Every exit of the hire, a refusal included, is kept for the agent face, which cannot rely on a brain echoing the answer back.
         JsonNode outcome = response.isSuccess() ? JSON.valueToTree(response.getData())
             : JSON.createObjectNode().put("cleanExit", false).put("error", response.getError().getMessage());
@@ -724,7 +794,7 @@ public class HireTool extends NeutralTool {
             String observerSeatFile = getStringParam(call.getArguments(), "observerSeatFile");
             Observer.Judge judge = observerSeatFile == null || observerSeatFile.isBlank()
                 ? null
-                : hiredJudge(observerSeatFile.trim(), landsIn, endpoint, base);
+                : hiredJudge(observerSeatFile.trim(), landsIn, endpoint, base, call.getServing().map(org.jawata.mcp.models.CallerIdentity::id));
             data.put("instructionScore", instructionScore(landsIn, instructionsFrom.trim(), proposal.outcome(), engine, effects.notOffered(), judge));
         }
         data.put("shellCalls", effects.shell());
@@ -915,11 +985,14 @@ public class HireTool extends NeutralTool {
     /**
      * The observer's judging tier: the observer seat, hired through the same path as any seat, shown one flagged step. A hire that cannot
      * be made or answers with no verdict line gives no verdict, so the flag is reported as unjudged and not as clear.
+     *
+     * @param judgeIssuer the id of the caller that issued the worker the judge judges, captured when the hire was requested
      */
-    private Observer.Judge hiredJudge(String seatFile, LearnerEventStore landsIn, SelfEndpoint endpoint, HireSite base) {
-        // The judge's plan belongs to the session that issued the worker it judges, read here on the tool's own thread: a plan nobody owns is
-        // listed to every caller and would hold their turns while the judge runs (S10, F7).
-        Optional<String> issuer = org.jawata.mcp.models.CallerIdentity.serving().map(org.jawata.mcp.models.CallerIdentity::id);
+    private Observer.Judge hiredJudge(String seatFile, LearnerEventStore landsIn, SelfEndpoint endpoint, HireSite base, Optional<String> judgeIssuer) {
+        // The judge's plan belongs to the session that issued the worker it judges: a plan nobody owns is listed to every caller and would hold
+        // their turns while the judge runs (S10, F7). It is handed in by the call, which read it from the thread that made the call, because this
+        // method may run on an engine thread that has no caller of its own.
+        Optional<String> issuer = judgeIssuer;
         return (flag, instruction, window) -> {
             try {
                 SeatHire observerSeat = SeatHire.read(readSeatFile(seatFile));
