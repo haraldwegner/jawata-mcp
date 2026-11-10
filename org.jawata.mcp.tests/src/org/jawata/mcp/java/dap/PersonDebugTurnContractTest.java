@@ -1,4 +1,4 @@
-package org.jawata.mcp.contract;
+package org.jawata.mcp.java.dap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.jawata.mcp.contract.DebugTurnContract;
 import org.jawata.spi.host.DebugTurn;
 import org.jawata.spi.host.PersonDebugTurn;
 import org.junit.jupiter.api.DisplayName;
