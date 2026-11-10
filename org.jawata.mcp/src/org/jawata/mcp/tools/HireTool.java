@@ -595,6 +595,7 @@ public class HireTool extends NeutralTool {
             // The plan this hire opens belongs to the session that issued it, whoever it is: only that session's turn waits on its step (S10).
             .ownedBy(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id))
             .labelled(hired, hirer, running.name())
+            .leading(declaredTree.tree().isLead(hired))
             .fixing(getStringParam(call.getArguments(), "fixes"))
             .issuedFrom(getStringParam(call.getArguments(), "instructionsFrom"));
         HiredRun.Proposal proposal;

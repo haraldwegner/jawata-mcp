@@ -396,6 +396,17 @@ public final class HiredRun {
 
     private String hireName = "";
 
+    private boolean lead;
+
+    /**
+     * Says whether the seat of this run may hire others (Stage 24, M12). A seat that may is run as a lead: its brain stays alive while the hires
+     * it started in the background are out, and is prompted with each report. Any other seat runs one turn.
+     */
+    public HiredRun leading(boolean mayHire) {
+        this.lead = mayHire;
+        return this;
+    }
+
     /**
      * Names the seat that runs, the seat that hired it and the first name the hire carries; a run is built for one hire, so the names belong to
      * that hire alone.
@@ -474,10 +485,13 @@ public final class HiredRun {
         HiredBrain.Outcome outcome;
         final long brainStartedMs = System.currentTimeMillis();
         try (SessionFolders.Binding ignored = folders == null ? null : folders.bind(plan.value(), base.workingDirectory())) {
-            outcome = acp.isPresent()
-                ? AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                    resume, ceilings, null, live, update -> { })
-                : HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
+            outcome = acp.isEmpty()
+                ? HiredBrain.hire(host, dialect, base, brief, tools, ceilings)
+                : lead
+                    ? AcpBrainSession.runAsLead(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
+                        resume, ceilings, null, live, update -> { }, HireRegistry.shared().inboxFor(plan.value()), plan.value())
+                    : AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
+                        resume, ceilings, null, live, update -> { });
         }
 
         final long brainRanMs = System.currentTimeMillis() - brainStartedMs;

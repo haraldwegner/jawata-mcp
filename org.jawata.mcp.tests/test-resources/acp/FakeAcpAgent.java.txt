@@ -188,16 +188,14 @@ public class FakeAcpAgent {
                 + "\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"content\":{\"type\":\"text\",\"text\":\"by 7 and 13.\"}}}}");
             chunk(session, "thought");
         } else if (text.startsWith("SPEND")) {
-            for (int i = 1; i <= 5; i++) {
-                send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
-                    + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"s" + i
-                    + "\",\"title\":\"mcp__jawata__inspect\",\"kind\":\"read\",\"status\":\"pending\",\"rawInput\":{}}}}");
-                send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
-                    + "\",\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":" + (i * 100) + ",\"size\":1000,\"cost\":{\"amount\":"
-                    + (i * 0.25) + ",\"currency\":\"USD\"}}}}");
-                Thread.sleep(50);
-            }
+            spend(session);
             chunk(session, "spent");
+        } else if (text.contains("A hire you started has ended")) {
+            // a report from a hire this brain started (Stage 24): it says which hire, and a report whose answer is SPEND makes the five tool calls again
+            chunk(session, "report read: " + text.substring(text.indexOf("Hire: ")).split("\n")[0]);
+            if (text.contains("Answer: SPEND")) {
+                spend(session);
+            }
         } else if (text.startsWith("STREAM")) {
             chunk(session, "first");
             Thread.sleep(1500);
@@ -215,6 +213,19 @@ public class FakeAcpAgent {
             System.exit(3);
         }
         reply(id, "{\"stopReason\":\"end_turn\"}");
+    }
+
+    /** Five tool calls, each with a usage update that raises the cost. */
+    static void spend(String session) throws Exception {
+        for (int i = 1; i <= 5; i++) {
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"s" + i
+                + "\",\"title\":\"mcp__jawata__inspect\",\"kind\":\"read\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":" + (i * 100) + ",\"size\":1000,\"cost\":{\"amount\":"
+                + (i * 0.25) + ",\"currency\":\"USD\"}}}}");
+            Thread.sleep(50);
+        }
     }
 
     static void chunk(String session, String text) {

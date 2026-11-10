@@ -127,6 +127,60 @@ public final class AcpBrainSession {
     }
 
     /**
+     * Runs the brain of a hired lead (Stage 24, M12): the first prompt as {@link #run} does, and then, while hires its brain started in the
+     * background are still out, one more turn for each set of reports that comes, until nothing is out and nothing is waiting. The brain's
+     * process stays alive between turns, so its context carries the reports. The wall-clock ceiling is armed for each turn and not across the
+     * waits, and the tool-step ceiling is counted across the turns, so a lead that keeps going cannot spend without end. A wait is as long as the
+     * longest a hire may run, and a lead whose hires never report is not waited for beyond it.
+     *
+     * @param inbox  the reports of this lead's background hires, opened before the first turn so that none is missed
+     * @param leadId the id this lead's hires are issued under, to say which of them are still out
+     */
+    public static HiredBrain.Outcome runAsLead(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
+            List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate,
+            Consumer<JsonNode> onThinking, HireRegistry.Inbox inbox, String leadId) throws IOException, InterruptedException {
+        Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings);
+        try {
+            conversation.turn(prompt, List.of(), ceilings, onText, onToolUpdate, onThinking);
+            HiredBrain.Outcome last = conversation.outcome();
+            int steps = last.toolSteps();
+            List<String> names = new ArrayList<>(last.toolNames());
+            List<ToolCall> calls = new ArrayList<>(last.toolCalls());
+            while (last.stoppedBy().isEmpty() && conversation.alive() && (inbox.outstanding() > 0 || !inbox.isEmpty())) {
+                List<HireRegistry.Event> reports = inbox.await(ceilings.wallClock().toMillis());
+                if (reports.isEmpty()) {
+                    break;
+                }
+                HiredBrain.Ceilings left = ceilings.maxToolSteps() > 0
+                    ? new HiredBrain.Ceilings(ceilings.wallClock(), Math.max(1, ceilings.maxToolSteps() - steps), ceilings.maxCostUsd())
+                    : ceilings;
+                if (ceilings.maxToolSteps() > 0 && steps >= ceilings.maxToolSteps()) {
+                    break;
+                }
+                conversation.turn(HireReport.ofAll(reports, HireRegistry.shared().runningNamesFor(leadId)), List.of(), left, onText, onToolUpdate,
+                    onThinking);
+                last = conversation.outcome();
+                steps += last.toolSteps();
+                names.addAll(last.toolNames());
+                calls.addAll(last.toolCalls());
+            }
+            Optional<String> stoppedBy = last.stoppedBy();
+            if (stoppedBy.isEmpty() && ceilings.maxToolSteps() > 0 && steps >= ceilings.maxToolSteps()
+                && (inbox.outstanding() > 0 || !inbox.isEmpty())) {
+                stoppedBy = Optional.of("tool steps: " + steps + " over the ceiling of " + ceilings.maxToolSteps());
+            } else if (stoppedBy.isPresent() && stoppedBy.get().startsWith("tool steps")) {
+                stoppedBy = Optional.of("tool steps: " + steps + " over the ceiling of " + ceilings.maxToolSteps());
+            }
+            return new HiredBrain.Outcome(last.text(), last.costUsd(), steps, last.unreadableLines(), last.sawTerminalCost(), last.timedOut(),
+                last.exitCode(), last.stderrTail(), stoppedBy, List.copyOf(names), Optional.empty(), Optional.empty(), List.copyOf(calls),
+                last.brainSessionId());
+        } finally {
+            conversation.end();
+            inbox.close();
+        }
+    }
+
+    /**
      * One brain process kept for a whole conversation (D53 (g)): started once, and prompted as often as the conversation has something to say.
      * Measured on 2026-11-08 with Cursor's agent, a process started for every message took 10.9 s to the first word of a conversation and over
      * 3 s to the first word of each later one, and a process kept running 1.4 to 1.9 s.

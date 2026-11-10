@@ -216,6 +216,63 @@ public final class HireRegistry {
         return () -> subscribers.remove(subscriber);
     }
 
+    /**
+     * What a hired lead's run waits on between its turns (Stage 24, M12): the reports of the hires its brain started in the background. It counts
+     * those hires from the moment they start and not from the moment they end, so a lead is never told it has nothing out in the instant between a
+     * hire's registration closing and its report being kept.
+     */
+    public final class Inbox implements AutoCloseable {
+        private final java.util.concurrent.LinkedBlockingQueue<Event> reports = new java.util.concurrent.LinkedBlockingQueue<>();
+        private final java.util.concurrent.atomic.AtomicInteger out = new java.util.concurrent.atomic.AtomicInteger();
+        private final Runnable unsubscribe;
+
+        private Inbox(String leadId) {
+            this.unsubscribe = subscribe(event -> {
+                if (!leadId.equals(event.leadId()) || !event.background()) {
+                    return;
+                }
+                if ("started".equals(event.kind())) {
+                    out.incrementAndGet();
+                } else if ("finished".equals(event.kind())) {
+                    out.decrementAndGet();
+                    reports.add(event);
+                }
+            });
+        }
+
+        /** How many of this lead's background hires have started and not yet reported. */
+        public int outstanding() {
+            return out.get();
+        }
+
+        /** The reports that have come, waiting up to this long for the first when none has; empty when none came in that time. */
+        public List<Event> await(long millis) throws InterruptedException {
+            Event first = reports.poll(millis, java.util.concurrent.TimeUnit.MILLISECONDS);
+            if (first == null) {
+                return List.of();
+            }
+            List<Event> all = new java.util.ArrayList<>();
+            all.add(first);
+            reports.drainTo(all);
+            return all;
+        }
+
+        /** Whether no report is waiting to be read. */
+        public boolean isEmpty() {
+            return reports.isEmpty();
+        }
+
+        @Override
+        public void close() {
+            unsubscribe.run();
+        }
+    }
+
+    /** Opens the inbox of this lead, which must be opened before the lead's brain can start a hire, so that no report is missed. */
+    public Inbox inboxFor(String leadId) {
+        return new Inbox(leadId);
+    }
+
     private void tell(Event event) {
         for (java.util.function.Consumer<Event> subscriber : subscribers) {
             subscriber.accept(event);
