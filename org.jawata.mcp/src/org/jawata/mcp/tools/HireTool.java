@@ -71,12 +71,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  *
  * <h2>What this call is NOT</h2>
  *
- * <p>It is SYNCHRONOUS, and bounded by the hired seat's own wall-clock ceiling rather than by
- * anything here. A seat declaring fifteen minutes will hold this call open for up to fifteen
- * minutes and a client may give up first; the run continues and its record still lands, because
- * the journal write is the hire's, not the caller's. An asynchronous start/status pair is the
- * shape {@code run_tests} uses for the same reason and is recorded as a finding rather than built
- * ahead of a brief that needs it.</p>
+ * <p>It does NOT wait for the hire (Sprint 28h, Stage 24, D55). The hire runs on the engine's own
+ * thread, bounded by the hired seat's own wall-clock ceiling, and the call answers as soon as the
+ * plan is open with the hire's id and name and no result. The result reaches the seat that hired
+ * as a new turn, so a caller whose own request times out after a minute no longer makes a long
+ * hire fail, and the record still lands, because the journal write is the hire's, not the
+ * caller's.</p>
  */
 public class HireTool extends NeutralTool {
 
@@ -220,9 +220,15 @@ public class HireTool extends NeutralTool {
             tool registry after the brain answers, and a gate that did not answer is reported as
             not having answered rather than as zero errors — the two are otherwise identical.
 
-            SYNCHRONOUS, and bounded by the HIRED seat's wall-clock ceiling, not by this call. A
-            seat declaring a long ceiling will hold the call open; the run's record lands either
-            way, because the journal write belongs to the hire and not to the caller.
+            ANSWERS AT ONCE, WITH NO RESULT. The hire runs on the engine's own thread, and this call
+            answers as soon as the hire's plan is open with {hireId, name, state: running, hirer,
+            hired}. The hire's result is never this call's answer: it comes back LATER, AS A NEW
+            TURN of the seat that hired, framed as a report. Start the hires that can run beside
+            each other, then end your turn. A hire is bounded by the HIRED seat's wall-clock
+            ceiling, a caller's own timeout does not end it, and its record lands either way.
+
+            `claims` names the packages the hire works on. A claim that overlaps a running hire's
+            is refused, naming the holder.
 
             A brain that cannot be told which tools to attach is REPORTED in the result rather
             than left out of it: `toolsSettableByTheHirer` is false and `toolAttachment` says what

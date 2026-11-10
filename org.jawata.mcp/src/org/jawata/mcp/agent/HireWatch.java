@@ -264,10 +264,6 @@ final class HireWatch {
             hire.seatFile = input.get("seatFile").asText();
             readSeatFile(hire);
         }
-        if (hire.parent.isEmpty() && !hire.hirer.isEmpty() && !MAIN.equals(hire.hirer)) {
-            hire.parent = hires.values().stream().filter(other -> other != hire && other.endedMs < 0 && other.seat.equals(hire.hirer))
-                .reduce((first, second) -> second).map(other -> other.id);
-        }
     }
 
     private void readSeatFile(Live hire) {

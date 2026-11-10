@@ -49,6 +49,35 @@ class HireEntriesTest {
         return update;
     }
 
+    private final List<Thread> registered = new ArrayList<>();
+    private final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+
+    @org.junit.jupiter.api.AfterEach
+    void endTheRegisteredHires() throws InterruptedException {
+        release.countDown();
+        for (Thread thread : registered) {
+            thread.join(5_000);
+        }
+    }
+
+    /** A hire the engine's registry holds as running, asked for by this caller and with this plan id of its own: who hired it is read from this, not from a seat name. */
+    private void issued(String seat, String brief, String callerId, String planId) throws InterruptedException {
+        java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+        Thread thread = new Thread(() -> {
+            try (org.jawata.mcp.execution.HireRegistry.Registration ignored = org.jawata.mcp.execution.HireRegistry.shared().begin(seat, brief, callerId)) {
+                org.jawata.mcp.execution.HireRegistry.shared().planOpened(planId);
+                started.countDown();
+                release.await();
+            } catch (InterruptedException ended) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        thread.setDaemon(true);
+        registered.add(thread);
+        thread.start();
+        assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS), "the hire did not register as running");
+    }
+
     @Test
     @DisplayName("the entry carries the slash command the hire's seat file names, on the entry and on the wire, and nothing when the file names none")
     void theSeatCommandIsReadFromTheSeatFile(@TempDir java.nio.file.Path dir) throws Exception {
@@ -321,7 +350,9 @@ class HireEntriesTest {
 
     @Test
     @DisplayName("a hire made by a hired seat is a child of that seat's running hire, a hire made by main is a root, and a call that is not a hire is not read")
-    void theHierarchyIsRead() {
+    void theHierarchyIsRead() throws Exception {
+        issued("pm", "run the sprint", "entries-chat-1", "entries-plan-pm1");
+        issued("chief-engineer", "build", "entries-plan-pm1", "entries-plan-ce1");
         watch.observe(withInput(hireCall("tool_call", "pm1", "pending"), "main", "pm", "run the sprint"));
         HireEntry child = watch.observe(withInput(hireCall("tool_call", "ce1", "pending"), "pm", "chief-engineer", "build")).orElseThrow();
         HireEntry root = watch.entry("pm1").orElseThrow();
@@ -378,7 +409,10 @@ class HireEntriesTest {
 
     @Test
     @DisplayName("a hire's level is how many hires sit above it: a root is 0, the chief engineer it hires 1, the developer under that 2; and its title names the seat, the brain and the model where known")
-    void theLevelAndTheTitleAreRead() {
+    void theLevelAndTheTitleAreRead() throws Exception {
+        issued("pm", "run the sprint", "entries-chat-2", "entries-plan-pm2");
+        issued("chief-engineer", "build", "entries-plan-pm2", "entries-plan-ce2");
+        issued("developer", "edit", "entries-plan-ce2", "entries-plan-d2");
         watch.observe(withInput(hireCall("tool_call", "pm1", "pending"), "main", "pm", "run the sprint"));
         watch.observe(withInput(hireCall("tool_call", "ce1", "pending"), "pm", "chief-engineer", "build"));
         HireEntry developer = watch.observe(withInput(hireCall("tool_call", "d1", "pending"), "chief-engineer", "developer", "edit")).orElseThrow();
