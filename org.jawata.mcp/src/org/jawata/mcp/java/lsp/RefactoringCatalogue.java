@@ -40,8 +40,8 @@ final class RefactoringCatalogue {
     private static final List<Entry> ENTRIES = List.of(
         new Entry("inline.method", "Inline method", "refactor.inline", "inline", Map.of("kind", "method"), Set.of("method"), List.of()),
         new Entry("inline.variable", "Inline variable", "refactor.inline", "inline", Map.of("kind", "variable"), Set.of("variable"), List.of()),
-        new Entry("lambda.anonymous", "Convert anonymous class to lambda", "refactor.rewrite", "convert_anonymous_to_lambda", Map.of(),
-            Set.of("method", "variable"), List.of()),
+        new Entry("lambda.anonymous", "Convert anonymous class to lambda", "refactor.rewrite", "refactor_to_pattern",
+            Map.of("kind", "replace_pattern_with_idiom", "idiom", "anonymous_to_lambda"), Set.of("method", "variable"), List.of()),
         new Entry("cleanup.final", "Make variables that are never reassigned final", "refactor.rewrite", "apply_cleanup", Map.of("kind", "add_final"),
             Set.of("method"), List.of()),
         new Entry("hierarchy.up", "Pull member up", "refactor.move", "hierarchy", Map.of("direction", "up"), Set.of("method", "field"), List.of()),

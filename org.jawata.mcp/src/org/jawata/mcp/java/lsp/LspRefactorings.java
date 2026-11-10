@@ -62,7 +62,12 @@ final class LspRefactorings {
                     "command", Map.of("title", entry.title(), "command", COMMAND, "arguments", List.of(askingFor(entry, uri, line, column)))));
                 continue;
             }
-            ToolResponse staged = tools.callTool(entry.tool(), argumentsOf(entry, filePath, line, column, JSON.createObjectNode()), caller);
+            ToolResponse staged;
+            try {
+                staged = tools.callTool(entry.tool(), argumentsOf(entry, filePath, line, column, JSON.createObjectNode()), caller);
+            } catch (ToolNotFoundException e) {
+                continue; // the engine does not publish this tool: this refactoring is not offered, and the others still are
+            }
             if (!staged.isSuccess()) {
                 continue;
             }

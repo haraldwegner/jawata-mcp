@@ -13,6 +13,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Predicate;
 
 import org.jawata.mcp.engine.ToolCalls;
+import org.jawata.mcp.engine.ToolNotFoundException;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
@@ -38,10 +39,14 @@ class LspRefactoringsTest {
         final Map<String, ToolResponse> staged = new HashMap<>();
         final List<String> tools = new CopyOnWriteArrayList<>();
         final List<ObjectNode> calls = new CopyOnWriteArrayList<>();
+        final java.util.Set<String> unpublished = new java.util.HashSet<>();
 
         @Override
-        public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {
+        public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) throws ToolNotFoundException {
             tools.add(name);
+            if (unpublished.contains(name)) {
+                throw new ToolNotFoundException("Tool not found: " + name);
+            }
             calls.add(arguments.deepCopy());
             if ("get_at_position".equals(name)) {
                 return element == null ? ToolResponse.error("NOT_FOUND", "nothing here", "") : ToolResponse.success(Map.of("kind", element), ResponseMeta.builder().build());
@@ -114,6 +119,20 @@ class LspRefactoringsTest {
         assertFalse(asked.path("auto_apply").asBoolean(true), "it is staged, never applied");
         assertTrue(asked.path("edits").asBoolean(), "as edits the editor applies itself");
         assertEquals("/work/src/Foo.java", asked.path("filePath").asText());
+    }
+
+    @Test
+    @DisplayName("a refactoring whose tool the engine does not publish is left out, and the others are still offered rather than the whole request failing")
+    void aRefactoringWhoseToolIsNotPublishedIsLeftOutAndTheRestAreStillOffered() throws Exception {
+        Fake fake = new Fake();
+        fake.unpublished.add("apply_cleanup");
+        fake.staged.put("inline", editing("inlined"));
+        fake.staged.put("hierarchy", editing("pulled up"));
+
+        List<String> titles = offeredAt(fake, kind -> true).stream().map(a -> a.path("title").asText()).toList();
+
+        assertTrue(titles.contains("Inline method") && titles.contains("Pull member up"), titles.toString());
+        assertFalse(titles.contains("Make variables that are never reassigned final"), titles.toString());
     }
 
     @Test
