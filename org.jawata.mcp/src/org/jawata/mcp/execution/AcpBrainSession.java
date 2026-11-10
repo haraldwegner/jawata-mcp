@@ -176,7 +176,7 @@ public final class AcpBrainSession {
             Process child = host.start(new HostCommand(program.command(), base.workingDirectory(), environment,
                 ceilings.wallClock(), false, base.cleanEnvironment()));
             // A stop from the Agent Control panel kills this process: the read of its output is blocked and a thread interrupt cannot end it.
-            RunningHires.shared().onStop(() -> HostProcesses.reap(child));
+            HireRegistry.shared().onStop(() -> HostProcesses.reap(child));
             Conversation conversation = new Conversation(child, new HashSet<>(allowedTools == null ? List.of() : allowedTools), ceilings);
             conversation.arm(ceilings);
             try {
@@ -656,13 +656,13 @@ public final class AcpBrainSession {
             Optional<Boolean> compaction = compactionIn(update);
             if (compaction.isPresent()) {
                 // The brain compacting its context is not a tool call of the hire's work.
-                RunningHires.shared().noteCompaction(compaction.get());
+                HireRegistry.shared().noteCompaction(compaction.get());
             } else if ("tool_call".equals(kind)) {
-                RunningHires.shared().noteToolStep();
+                HireRegistry.shared().noteToolStep();
             } else if ("usage_update".equals(kind)) {
                 JsonNode used = update.path("used");
                 JsonNode amount = update.path("cost").path("amount");
-                RunningHires.shared().noteUsage(used.isNumber() ? java.util.OptionalLong.of(used.asLong()) : java.util.OptionalLong.empty(),
+                HireRegistry.shared().noteUsage(used.isNumber() ? java.util.OptionalLong.of(used.asLong()) : java.util.OptionalLong.empty(),
                     amount.isNumber() ? OptionalDouble.of(amount.asDouble()) : OptionalDouble.empty());
             }
         }

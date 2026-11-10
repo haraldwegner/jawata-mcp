@@ -18,7 +18,6 @@ import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostOS;
 import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
-import org.jawata.mcp.execution.FinishedHires;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
@@ -1021,7 +1020,7 @@ class HireToolTest {
 
         ToolResponse response = hire.execute(args);
 
-        JsonNode kept = FinishedHires.shared().answerOf(args.path("seat").asText(), args.path("brief").asText()).orElse(null);
+        JsonNode kept = org.jawata.mcp.execution.HireRegistry.shared().answerOf(args.path("seat").asText(), args.path("brief").asText()).orElse(null);
         assertFalse(response.isSuccess());
         assertTrue(kept != null, "the refused hire's answer was not kept");
         assertFalse(kept.path("cleanExit").asBoolean(true), kept.toString());
@@ -1985,7 +1984,7 @@ class HireToolTest {
     @Test
     @DisplayName("D53 (i): a hire moved onto another brain is stopped and hired again on that brain with what was said; the answer says so and the seat's next hire is back on its own brain")
     void aReplacedHireRunsAgainOnTheNewBrainAndTheSeatDefaultStands() throws Exception {
-        org.jawata.mcp.execution.RunningHires running = org.jawata.mcp.execution.RunningHires.shared();
+        org.jawata.mcp.execution.HireRegistry running = org.jawata.mcp.execution.HireRegistry.shared();
         Path started = dir.resolve("replaced-brain-started");
         Path file = Files.createTempFile(dir, "brain-", ".sh");
         Files.writeString(file, """
@@ -2048,7 +2047,7 @@ class HireToolTest {
     @Test
     @DisplayName("S9: a hire stopped from the Agent Control panel ends at once, its answer says the person stopped it, and it is no longer listed as running")
     void aHireStoppedFromThePanelEndsAtOnceAndSaysSo() throws Exception {
-        org.jawata.mcp.execution.RunningHires running = org.jawata.mcp.execution.RunningHires.shared();
+        org.jawata.mcp.execution.HireRegistry running = org.jawata.mcp.execution.HireRegistry.shared();
         Path started = dir.resolve("brain-started");
         HireTool hire = toolWithSettings(new StandsIn(host, aBrainThatBlocks(started)), Map.of());
         // A daemon thread, so a hire that does not end cannot keep the test run from ending.

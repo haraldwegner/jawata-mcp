@@ -10,14 +10,14 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /** D53 (i): moving a running hire onto another brain ends the old brain and must not lose what it had said. */
-class RunningHiresReplaceTest {
+class HireRegistryReplaceTest {
 
     @Test
     @DisplayName("a replace ends the brain's process and leaves the thread uninterrupted, so the run still reads what the brain had said")
     void aReplaceEndsTheProcessWithoutAnInterrupt() {
-        RunningHires hires = RunningHires.shared();
+        HireRegistry hires = HireRegistry.shared();
         AtomicBoolean processEnded = new AtomicBoolean();
-        try (RunningHires.Registration running = hires.begin("replace-test-seat", "replace-test-brief")) {
+        try (HireRegistry.Registration running = hires.begin("replace-test-seat", "replace-test-brief")) {
             hires.onStop(() -> processEnded.set(true));
 
             int replaced = hires.replace("replace-test-seat", "replace-test-brief", SeatHire.Brain.CURSOR, "");

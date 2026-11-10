@@ -12,7 +12,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-import org.jawata.mcp.execution.RunningHires;
+import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -79,7 +79,7 @@ class AgentControlStopTest {
     private static Thread aRunningHire(CountDownLatch interrupted) throws InterruptedException {
         CountDownLatch registered = new CountDownLatch(1);
         Thread worker = new Thread(() -> {
-            try (RunningHires.Registration registration = RunningHires.shared().begin(SEAT, BRIEF)) {
+            try (HireRegistry.Registration registration = HireRegistry.shared().begin(SEAT, BRIEF)) {
                 registered.countDown();
                 Thread.sleep(30_000);
             } catch (InterruptedException e) {
@@ -98,13 +98,13 @@ class AgentControlStopTest {
         CountDownLatch registered = new CountDownLatch(1);
         CountDownLatch ended = new CountDownLatch(1);
         Thread worker = new Thread(() -> {
-            try (RunningHires.Registration registration = RunningHires.shared().begin(SEAT, BRIEF)) {
+            try (HireRegistry.Registration registration = HireRegistry.shared().begin(SEAT, BRIEF)) {
                 registered.countDown();
                 try {
                     Thread.sleep(30_000);
                 } catch (InterruptedException stopped) {
                     // The stop has gone by; the process is started only now, and its kill is registered only now.
-                    RunningHires.shared().onStop(ended::countDown);
+                    HireRegistry.shared().onStop(ended::countDown);
                 }
             }
         });
@@ -112,7 +112,7 @@ class AgentControlStopTest {
         worker.start();
         assertTrue(registered.await(5, TimeUnit.SECONDS), "the hire did not register as running");
 
-        assertEquals(1, RunningHires.shared().stop(SEAT, BRIEF));
+        assertEquals(1, HireRegistry.shared().stop(SEAT, BRIEF));
 
         assertTrue(ended.await(5, TimeUnit.SECONDS), "a process started after the stop was never ended");
         worker.join(5_000);

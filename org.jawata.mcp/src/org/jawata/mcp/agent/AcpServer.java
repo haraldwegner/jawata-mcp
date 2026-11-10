@@ -10,7 +10,7 @@ import java.util.function.Supplier;
 import org.jawata.mcp.agent.ReviewBeforeSend.Reviewer;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.Hirer;
-import org.jawata.mcp.execution.RunningHires;
+import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 
@@ -241,7 +241,7 @@ public final class AcpServer {
         if (!HireEntry.RUNNING.equals(entry.get().state())) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "hire " + planId + " has already " + entry.get().state() + "; there is nothing to replace", null);
         }
-        if (RunningHires.shared().replace(entry.get().seat(), entry.get().task(), brain.get(), applied) == 0) {
+        if (HireRegistry.shared().replace(entry.get().seat(), entry.get().task(), brain.get(), applied) == 0) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
                 "this engine is not running a hire of " + entry.get().seat() + " for that brief, so there is nothing here to replace", null);
         }
@@ -269,7 +269,7 @@ public final class AcpServer {
         if (!HireEntry.RUNNING.equals(entry.get().state())) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "hire " + planId + " has already " + entry.get().state() + "; there is nothing to stop", null);
         }
-        int stopped = RunningHires.shared().stop(entry.get().seat(), entry.get().task());
+        int stopped = HireRegistry.shared().stop(entry.get().seat(), entry.get().task());
         if (stopped == 0) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
                 "this engine is not running a hire of " + entry.get().seat() + " for that brief, so there is nothing here to stop", null);

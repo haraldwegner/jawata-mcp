@@ -19,7 +19,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * the read. Then it interrupts the thread, for a hire that is waiting rather than reading. The hire is marked as stopped by the person, so
  * its answer says so instead of reporting a failed or interrupted run.</p>
  */
-public final class RunningHires {
+public final class HireRegistry {
 
     /**
      * What a running hire's brain has reported so far, read off its stream as it arrives (S9, E3): the tool calls it has made, the size of
@@ -64,7 +64,7 @@ public final class RunningHires {
 
         @Override
         public void close() {
-            synchronized (RunningHires.this) {
+            synchronized (HireRegistry.this) {
                 running.remove(hire);
                 stopped.remove(hire.thread);
                 replacements.remove(hire.thread);
@@ -76,14 +76,14 @@ public final class RunningHires {
     public record Replacement(SeatHire.Brain brain, String model) {
     }
 
-    private static final RunningHires SHARED = new RunningHires();
+    private static final HireRegistry SHARED = new HireRegistry();
 
     private final List<Running> running = new CopyOnWriteArrayList<>();
     private final Set<Thread> stopped = ConcurrentHashMap.newKeySet();
     private final java.util.Map<Thread, Replacement> replacements = new ConcurrentHashMap<>();
 
     /** The one registry of running hires in this process, which the hire tool fills and the agent face reads. */
-    public static RunningHires shared() {
+    public static HireRegistry shared() {
         return SHARED;
     }
 
@@ -199,6 +199,32 @@ public final class RunningHires {
             }
         }
         return replaced;
+    }
+
+    /** How many finished answers are kept. */
+    static final int KEPT = 200;
+
+    /**
+     * What the hire tool answered for each hire it ran (Sprint 28h, S17): kept so the agent face can show a hire's outcome, tokens, cost and
+     * changed files even when the hiring brain's stream does not carry the answer back. Cursor's agent reports the end of a tool call with
+     * {@code {"success": true}} and nothing else, so a face that only reads the brain's echo shows every hire it ran as done, including one
+     * the hire tool refused. The engine runs the hire itself, so it is the first-hand source. Bounded: the newest {@value #KEPT} are kept.
+     */
+    private final java.util.Map<String, com.fasterxml.jackson.databind.JsonNode> finished = new java.util.LinkedHashMap<>();
+
+    /** Keeps the answer of the hire of this seat for this brief, replacing an earlier one and dropping the oldest past the bound. */
+    public synchronized void record(String seat, String brief, com.fasterxml.jackson.databind.JsonNode answer) {
+        String key = seat + "\u0000" + normal(brief);
+        finished.remove(key);
+        finished.put(key, answer);
+        while (finished.size() > KEPT) {
+            finished.remove(finished.keySet().iterator().next());
+        }
+    }
+
+    /** The answer of the latest hire of this seat for this brief, or none when this engine ran no such hire. */
+    public synchronized Optional<com.fasterxml.jackson.databind.JsonNode> answerOf(String seat, String brief) {
+        return Optional.ofNullable(finished.get(seat + "\u0000" + normal(brief)));
     }
 
     private static String normal(String brief) {

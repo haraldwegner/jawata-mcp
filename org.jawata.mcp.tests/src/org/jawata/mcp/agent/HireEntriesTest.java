@@ -11,7 +11,6 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
-import org.jawata.mcp.execution.FinishedHires;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -190,10 +189,10 @@ class HireEntriesTest {
     void aHireWithNoEchoedAnswerTakesTheEnginesOwn() throws Exception {
         ObjectNode refused = JSON.createObjectNode();
         refused.put("cleanExit", false).put("error", "steps cannot be empty");
-        FinishedHires.shared().record("echo-less-seat", "refused brief", refused);
+        org.jawata.mcp.execution.HireRegistry.shared().record("echo-less-seat", "refused brief", refused);
         ObjectNode spent = JSON.createObjectNode();
         spent.put("cleanExit", true).put("answer", "ok").put("costUsd", 0.04).putObject("tokens").put("input", 100).put("output", 20);
-        FinishedHires.shared().record("echo-less-seat", "spent brief", spent);
+        org.jawata.mcp.execution.HireRegistry.shared().record("echo-less-seat", "spent brief", spent);
 
         HireEntry failed = echoOnlySuccess("e1", "refused brief");
         HireEntry done = echoOnlySuccess("e2", "spent brief");
@@ -259,10 +258,10 @@ class HireEntriesTest {
         watch.observe(withInput(hireCall("tool_call", "t2", "pending"), "main", "ux", "look at the screen"));
         HireEntry idle = watch.entry("t1").orElseThrow();
 
-        try (org.jawata.mcp.execution.RunningHires.Registration running =
-                 org.jawata.mcp.execution.RunningHires.shared().begin("developer", "build the stage")) {
-            org.jawata.mcp.execution.RunningHires.shared().noteToolStep();
-            org.jawata.mcp.execution.RunningHires.shared().noteUsage(java.util.OptionalLong.of(4_000), java.util.OptionalDouble.of(0.25));
+        try (org.jawata.mcp.execution.HireRegistry.Registration running =
+                 org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "build the stage")) {
+            org.jawata.mcp.execution.HireRegistry.shared().noteToolStep();
+            org.jawata.mcp.execution.HireRegistry.shared().noteUsage(java.util.OptionalLong.of(4_000), java.util.OptionalDouble.of(0.25));
             HireEntry working = watch.entry("t1").orElseThrow();
 
             assertEquals(1, working.toolSteps());

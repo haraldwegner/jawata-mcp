@@ -15,7 +15,8 @@ import java.util.function.Supplier;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.BrainDialect;
-import org.jawata.mcp.execution.FinishedHires;
+import org.jawata.mcp.execution.HireRegistry;
+import org.jawata.mcp.execution.HireRegistry.Replacement;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.HiredRun;
@@ -23,8 +24,6 @@ import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.Instructions;
 import org.jawata.mcp.execution.Observer;
 import org.jawata.mcp.execution.RunEffects;
-import org.jawata.mcp.execution.RunningHires;
-import org.jawata.mcp.execution.RunningHires.Replacement;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
@@ -303,7 +302,7 @@ public class HireTool extends NeutralTool {
         // Every exit of the hire, a refusal included, is kept for the agent face, which cannot rely on a brain echoing the answer back.
         JsonNode outcome = response.isSuccess() ? JSON.valueToTree(response.getData())
             : JSON.createObjectNode().put("cleanExit", false).put("error", response.getError().getMessage());
-        FinishedHires.shared().record(arguments.path("seat").asText(""), arguments.path("brief").asText(""), outcome);
+        HireRegistry.shared().record(arguments.path("seat").asText(""), arguments.path("brief").asText(""), outcome);
         return response;
     }
 
@@ -525,9 +524,9 @@ public class HireTool extends NeutralTool {
         HiredRun.Proposal proposal;
         // While the brain runs this hire can be stopped from the Agent Control panel (S9): the panel's stop interrupts this thread, which ends the
         // run the way any interruption does, and the answer says the person stopped it.
-        RunningHires.Registration running = RunningHires.shared().begin(hired, brief);
+        HireRegistry.Registration running = HireRegistry.shared().begin(hired, brief);
         boolean stoppedByPerson = false;
-        Optional<RunningHires.Replacement> replacement = Optional.empty();
+        Optional<HireRegistry.Replacement> replacement = Optional.empty();
         // The registration keeps the brief the principal gave, so the panel still finds this hire; the brain is also told what was said before it took over.
         String briefToBrain = call.getSaidBefore().isBlank() ? brief
             : brief + "\n\nYou are taking over this work from another brain, which was stopped. What it had said so far:\n\n" + call.getSaidBefore();

@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.jawata.mcp.execution.RunningHires;
+import org.jawata.mcp.execution.HireRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,17 +33,17 @@ class HireCompactingTest {
     @DisplayName("running, then compacting while the brain compacts, then running again, then the hire's own state once it has answered")
     void theCardFollowsTheBrainsCompaction() {
         watch.observe(call("tool_call", "c1", "pending")).orElseThrow();
-        try (RunningHires.Registration ignored = RunningHires.shared().begin("chief-engineer", "a long task")) {
+        try (HireRegistry.Registration ignored = HireRegistry.shared().begin("chief-engineer", "a long task")) {
             assertEquals(HireEntry.RUNNING, watch.entry("c1").orElseThrow().state());
 
-            RunningHires.shared().noteCompaction(true);
+            HireRegistry.shared().noteCompaction(true);
             assertEquals(HireEntry.COMPACTING, watch.entry("c1").orElseThrow().state());
             assertEquals(HireEntry.COMPACTING, watch.entries().get(0).state(), "the list the panel polls says so too");
 
-            RunningHires.shared().noteCompaction(false);
+            HireRegistry.shared().noteCompaction(false);
             assertEquals(HireEntry.RUNNING, watch.entry("c1").orElseThrow().state());
 
-            RunningHires.shared().noteCompaction(true);
+            HireRegistry.shared().noteCompaction(true);
             watch.observe(call("tool_call_update", "c1", "failed")).orElseThrow();
             assertEquals(HireEntry.FAILED, watch.entry("c1").orElseThrow().state(), "an ended hire is never shown as compacting");
         }

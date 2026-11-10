@@ -12,9 +12,8 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.function.LongSupplier;
 
-import org.jawata.mcp.execution.FinishedHires;
+import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.execution.RunEffects;
-import org.jawata.mcp.execution.RunningHires;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.TreeAttribution;
 
@@ -291,7 +290,7 @@ final class HireWatch {
         JsonNode answer = answerOf(update);
         if (!answer.has("cleanExit")) {
             // The brain's echo carries no answer (Cursor sends {"success": true} only): the engine ran the hire and kept what it answered.
-            answer = FinishedHires.shared().answerOf(hire.seat, hire.task).orElse(answer);
+            answer = HireRegistry.shared().answerOf(hire.seat, hire.task).orElse(answer);
         }
         boolean clean = answer.isMissingNode() || !(answer.path("cleanExit").asText("true").equals("false")
             || answer.path("timedOut").asBoolean(false));
@@ -373,13 +372,13 @@ final class HireWatch {
         long end = hire.endedMs >= 0 ? hire.endedMs : clock.getAsLong();
         // While the hire runs, what its brain has reported so far is read from the engine's registry of running hires; once it has answered,
         // the figures are the answer's own.
-        Optional<RunningHires.Progress> live = HireEntry.RUNNING.equals(hire.state)
-            ? RunningHires.shared().progress(hire.seat, hire.task) : Optional.empty();
+        Optional<HireRegistry.Progress> live = HireEntry.RUNNING.equals(hire.state)
+            ? HireRegistry.shared().progress(hire.seat, hire.task) : Optional.empty();
         OptionalDouble cost = live.isPresent() && live.get().costUsd().isPresent() ? live.get().costUsd() : hire.cost;
-        int steps = live.map(RunningHires.Progress::toolSteps).orElse(hire.toolSteps);
-        OptionalLong context = live.map(RunningHires.Progress::contextTokens).orElse(OptionalLong.empty());
+        int steps = live.map(HireRegistry.Progress::toolSteps).orElse(hire.toolSteps);
+        OptionalLong context = live.map(HireRegistry.Progress::contextTokens).orElse(OptionalLong.empty());
         // A hire whose brain is compacting its context is still running; its card says what it is doing.
-        String state = HireEntry.RUNNING.equals(hire.state) && RunningHires.shared().compacting(hire.seat, hire.task)
+        String state = HireEntry.RUNNING.equals(hire.state) && HireRegistry.shared().compacting(hire.seat, hire.task)
             ? HireEntry.COMPACTING : hire.state;
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, state, end - hire.startedMs, hire.tokens, cost,
             hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand,
