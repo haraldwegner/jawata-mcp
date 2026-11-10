@@ -140,6 +140,11 @@ public class DebugTool extends AbstractTool {
         if (!debugTurn.personIsDebugging()) {
             return null;
         }
+        // The person's own debugger reaches this tool as an editor caller (Stage 25, F2); the rule keeps the agent out of the person's turn,
+        // and the person is not the agent.
+        if (org.jawata.mcp.models.CallerIdentity.serving().filter(c -> c.origin() == org.jawata.mcp.models.CallerIdentity.Origin.EDITOR).isPresent()) {
+            return null;
+        }
         return ToolResponse.error("PERSON_IS_DEBUGGING",
             "The person has a debug launch of their own running, and it is their turn: the agent does not start or attach to a program now.",
             "Ask the person to finish or stop their debug session, then try again.");
