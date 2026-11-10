@@ -234,8 +234,7 @@ public final class HiredRun {
         // a history of their own instead of the one every caller that sends no session id shares, and a check of "this session" is about
         // this brain and no other agent. The first dialect above only answered the containment question, which does not depend on it.
         List<GatedStep> planned = withAnswerGates(steps, seat.answerGates());
-        PlanId plan = plans.open(planned, perStepCeiling(seat.ceilings(), planned.size()));
-        owner.ifPresent(opener -> plans.ownedBy(plan, opener));
+        PlanId plan = openPlan(seat, planned);
         // S13 (the audit of C6, finding F2): the seat's tool list is kept where the choke reads it, from the moment the plan opens, so a brain
         // that ignores the permission answer, or never asks, still cannot call outside it. Over ACP an empty list means none. A dialect-started
         // brain is bounded the same way when the seat lists tools; with none listed it keeps its own configuration, as the javadoc of the
@@ -253,6 +252,12 @@ public final class HiredRun {
         } finally {
             plans.close(plan);
         }
+    }
+
+    private PlanId openPlan(SeatHire seat, List<GatedStep> planned) {
+        PlanId plan = plans.open(planned, perStepCeiling(seat.ceilings(), planned.size()));
+        owner.ifPresent(opener -> plans.ownedBy(plan, opener));
+        return plan;
     }
 
     /**
