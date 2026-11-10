@@ -47,6 +47,9 @@ public final class DapServer {
     /** What each frame id the editor was given stands for: the thread and the frame's place in its stack. */
     private final Map<Integer, long[]> frames = new ConcurrentHashMap<>();
     private final AtomicInteger frameIds = new AtomicInteger();
+    /** What each variables reference the editor was given opens: names and the debug tool's value for each, in order; valid while the program stays stopped. */
+    private final Map<Integer, JsonNode> listings = new ConcurrentHashMap<>();
+    private final AtomicInteger listingIds = new AtomicInteger();
     private final AtomicBoolean terminatedTold = new AtomicBoolean();
     private volatile boolean ending;
     private Thread stopLoop;
@@ -85,6 +88,9 @@ public final class DapServer {
                 case "setBreakpoints" -> setBreakpoints(requestSeq, arguments);
                 case "threads" -> threads(requestSeq);
                 case "stackTrace" -> stackTrace(requestSeq, arguments);
+                case "scopes" -> scopes(requestSeq, arguments);
+                case "variables" -> variables(requestSeq, arguments);
+                case "evaluate" -> evaluate(requestSeq, arguments);
                 case "continue" -> resume(requestSeq, arguments);
                 case "next" -> step(requestSeq, "next", "over", arguments);
                 case "stepIn" -> step(requestSeq, "stepIn", "in", arguments);
@@ -272,8 +278,117 @@ public final class DapServer {
         respond(requestSeq, "stackTrace", body);
     }
 
+    /** The frame ids and variable references the editor holds stop standing for anything the moment the program runs on. */
+    private void forgetWhatTheStopShowed() {
+        frames.clear();
+        listings.clear();
+    }
+
+    /** Opens the frame the editor names as its scopes: the arguments, the locals and, for an instance method, the receiver. */
+    private void scopes(int requestSeq, JsonNode arguments) {
+        long[] where = frames.get(arguments.path("frameId").asInt());
+        if (where == null) {
+            refuse(requestSeq, "scopes", "the frame is not one this debugger gave the editor, or the program has run on since");
+            return;
+        }
+        ToolResponse answer = callDebug(JSON.createObjectNode().put("action", "snapshot").put("sessionId", sessionId)
+            .put("threadId", where[0]).put("frameIndex", where[1]));
+        if (!answer.isSuccess()) {
+            refuse(requestSeq, "scopes", answer.getError().getMessage());
+            return;
+        }
+        JsonNode frame = JSON.valueToTree(answer.getData()).path("frame");
+        ObjectNode passed = JSON.createObjectNode();
+        for (JsonNode argument : frame.path("arguments")) {
+            passed.set(argument.path("name").asText(), argument.path("value"));
+        }
+        ArrayNode scopes = JSON.createArrayNode();
+        scopes.addObject().put("name", "Arguments").put("variablesReference", listing(passed)).put("expensive", false);
+        scopes.addObject().put("name", "Locals").put("variablesReference", listing(frame.path("locals"))).put("expensive", false);
+        JsonNode receiver = frame.path("this");
+        if (receiver.has("fields")) {
+            scopes.addObject().put("name", "This").put("variablesReference", listing(receiver.get("fields"))).put("expensive", false);
+        }
+        respond(requestSeq, "scopes", JSON.createObjectNode().set("scopes", scopes));
+    }
+
+    /** Lists what one variables reference opens, each with its value as a debugger shows it and a reference of its own when it can be opened. */
+    private void variables(int requestSeq, JsonNode arguments) {
+        JsonNode named = listings.get(arguments.path("variablesReference").asInt());
+        if (named == null) {
+            refuse(requestSeq, "variables", "the reference is not one this debugger gave the editor, or the program has run on since");
+            return;
+        }
+        ArrayNode variables = JSON.createArrayNode();
+        for (String name : (Iterable<String>) named::fieldNames) {
+            JsonNode value = named.get(name);
+            variables.addObject().put("name", name).put("value", display(value)).put("type", value.path("type").asText())
+                .put("variablesReference", openable(value));
+        }
+        respond(requestSeq, "variables", JSON.createObjectNode().set("variables", variables));
+    }
+
+    /** Evaluates an expression in the frame the editor names, in the program, and answers with the value and its type. */
+    private void evaluate(int requestSeq, JsonNode arguments) {
+        long[] where = frames.get(arguments.path("frameId").asInt());
+        if (where == null) {
+            refuse(requestSeq, "evaluate", "an expression is evaluated in a frame the debugger gave the editor, and none was named");
+            return;
+        }
+        ToolResponse answer = callDebug(JSON.createObjectNode().put("action", "evaluate").put("sessionId", sessionId)
+            .put("threadId", where[0]).put("frameIndex", where[1]).put("expression", arguments.path("expression").asText()));
+        if (!answer.isSuccess()) {
+            refuse(requestSeq, "evaluate", answer.getError().getMessage());
+            return;
+        }
+        JsonNode value = JSON.valueToTree(answer.getData()).path("value");
+        respond(requestSeq, "evaluate", JSON.createObjectNode().put("result", display(value)).put("type", value.path("type").asText())
+            .put("variablesReference", openable(value)));
+    }
+
+    private int listing(JsonNode named) {
+        int id = listingIds.incrementAndGet();
+        listings.put(id, named);
+        return id;
+    }
+
+    /** A reference that opens an object's fields or an array's elements, or zero for a value with nothing inside. */
+    private int openable(JsonNode value) {
+        if (value.has("fields")) {
+            return listing(value.get("fields"));
+        }
+        if (value.has("items")) {
+            ObjectNode elements = JSON.createObjectNode();
+            int index = 0;
+            for (JsonNode item : value.get("items")) {
+                elements.set(String.valueOf(index++), item);
+            }
+            return listing(elements);
+        }
+        return 0;
+    }
+
+    /** One value of the debug tool as the text a debugger shows: a string quoted, an array by its length, an object by its type and id. */
+    private static String display(JsonNode value) {
+        if (value.has("items")) {
+            return value.path("type").asText() + "[" + value.path("length").asInt() + "]";
+        }
+        if (value.has("fields")) {
+            return value.path("type").asText() + "@" + value.path("id").asText();
+        }
+        if (value.has("summary")) {
+            return value.path("summary").asText();
+        }
+        JsonNode plain = value.path("value");
+        if (plain.isMissingNode() || plain.isNull()) {
+            return "null";
+        }
+        return "java.lang.String".equals(value.path("type").asText()) ? "\"" + plain.asText() + "\"" : plain.asText();
+    }
+
     /** Resumes the one thread the editor names. */
     private void resume(int requestSeq, JsonNode arguments) {
+        forgetWhatTheStopShowed();
         long threadId = arguments.path("threadId").asLong();
         ToolResponse answer = callDebug(JSON.createObjectNode().put("action", "resume").put("sessionId", sessionId).put("threadId", threadId));
         if (!answer.isSuccess()) {
@@ -285,6 +400,7 @@ public final class DapServer {
 
     /** Steps the thread the editor names; its next stop is told to the editor as a step. */
     private void step(int requestSeq, String command, String mode, JsonNode arguments) {
+        forgetWhatTheStopShowed();
         long threadId = arguments.path("threadId").asLong();
         stepping.put(threadId, Boolean.TRUE);
         ToolResponse answer = callDebug(JSON.createObjectNode().put("action", "step").put("sessionId", sessionId).put("threadId", threadId).put("mode", mode));

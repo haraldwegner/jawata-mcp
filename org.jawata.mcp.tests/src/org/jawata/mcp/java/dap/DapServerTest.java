@@ -309,6 +309,98 @@ class DapServerTest {
         assertTrue(frames.path(0).path("id").asInt() != frames.path(1).path("id").asInt(), "frame ids must tell the frames apart");
     }
 
+    /** A stopped thread with one frame, as the debug tool's snapshot describes it: an argument array, two locals and a receiver with a field. */
+    private void aStoppedFrame() {
+        Map<String, Object> text = Map.of("type", "java.lang.String", "value", "a");
+        Map<String, Object> frame = Map.of("class", "p.Main", "method", "run", "line", 7, "frameIndex", 0,
+            "arguments", List.of(Map.of("name", "args", "value", Map.of("type", "java.lang.String[]", "id", 5, "length", 1, "items", List.of(text)))),
+            "locals", Map.of("count", Map.of("type", "int", "value", 3), "label", Map.of("type", "java.lang.String", "value", "x")),
+            "this", Map.of("type", "p.Main", "id", 9, "fields", Map.of("size", Map.of("type", "int", "value", 2))));
+        tools.byAction.put("snapshot", arguments -> ToolResponse.success(Map.of("threadId", 42L, "stackDepth", 1,
+            "stack", List.of(Map.of("class", "p.Main", "method", "run", "line", 7, "source", "Main.java", "frameIndex", 0)), "frame", frame)));
+    }
+
+    private int idOfTheTopFrame() {
+        send("stackTrace", JSON.createObjectNode().put("threadId", 42));
+        return responseTo(seq).path("body").path("stackFrames").path(0).path("id").asInt();
+    }
+
+    private JsonNode variablesOf(int reference) {
+        send("variables", JSON.createObjectNode().put("variablesReference", reference));
+        return responseTo(seq).path("body").path("variables");
+    }
+
+    @Test
+    @DisplayName("scopes of a frame are its arguments, locals and receiver; variables lists each with its value, and an object or array can be opened")
+    void scopesAndVariablesAreReadFromTheFrame() {
+        aStoppedFrame();
+        launched();
+        int frameId = idOfTheTopFrame();
+
+        send("scopes", JSON.createObjectNode().put("frameId", frameId));
+
+        JsonNode snapshot = tools.calls.get(tools.calls.size() - 1);
+        assertEquals("snapshot", snapshot.path("action").asText());
+        assertEquals(42, snapshot.path("threadId").asInt());
+        assertEquals(0, snapshot.path("frameIndex").asInt());
+        JsonNode scopes = responseTo(seq).path("body").path("scopes");
+        assertEquals(List.of("Arguments", "Locals", "This"), List.of(scopes.path(0).path("name").asText(), scopes.path(1).path("name").asText(), scopes.path(2).path("name").asText()));
+
+        JsonNode locals = variablesOf(scopes.path(1).path("variablesReference").asInt());
+        assertEquals(2, locals.size());
+        JsonNode count = locals.path(0).path("name").asText().equals("count") ? locals.path(0) : locals.path(1);
+        assertEquals("3", count.path("value").asText());
+        assertEquals("int", count.path("type").asText());
+        assertEquals(0, count.path("variablesReference").asInt());
+
+        JsonNode arguments = variablesOf(scopes.path(0).path("variablesReference").asInt());
+        assertEquals("args", arguments.path(0).path("name").asText());
+        assertTrue(arguments.path(0).path("variablesReference").asInt() > 0, "an array can be opened");
+        JsonNode items = variablesOf(arguments.path(0).path("variablesReference").asInt());
+        assertEquals("0", items.path(0).path("name").asText());
+        assertTrue(items.path(0).path("value").asText().contains("a"), items.toString());
+
+        JsonNode receiver = variablesOf(scopes.path(2).path("variablesReference").asInt());
+        assertEquals("size", receiver.path(0).path("name").asText());
+        assertEquals("2", receiver.path(0).path("value").asText());
+    }
+
+    @Test
+    @DisplayName("evaluate asks the debug tool in the frame the editor names and answers with the value and its type")
+    void evaluateRunsInTheNamedFrame() {
+        aStoppedFrame();
+        tools.byAction.put("evaluate", arguments -> ToolResponse.success(Map.of("expression", "count + 2", "summary", 5,
+            "value", Map.of("type", "int", "value", 5), "invokedMethod", false)));
+        launched();
+        int frameId = idOfTheTopFrame();
+
+        send("evaluate", JSON.createObjectNode().put("expression", "count + 2").put("frameId", frameId));
+
+        JsonNode call = tools.calls.get(tools.calls.size() - 1);
+        assertEquals("evaluate", call.path("action").asText());
+        assertEquals("count + 2", call.path("expression").asText());
+        assertEquals(42, call.path("threadId").asInt());
+        assertEquals(0, call.path("frameIndex").asInt());
+        JsonNode body = responseTo(seq).path("body");
+        assertEquals("5", body.path("result").asText());
+        assertEquals("int", body.path("type").asText());
+    }
+
+    @Test
+    @DisplayName("when the tool cannot evaluate, the editor gets the reason and not a value")
+    void anExpressionTheToolRefusesIsAnsweredWithItsReason() {
+        aStoppedFrame();
+        tools.byAction.put("evaluate", arguments -> ToolResponse.error("EVAL_FAILED", "no such variable nope", "check the name"));
+        launched();
+        int frameId = idOfTheTopFrame();
+
+        send("evaluate", JSON.createObjectNode().put("expression", "nope").put("frameId", frameId));
+
+        JsonNode response = responseTo(seq);
+        assertFalse(response.path("success").asBoolean());
+        assertTrue(response.path("message").asText().contains("no such variable nope"), response.toString());
+    }
+
     @Test
     @DisplayName("when the program ends the editor is told it terminated, once")
     void theEndOfTheProgramIsToldOnce() throws Exception {
