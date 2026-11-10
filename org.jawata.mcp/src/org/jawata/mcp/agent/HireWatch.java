@@ -296,8 +296,13 @@ final class HireWatch {
             return;
         }
         if (!answer.has("cleanExit")) {
-            // The brain's echo carries no answer (Cursor sends {"success": true} only): the engine ran the hire and kept what it answered.
-            answer = HireRegistry.shared().answerOf(hire.seat, hire.task).orElse(answer);
+            // The brain's echo carries no answer (Cursor sends {"success": true} only). The engine keeps what a hire answered once it ends; with
+            // nothing kept the hire is still running, and the engine's own event ends this card, so an echo must not (found live, 2026-11-10).
+            Optional<JsonNode> kept = HireRegistry.shared().answerOf(hire.seat, hire.task);
+            if (kept.isEmpty()) {
+                return;
+            }
+            answer = kept.get();
         }
         applyAnswer(hire, answer);
     }

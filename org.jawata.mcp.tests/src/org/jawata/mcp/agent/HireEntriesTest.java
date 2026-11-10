@@ -190,7 +190,7 @@ class HireEntriesTest {
     }
 
     @Test
-    @DisplayName("S17: a hire as Cursor's agent streams it is seen — the call is unnamed at first, a later update names it \"jawata: hire\" with the arguments under rawInput.args, and it ends with an answer that holds no data")
+    @DisplayName("S17: a hire as Cursor's agent streams it is seen — the call is unnamed at first, a later update names it \"jawata: hire\" with the arguments under rawInput.args, and the echo that ends the call holds no data and does not end the card")
     void aHireAsCursorStreamsItIsSeen() throws Exception {
         ObjectNode first = JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "c1").put("title", "MCP: tool").put("kind", "other").put("status", "pending");
         first.putObject("rawInput");
@@ -210,7 +210,8 @@ class HireEntriesTest {
         assertEquals("pm", seen.seat());
         assertEquals("Reply with the one word ok.", seen.task());
         assertEquals(HireEntry.RUNNING, seen.state());
-        assertEquals(HireEntry.DONE, ended.state());
+        // The echo holds no data, and the engine kept no answer for this hire: it is still running, and the engine's own event ends the card.
+        assertEquals(HireEntry.RUNNING, ended.state());
     }
 
     @Test
@@ -424,5 +425,20 @@ class HireEntriesTest {
         HireEntry named = new HireEntry("p", "test-writer", Optional.of("claude-code"), Optional.of("sonnet"), HireEntry.RUNNING, 0, 0,
             java.util.OptionalDouble.empty(), "t", Optional.empty());
         assertEquals("test-writer · claude-code · sonnet — running", named.title());
+    }
+
+    @Test
+    @DisplayName("S24 (found live with Cursor): an echo that says only success does not end the card of a hire the engine still runs, and ends it once the engine has kept the hire's answer")
+    void anEchoOfOnlySuccessLeavesARunningHireRunning() {
+        watch.observe(withInput(hireCall("tool_call", "echo1", "pending"), "main", "echo-seat", "echo brief that no hire has answered"));
+
+        HireEntry afterTheEcho = watch.observe(answered(hireCall("tool_call_update", "echo1", "completed"), "{\"success\":true}")).orElseThrow();
+        assertEquals(HireEntry.RUNNING, afterTheEcho.state(), "the echo ended a card whose hire is still running");
+
+        // THE CONTROL: the same echo once the engine holds the hire's answer ends the card, so the branch above is not just a card that never ends.
+        org.jawata.mcp.execution.HireRegistry.shared().record("echo-seat", "echo brief that no hire has answered",
+            JSON.createObjectNode().put("cleanExit", true).put("answer", "kept"));
+        HireEntry afterTheAnswer = watch.observe(answered(hireCall("tool_call_update", "echo1", "completed"), "{\"success\":true}")).orElseThrow();
+        assertEquals(HireEntry.DONE, afterTheAnswer.state());
     }
 }
