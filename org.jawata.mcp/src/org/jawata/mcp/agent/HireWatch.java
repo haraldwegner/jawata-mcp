@@ -388,6 +388,11 @@ final class HireWatch {
         if (hire.name.isEmpty()) {
             hire.name = HireRegistry.shared().nameOf(hire.seat, hire.task);
         }
+        // THE PARENT FROM WHO ISSUED THE HIRE (Stage 24, D55): the caller's id is the plan id of the lead's own hire, so the lead is the hire
+        // whose plan id it names. This wins over the guess by seat name that readInput makes, which cannot tell two project managers apart.
+        HireRegistry.shared().leadPlanOf(hire.seat, hire.task).ifPresent(leadPlan -> hires.values().stream()
+            .filter(other -> other != hire && leadPlan.equals(HireRegistry.shared().planOf(other.seat, other.task).orElse(other.enginePlan)))
+            .findFirst().ifPresent(lead -> hire.parent = Optional.of(lead.id)));
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, state, end - hire.startedMs, hire.tokens, cost,
             hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand,
             hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan), hire.name);

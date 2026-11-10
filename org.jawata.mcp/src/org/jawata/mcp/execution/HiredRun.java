@@ -257,6 +257,8 @@ public final class HiredRun {
     private PlanId openPlan(SeatHire seat, List<GatedStep> planned) {
         PlanId plan = plans.open(planned, perStepCeiling(seat.ceilings(), planned.size()));
         owner.ifPresent(opener -> plans.ownedBy(plan, opener));
+        // The registry learns the plan id of the hire running on this thread, so a hire this hire's brain issues can name this one as its lead.
+        HireRegistry.shared().planOpened(plan.value());
         return plan;
     }
 

@@ -33,16 +33,21 @@ public final class HireRegistry {
         final String brief;
         /** The first name this hire carries, given when it was registered (Stage 24, D55). */
         final String name;
+        /** The id of the caller that issued this hire: when that caller is a hired lead, the plan id of the lead's own hire (Stage 24, D55). */
+        final String leadId;
+        /** This hire's own plan id, known once its plan is open; empty before. */
+        volatile String planId = "";
         final Thread thread;
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
         /** Whether the brain is compacting its own context right now, as its stream last said. */
         volatile boolean compacting;
 
-        Running(String seat, String brief, String name, Thread thread) {
+        Running(String seat, String brief, String name, String leadId, Thread thread) {
             this.seat = seat;
             this.brief = brief;
             this.name = name;
+            this.leadId = leadId;
             this.thread = thread;
         }
     }
@@ -109,7 +114,8 @@ public final class HireRegistry {
      * that issued it, so two hires of one seat in one conversation can be told apart.
      */
     public synchronized Registration begin(String seat, String brief, String conversationKey) {
-        Running hire = new Running(seat, normal(brief), HireNames.shared().assign(conversationKey), Thread.currentThread());
+        Running hire = new Running(seat, normal(brief), HireNames.shared().assign(conversationKey), conversationKey == null ? "" : conversationKey,
+            Thread.currentThread());
         stopped.remove(hire.thread);
         running.add(hire);
         return new Registration(hire);
@@ -180,6 +186,43 @@ public final class HireRegistry {
         for (Running hire : running) {
             if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
                 return Optional.of(hire.progress);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** Records the plan id of the hire running on the current thread, once its plan is open; a thread running no hire is ignored. */
+    public void planOpened(String planId) {
+        for (Running hire : running) {
+            if (hire.thread == Thread.currentThread()) {
+                hire.planId = planId;
+            }
+        }
+    }
+
+    /** The plan id of the running hire of this seat for this brief; none when no such hire is running or its plan is not open yet. */
+    public Optional<String> planOf(String seat, String brief) {
+        for (Running hire : running) {
+            if (hire.seat.equals(seat) && hire.brief.equals(normal(brief)) && !hire.planId.isEmpty()) {
+                return Optional.of(hire.planId);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * The plan id of the running hire that issued the running hire of this seat for this brief: the caller of a hire is the hired lead whose own
+     * session id is that lead's plan id, so the lead is the running hire whose plan id equals the caller's id. None when the issuer is no running
+     * hire, as for a hire the principal itself issued.
+     */
+    public Optional<String> leadPlanOf(String seat, String brief) {
+        for (Running hire : running) {
+            if (hire.seat.equals(seat) && hire.brief.equals(normal(brief)) && !hire.leadId.isEmpty()) {
+                for (Running lead : running) {
+                    if (lead != hire && hire.leadId.equals(lead.planId)) {
+                        return Optional.of(lead.planId);
+                    }
+                }
             }
         }
         return Optional.empty();
