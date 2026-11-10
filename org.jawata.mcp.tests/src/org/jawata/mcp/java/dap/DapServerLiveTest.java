@@ -70,7 +70,7 @@ class DapServerLiveTest {
                 return List.of();
             }
         };
-        server = new DapServer(calls, CallerIdentity.editor("dap-live"), message -> said.add(message.getParams()), turn);
+        server = new DapServer(calls, CallerIdentity.editor("dap-live"), message -> said.add(message.getParams()), turn, className -> java.util.Optional.empty());
         source = service.getProjectRoot().resolve("src/main/java/com/example/debug/DebugTarget.java");
         classes = Files.createTempDirectory("jawata-dap-live-classes-");
         assertEquals(0, javax.tools.ToolProvider.getSystemJavaCompiler().run(null, null, null, "-g", "-d", classes.toString(), source.toString()),

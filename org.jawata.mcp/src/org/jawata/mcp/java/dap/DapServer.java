@@ -1,12 +1,15 @@
 package org.jawata.mcp.java.dap;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.engine.ToolNotFoundException;
@@ -53,6 +56,7 @@ public final class DapServer {
     private final AtomicBoolean terminatedTold = new AtomicBoolean();
     private volatile boolean ending;
     private volatile Thread stopLoop;
+    private final Function<String, Optional<Path>> sources;
 
     /** How long one wait for the program's next stop lasts; the loop asks again when nothing stopped. */
     private static final long WAIT_MILLIS = 60_000;
@@ -62,12 +66,15 @@ public final class DapServer {
      * @param caller the editor connection this server answers
      * @param out    where what the server says goes, one JSON-RPC message per debug message
      * @param turn   whose turn it is to debug, which a launch takes for the person
+     * @param sources the source file of a class by its name as the running program reports it, from the engine's Java model; empty for a class
+     *                that is not in source of a loaded project, whose frame then shows no file
      */
-    public DapServer(ToolCalls tools, CallerIdentity caller, Consumer<JsonRpcMessage> out, PersonDebugTurn turn) {
+    public DapServer(ToolCalls tools, CallerIdentity caller, Consumer<JsonRpcMessage> out, PersonDebugTurn turn, Function<String, Optional<Path>> sources) {
         this.tools = tools;
         this.caller = caller;
         this.out = out;
         this.turn = turn;
+        this.sources = sources;
     }
 
     /** One message from the editor: a request is served, and anything else a debug client sends is not a request and is left alone. */
@@ -271,7 +278,8 @@ public final class DapServer {
             ObjectNode described = stackFrames.addObject().put("id", id)
                 .put("name", frame.path("class").asText() + "." + frame.path("method").asText())
                 .put("line", frame.path("line").asInt()).put("column", 1);
-            described.putObject("source").put("name", frame.path("source").asText());
+            ObjectNode where = described.putObject("source").put("name", frame.path("source").asText());
+            sources.apply(frame.path("class").asText()).ifPresent(file -> where.put("path", file.toString()));
         }
         ObjectNode body = JSON.createObjectNode().put("totalFrames", snapshot.path("stackDepth").asInt(stackFrames.size()));
         body.set("stackFrames", stackFrames);

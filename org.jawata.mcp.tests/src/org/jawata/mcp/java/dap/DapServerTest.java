@@ -73,7 +73,9 @@ class DapServerTest {
     private final FakeTools tools = new FakeTools(turn);
     private final List<JsonNode> said = new CopyOnWriteArrayList<>();
     private final BlockingQueue<ToolResponse> hits = new LinkedBlockingQueue<>();
-    private final DapServer server = new DapServer(tools, CallerIdentity.editor("dap-test"), message -> said.add(message.getParams()), turn);
+    /** The source file the server is told a class has; a test sets it before the frames are asked for. */
+    private java.util.function.Function<String, java.util.Optional<java.nio.file.Path>> sources = className -> java.util.Optional.empty();
+    private final DapServer server = new DapServer(tools, CallerIdentity.editor("dap-test"), message -> said.add(message.getParams()), turn, className -> sources.apply(className));
     private int seq;
 
     private void send(String command, ObjectNode arguments) {
@@ -291,7 +293,8 @@ class DapServerTest {
             List.of(Map.of("threadId", 42L, "name", "main", "state", "RUNNING", "suspended", true)))));
         tools.byAction.put("snapshot", arguments -> ToolResponse.success(Map.of("threadId", 42L, "stackDepth", 2, "stack", List.of(
             Map.of("class", "p.Main", "method", "run", "line", 7, "source", "Main.java", "frameIndex", 0),
-            Map.of("class", "p.Main", "method", "main", "line", 3, "source", "Main.java", "frameIndex", 1)))));
+            Map.of("class", "p.Other", "method", "main", "line", 3, "source", "Other.java", "frameIndex", 1)))));
+        sources = className -> "p.Main".equals(className) ? java.util.Optional.of(java.nio.file.Path.of("/w/src/p/Main.java")) : java.util.Optional.empty();
         launched();
 
         send("threads", null);
@@ -305,6 +308,8 @@ class DapServerTest {
         assertEquals("p.Main.run", frames.path(0).path("name").asText());
         assertEquals(7, frames.path(0).path("line").asInt());
         assertEquals("Main.java", frames.path(0).path("source").path("name").asText());
+        assertEquals("/w/src/p/Main.java", frames.path(0).path("source").path("path").asText(), "a class in source gives the editor the file to open");
+        assertTrue(frames.path(1).path("source").path("path").isMissingNode(), "a class the model does not hold gives a name and no path");
         assertEquals(2, responseTo(3).path("body").path("totalFrames").asInt());
         assertTrue(frames.path(0).path("id").asInt() != frames.path(1).path("id").asInt(), "frame ids must tell the frames apart");
     }

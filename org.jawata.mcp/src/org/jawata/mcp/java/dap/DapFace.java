@@ -1,9 +1,18 @@
 package org.jawata.mcp.java.dap;
 
+import java.nio.file.Path;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+import org.eclipse.core.resources.IResource;
+import org.eclipse.jdt.core.ICompilationUnit;
+import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.JavaModelException;
+import org.jawata.core.IJdtService;
+import org.jawata.core.JavaBinding;
+import org.jawata.core.LoadedProject;
 import org.jawata.mcp.engine.EngineApi;
 import org.jawata.mcp.engine.RoutedFace;
 import org.jawata.mcp.models.CallerIdentity;
@@ -32,6 +41,7 @@ public final class DapFace implements RoutedFace {
     private static final long KEEPALIVE_SECONDS = 15;
 
     private final Supplier<Instruments> instruments;
+    private final Supplier<IJdtService> model;
     private final AtomicInteger connections = new AtomicInteger();
     private volatile EngineHost host;
     private volatile EngineApi engine;
@@ -39,11 +49,35 @@ public final class DapFace implements RoutedFace {
     /** The face as the component runtime builds it: the instruments are whatever the host the engine was built from answers at each ask. */
     public DapFace() {
         this.instruments = () -> host.instruments();
+        this.model = () -> host.binding(JavaBinding.class).map(binding -> binding.model().current()).orElse(null);
     }
 
-    /** A face over the instruments {@code instruments} supplies, for a caller that has no host. */
+    /** A face over the instruments {@code instruments} supplies, for a caller that has no host; it knows no source files. */
     DapFace(Supplier<Instruments> instruments) {
         this.instruments = instruments;
+        this.model = () -> null;
+    }
+
+    /** The source file of the class the running program calls {@code className}, from the engine's Java model; empty when it is not in source of a loaded project. */
+    private Optional<Path> sourceOf(String className) {
+        IJdtService engine = model.get();
+        if (engine == null) {
+            return Optional.empty();
+        }
+        String typeName = className.replace('$', '.');
+        for (LoadedProject project : engine.allProjects()) {
+            try {
+                IType type = project.javaProject().findType(typeName);
+                ICompilationUnit unit = type == null ? null : type.getCompilationUnit();
+                IResource resource = unit == null ? null : unit.getResource();
+                if (resource != null && resource.getLocationURI() != null) {
+                    return Optional.of(Path.of(resource.getLocationURI()));
+                }
+            } catch (JavaModelException e) {
+                // this project cannot say: the next one may
+            }
+        }
+        return Optional.empty();
     }
 
     /** The component runtime hands in the host the engine was built from. */
@@ -90,7 +124,7 @@ public final class DapFace implements RoutedFace {
             throw new IllegalStateException("this host debugs the person's programs itself");
         }
         CallerIdentity caller = CallerIdentity.editor("dap-" + connections.incrementAndGet());
-        DapServer server = new DapServer(attached.tools(), caller, out, turn);
+        DapServer server = new DapServer(attached.tools(), caller, out, turn, this::sourceOf);
         return new MessageRoute.Session() {
             @Override
             public void receive(JsonRpcMessage message) {
