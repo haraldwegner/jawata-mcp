@@ -2021,6 +2021,45 @@ class HireToolTest {
         }
     }
 
+    @Test
+    @DisplayName("S24 (M14, ND7): a background hire past the cap is refused naming who is running, and the same hire under a higher cap starts")
+    void aBackgroundHirePastTheCapIsRefusedNamingWhoIsRunning() throws Exception {
+        java.util.concurrent.CountDownLatch out = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+        Thread running = new Thread(() -> {
+            try (org.jawata.mcp.execution.HireRegistry.Registration registration =
+                     org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "m14 cap holder", "m14-cap-chat")) {
+                org.jawata.mcp.execution.HireRegistry.shared().planOpened("m14-cap-holder-plan");
+                out.countDown();
+                release.await();
+            } catch (InterruptedException ended) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        running.setDaemon(true);
+        running.start();
+        try {
+            assertTrue(out.await(5, java.util.concurrent.TimeUnit.SECONDS), "the running hire did not start");
+            int already = org.jawata.mcp.execution.HireRegistry.shared().runningCount();
+
+            HireTool capped = toolWithSettings(new StandsIn(host, aBrainThatAnswers()),
+                Map.of(HireTool.BACKGROUND_SETTING, "true", HireTool.MAX_RUNNING_SETTING, String.valueOf(already)));
+            ToolResponse refused = capped.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+            HireTool roomy = toolWithSettings(new StandsIn(host, aBrainThatAnswers()),
+                Map.of(HireTool.BACKGROUND_SETTING, "true", HireTool.MAX_RUNNING_SETTING, String.valueOf(already + 5)));
+            ToolResponse started = roomy.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+
+            assertAll(
+                () -> assertFalse(refused.isSuccess(), "a hire past the cap was started"),
+                () -> assertTrue(String.valueOf(refused.getError()).contains("TOO_MANY_HIRES") && String.valueOf(refused.getError()).contains("developer"),
+                    "the refusal does not say who is running: " + refused.getError()),
+                () -> assertTrue(started.isSuccess(), "the control: a hire under a higher cap was refused: " + started.getError()));
+        } finally {
+            release.countDown();
+            running.join(5_000);
+        }
+    }
+
     /** A hire tool whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),

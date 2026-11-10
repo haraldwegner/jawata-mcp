@@ -310,6 +310,11 @@ public class HireTool extends NeutralTool {
     /** The host setting that makes a hire run on the engine's own thread and answer its caller at once (Stage 24, M7); it goes at M16. */
     public static final String BACKGROUND_SETTING = "jawata.hire.background";
 
+    /** The host setting that caps how many hires run at once when they run in the background (Stage 24, ND7); zero or less means no cap. */
+    public static final String MAX_RUNNING_SETTING = "jawata.hire.maxRunning";
+
+    private static final int DEFAULT_MAX_RUNNING = 8;
+
     /** How long a call waits for a hire to open its plan before it gives up: opening a plan is quick, and nothing in it waits for a brain. */
     private static final long OPENS_WITHIN_SECONDS = 30;
 
@@ -335,6 +340,20 @@ public class HireTool extends NeutralTool {
      * for, so a caller whose own request times out after a minute is no longer a reason for a hire to fail.
      */
     private ToolResponse startInBackground(JsonNode arguments, HireCall call) {
+        // THE CAP (Stage 24, M14, ND7): a lead that hires without limit can flood the machine, so a hire past the number the host allows is refused,
+        // and the refusal says who is running. The number is provisional until a brain's memory and cost are measured.
+        int cap = settings.get().get(MAX_RUNNING_SETTING).map(text -> {
+            try {
+                return Integer.parseInt(text.strip());
+            } catch (NumberFormatException notANumber) {
+                return DEFAULT_MAX_RUNNING;
+            }
+        }).orElse(DEFAULT_MAX_RUNNING);
+        if (cap > 0 && HireRegistry.shared().runningCount() >= cap) {
+            return ToolResponse.error("TOO_MANY_HIRES", "refused: " + HireRegistry.shared().runningCount() + " hires are running, which is the most this"
+                + " engine runs at once (" + cap + "): " + String.join(", ", HireRegistry.shared().runningNames()),
+                "wait for one of them to end, or stop one from the Agent Control panel; the limit is the setting " + MAX_RUNNING_SETTING);
+        }
         java.util.concurrent.CompletableFuture<Map<String, Object>> opened = new java.util.concurrent.CompletableFuture<>();
         java.util.concurrent.CompletableFuture<ToolResponse> ended = new java.util.concurrent.CompletableFuture<>();
         HIRES.execute(() -> {

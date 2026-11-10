@@ -330,6 +330,7 @@ public final class HireRegistry {
             if (hire.thread == Thread.currentThread()) {
                 hire.planId = planId;
                 issuedBy.put(planId, hire.leadId);
+                labels.put(planId, hire.name + " · " + hire.seat);
                 java.util.function.BiConsumer<String, String> told = planListeners.get(hire.thread);
                 if (told != null) {
                     told.accept(planId, hire.name);
@@ -407,6 +408,68 @@ public final class HireRegistry {
             above = issuedBy.getOrDefault(above, "");
         }
         return false;
+    }
+
+    /**
+     * Stops the running hire with this plan id and every running hire below it in the chain of hires that issued them (Stage 24, M14, ND3): what
+     * a person stopping a lead means is that nothing under it goes on spending. Answers each stopped hire as first name and seat, so the answer
+     * can say who was stopped.
+     */
+    public synchronized List<String> stopTree(String planId) {
+        List<String> stoppedNames = new java.util.ArrayList<>();
+        for (Running hire : running) {
+            boolean below = false;
+            String above = hire.leadId;
+            for (int steps = 0; steps < 16 && !above.isEmpty() && !below; steps++) {
+                below = above.equals(planId);
+                above = issuedBy.getOrDefault(above, "");
+            }
+            if (hire.planId.equals(planId) || below) {
+                stopped.add(hire.thread);
+                hire.onStop.forEach(Runnable::run);
+                hire.thread.interrupt();
+                stoppedNames.add(hire.name + " · " + hire.seat);
+            }
+        }
+        return stoppedNames;
+    }
+
+    /** What each plan was, as first name and seat, kept so a report can say whose hire it was after that hire has ended. */
+    private final java.util.Map<String, String> labels = new ConcurrentHashMap<>();
+
+    /** The finished background hires no connection has taken the report of, by the chat session they trace back to, until one does. */
+    private final java.util.Map<String, List<Event>> waiting = new ConcurrentHashMap<>();
+
+    /** The first name and seat of the hire with this plan id, running or ended; the id itself when it is no hire's. */
+    public String labelOf(String planId) {
+        return labels.getOrDefault(planId, planId);
+    }
+
+    /** Records that a connection has taken this report, so it is not handed over again. */
+    public void markDelivered(Event event) {
+        List<Event> held = waiting.get(rootOf(event.leadId()));
+        if (held != null) {
+            held.removeIf(kept -> kept.planId().equals(event.planId()));
+        }
+    }
+
+    /** The reports of finished background hires that trace back to this chat session and that no connection has taken, oldest first. */
+    public List<Event> undeliveredFor(String sessionId) {
+        return List.copyOf(waiting.getOrDefault(sessionId, new CopyOnWriteArrayList<>()));
+    }
+
+    /** How many hires are running now. */
+    public int runningCount() {
+        return running.size();
+    }
+
+    /** The running hires as first name and seat, in the order they began: who a refusal for too many running hires names. */
+    public List<String> runningNames() {
+        List<String> names = new java.util.ArrayList<>();
+        for (Running hire : running) {
+            names.add(hire.name + " · " + hire.seat);
+        }
+        return names;
     }
 
     /** The threads whose next hire is started in the background; read once, when that hire is registered. */
@@ -509,8 +572,18 @@ public final class HireRegistry {
         }
         // Told outside the lock: a subscriber answers a host and takes locks of its own.
         String plan = answer.path("plan").asText("");
-        tell(new Event("finished", plan, answer.path("name").asText(""), seat, normal(brief), issuedBy.getOrDefault(plan, ""), answer,
-            backgroundPlans.remove(plan)));
+        Event ended = new Event("finished", plan, answer.path("name").asText(""), seat, normal(brief), issuedBy.getOrDefault(plan, ""), answer,
+            backgroundPlans.remove(plan));
+        // A background hire whose lead is not a running hire, a chat or a hire that has ended, has nobody running to read its report from an inbox:
+        // it is kept until a connection takes it, so a chat closed while it worked is told when it is opened again (ND4).
+        if (ended.background() && !isRunningPlan(ended.leadId())) {
+            List<Event> held = waiting.computeIfAbsent(rootOf(ended.leadId()), root -> new CopyOnWriteArrayList<>());
+            held.add(ended);
+            while (held.size() > 100) {
+                held.remove(0);
+            }
+        }
+        tell(ended);
     }
 
     /** The answer of the latest hire of this seat for this brief, or none when this engine ran no such hire. */

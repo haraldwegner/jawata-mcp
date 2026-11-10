@@ -103,6 +103,14 @@ public final class AcpServer {
         if ("session/new".equals(message.getMethod()) && response.getError() == null && !isSide(message.getParams())) {
             advertiseCommands(((ObjectNode) response.getResult()).get("sessionId").asText());
         }
+        // A chat opened again is told what finished while it was closed (Stage 24, M14, ND4), after its load has been answered.
+        if ("session/load".equals(message.getMethod()) && response.getError() == null) {
+            PrincipalSession loaded = sessions.get(textField(message.getParams(), "sessionId"));
+            if (loaded != null) {
+                HireRegistry.shared().undeliveredFor(loaded.id()).forEach(late -> deliver(loaded, late,
+                    "Note: this report arrived while the chat was closed, and is delivered now.\n"));
+            }
+        }
     }
 
     /** The host's connection ended: what the brains hold for it, a running process among them, goes now. */
@@ -274,7 +282,10 @@ public final class AcpServer {
         if (!HireEntry.RUNNING.equals(entry.get().state())) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "hire " + planId + " has already " + entry.get().state() + "; there is nothing to stop", null);
         }
-        int stopped = HireRegistry.shared().stop(entry.get().seat(), entry.get().task());
+        // A hire the engine knows by plan id is stopped with every hire below it, and the answer names them (Stage 24, M14, ND3); one it does not
+        // know by plan id is found by its seat and brief as before.
+        List<String> names = entry.get().enginePlan().map(plan -> HireRegistry.shared().stopTree(plan)).orElse(List.of());
+        int stopped = names.isEmpty() ? HireRegistry.shared().stop(entry.get().seat(), entry.get().task()) : names.size();
         if (stopped == 0) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
                 "this engine is not running a hire of " + entry.get().seat() + " for that brief, so there is nothing here to stop", null);
@@ -283,6 +294,8 @@ public final class AcpServer {
         result.put("ok", true);
         result.put("planId", planId);
         result.put("stopped", stopped);
+        ArrayNode who = result.putArray("stoppedNames");
+        names.forEach(who::add);
         return JsonRpcMessage.successResponse(id, result);
     }
 
@@ -585,9 +598,15 @@ public final class AcpServer {
             return;
         }
         hires.engineEvent(event).ifPresent(seen -> showHire(session, seen));
-        // A hire the session's own brain started in the background reports back to that brain as a new turn; a hire of a lead is the lead's to receive.
-        if ("finished".equals(event.kind()) && event.background() && session.id().equals(event.leadId())) {
-            deliver(session, event);
+        // A hire the session's own brain started in the background reports back to that brain as a new turn. A hire of a lead that is still running
+        // is that lead's to receive; a hire of a lead that has ended has nobody above it to read its report but the chat, so it comes to the
+        // principal, with a line saying whose hire it was (Stage 24, M14).
+        if ("finished".equals(event.kind()) && event.background()) {
+            boolean own = session.id().equals(event.leadId());
+            if (own || !HireRegistry.shared().isRunningPlan(event.leadId())) {
+                deliver(session, event, own ? ""
+                    : "Note: this hire was started by " + HireRegistry.shared().labelOf(event.leadId()) + ", which has ended, so its report comes to you.\n");
+            }
         }
     }
 
@@ -609,12 +628,15 @@ public final class AcpServer {
      * principal answers it, and the person sees it, without anyone having asked. It waits for a turn that is running, and the person's next
      * message waits for it.
      */
-    private void deliver(PrincipalSession session, HireRegistry.Event event) {
+    private void deliver(PrincipalSession session, HireRegistry.Event event, String note) {
+        // This connection has taken the report, so the registry no longer keeps it for a connection opened later.
+        HireRegistry.shared().markDelivered(event);
         deliveries.execute(() -> {
             java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());
             turn.lock();
             try {
-                conductTurn(JSON.createObjectNode(), session, "msg_" + UUID.randomUUID(), "[report of " + event.name() + " · " + event.seat() + "]", reportOf(session, event));
+                conductTurn(JSON.createObjectNode(), session, "msg_" + UUID.randomUUID(), "[report of " + event.name() + " · " + event.seat() + "]",
+                    note + reportOf(session, event));
             } catch (RuntimeException failed) {
                 java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.WARNING, "the report of a hire could not be delivered", failed);
             } finally {
