@@ -56,7 +56,9 @@ public final class TurnBoundary {
 
     /** Decides what to do with the end of the turn a brain just made in {@code session}. */
     public Verdict atTurnEnd(PrincipalSession session) {
-        List<StepLedger.Pending> waiting = steps.pending(session);
+        // A step whose hire is running is waiting because someone is working on it, which is the normal state of a lead with hires out (Stage 24,
+        // M11): the turn ends and no try is spent. Only a step nobody is working on is a step left behind.
+        List<StepLedger.Pending> waiting = steps.pending(session).stream().filter(step -> !step.inFlight()).toList();
         if (waiting.isEmpty()) {
             return Verdict.FORWARD;
         }

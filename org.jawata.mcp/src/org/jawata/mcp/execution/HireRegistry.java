@@ -322,6 +322,19 @@ public final class HireRegistry {
         return names;
     }
 
+    /**
+     * Whether this plan id is the plan of a hire that is running right now (Stage 24, M11): a step of such a plan is waiting because a hire is
+     * working on it, which is the normal state while a lead has hires out, and not a step that has been left behind.
+     */
+    public boolean isRunningPlan(String planId) {
+        for (Running hire : running) {
+            if (!planId.isEmpty() && planId.equals(hire.planId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** The first name of the running hire of this seat for this brief; none when no such hire is running. */
     public Optional<String> nameOf(String seat, String brief) {
         for (Running hire : running) {
