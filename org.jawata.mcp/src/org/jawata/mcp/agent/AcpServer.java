@@ -602,7 +602,7 @@ public final class AcpServer {
         // is that lead's to receive; a hire of a lead that has ended has nobody above it to read its report but the chat, so it comes to the
         // principal, with a line saying whose hire it was (Stage 24, M14).
         if ("finished".equals(event.kind()) && event.background()) {
-            boolean own = session.id().equals(event.leadId());
+            boolean own = session.id().equals(event.leadId()) || HireRegistry.shared().isRoot(event.leadId());
             if (own || !HireRegistry.shared().isRunningPlan(event.leadId())) {
                 deliver(session, event, own ? ""
                     : "Note: this hire was started by " + HireRegistry.shared().labelOf(event.leadId()) + ", which has ended, so its report comes to you.\n");
@@ -763,6 +763,9 @@ public final class AcpServer {
         cancelled.remove(session.id());
         running.put(session.id(), Thread.currentThread());
         try {
+            // The brain presents a key of its own on its tool calls, not the chat's id: tell the registry whose chat it speaks for, so a hire
+            // this brain starts is shown and reported on this connection.
+            brain.toolSessionKey().ifPresent(key -> HireRegistry.shared().speaksFor(key, session.id()));
             brain.attachImages(imagesOf(params.get("prompt")));
             stopReason = answerUntilTheTurnEnds(session, text, chunks, toolCalls, stopReason);
         } finally {

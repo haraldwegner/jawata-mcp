@@ -301,6 +301,29 @@ public final class HireRegistry {
         return current;
     }
 
+    /** The keys principal brains present to the engine as the caller of their tool calls, each of which speaks for one chat session. */
+    private final Set<String> speakingKeys = ConcurrentHashMap.newKeySet();
+
+    /**
+     * Records that the key a principal brain presents on its tool calls speaks for this chat session, so a hire that brain starts traces back to
+     * the chat whose person it works for. The brain's key is not the chat's own id, and the first live run with Cursor showed that a registry
+     * which knew only the chat's id found no chat for any hire.
+     *
+     * @param callerKey the key the brain presents to the engine on every tool call
+     * @param sessionId the chat session it speaks for
+     */
+    public void speaksFor(String callerKey, String sessionId) {
+        if (callerKey != null && !callerKey.isEmpty() && sessionId != null && !sessionId.isEmpty()) {
+            issuedBy.put(callerKey, sessionId);
+            speakingKeys.add(callerKey);
+        }
+    }
+
+    /** Whether this caller is a principal brain's own key, so a hire it issued has no lead above it but the chat. */
+    public boolean isRoot(String callerId) {
+        return callerId != null && speakingKeys.contains(callerId);
+    }
+
     /** What the current thread asked to be told when the hire it is about to run opens its plan: the plan id and the hire's first name. */
     private final java.util.Map<Thread, java.util.function.BiConsumer<String, String>> planListeners = new ConcurrentHashMap<>();
 

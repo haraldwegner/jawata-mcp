@@ -30,6 +30,9 @@ class HireDeliveryTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String REPORT_MARK = "A hire you started has ended";
+    private static final String BRAIN_KEY = "principal-test-brain-key";
+    /** Who the hires of a test say asked for them; the chat's own id unless a test says it was the brain's key. */
+    private volatile String caller;
 
     private final List<JsonNode> said = new CopyOnWriteArrayList<>();
     private final List<String> prompts = new CopyOnWriteArrayList<>();
@@ -46,6 +49,11 @@ class HireDeliveryTest {
             @Override
             public void answer(String prompt, Consumer<String> chunks) {
                 answer(prompt, chunks, call -> { });
+            }
+
+            @Override
+            public java.util.Optional<String> toolSessionKey() {
+                return java.util.Optional.of(BRAIN_KEY);
             }
 
             @Override
@@ -94,7 +102,7 @@ class HireDeliveryTest {
             if (inTheBackground) {
                 HireRegistry.shared().nextHireIsBackground();
             }
-            try (HireRegistry.Registration ignored = HireRegistry.shared().begin(seat, brief, session)) {
+            try (HireRegistry.Registration ignored = HireRegistry.shared().begin(seat, brief, caller == null ? session : caller)) {
                 HireRegistry.shared().planOpened(planId);
                 registered.countDown();
                 release.await();
@@ -144,6 +152,20 @@ class HireDeliveryTest {
             () -> assertTrue(prompts.get(prompts.size() - 1).contains("the code is written"), "the report does not carry the answer"),
             () -> assertTrue(said.stream().anyMatch(m -> m.path("params").path("update").path("content").path("text").asText().contains("I have read the report.")),
                 "the principal's answer to the report did not reach the host"));
+    }
+
+    @Test
+    @DisplayName("found live with Cursor: a hire asked for by the brain's own key, which is not the chat's id, is shown on its chat and reported to its brain")
+    void aHireAskedForByTheBrainsOwnKeyReportsToItsChat() throws Exception {
+        connect();
+        personSays(2, "start the work");
+        caller = BRAIN_KEY;
+        aHireIsOut("developer", "live brief under the brain key", "live-plan-key", true);
+
+        HireRegistry.shared().record("developer", "live brief under the brain key", answered("live-plan-key", "Ida", "written under the brain key"));
+        boolean reported = waitUntil(() -> prompts.stream().anyMatch(p -> p.contains("written under the brain key")), 10);
+
+        assertTrue(reported, "a hire asked for by the brain's own key was never reported to its brain: " + prompts);
     }
 
     @Test
