@@ -13,6 +13,7 @@ import org.jawata.spi.host.HostWorkspace;
 import org.jawata.spi.host.Instruments;
 import org.jawata.spi.host.LanguageBinding;
 import org.jawata.spi.host.PersonChannel;
+import org.jawata.spi.host.PersonDebugTurn;
 import org.jawata.spi.host.Reconciler;
 import org.jawata.spi.host.WorkspaceWrites;
 
@@ -32,6 +33,9 @@ public final class ResidentHost implements EngineHost {
     private final WorkspaceWrites writes;
     private final PersonChannel person;
     private final HostCapabilities capabilities;
+    /** Whose turn it is to debug: the person's while the engine's own debugger route serves a launch of theirs (Sprint 28i, Stage 25, F3). */
+    private final PersonDebugTurn debugTurn = new PersonDebugTurn();
+    private final Instruments instruments = () -> debugTurn;
 
     /**
      * @param workspace   the projects the Java model holds, which the engine may change
@@ -56,7 +60,8 @@ public final class ResidentHost implements EngineHost {
         this.writes = writes;
         this.person = person;
         // This host serves the one language it was handed a binding for, and it runs nothing on the engine's behalf: it owns its
-        // workspace, and only the agent ever debugs here. It does check unsaved text: the language server keeps an editor's open files
+        // workspace, and the person debugs only through the engine's own debugger route (it sets the turn state above), otherwise only
+        // the agent debugs here. It does check unsaved text: the language server keeps an editor's open files
         // in the engine, and its writes refuse a change over one (S16a).
         this.capabilities = new HostCapabilities("headless", true, false, true,
             javaBinding == null ? List.of() : List.of("java"));
@@ -69,7 +74,7 @@ public final class ResidentHost implements EngineHost {
 
     @Override
     public Instruments instruments() {
-        return Instruments.NONE;
+        return instruments;
     }
 
     @Override
