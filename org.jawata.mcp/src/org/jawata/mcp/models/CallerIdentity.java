@@ -84,7 +84,24 @@ public record CallerIdentity(String id, Origin origin) {
 
     /** An identity the client sent us, so the history under it is theirs. */
     public static CallerIdentity supplied(String headerValue) {
-        return new CallerIdentity(headerValue, Origin.CLIENT_SUPPLIED);
+        return new CallerIdentity(oneValueOf(headerValue), Origin.CLIENT_SUPPLIED);
+    }
+
+    /**
+     * A header a client sends more than once reaches us joined with commas, and the first live run with Cursor showed its agent sends the session
+     * header four or five times, so every hire was asked for by {@code key, key, key, key} and no registry lookup by the key ever matched. A session
+     * id is one value, so the first is the identity; a value with no comma, or whose first part is blank, is left as it came.
+     */
+    private static String oneValueOf(String headerValue) {
+        if (headerValue == null) {
+            return null;
+        }
+        int comma = headerValue.indexOf(',');
+        if (comma < 0) {
+            return headerValue;
+        }
+        String first = headerValue.substring(0, comma).strip();
+        return first.isEmpty() ? headerValue : first;
     }
 
     /**
