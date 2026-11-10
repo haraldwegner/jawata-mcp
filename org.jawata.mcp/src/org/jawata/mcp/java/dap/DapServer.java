@@ -1,5 +1,10 @@
 package org.jawata.mcp.java.dap;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -12,6 +17,7 @@ import org.jawata.spi.host.PersonDebugTurn;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
@@ -33,7 +39,20 @@ public final class DapServer {
     private final PersonDebugTurn turn;
     private final AtomicInteger seq = new AtomicInteger();
     private PersonDebugTurn.Launch launch;
-    private String sessionId;
+    private volatile String sessionId;
+    /** The breakpoints this server armed, by the source file they were set for, so a new list for a file replaces the old one. */
+    private final Map<String, ArrayList<String>> breakpointsBySource = new HashMap<>();
+    /** The threads a step was asked for and that have not stopped since: their next stop is a step, not a breakpoint. */
+    private final ConcurrentHashMap<Long, Boolean> stepping = new ConcurrentHashMap<>();
+    /** What each frame id the editor was given stands for: the thread and the frame's place in its stack. */
+    private final Map<Integer, long[]> frames = new ConcurrentHashMap<>();
+    private final AtomicInteger frameIds = new AtomicInteger();
+    private final AtomicBoolean terminatedTold = new AtomicBoolean();
+    private volatile boolean ending;
+    private Thread stopLoop;
+
+    /** How long one wait for the program's next stop lasts; the loop asks again when nothing stopped. */
+    private static final long WAIT_MILLIS = 60_000;
 
     /**
      * @param tools  the engine's tools, through which every request is made
@@ -63,6 +82,13 @@ public final class DapServer {
                 case "launch" -> launch(requestSeq, arguments);
                 case "configurationDone" -> configurationDone(requestSeq);
                 case "disconnect" -> disconnect(requestSeq);
+                case "setBreakpoints" -> setBreakpoints(requestSeq, arguments);
+                case "threads" -> threads(requestSeq);
+                case "stackTrace" -> stackTrace(requestSeq, arguments);
+                case "continue" -> resume(requestSeq, arguments);
+                case "next" -> step(requestSeq, "next", "over", arguments);
+                case "stepIn" -> step(requestSeq, "stepIn", "in", arguments);
+                case "stepOut" -> step(requestSeq, "stepOut", "out", arguments);
                 default -> refuse(requestSeq, command, "the request " + command + " is not served yet");
             }
         } catch (RuntimeException e) {
@@ -106,6 +132,12 @@ public final class DapServer {
             return;
         }
         launch = begun;
+        ending = false;
+        terminatedTold.set(false);
+        stopLoop = null;
+        stepping.clear();
+        frames.clear();
+        breakpointsBySource.clear();
         sessionId = JSON.valueToTree(answer.getData()).path("sessionId").asText();
         respond(requestSeq, "launch", null);
         say(event("jawata/session", JSON.createObjectNode().put("sessionId", sessionId)));
@@ -122,6 +154,7 @@ public final class DapServer {
             return;
         }
         respond(requestSeq, "configurationDone", null);
+        watchForStops();
     }
 
     private void disconnect(int requestSeq) {
@@ -131,6 +164,7 @@ public final class DapServer {
 
     /** Lets the running session go, kills it when it was launched here, and gives the turn back; does nothing when nothing is running. */
     private void end() {
+        ending = true;
         try {
             if (sessionId != null) {
                 callDebug(JSON.createObjectNode().put("action", "detach").put("sessionId", sessionId));
@@ -150,6 +184,151 @@ public final class DapServer {
             return tools.callTool("debug", call, caller);
         } catch (ToolNotFoundException e) {
             throw new IllegalStateException("the debug tool is not available: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Arms the lines the editor asks for in one source file, as line breakpoints in the file's class, after clearing the ones this server
+     * armed for that file before: the editor sends the whole list of a file each time.
+     */
+    private void setBreakpoints(int requestSeq, JsonNode arguments) {
+        if (sessionId == null) {
+            refuse(requestSeq, "setBreakpoints", "no program has been launched");
+            return;
+        }
+        String path = arguments.path("source").path("path").asText();
+        String className;
+        try {
+            className = classNameOf(path);
+        } catch (java.io.IOException | RuntimeException e) {
+            refuse(requestSeq, "setBreakpoints", "the class of " + path + " could not be worked out: " + e.getMessage());
+            return;
+        }
+        for (String armed : breakpointsBySource.getOrDefault(path, new ArrayList<>())) {
+            callDebug(JSON.createObjectNode().put("action", "breakpoint_clear").put("sessionId", sessionId).put("breakpointId", armed));
+        }
+        ArrayList<String> armedNow = new ArrayList<>();
+        ArrayNode results = JSON.createArrayNode();
+        for (JsonNode wanted : arguments.path("breakpoints")) {
+            int line = wanted.path("line").asInt();
+            ToolResponse answer = callDebug(JSON.createObjectNode().put("action", "breakpoint_set").put("sessionId", sessionId)
+                .put("kind", "line").put("className", className).put("line", line));
+            ObjectNode result = results.addObject().put("line", line);
+            if (answer.isSuccess()) {
+                JsonNode data = JSON.valueToTree(answer.getData());
+                armedNow.add(data.path("breakpointId").asText());
+                result.put("verified", data.path("bound").asBoolean());
+            } else {
+                result.put("verified", false).put("message", answer.getError().getMessage());
+            }
+        }
+        breakpointsBySource.put(path, armedNow);
+        respond(requestSeq, "setBreakpoints", JSON.createObjectNode().set("breakpoints", results));
+    }
+
+    /** The class a source file declares, from its package line and its name; the top-level class of the file. */
+    private static String classNameOf(String file) throws java.io.IOException {
+        java.nio.file.Path source = java.nio.file.Path.of(file);
+        String text = java.nio.file.Files.readString(source);
+        java.util.regex.Matcher declared = java.util.regex.Pattern.compile("(?m)^\\s*package\\s+([\\w.]+)\\s*;").matcher(text);
+        String simple = source.getFileName().toString().replaceFirst("\\.java$", "");
+        return declared.find() ? declared.group(1) + "." + simple : simple;
+    }
+
+    /** Answers the editor's threads request from the debug tool's thread list. */
+    private void threads(int requestSeq) {
+        ToolResponse answer = callDebug(JSON.createObjectNode().put("action", "threads").put("sessionId", sessionId));
+        if (!answer.isSuccess()) {
+            refuse(requestSeq, "threads", answer.getError().getMessage());
+            return;
+        }
+        ArrayNode threads = JSON.createArrayNode();
+        for (JsonNode thread : JSON.valueToTree(answer.getData()).path("threads")) {
+            threads.addObject().put("id", thread.path("threadId").asLong()).put("name", thread.path("name").asText());
+        }
+        respond(requestSeq, "threads", JSON.createObjectNode().set("threads", threads));
+    }
+
+    /** Answers the editor's stack of one stopped thread from the debug tool's snapshot, giving each frame an id the editor can hand back. */
+    private void stackTrace(int requestSeq, JsonNode arguments) {
+        long threadId = arguments.path("threadId").asLong();
+        ToolResponse answer = callDebug(JSON.createObjectNode().put("action", "snapshot").put("sessionId", sessionId).put("threadId", threadId));
+        if (!answer.isSuccess()) {
+            refuse(requestSeq, "stackTrace", answer.getError().getMessage());
+            return;
+        }
+        JsonNode snapshot = JSON.valueToTree(answer.getData());
+        ArrayNode stackFrames = JSON.createArrayNode();
+        for (JsonNode frame : snapshot.path("stack")) {
+            int id = frameIds.incrementAndGet();
+            frames.put(id, new long[] {threadId, frame.path("frameIndex").asLong()});
+            ObjectNode described = stackFrames.addObject().put("id", id)
+                .put("name", frame.path("class").asText() + "." + frame.path("method").asText())
+                .put("line", frame.path("line").asInt()).put("column", 1);
+            described.putObject("source").put("name", frame.path("source").asText());
+        }
+        ObjectNode body = JSON.createObjectNode().put("totalFrames", snapshot.path("stackDepth").asInt(stackFrames.size()));
+        body.set("stackFrames", stackFrames);
+        respond(requestSeq, "stackTrace", body);
+    }
+
+    /** Resumes the one thread the editor names. */
+    private void resume(int requestSeq, JsonNode arguments) {
+        long threadId = arguments.path("threadId").asLong();
+        ToolResponse answer = callDebug(JSON.createObjectNode().put("action", "resume").put("sessionId", sessionId).put("threadId", threadId));
+        if (!answer.isSuccess()) {
+            refuse(requestSeq, "continue", answer.getError().getMessage());
+            return;
+        }
+        respond(requestSeq, "continue", JSON.createObjectNode().put("allThreadsContinued", false));
+    }
+
+    /** Steps the thread the editor names; its next stop is told to the editor as a step. */
+    private void step(int requestSeq, String command, String mode, JsonNode arguments) {
+        long threadId = arguments.path("threadId").asLong();
+        stepping.put(threadId, Boolean.TRUE);
+        ToolResponse answer = callDebug(JSON.createObjectNode().put("action", "step").put("sessionId", sessionId).put("threadId", threadId).put("mode", mode));
+        if (!answer.isSuccess()) {
+            stepping.remove(threadId);
+            refuse(requestSeq, command, answer.getError().getMessage());
+            return;
+        }
+        respond(requestSeq, command, null);
+    }
+
+    /** Starts the thread that waits for the program's stops and tells each to the editor, once, until the program ends or the debugging does. */
+    private void watchForStops() {
+        if (stopLoop != null) {
+            return;
+        }
+        stopLoop = new Thread(this::tellStops, "dap-stops-" + caller.id());
+        stopLoop.setDaemon(true);
+        stopLoop.start();
+    }
+
+    private void tellStops() {
+        while (!ending && sessionId != null) {
+            ToolResponse answer;
+            try {
+                answer = callDebug(JSON.createObjectNode().put("action", "wait").put("sessionId", sessionId).put("timeoutMillis", WAIT_MILLIS));
+            } catch (RuntimeException e) {
+                return;
+            }
+            if (ending) {
+                return;
+            }
+            JsonNode data = JSON.valueToTree(answer.getData());
+            if (!answer.isSuccess() || !data.path("targetAlive").asBoolean(true) && !data.path("hit").asBoolean()) {
+                if (terminatedTold.compareAndSet(false, true)) {
+                    say(event("terminated", null));
+                }
+                return;
+            }
+            if (data.path("hit").asBoolean()) {
+                long threadId = data.path("threadId").asLong();
+                String reason = stepping.remove(threadId) != null ? "step" : "exception".equals(data.path("kind").asText()) ? "exception" : "breakpoint";
+                say(event("stopped", JSON.createObjectNode().put("reason", reason).put("threadId", threadId).put("allThreadsStopped", false)));
+            }
         }
     }
 
