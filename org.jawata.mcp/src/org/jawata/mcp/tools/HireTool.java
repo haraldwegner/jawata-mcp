@@ -343,6 +343,7 @@ public class HireTool extends NeutralTool {
                 answer.put("hired", getStringParam(arguments, "seat"));
                 opened.complete(answer);
             });
+            HireRegistry.shared().nextHireIsBackground();
             try {
                 ended.complete(runAndKeep(arguments, call));
             } catch (RuntimeException | Error failure) {

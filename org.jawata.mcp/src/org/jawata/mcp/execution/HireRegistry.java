@@ -37,6 +37,8 @@ public final class HireRegistry {
         final String leadId;
         /** This hire's own plan id, known once its plan is open; empty before. */
         volatile String planId = "";
+        /** Whether this hire runs on an engine thread started for it, so its result comes back as a new turn and not as the call's answer. */
+        volatile boolean background;
         final Thread thread;
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
@@ -117,6 +119,7 @@ public final class HireRegistry {
         Running hire = new Running(seat, normal(brief), HireNames.shared().assign(conversationKey), conversationKey == null ? "" : conversationKey,
             Thread.currentThread());
         stopped.remove(hire.thread);
+        hire.background = backgroundNext.remove(hire.thread);
         running.add(hire);
         return new Registration(hire);
     }
@@ -195,7 +198,11 @@ public final class HireRegistry {
      * What the registry tells a subscriber about a hire (Stage 24, M8): {@code started} when its plan opens, {@code finished} when its answer is
      * kept. The lead id is the id of the caller that issued the hire; the answer is set only on a finished event.
      */
-    public record Event(String kind, String planId, String name, String seat, String brief, String leadId, com.fasterxml.jackson.databind.JsonNode answer) {
+    public record Event(String kind, String planId, String name, String seat, String brief, String leadId, com.fasterxml.jackson.databind.JsonNode answer, boolean background) {
+
+        public Event(String kind, String planId, String name, String seat, String brief, String leadId, com.fasterxml.jackson.databind.JsonNode answer) {
+            this(kind, planId, name, seat, brief, leadId, answer, false);
+        }
     }
 
     private final List<java.util.function.Consumer<Event>> subscribers = new CopyOnWriteArrayList<>();
@@ -257,7 +264,10 @@ public final class HireRegistry {
                 if (told != null) {
                     told.accept(planId, hire.name);
                 }
-                tell(new Event("started", planId, hire.name, hire.seat, hire.brief, hire.leadId, null));
+                if (hire.background) {
+                    backgroundPlans.add(planId);
+                }
+                tell(new Event("started", planId, hire.name, hire.seat, hire.brief, hire.leadId, null, hire.background));
             }
         }
     }
@@ -288,6 +298,28 @@ public final class HireRegistry {
             }
         }
         return Optional.empty();
+    }
+
+    /** The threads whose next hire is started in the background; read once, when that hire is registered. */
+    private final Set<Thread> backgroundNext = ConcurrentHashMap.newKeySet();
+
+    /** The plan ids of the running hires that were started in the background, until their answers are kept. */
+    private final Set<String> backgroundPlans = ConcurrentHashMap.newKeySet();
+
+    /** Marks the hire the current thread registers next as started in the background (Stage 24, M7): its result comes back to its lead as a new turn. */
+    public void nextHireIsBackground() {
+        backgroundNext.add(Thread.currentThread());
+    }
+
+    /** The running hires this caller issued, each as "first name · seat", in the order they began: what is still out for a lead that has just had one report. */
+    public List<String> runningNamesFor(String callerId) {
+        List<String> names = new java.util.ArrayList<>();
+        for (Running hire : running) {
+            if (hire.leadId.equals(callerId) && !hire.leadId.isEmpty()) {
+                names.add(hire.name + " · " + hire.seat);
+            }
+        }
+        return names;
     }
 
     /** The first name of the running hire of this seat for this brief; none when no such hire is running. */
@@ -355,7 +387,8 @@ public final class HireRegistry {
         }
         // Told outside the lock: a subscriber answers a host and takes locks of its own.
         String plan = answer.path("plan").asText("");
-        tell(new Event("finished", plan, answer.path("name").asText(""), seat, normal(brief), issuedBy.getOrDefault(plan, ""), answer));
+        tell(new Event("finished", plan, answer.path("name").asText(""), seat, normal(brief), issuedBy.getOrDefault(plan, ""), answer,
+            backgroundPlans.remove(plan)));
     }
 
     /** The answer of the latest hire of this seat for this brief, or none when this engine ran no such hire. */
