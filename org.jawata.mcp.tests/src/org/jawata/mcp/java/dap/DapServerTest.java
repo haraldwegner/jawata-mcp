@@ -417,6 +417,31 @@ class DapServerTest {
     }
 
     @Test
+    @DisplayName("when the engine cannot follow the program the editor is told why before it is told the debugging ended, so a lost engine is not read as a program that finished")
+    void anEngineThatCannotFollowTheProgramIsSaidBeforeTheEnd() throws Exception {
+        armWait();
+        launched();
+        send("configurationDone", null);
+
+        hits.add(ToolResponse.error("SESSION_GONE", "the session was closed", "launch again"));
+
+        assertTrue(waitUntil(() -> saidEvent("terminated")), said.toString());
+        int told = -1;
+        int ended = -1;
+        for (int i = 0; i < said.size(); i++) {
+            String event = said.get(i).path("event").asText();
+            if ("output".equals(event) && said.get(i).path("body").path("output").asText().contains("the session was closed")) {
+                told = i;
+            } else if ("terminated".equals(event)) {
+                ended = i;
+            }
+        }
+        assertTrue(told >= 0, "the editor is told the engine's reason: " + said);
+        assertTrue(told < ended, "the reason comes before the end: " + said);
+        send("disconnect", null);
+    }
+
+    @Test
     @DisplayName("CONTROL — a request the server does not serve yet is answered as unsupported, never ignored")
     void anUnservedRequestIsAnsweredAsUnsupported() {
         send("evaluate", null);

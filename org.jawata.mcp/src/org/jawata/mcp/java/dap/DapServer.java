@@ -52,7 +52,7 @@ public final class DapServer {
     private final AtomicInteger listingIds = new AtomicInteger();
     private final AtomicBoolean terminatedTold = new AtomicBoolean();
     private volatile boolean ending;
-    private Thread stopLoop;
+    private volatile Thread stopLoop;
 
     /** How long one wait for the program's next stop lasts; the loop asks again when nothing stopped. */
     private static final long WAIT_MILLIS = 60_000;
@@ -413,31 +413,36 @@ public final class DapServer {
     }
 
     /** Starts the thread that waits for the program's stops and tells each to the editor, once, until the program ends or the debugging does. */
-    private void watchForStops() {
+    private synchronized void watchForStops() {
         if (stopLoop != null) {
             return;
         }
-        stopLoop = new Thread(this::tellStops, "dap-stops-" + caller.id());
+        String mine = sessionId;
+        stopLoop = new Thread(() -> tellStops(mine), "dap-stops-" + caller.id());
         stopLoop.setDaemon(true);
         stopLoop.start();
     }
 
-    private void tellStops() {
-        while (!ending && sessionId != null) {
+    /** Tells the editor each stop of the program one launch started; a loop whose launch has been replaced ends, so two never run side by side. */
+    private void tellStops(String mine) {
+        while (!ending && mine != null && mine.equals(sessionId)) {
             ToolResponse answer;
             try {
-                answer = callDebug(JSON.createObjectNode().put("action", "wait").put("sessionId", sessionId).put("timeoutMillis", WAIT_MILLIS));
+                answer = callDebug(JSON.createObjectNode().put("action", "wait").put("sessionId", mine).put("timeoutMillis", WAIT_MILLIS));
             } catch (RuntimeException e) {
+                endedBecause("the debugger lost its link to the engine: " + e.getMessage());
                 return;
             }
-            if (ending) {
+            if (ending || !mine.equals(sessionId)) {
                 return;
             }
             JsonNode data = JSON.valueToTree(answer.getData());
-            if (!answer.isSuccess() || !data.path("targetAlive").asBoolean(true) && !data.path("hit").asBoolean()) {
-                if (terminatedTold.compareAndSet(false, true)) {
-                    say(event("terminated", null));
-                }
+            if (!answer.isSuccess()) {
+                endedBecause("the engine could not follow the program: " + (answer.getError() == null ? "no reason given" : answer.getError().getMessage()));
+                return;
+            }
+            if (!data.path("targetAlive").asBoolean(true) && !data.path("hit").asBoolean()) {
+                endedBecause(null);
                 return;
             }
             if (data.path("hit").asBoolean()) {
@@ -446,6 +451,17 @@ public final class DapServer {
                 say(event("stopped", JSON.createObjectNode().put("reason", reason).put("threadId", threadId).put("allThreadsStopped", false)));
             }
         }
+    }
+
+    /** Ends the editor's debugging once: says why first when the end is not the program finishing, so a lost engine is not read as a program that ended. */
+    private void endedBecause(String problem) {
+        if (!terminatedTold.compareAndSet(false, true)) {
+            return;
+        }
+        if (problem != null) {
+            say(event("output", JSON.createObjectNode().put("category", "stderr").put("output", problem + "\n")));
+        }
+        say(event("terminated", null));
     }
 
     private static void copy(JsonNode from, String name, ObjectNode to, String as) {
