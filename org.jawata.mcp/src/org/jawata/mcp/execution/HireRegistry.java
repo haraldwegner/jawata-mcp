@@ -191,6 +191,46 @@ public final class HireRegistry {
         return Optional.empty();
     }
 
+    /**
+     * What the registry tells a subscriber about a hire (Stage 24, M8): {@code started} when its plan opens, {@code finished} when its answer is
+     * kept. The lead id is the id of the caller that issued the hire; the answer is set only on a finished event.
+     */
+    public record Event(String kind, String planId, String name, String seat, String brief, String leadId, com.fasterxml.jackson.databind.JsonNode answer) {
+    }
+
+    private final List<java.util.function.Consumer<Event>> subscribers = new CopyOnWriteArrayList<>();
+
+    /** The caller that issued each hire by plan id, kept after the hire ends so a late event can still be tied to the conversation it belongs to. */
+    private final java.util.Map<String, String> issuedBy = new ConcurrentHashMap<>();
+
+    /** Subscribes to the events of every hire in this process and answers what ends the subscription. */
+    public Runnable subscribe(java.util.function.Consumer<Event> subscriber) {
+        subscribers.add(subscriber);
+        return () -> subscribers.remove(subscriber);
+    }
+
+    private void tell(Event event) {
+        for (java.util.function.Consumer<Event> subscriber : subscribers) {
+            subscriber.accept(event);
+        }
+    }
+
+    /**
+     * The id at the top of the chain of hires that led to this caller: when the caller is itself a hire's plan id the chain goes on to whoever
+     * issued that hire, and it ends at an id no hire has, which for a hire that traces back to the person's chat is that chat's session id.
+     */
+    public String rootOf(String callerId) {
+        String current = callerId == null ? "" : callerId;
+        for (int steps = 0; steps < 16; steps++) {
+            String above = issuedBy.get(current);
+            if (above == null || above.isEmpty()) {
+                break;
+            }
+            current = above;
+        }
+        return current;
+    }
+
     /** What the current thread asked to be told when the hire it is about to run opens its plan: the plan id and the hire's first name. */
     private final java.util.Map<Thread, java.util.function.BiConsumer<String, String>> planListeners = new ConcurrentHashMap<>();
 
@@ -212,10 +252,12 @@ public final class HireRegistry {
         for (Running hire : running) {
             if (hire.thread == Thread.currentThread()) {
                 hire.planId = planId;
+                issuedBy.put(planId, hire.leadId);
                 java.util.function.BiConsumer<String, String> told = planListeners.get(hire.thread);
                 if (told != null) {
                     told.accept(planId, hire.name);
                 }
+                tell(new Event("started", planId, hire.name, hire.seat, hire.brief, hire.leadId, null));
             }
         }
     }
@@ -302,13 +344,18 @@ public final class HireRegistry {
     private final java.util.Map<String, com.fasterxml.jackson.databind.JsonNode> finished = new java.util.LinkedHashMap<>();
 
     /** Keeps the answer of the hire of this seat for this brief, replacing an earlier one and dropping the oldest past the bound. */
-    public synchronized void record(String seat, String brief, com.fasterxml.jackson.databind.JsonNode answer) {
+    public void record(String seat, String brief, com.fasterxml.jackson.databind.JsonNode answer) {
         String key = seat + "\u0000" + normal(brief);
-        finished.remove(key);
-        finished.put(key, answer);
-        while (finished.size() > KEPT) {
-            finished.remove(finished.keySet().iterator().next());
+        synchronized (this) {
+            finished.remove(key);
+            finished.put(key, answer);
+            while (finished.size() > KEPT) {
+                finished.remove(finished.keySet().iterator().next());
+            }
         }
+        // Told outside the lock: a subscriber answers a host and takes locks of its own.
+        String plan = answer.path("plan").asText("");
+        tell(new Event("finished", plan, answer.path("name").asText(""), seat, normal(brief), issuedBy.getOrDefault(plan, ""), answer));
     }
 
     /** The answer of the latest hire of this seat for this brief, or none when this engine ran no such hire. */

@@ -290,10 +290,23 @@ final class HireWatch {
     /** The finished hire's own answer: whether it ended clean, what it spent, what it cost. */
     private void readAnswer(Live hire, JsonNode update) {
         JsonNode answer = answerOf(update);
+        if ("running".equals(answer.path("state").asText("")) && answer.hasNonNull("hireId")) {
+            // The background answer (Stage 24, M7): the hire is out and no result is in yet. The card stays running until the engine says it
+            // ended; this answer only names the hire.
+            hire.enginePlan = answer.get("hireId").asText();
+            if (answer.hasNonNull("name")) {
+                hire.name = Optional.of(answer.get("name").asText());
+            }
+            return;
+        }
         if (!answer.has("cleanExit")) {
             // The brain's echo carries no answer (Cursor sends {"success": true} only): the engine ran the hire and kept what it answered.
             answer = HireRegistry.shared().answerOf(hire.seat, hire.task).orElse(answer);
         }
+        applyAnswer(hire, answer);
+    }
+
+    private void applyAnswer(Live hire, JsonNode answer) {
         boolean clean = answer.isMissingNode() || !(answer.path("cleanExit").asText("true").equals("false")
             || answer.path("timedOut").asBoolean(false));
         finish(hire, clean ? HireEntry.DONE : HireEntry.FAILED);
@@ -336,6 +349,46 @@ final class HireWatch {
         if (answer.path("costUsd").isNumber()) {
             hire.cost = OptionalDouble.of(answer.get("costUsd").asDouble());
         }
+    }
+
+    /** A card this watch shows for a hire: the entry, and whether the host has not seen this card before. */
+    record Seen(HireEntry entry, boolean created) {
+    }
+
+    /**
+     * What the engine's registry says about a hire, as a card (Stage 24, M8): a hire that started or finished. A hire the principal's own brain
+     * issued already has a card from that brain's call, which the event links to by seat and brief and by the plan id the call's answer gave; a
+     * hire a lead issued has none, and the event creates it, with the plan id as its id. Nothing here reads a brain's echo.
+     */
+    synchronized Optional<Seen> engineEvent(HireRegistry.Event event) {
+        Live hire = null;
+        for (Live other : hires.values()) {
+            boolean byPlan = !event.planId().isEmpty() && event.planId().equals(other.enginePlan);
+            boolean byCall = other.enginePlan.isEmpty() && other.seat.equals(event.seat()) && other.task.equals(event.brief());
+            if (byPlan || byCall) {
+                hire = other;
+                break;
+            }
+        }
+        boolean created = false;
+        if (hire == null) {
+            if (event.planId().isEmpty()) {
+                return Optional.empty();
+            }
+            hire = new Live(event.planId(), clock.getAsLong());
+            hire.seat = event.seat();
+            hire.task = event.brief();
+            hires.put(hire.id, hire);
+            created = true;
+        }
+        hire.enginePlan = event.planId();
+        if (!event.name().isEmpty()) {
+            hire.name = Optional.of(event.name());
+        }
+        if ("finished".equals(event.kind()) && event.answer() != null) {
+            applyAnswer(hire, event.answer());
+        }
+        return Optional.of(new Seen(entryOf(hire), created));
     }
 
     /** The hire tool's answer as JSON: the call's raw output, or the text of its content, with the tool's {@code data} wrapper removed. */

@@ -65,6 +65,8 @@ public final class AcpServer {
     private final Map<String, Thread> running = new ConcurrentHashMap<>();
     /** Sessions whose running prompt the person cancelled; read at each turn end so a cancelled prompt is not resumed. */
     private final java.util.Set<String> cancelled = ConcurrentHashMap.newKeySet();
+    /** Ends this connection's subscription to the registry's hire events, which it holds from its start to its close (Stage 24, M8). */
+    private final Runnable endSubscription;
 
     AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out) {
         this(brain, commands, out, TurnBoundary.open(), AgentRecorder.off(), null, null);
@@ -78,6 +80,7 @@ public final class AcpServer {
         this.recorder = recorder;
         this.sideBrains = sideBrains;
         this.reviewer = reviewer;
+        this.endSubscription = HireRegistry.shared().subscribe(this::registryEvent);
     }
 
     /** Takes one message from the host, on the person's channel. A request is answered through the sink; a notification needs no answer. */
@@ -104,6 +107,7 @@ public final class AcpServer {
 
     /** The host's connection ended: what the brains hold for it, a running process among them, goes now. */
     public void closed() {
+        endSubscription.run();
         brain.close();
         sideBrainOf.values().forEach(AgentBrain::close);
     }
@@ -568,6 +572,35 @@ public final class AcpServer {
             "The person's answer to the proposal of " + asked.seat() + " (" + asked.planId() + "): " + verdict + (tookBack.isEmpty() ? "" : ". " + tookBack),
             "Recorded the person's verdict on the proposal of " + asked.seat() + ": " + verdict + (tookBack.isEmpty() ? "" : ". " + tookBack),
             answered.map(entry -> List.of(entry.cardLine())).orElse(List.of()));
+    }
+
+    /**
+     * A hire started or finished, as the engine's registry says (Stage 24, M8): its card is made or changed on the connection whose conversation
+     * the hire traces back to, whatever depth it is at. A hire of another connection's conversation is not this connection's to show.
+     */
+    private void registryEvent(HireRegistry.Event event) {
+        PrincipalSession session = sessions.get(HireRegistry.shared().rootOf(event.leadId()));
+        if (session == null) {
+            return;
+        }
+        hires.engineEvent(event).ifPresent(seen -> showHire(session, seen));
+    }
+
+    /** Sends the host a hire's card: the first time as a tool call of its own, afterwards as an update of it. */
+    private void showHire(PrincipalSession session, HireWatch.Seen seen) {
+        HireEntry entry = seen.entry();
+        ObjectNode shown = JSON.createObjectNode();
+        shown.put("sessionUpdate", seen.created() ? "tool_call" : "tool_call_update");
+        shown.put("toolCallId", entry.planId());
+        if (seen.created()) {
+            // A client with no jawata view still shows each running agent as one tool-call line with its status (contract E3).
+            shown.put("kind", "execute");
+            shown.put("title", entry.title());
+        }
+        boolean working = HireEntry.RUNNING.equals(entry.state()) || HireEntry.COMPACTING.equals(entry.state());
+        shown.put("status", working ? "in_progress" : HireEntry.FAILED.equals(entry.state()) ? "failed" : "completed");
+        shown.putObject("_meta").set("jawata/hire", entry.toMeta());
+        update(session.id(), shown);
     }
 
     /** Shows the host a hire's card as it now stands, as an update of the hire's own tool call. */
