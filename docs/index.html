@@ -248,7 +248,7 @@
 
     <div class="hero">
       <div>
-        <p class="eyebrow">Compiler-accurate Java for AI agents</p>
+        <p class="eyebrow">The meta-harness for Java coding agents</p>
         <h1>Agents write. <span class="jw">jawata</span> verifies. <em>Java wins.</em></h1>
         <p class="subline">Compiler-accurate Java analysis &amp; refactoring for AI agents — JDT-backed, over MCP.
           Runs on your machine, on your working tree.</p>
@@ -297,6 +297,24 @@
       <p class="lead-p">And it solves our pain in agentic development: Every prompt, every tool is
       optional falling back to grep and sed, a patch on a patch, rotten architecture, searching
       for immediate green and skipping the complex tasks and wiring.</p>
+    </section>
+
+    <section id="meta-harness">
+      <h2>A meta-harness that understands the code</h2>
+      <p class="lede">A coding agent is a model inside a harness: the loop, the tools and the permissions around it.
+      A meta-harness sits one level higher and directs several agents under one set of rules.
+      <span class="jw">jawata</span> is that layer, with the compiler in it.</p>
+      <ul class="lead-list">
+        <li><strong>It directs.</strong> Each seat — architect, test writer, debugger, reviewer — hires
+        Claude Code, Codex, GitHub Copilot CLI or Cursor's agent as its brain, with its own brief and its
+        own list of tools. Changing a seat's agent is one line in its seat file.</li>
+        <li><strong>It controls.</strong> Work runs as declared steps, and a step is done only when its
+        check has actually run. A hired agent's call to a tool its seat does not list is refused.</li>
+        <li><strong>It verifies.</strong> Every change meets the compiler: refactorings compile-verified
+        and reversible, and the tests the change reaches.</li>
+      </ul>
+      <p class="lead-p">Other meta-harnesses govern agents without knowing the code they change.
+      <span class="jw">jawata</span> knows it.</p>
     </section>
 
     <section id="install">
