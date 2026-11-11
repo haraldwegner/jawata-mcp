@@ -38,8 +38,10 @@ class AJvmThatCannotBeAskedIsNotCalledUndebuggableTest {
     /**
      * The attach signal is sent only to a process that already catches it: one that does not yet would be ENDED by it, which is how
      * the debugger test's program died with exit code 131 and no output. A running JVM (this one) catches it; `sleep` never does.
+     * Linux only: the check reads /proc, and where there is none (macOS) it answers yes, as asking did before (CI, 2026-11-11).
      */
     @Test
+    @org.junit.jupiter.api.condition.EnabledOnOs(OS.LINUX)
     void theAttachSignalIsSentOnlyToAProcessThatCatchesIt() throws Exception {
         Process notAJvm = new ProcessBuilder("sleep", "30").start();
         try {
