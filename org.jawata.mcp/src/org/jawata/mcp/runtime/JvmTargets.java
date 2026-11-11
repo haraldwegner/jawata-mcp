@@ -4,6 +4,8 @@ import com.sun.jdi.Bootstrap;
 import com.sun.jdi.VirtualMachine;
 import com.sun.jdi.connect.AttachingConnector;
 import com.sun.jdi.connect.Connector;
+import com.sun.tools.attach.AttachNotSupportedException;
+
 import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostProcesses;
 import org.slf4j.Logger;
@@ -186,11 +188,62 @@ public final class JvmTargets {
      * not refused by policy — it is unreachable by construction.</p>
      */
     public static VirtualMachine attach(long pid) throws Exception {
-        String address = debugAddress(pid);
+        String address = awaitDebugAddress(pid, ASKING_PATIENCE);
         if (address == null) {
             throw new NotDebuggable(pid);
         }
         return attachToPort(Integer.parseInt(address.substring(address.lastIndexOf(':') + 1)));
+    }
+
+    /**
+     * Whether the process already catches SIGQUIT, the signal the attach mechanism sends it. A JVM installs that handler while it
+     * starts; until then the signal's default action ENDS the process, and the JDK 21 on the build machine sends it unchecked. That is
+     * how the release gate's debugger test lost its program with exit code 131 and no output, and how "Run for jawata" followed by an
+     * attach could end the person's program (2026-11-11). Read from /proc/&lt;pid&gt;/status where Linux has it; elsewhere the question
+     * cannot be put, and the answer is yes, which is what asking did before.
+     */
+    static boolean catchesTheAttachSignal(long pid) {
+        java.nio.file.Path status = java.nio.file.Path.of("/proc", Long.toString(pid), "status");
+        if (!java.nio.file.Files.isReadable(status)) {
+            return true;
+        }
+        try {
+            for (String line : java.nio.file.Files.readAllLines(status)) {
+                if (line.startsWith("SigCgt:")) {
+                    long caught = Long.parseUnsignedLong(line.substring("SigCgt:".length()).trim(), 16);
+                    return (caught & (1L << (3 - 1))) != 0; // SIGQUIT is signal 3, bit 2 of the mask
+                }
+            }
+        } catch (IOException | NumberFormatException unreadable) {
+            log.debug("could not read the caught signals of pid {}: {}", pid, unreadable.getMessage());
+        }
+        return true;
+    }
+
+    /** How long {@link #attach} keeps asking a JVM that cannot answer yet. A backstop against a JVM that never will, not a budget. */
+    static final java.time.Duration ASKING_PATIENCE = java.time.Duration.ofSeconds(30);
+
+    /**
+     * The JVM's debug address, asked until it answers: null only when the JVM ANSWERED that it has no debug agent.
+     *
+     * <p>A JVM that cannot be asked yet — one that has only just started, or one on a loaded machine — is asked again until
+     * {@code patience} runs out or it exits, and then the last failure is thrown. It is never reported as a JVM without an agent,
+     * which it may well not be: "Run for jawata" attaches the moment the host has started the program, and the release gate's
+     * suite reported {@code JVM_NOT_DEBUGGABLE} for a JVM started with {@code -agentlib:jdwp} (2026-11-11).</p>
+     */
+    static String awaitDebugAddress(long pid, java.time.Duration patience) throws Exception {
+        long deadline = System.nanoTime() + patience.toNanos();
+        while (true) {
+            try {
+                return askDebugAddress(pid);
+            } catch (Exception couldNotAsk) {
+                boolean alive = ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
+                if (!alive || System.nanoTime() >= deadline) {
+                    throw couldNotAsk;
+                }
+                Thread.sleep(200);
+            }
+        }
     }
 
     /** A JVM that was never prepared for a debugger, and now never can be. */
@@ -208,18 +261,25 @@ public final class JvmTargets {
     /** Where this JVM is listening for a debugger, or null if it never can. */
     public static String debugAddress(long pid) {
         try {
-            com.sun.tools.attach.VirtualMachine attached =
-                com.sun.tools.attach.VirtualMachine.attach(String.valueOf(pid));
-            try {
-                String address = attached.getAgentProperties()
-                    .getProperty("sun.jdwp.listenerAddress");
-                return address != null && address.contains(":") ? address : null;
-            } finally {
-                attached.detach();
-            }
+            return askDebugAddress(pid);
         } catch (Exception e) {
             log.debug("Probing pid {} for a debug agent failed: {}", pid, e.getMessage());
             return null;
+        }
+    }
+
+    private static String askDebugAddress(long pid) throws AttachNotSupportedException, IOException {
+        if (!catchesTheAttachSignal(pid)) {
+            throw new AttachNotSupportedException("JVM " + pid + " does not catch SIGQUIT yet (it is still starting), and asking now would end it");
+        }
+        com.sun.tools.attach.VirtualMachine attached =
+            com.sun.tools.attach.VirtualMachine.attach(String.valueOf(pid));
+        try {
+            String address = attached.getAgentProperties()
+                .getProperty("sun.jdwp.listenerAddress");
+            return address != null && address.contains(":") ? address : null;
+        } finally {
+            attached.detach();
         }
     }
 
