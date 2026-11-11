@@ -30,7 +30,7 @@ class AgentControlBrainsTest {
     private static JsonNode brainsAnswer(String registry) {
         List<JsonNode> said = new ArrayList<>();
         AcpServer server = new AcpServer((prompt, chunks) -> chunks.accept("x"), List::of, message -> said.add(JSON.valueToTree(message)),
-            TurnBoundary.open(), AgentRecorder.off(), null, null);
+            TurnBoundary.open(), AgentRecorder.off(), null);
         if (registry != null) {
             server.offerBrains(() -> registry);
         }

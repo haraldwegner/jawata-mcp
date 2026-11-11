@@ -502,6 +502,21 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("D56 (f): the model the main seat's file names beside its brain is the one a new conversation starts on")
+    void theModelTheMainSeatNamesIsApplied() throws Exception {
+        java.nio.file.Path seats = java.nio.file.Files.createDirectories(dir.resolve("seats"));
+        java.nio.file.Files.writeString(seats.resolve("main.md"), "---\nname: main\nbrain: fake\nmodel: Beta\n---\nYou are main.\n");
+        String program = "{\"command\":[\"" + inJson(fake.command().get(0)) + "\",\"" + inJson(fake.command().get(1)) + "\"],\"env\":{\"FAKE_ACP_STATE\":\""
+            + inJson(dir.toString()) + "\",\"FAKE_ACP_MODELS\":\"a=Alpha,b=Beta\"}}";
+        PrincipalBrain brain = PrincipalBrain.over(engineWith(Map.of(Hirer.BRAINS_SETTING, "{\"fake\":" + program + "}",
+            org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING, seats.toString())), dir);
+
+        assertEquals("b", ask(brain, "WHICHMODEL", new ArrayList<>()));
+        assertEquals(Optional.of("Beta"), brain.currentModel());
+        brain.close();
+    }
+
+    @Test
     @DisplayName("the setting names the brain: a command line is read, text that is not one names none")
     void theSettingNamesTheBrain() {
         Optional<AcpBrainSession.Program> read = AcpBrainSession.parseProgram("{\"command\":[\"agent\",\"acp\"],\"env\":{\"K\":\"v\"}}");

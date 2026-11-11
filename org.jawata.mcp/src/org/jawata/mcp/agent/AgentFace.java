@@ -200,9 +200,8 @@ public final class AgentFace implements RoutedFace {
         TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools(), brain.toolSessionKey()), new AttemptLedger(RESUMPTIONS_PER_STEP));
         String recording = attached.settings() == null ? null : attached.settings().get(AgentRecorder.SETTING).orElse(null);
         AgentRecorder recorder = new AgentRecorder(attached.tools(), AgentRecorder.Depth.of(recording));
-        ReviewBeforeSend.Reviewer reviewer = BrainReviewer.over(attached.settings(), java.nio.file.Path.of(System.getProperty("user.dir"))).orElse(null);
         Supplier<List<AdvertisedCommand>> advertised = commands != null ? commands : () -> servedSeats(attached);
-        AcpServer server = new AcpServer(brain, advertised, out, boundary, recorder, sideBrains, reviewer);
+        AcpServer server = new AcpServer(brain, advertised, out, boundary, recorder, sideBrains);
         server.offerBrains(() -> attached.settings() == null ? "" : attached.settings().get(Hirer.BRAINS_SETTING).orElse(""));
         server.offerCommandTexts(name -> commandText(attached, name));
         return server;

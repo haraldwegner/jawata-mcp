@@ -60,7 +60,7 @@ class AgentControlProposalTest {
                     chunks.accept("ok");
                 }
             };
-            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), TurnBoundary.open(), recorder, null, null);
+            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), TurnBoundary.open(), recorder, null);
             server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
             String session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
             ObjectNode params = JSON.createObjectNode().put("sessionId", session);

@@ -70,7 +70,7 @@ class AgentHistoryTest {
 
         Connection(AgentBrain brain, AgentRecorder.Depth depth) {
             server = new AcpServer(brain, List::of, m -> said.add(JSON.valueToTree(m)), TurnBoundary.open(),
-                new AgentRecorder(tools(), depth), null, null);
+                new AgentRecorder(tools(), depth), null);
         }
 
         JsonNode call(int id, String method, ObjectNode params) {

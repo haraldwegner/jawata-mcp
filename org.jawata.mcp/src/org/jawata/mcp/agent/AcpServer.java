@@ -7,7 +7,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-import org.jawata.mcp.agent.ReviewBeforeSend.Reviewer;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.HireRegistry;
@@ -54,8 +53,6 @@ public final class AcpServer {
     private final AgentRecorder recorder;
     /** Supplies the brain a side thread is answered by; {@code null} answers it with {@link #brain}. */
     private final Supplier<AgentBrain> sideBrains;
-    /** The review every message of the main seat passes before the person reads it (S11, D25); {@code null} sends them as they are written. */
-    private final Reviewer reviewer;
     /** The brain of each side thread, made when its first question arrives and kept so the thread has a conversation of its own. */
     private final Map<String, AgentBrain> sideBrainOf = new ConcurrentHashMap<>();
     /** The hires the brain has made through this connection, read from its tool calls as they stream. */
@@ -69,17 +66,16 @@ public final class AcpServer {
     private final Runnable endSubscription;
 
     AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out) {
-        this(brain, commands, out, TurnBoundary.open(), AgentRecorder.off(), null, null);
+        this(brain, commands, out, TurnBoundary.open(), AgentRecorder.off(), null);
     }
 
-    AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out, TurnBoundary boundary, AgentRecorder recorder, Supplier<AgentBrain> sideBrains, Reviewer reviewer) {
+    AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out, TurnBoundary boundary, AgentRecorder recorder, Supplier<AgentBrain> sideBrains) {
         this.brain = brain;
         this.commands = commands;
         this.out = out;
         this.boundary = boundary;
         this.recorder = recorder;
         this.sideBrains = sideBrains;
-        this.reviewer = reviewer;
         this.endSubscription = HireRegistry.shared().subscribe(this::registryEvent);
     }
 
@@ -763,11 +759,9 @@ public final class AcpServer {
 
     private String conductTurn(JsonNode params, PrincipalSession session, String messageId, String typed, String text) {
         StringBuilder said = new StringBuilder();
-        // WITH A REVIEWER, THE MAIN SEAT'S TEXT IS HELD AND ONLY THE REVIEWED TEXT IS SENT (S11, D25): the one road to the person is the
-        // release below, so there is no way for a message to reach the person unreviewed.
-        ReviewBeforeSend review = reviewer == null ? null
-            : new ReviewBeforeSend(reviewer, reviewed -> update(session.id(), messageChunk("agent_message_chunk", reviewed, messageId)));
-        Consumer<String> chunks = review != null ? review::hold : chunk -> {
+        // The main seat's text reaches the person as the brain writes it. The review before sending (S11, D25) was removed by D56 (a): it
+        // doubled every turn's time and rewrote plain answers into decisions; a lead puts its hires' results into the reader's terms instead.
+        Consumer<String> chunks = chunk -> {
             said.append(chunk);
             update(session.id(), messageChunk("agent_message_chunk", chunk, messageId));
         };
@@ -807,9 +801,6 @@ public final class AcpServer {
         } finally {
             running.remove(session.id());
             Thread.interrupted(); // a cancel that arrived after the brain finished must not poison the connection's worker
-            if (review != null) {
-                said.append(review.release());
-            }
             recorder.record(AgentRecorder.Level.PRINCIPAL, session, messageId, typed, said.toString(),
                 // A hire is kept as its card, so a session loaded later shows the hire's figures and state again; any other call as one finished line.
                 toolState.entrySet().stream()

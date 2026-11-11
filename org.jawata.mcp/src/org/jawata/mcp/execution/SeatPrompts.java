@@ -53,8 +53,17 @@ public final class SeatPrompts implements PromptSource {
 
     /** The brain a seat's own file names, when it names one (D53 (j)). */
     public Optional<String> brainNamedBy(String seatName) {
+        return namedBy(seatName, "brain");
+    }
+
+    /** The model a seat's own file names beside its brain, when it names one (D56 (f)): the default the person set in the studio's Seats view. */
+    public Optional<String> modelNamedBy(String seatName) {
+        return namedBy(seatName, "model");
+    }
+
+    private Optional<String> namedBy(String seatName, String key) {
         return folder.get().flatMap(where -> SeatFiles.read(where).seats().stream().filter(seat -> seatName.equals(seat.name())).findFirst())
-            .map(seat -> seat.front().get("brain")).filter(brain -> brain != null && !brain.isBlank()).map(String::strip);
+            .map(seat -> seat.front().get(key)).filter(value -> value != null && !value.isBlank()).map(String::strip);
     }
 
     /** The seats a person starts by typing their word (D53 (d)): those whose file does not say {@code typed: false}. */

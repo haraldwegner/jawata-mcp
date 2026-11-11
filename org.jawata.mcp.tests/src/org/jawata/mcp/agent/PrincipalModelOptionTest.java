@@ -51,7 +51,7 @@ class PrincipalModelOptionTest {
     /** The principal's brain option as the agent shows it to the chat in the answer to {@code session/new}. */
     private static JsonNode principalOption(AgentBrain brain) {
         List<JsonNode> received = new ArrayList<>();
-        AcpServer server = new AcpServer(brain, List::of, message -> received.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null, null);
+        AcpServer server = new AcpServer(brain, List::of, message -> received.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null);
         server.offerBrains(() -> REGISTRY);
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/workspace")));
         JsonNode result = received.stream().filter(m -> m.has("id") && m.has("result")).map(m -> m.get("result")).findFirst().orElseThrow();
@@ -168,7 +168,7 @@ class PrincipalModelOptionTest {
 
     /** The agent's answer to the person choosing {@code value} for the principal's brain option. */
     private static JsonNode choose(AgentBrain brain, String value, List<JsonNode> received) {
-        AcpServer server = new AcpServer(brain, List::of, message -> received.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null, null);
+        AcpServer server = new AcpServer(brain, List::of, message -> received.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null);
         server.offerBrains(() -> REGISTRY);
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/workspace")));
         String session = received.stream().filter(m -> m.has("result") && m.path("result").has("sessionId")).findFirst().orElseThrow()
@@ -184,7 +184,7 @@ class PrincipalModelOptionTest {
     void theHostIsToldWhenTheBrainIsReady() {
         List<JsonNode> received = new ArrayList<>();
         AcpServer server = new AcpServer(new Offering("cursor", "default[]", "Auto", "grok-4.5", "grok-4.5"), List::of,
-            message -> received.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null, null);
+            message -> received.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null);
         server.offerBrains(() -> REGISTRY);
 
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/workspace")));

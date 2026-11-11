@@ -116,8 +116,10 @@ public final class PrincipalBrain implements AgentBrain {
     public static PrincipalBrain over(EngineApi engine, Path workingDirectory) {
         Optional<AcpBrainSession.Program> seatProgram = programOfSeat(engine, "main");
         Optional<AcpBrainSession.Program> program = seatProgram.or(() -> engine.settings().get(SETTING).flatMap(AcpBrainSession::parseProgram));
-        // The model the setting names beside its command line is the principal's own; a brain the seat file chose is not the one it describes.
-        Optional<String> model = seatProgram.isPresent() ? Optional.empty()
+        SeatPrompts seats = new SeatPrompts(() -> engine.settings().get(ScheduledHires.SEATS_SETTING).filter(folder -> !folder.isBlank()).map(Path::of));
+        // The model the setting names beside its command line is the principal's own; a brain the seat file chose is not the one it describes,
+        // so with a brain from the seat file the model is the one that file names beside it (D56 (f)), or the brain's own default.
+        Optional<String> model = seatProgram.isPresent() ? seats.modelNamedBy("main")
             : engine.settings().get(SETTING).flatMap(Hirer::brainOf).map(Hirer.Brain::model).filter(name -> !name.isBlank());
         SelfEndpoint self = engine.mcp().map(PrincipalBrain::endpointOf).orElse(null);
         List<Map<String, Object>> definitions = engine.tools().getToolDefinitions();
@@ -125,7 +127,6 @@ public final class PrincipalBrain implements AgentBrain {
         Set<String> codeChanging = codeChangingTools(definitions);
         // D51: who hires whom is what the seat files of the seats folder declare, laid over the signed tree.
         Hirer hirer = new Hirer(SeatTree.forSetting(engine.settings().get(ScheduledHires.SEATS_SETTING), codeChanging).tree(), Map.of(), codeChanging);
-        SeatPrompts seats = new SeatPrompts(() -> engine.settings().get(ScheduledHires.SEATS_SETTING).filter(folder -> !folder.isBlank()).map(Path::of));
         PrincipalBrain principal = new PrincipalBrain(HostProcesses.system(), program, HireSite.in(workingDirectory), self, tools, hirer,
             HiredBrain.Ceilings.of(Duration.ofMinutes(30)), () -> seats.text("main"));
         principal.preferredModel = model;

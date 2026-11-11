@@ -116,7 +116,7 @@ class AgentFaceRunsAtOnceTest {
             }
         };
         java.util.List<org.jawata.mcp.protocol.JsonRpcMessage> sent = new java.util.concurrent.CopyOnWriteArrayList<>();
-        AcpServer server = new AcpServer(main, java.util.List::of, sent::add, TurnBoundary.open(), AgentRecorder.off(), () -> side, null);
+        AcpServer server = new AcpServer(main, java.util.List::of, sent::add, TurnBoundary.open(), AgentRecorder.off(), () -> side);
 
         server.receive(request(1, "session/new", "{\"cwd\":\"/opened\"}"));
         server.receive(request(2, "session/new", "{\"cwd\":\"/opened\",\"_meta\":{\"jawata/side\":true}}"));

@@ -153,8 +153,8 @@ class TheHirePathHasOneArgvSourceTest {
     }
 
     @Test
-    @DisplayName("a program is read out of a setting in three places only: the registry for a hired brain, and the principal's and the reviewer's own settings")
-    void aProgramIsReadFromASettingInThreePlacesOnly() throws IOException {
+    @DisplayName("a program is read out of a setting in two places only: the registry for a hired brain, and the principal's own setting")
+    void aProgramIsReadFromASettingInTwoPlacesOnly() throws IOException {
         Map<String, String> code = productionCode();
         code.remove("AcpBrainSession.java");
 
@@ -171,10 +171,9 @@ class TheHirePathHasOneArgvSourceTest {
         });
 
         // D53 (i) and (j): the principal also reads the registry, for the brain its seat file names and the brain the person picks on its row.
-        assertEquals(Map.of("HireTool.java", List.of("programFor"), "PrincipalBrain.java", List.of("parseProgram", "programFor"),
-            "BrainReviewer.java", List.of("parseProgram")), readers,
+        assertEquals(Map.of("HireTool.java", List.of("programFor"), "PrincipalBrain.java", List.of("parseProgram", "programFor")), readers,
             "a new reader of a brain's program appeared: a hired brain's program comes from the registry setting through HireTool alone;"
-                + " the principal's own setting and its registry names, and the reviewer's setting, are the only others");
+                + " the principal's own setting and its registry names are the only others");
     }
 
     @Test

@@ -274,7 +274,7 @@ class AgentContractLevel1Test {
                     chunks.accept("ok");
                 }
             };
-            server = new AcpServer(brain, List::of, message -> lines.add(new Line("recv", JSON.valueToTree(message))), TurnBoundary.open(), AgentRecorder.off(), null, null);
+            server = new AcpServer(brain, List::of, message -> lines.add(new Line("recv", JSON.valueToTree(message))), TurnBoundary.open(), AgentRecorder.off(), null);
             server.offerBrains(() -> REGISTRY);
             JsonNode opened = send(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/workspace"))).path("result");
             session = opened.path("sessionId").asText();
@@ -483,7 +483,7 @@ class AgentContractLevel1Test {
                 chunks.accept("ok");
             }
         };
-        AcpServer server = new AcpServer(brain, List::of, message -> lines.add(new Line("recv", JSON.valueToTree(message))), TurnBoundary.open(), AgentRecorder.off(), null, null);
+        AcpServer server = new AcpServer(brain, List::of, message -> lines.add(new Line("recv", JSON.valueToTree(message))), TurnBoundary.open(), AgentRecorder.off(), null);
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/workspace")));
         String session = lines.stream().filter(l -> l.msg().path("result").has("sessionId")).findFirst().orElseThrow().msg().path("result").path("sessionId").asText();
         ObjectNode params = JSON.createObjectNode().put("sessionId", session);

@@ -91,7 +91,7 @@ class HireEndingsTest {
                 }
             };
             server = new AcpServer(brain, List::of, m -> said.add(JSON.valueToTree(m)), TurnBoundary.open(),
-                new AgentRecorder(tools(), AgentRecorder.Depth.ALL), null, null);
+                new AgentRecorder(tools(), AgentRecorder.Depth.ALL), null);
             servers.add(server);
         }
 
