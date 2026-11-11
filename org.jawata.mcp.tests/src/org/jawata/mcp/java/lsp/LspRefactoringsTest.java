@@ -31,7 +31,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 class LspRefactoringsTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String URI = "file:///work/src/Foo.java";
+    /** The file and its URI as the running system writes them: `/work/src/Foo.java` has no drive on Windows and is not absolute there. */
+    private static final String FILE = java.nio.file.Path.of("/work/src/Foo.java").toAbsolutePath().toString();
+    private static final String URI = java.nio.file.Path.of(FILE).toUri().toString();
 
     /** Answers get_at_position with the element kind it was given and each refactoring tool from a table, recording every call. */
     private static final class Fake implements ToolCalls {
@@ -61,7 +63,7 @@ class LspRefactoringsTest {
     }
 
     private static ToolResponse editing(String newText) {
-        return ToolResponse.success(Map.of("applied", false, "edits", List.of(Map.of("filePath", "/work/src/Foo.java",
+        return ToolResponse.success(Map.of("applied", false, "edits", List.of(Map.of("filePath", FILE,
             "edits", List.of(Map.of("line", 3, "column", 4, "endLine", 3, "endColumn", 9, "newText", newText))))), ResponseMeta.builder().build());
     }
 
@@ -75,7 +77,7 @@ class LspRefactoringsTest {
 
     private static List<JsonNode> offeredAt(Fake fake, Predicate<String> asked) throws Exception {
         List<Object> actions = new ArrayList<>();
-        over(fake, uri -> false).offered(URI, "/work/src/Foo.java", cursor(), asked, actions);
+        over(fake, uri -> false).offered(URI, FILE, cursor(), asked, actions);
         return actions.stream().map(a -> (JsonNode) JSON.valueToTree(a)).toList();
     }
 
@@ -94,7 +96,7 @@ class LspRefactoringsTest {
         assertFalse(titles.contains("Inline variable"), "a variable's refactoring is not offered on a method: " + titles);
         JsonNode inline = actions.stream().filter(a -> "Inline method".equals(a.path("title").asText())).findFirst().orElseThrow();
         assertEquals("refactor.inline", inline.path("kind").asText());
-        assertEquals("inlined", inline.path("edit").path("changes").path("file:///work/src/Foo.java").path(0).path("newText").asText());
+        assertEquals("inlined", inline.path("edit").path("changes").path(URI).path(0).path("newText").asText());
         JsonNode visibility = actions.stream().filter(a -> "Change method visibility".equals(a.path("title").asText())).findFirst().orElseThrow();
         JsonNode ask = visibility.path("command").path("arguments").path(0);
         assertEquals(LspRefactorings.COMMAND, visibility.path("command").path("command").asText());
@@ -118,7 +120,7 @@ class LspRefactoringsTest {
         assertEquals("method", asked.path("kind").asText());
         assertFalse(asked.path("auto_apply").asBoolean(true), "it is staged, never applied");
         assertTrue(asked.path("edits").asBoolean(), "as edits the editor applies itself");
-        assertEquals("/work/src/Foo.java", asked.path("filePath").asText());
+        assertEquals(FILE, asked.path("filePath").asText());
     }
 
     @Test
@@ -155,7 +157,7 @@ class LspRefactoringsTest {
 
         JsonNode edit = JSON.valueToTree(over(fake, uri -> false).stage(params));
 
-        assertEquals("private", edit.path("changes").path("file:///work/src/Foo.java").path(0).path("newText").asText());
+        assertEquals("private", edit.path("changes").path(URI).path(0).path("newText").asText());
         ObjectNode sent = fake.calls.get(0);
         assertEquals("private", sent.path("visibility").asText(), "the person's answer reaches the tool under the asked name");
         assertEquals("change_signature", sent.path("kind").asText());

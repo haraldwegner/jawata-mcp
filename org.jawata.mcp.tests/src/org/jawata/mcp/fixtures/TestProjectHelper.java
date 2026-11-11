@@ -175,13 +175,13 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
      * @throws CoreException if project loading fails
      */
     public JdtServiceImpl loadProject(String fixtureName) throws CoreException {
+        loadedService = replacingPrevious();      // released before the copy, as in loadProjectCopy
         Path projectPath;
         try {
             projectPath = copyFixture(fixtureName);
         } catch (IOException e) {
             throw new java.io.UncheckedIOException("could not copy fixture " + fixtureName, e);
         }
-        loadedService = replacingPrevious();
         loadedService.loadProject(projectPath);
         return loadedService;
     }
@@ -262,8 +262,11 @@ public class TestProjectHelper implements BeforeEachCallback, AfterEachCallback 
      * @throws IOException if copy fails
      */
     public JdtServiceImpl loadProjectCopy(String fixtureName) throws CoreException, IOException {
-        Path projectPath = copyFixture(fixtureName);
+        // The previous load is released BEFORE the copy: a test that loaded this fixture in its
+        // setup still holds that copy's files, and on Windows copying over a held file fails with
+        // "being used by another process" (CI, GetQuickFixesToolTest, 2026-11-11).
         loadedService = replacingPrevious();      // mcp#24
+        Path projectPath = copyFixture(fixtureName);
         loadedService.loadProject(projectPath);
         return loadedService;
     }

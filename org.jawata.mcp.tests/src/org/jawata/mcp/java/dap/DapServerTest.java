@@ -336,7 +336,9 @@ class DapServerTest {
         assertEquals("p.Main.run", frames.path(0).path("name").asText());
         assertEquals(7, frames.path(0).path("line").asInt());
         assertEquals("Main.java", frames.path(0).path("source").path("name").asText());
-        assertEquals("/w/src/p/Main.java", frames.path(0).path("source").path("path").asText(), "a class in source gives the editor the file to open");
+        // The path in the system's own form (on Windows `\w\src\p\Main.java`), which is the form a debugger client opens.
+        assertEquals(java.nio.file.Path.of("/w/src/p/Main.java").toString(), frames.path(0).path("source").path("path").asText(),
+            "a class in source gives the editor the file to open");
         assertTrue(frames.path(1).path("source").path("path").isMissingNode(), "a class the model does not hold gives a name and no path");
         assertEquals(2, responseTo(3).path("body").path("totalFrames").asInt());
         assertTrue(frames.path(0).path("id").asInt() != frames.path(1).path("id").asInt(), "frame ids must tell the frames apart");

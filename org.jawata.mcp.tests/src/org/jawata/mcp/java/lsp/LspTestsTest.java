@@ -33,6 +33,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 class LspTestsTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+    /** A test file as the running system writes an absolute path: `/work/src/FooTest.java` has no drive on Windows and is not absolute there. */
+    private static final String FOO_TEST = java.nio.file.Path.of("/work/src/FooTest.java").toAbsolutePath().toString();
 
     /** Answers find_tests with the test classes it was given and run_tests start/status/cancel from a script, and records every run_tests action. */
     private static final class Fake implements ToolCalls {
@@ -89,7 +91,7 @@ class LspTestsTest {
     @DisplayName("the list names each test class and method with the scope that runs it, and the class's file as a URI")
     void theTestsAreListedWithTheScopeThatRunsEach() throws Exception {
         Fake fake = new Fake();
-        fake.listAnswer = ToolResponse.success(Map.of("testClasses", List.of(Map.of("className", "FooTest", "filePath", "/work/src/FooTest.java", "line", 9,
+        fake.listAnswer = ToolResponse.success(Map.of("testClasses", List.of(Map.of("className", "FooTest", "filePath", FOO_TEST, "line", 9,
             "framework", "JUnit5", "testMethods", List.of(Map.of("name", "adds", "line", 12, "displayName", "adding works"), Map.of("name", "subtracts", "line", 20))))),
             ResponseMeta.builder().build());
 
@@ -97,7 +99,7 @@ class LspTestsTest {
 
         JsonNode foo = listed.path(0);
         assertEquals("FooTest", foo.path("name").asText());
-        assertEquals("file:///work/src/FooTest.java", foo.path("uri").asText());
+        assertEquals(java.nio.file.Path.of(FOO_TEST).toUri().toString(), foo.path("uri").asText());
         assertEquals(9, foo.path("line").asInt());
         assertEquals("class", foo.path("scope").path("kind").asText());
         assertEquals("adding works", foo.path("tests").path(0).path("label").asText(), "a display name is the label");

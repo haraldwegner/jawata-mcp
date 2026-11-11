@@ -39,7 +39,11 @@ public class FakeAcpAgent {
         }
         return "{\"id\":\"model\",\"name\":\"Model\",\"category\":\"model\",\"type\":\"select\",\"currentValue\":\"" + modelNow + "\",\"options\":[" + options + "]}";
     }
-    static final BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+    // UTF-8 both ways, as a real agent speaks: on Windows the default is the system's code page, and a hire's name "Joe · developer" came
+    // back as "Joe ? developer" (CI, November 2026).
+    static final BufferedReader in = new BufferedReader(new InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8));
+    static final java.io.PrintStream out = new java.io.PrintStream(new java.io.FileOutputStream(java.io.FileDescriptor.out), true,
+        java.nio.charset.StandardCharsets.UTF_8);
 
     public static void main(String[] args) throws Exception {
         Path state = Path.of(System.getenv().getOrDefault("FAKE_ACP_STATE", System.getProperty("java.io.tmpdir")));
@@ -238,8 +242,8 @@ public class FakeAcpAgent {
     }
 
     static synchronized void send(String message) {
-        System.out.println(message);
-        System.out.flush();
+        out.println(message);
+        out.flush();
     }
 
     static String idOf(String line) {
