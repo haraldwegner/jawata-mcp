@@ -153,6 +153,26 @@ class PriorWorkRidesTheResponseTest {
                 + "answers on, not for every call: " + steer);
     }
 
+    /**
+     * A sibling's peek reads one field of the answer (the project key) and gives up after 750 ms, so the store lookup a person's
+     * answer carries is not made while serving one: on a resident that had just started it took its whole 400 ms and the asking
+     * resident hung up first (release gate, 2026-11-11). The control is the first test of this class: the same call, not a peek.
+     */
+    @Test
+    void a_siblings_peek_is_answered_without_the_store_lookup() throws Exception {
+        storeKnows(KNOWN_TARGET);
+        String steer;
+        org.jawata.mcp.models.SiblingPeek.servingAPeek(true);
+        try {
+            steer = steeringOf(analyze(registry(true), KNOWN_TARGET));
+        } finally {
+            org.jawata.mcp.models.SiblingPeek.servingAPeek(false);
+        }
+
+        assertFalse(steer != null && steer.contains(LEAD),
+            "a peek is read by a machine for its project key and has no reader for the block: " + steer);
+    }
+
     @Test
     void the_tools_own_steering_survives_beside_the_block() throws Exception {
         storeKnows(KNOWN_TARGET);
