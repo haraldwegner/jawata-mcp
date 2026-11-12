@@ -191,7 +191,9 @@ public final class SiblingPeek {
                 return new Sweep(Optional.empty(), siblings.size(), answered, true);
             }
             SiblingRegistry.Sibling sibling = siblings.get(i);
-            Reply reply = askOne(sibling, fqn, client);
+            // Only what is left of the walk's budget, so the last ask cannot run past it.
+            Duration left = Duration.ofNanos(deadline - System.nanoTime());
+            Reply reply = askOne(sibling, fqn, client, left.compareTo(PER_SIBLING) < 0 ? left : PER_SIBLING);
             if (reply.answered()) {
                 answered++;
             }
@@ -210,8 +212,12 @@ public final class SiblingPeek {
      * <p>The question is {@code inspect(kind=source)} with {@code maxChars=1}: it is the only
      * published call that answers WHICH PROJECT declares a type, and the existing paging makes
      * it cheap to ask without hauling the file back over the wire.</p>
+     *
+     * @param limit how long this ask may take, waited for HERE rather than left to the client's
+     *              timers: on Windows an ask to a port nobody serves ran about 1.1 s against a
+     *              750 ms request timeout (CI, 2026-11-11), so the walk overran its total budget
      */
-    static Reply askOne(SiblingRegistry.Sibling sibling, String fqn, HttpClient client) {
+    static Reply askOne(SiblingRegistry.Sibling sibling, String fqn, HttpClient client, Duration limit) {
         try {
             String body = OM.writeValueAsString(java.util.Map.of(
                 "jsonrpc", "2.0",
@@ -228,7 +234,7 @@ public final class SiblingPeek {
                 .uri(URI.create("http://127.0.0.1:" + sibling.port() + "/mcp"))
                 .header("Content-Type", "application/json")
                 .header(PEEK_HEADER, "1")
-                .timeout(PER_SIBLING)
+                .timeout(limit)
                 .POST(HttpRequest.BodyPublishers.ofString(body));
             // An engine inside an IDE is reached through its note, which carries no key (contract §14.1): it is asked without one.
             if (!sibling.token().isBlank()) {
@@ -236,8 +242,15 @@ public final class SiblingPeek {
             }
             HttpRequest request = builder.build();
 
-            HttpResponse<String> response =
-                client.send(request, HttpResponse.BodyHandlers.ofString());
+            java.util.concurrent.CompletableFuture<HttpResponse<String>> pending =
+                client.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response;
+            try {
+                response = pending.get(Math.max(1, limit.toMillis()), java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (java.util.concurrent.TimeoutException late) {
+                pending.cancel(true);
+                return Reply.SILENT;
+            }
             if (response.statusCode() != 200) {
                 // It is listening but it would not serve us — a stale token, most likely. That is
                 // a row we could not use, not a resident we consulted.

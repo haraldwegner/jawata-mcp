@@ -234,6 +234,11 @@ class SiblingPeekTest {
             () -> assertTrue(elapsed.compareTo(SiblingPeek.PER_SIBLING.multipliedBy(4)) < 0,
                 "the walk took " + elapsed.toMillis() + "ms — it asked every sibling, so the"
                     + " total budget did nothing"),
+            // The budget ends the walk, not one ask after it: a last ask started at 1500ms with
+            // the full 750ms ran to 2250ms on Linux and to 3270ms on Windows (CI, 2026-11-11).
+            () -> assertTrue(elapsed.compareTo(SiblingPeek.TOTAL_BUDGET.plusMillis(200)) < 0,
+                "the walk took " + elapsed.toMillis() + "ms against a "
+                    + SiblingPeek.TOTAL_BUDGET.toMillis() + "ms budget: the last ask ran past it"),
             () -> assertTrue(sweep.describe().contains("time budget ran out"), sweep.describe()));
     }
 
