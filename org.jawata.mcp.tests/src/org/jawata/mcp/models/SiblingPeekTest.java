@@ -242,6 +242,44 @@ class SiblingPeekTest {
             () -> assertTrue(sweep.describe().contains("time budget ran out"), sweep.describe()));
     }
 
+    /**
+     * One ask to a wedged sibling ends at the limit it is given. After the walk was made to give each ask only what is
+     * left of its budget, the walk still ran 2352 ms on Windows and 2660 ms on macOS against 2000 ms (CI, 2026-11-12)
+     * and 2000 ms on Linux. This says where the rest goes: in STARTING the request (the client's sendAsync) or in
+     * WAITING for it past its limit.
+     */
+    @Test
+    @DisplayName("mcp#27: one ask to a wedged sibling ends at its limit, and says where its time went")
+    void oneAskEndsAtItsLimit() throws Exception {
+        Duration limit = Duration.ofMillis(500);
+        SiblingRegistry.Sibling silent = wedged("silent");
+        SiblingPeek.askOne(silent, "com.foo.Warm", client, limit); // the client's first use is not this question
+
+        java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+            .uri(java.net.URI.create("http://127.0.0.1:" + wedged("raw").port() + "/mcp"))
+            .timeout(limit).POST(java.net.http.HttpRequest.BodyPublishers.ofString("{}")).build();
+        long t0 = System.nanoTime();
+        var pending = client.sendAsync(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+        long started = System.nanoTime();
+        try {
+            pending.get(limit.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (Exception expected) {
+            pending.cancel(true);
+        }
+        long waited = System.nanoTime();
+        long startMs = (started - t0) / 1_000_000;
+        long waitMs = (waited - started) / 1_000_000;
+
+        long a0 = System.nanoTime();
+        SiblingPeek.askOne(wedged("asked"), "com.foo.Bar", client, limit);
+        long askMs = (System.nanoTime() - a0) / 1_000_000;
+
+        String where = "starting the request took " + startMs + "ms, waiting " + waitMs + "ms, one whole ask "
+            + askMs + "ms, against a " + limit.toMillis() + "ms limit";
+        System.out.println("SIBLING-ASK-TIMING " + where);
+        assertTrue(askMs < limit.toMillis() + 150, where);
+    }
+
     @Test
     @DisplayName("mcp#27: a garbled response is a NO, not an exception")
     void aGarbledResponseIsSurvivable() {
