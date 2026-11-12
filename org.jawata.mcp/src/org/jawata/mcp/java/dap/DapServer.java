@@ -451,6 +451,12 @@ public final class DapServer {
                 endedBecause("the engine could not follow the program: " + (answer.getError() == null ? "no reason given" : answer.getError().getMessage()));
                 return;
             }
+            // The engine's wait always says both; an answer saying neither returned without waiting, and asking
+            // again at once would spin this thread forever (CI, 2026-11-12: a test's loop ran until the heap was gone).
+            if (!data.has("hit") && !data.has("targetAlive")) {
+                endedBecause("the engine's wait answered without saying whether the program stopped or still runs");
+                return;
+            }
             if (!data.path("targetAlive").asBoolean(true) && !data.path("hit").asBoolean()) {
                 endedBecause(null);
                 return;

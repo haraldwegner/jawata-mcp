@@ -57,9 +57,9 @@ jobs:
     # remove. A longer cap costs nothing healthy — a passing job returns at 45 min
     # and never waits for it.
     - name: Test (in-framework)
-      # 240, not 100: the hosted runners of November 2026 run the suite about 2.4 times slower (macOS stopped at 100 min on 2026-11-11
-      # with no test failing); a hang backstop must sit far above the slowest healthy run.
-      timeout-minutes: 240
+      # 100: the slowest healthy run took 58 min (windows, run 42721138523). The 240 of 4.6.5 hid a test that leaked a
+      # thread spinning for the rest of the suite (DapServerTest, 2026-11-12); a slowdown must fail here, not be absorbed.
+      timeout-minutes: 100
       shell: bash
       run: |
         # Sprint 27 D1: the embedder's Vector API backend, GUARDED. A JVM given
@@ -281,9 +281,9 @@ jobs:
       run: mvn -B -f build/pom.xml install -DskipTests
 
     - name: The suite with the embedder switched off
-      # 240, not 100: the hosted runners of November 2026 run the suite about 2.4 times slower (macOS stopped at 100 min on 2026-11-11
-      # with no test failing); a hang backstop must sit far above the slowest healthy run.
-      timeout-minutes: 240
+      # 100: the slowest healthy run took 58 min (windows, run 42721138523). The 240 of 4.6.5 hid a test that leaked a
+      # thread spinning for the rest of the suite (DapServerTest, 2026-11-12); a slowdown must fail here, not be absorbed.
+      timeout-minutes: 100
       shell: bash
       run: |
         java -Djawata.embed.disabled=true \

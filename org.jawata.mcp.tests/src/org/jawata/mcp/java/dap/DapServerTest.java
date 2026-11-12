@@ -19,6 +19,7 @@ import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.jawata.spi.host.PersonDebugTurn;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -77,6 +78,12 @@ class DapServerTest {
     private java.util.function.Function<String, java.util.Optional<java.nio.file.Path>> sources = className -> java.util.Optional.empty();
     private final DapServer server = new DapServer(tools, CallerIdentity.editor("dap-test"), message -> said.add(message.getParams()), turn, className -> sources.apply(className));
     private int seq;
+
+    /** Ends the debugging each test began, so no stop-watching thread outlives its test. */
+    @AfterEach
+    void endTheDebugging() {
+        server.closed();
+    }
 
     private void send(String command, ObjectNode arguments) {
         ObjectNode request = JSON.createObjectNode().put("seq", ++seq).put("type", "request").put("command", command);
@@ -137,6 +144,23 @@ class DapServerTest {
         assertEquals("resume", resume.path("action").asText());
         assertEquals("s-1", resume.path("sessionId").asText());
         assertTrue(responseTo(2).path("success").asBoolean());
+    }
+
+    @Test
+    @DisplayName("a wait answer that says neither whether the program stopped nor whether it runs ends the debugging instead of asking again at once")
+    void aWaitAnswerSayingNothingEndsTheWatching() throws InterruptedException {
+        send("launch", JSON.createObjectNode().put("mainClass", "p.Main").put("classpath", "/w/bin"));
+
+        send("configurationDone", null);
+
+        long deadline = System.currentTimeMillis() + 5_000;
+        while (!saidEvent("terminated") && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20);
+        }
+        assertTrue(saidEvent("terminated"), "the editor is told the debugging ended");
+        int callsAtTheEnd = tools.calls.size();
+        Thread.sleep(200);
+        assertEquals(callsAtTheEnd, tools.calls.size(), "the engine is not asked again once the watching ended");
     }
 
     @Test

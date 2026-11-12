@@ -60,6 +60,13 @@ public final class SiblingPeek {
     private static final Logger log = LoggerFactory.getLogger(SiblingPeek.class);
     private static final ObjectMapper OM = new ObjectMapper();
 
+    /** Runs each ask, so the walk waits on the whole ask; daemon threads, so an ask still ending never holds the JVM open. */
+    private static final java.util.concurrent.ExecutorService ASKS = java.util.concurrent.Executors.newCachedThreadPool(task -> {
+        Thread thread = new Thread(task, "jawata-sibling-peek");
+        thread.setDaemon(true);
+        return thread;
+    });
+
     /** Set on every peek; a resident serving a request carrying it must not peek onward. */
     public static final String PEEK_HEADER = "X-Jawata-Peek";
 
@@ -185,7 +192,8 @@ public final class SiblingPeek {
         long deadline = System.nanoTime() + TOTAL_BUDGET.toNanos();
         int answered = 0;
         for (int i = 0; i < siblings.size(); i++) {
-            if (System.nanoTime() >= deadline) {
+            // Less than a millisecond left is spent: an ask is waited for in whole milliseconds, so it could not be given any.
+            if (deadline - System.nanoTime() < java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(1)) {
                 log.debug("peek budget spent; {} of {} sibling(s) unasked",
                     siblings.size() - i, siblings.size());
                 return new Sweep(Optional.empty(), siblings.size(), answered, true);
@@ -218,6 +226,23 @@ public final class SiblingPeek {
      *              750 ms request timeout (CI, 2026-11-11), so the walk overran its total budget
      */
     static Reply askOne(SiblingRegistry.Sibling sibling, String fqn, HttpClient client, Duration limit) {
+        // The whole ask is waited for, not only the response: on macOS and Windows an ask ran about twice its limit
+        // with its response wait ending on time (CI, 2026-11-12), so time spent around the wait must not reach the walk.
+        java.util.concurrent.CompletableFuture<Reply> ask = java.util.concurrent.CompletableFuture
+            .supplyAsync(() -> askWithoutBound(sibling, fqn, client, limit), ASKS);
+        try {
+            return ask.get(Math.max(1, limit.toMillis()), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Reply.SILENT;
+        } catch (java.util.concurrent.TimeoutException | java.util.concurrent.ExecutionException e) {
+            ask.cancel(true);
+            return Reply.SILENT;
+        }
+    }
+
+    private static Reply askWithoutBound(SiblingRegistry.Sibling sibling, String fqn, HttpClient client,
+            Duration limit) {
         try {
             String body = OM.writeValueAsString(java.util.Map.of(
                 "jsonrpc", "2.0",
