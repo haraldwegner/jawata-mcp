@@ -42,8 +42,18 @@ class SettingKeyAudienceTest {
         }
         for (SettingKey memory : List.of(SettingKeys.MEMORY_ROOTS, SettingKeys.EXPERIENCE_STORE, SettingKeys.BACKUPS_DEPTH,
             SettingKeys.BACKUPS_SCHEDULED_DEPTH, SettingKeys.STORIES_DIR, SettingKeys.TRANSCRIPT_ENABLED)) {
-            assertEquals(Audience.OWN_SCREEN, memory.audience(), memory.name());
+            assertEquals(Audience.MEMORY_SCREEN, memory.audience(), memory.name());
         }
+        assertEquals(List.of("jawata.backups.depth", "jawata.backups.scheduled.depth", "jawata.stories.dir", "jawata.transcript.enabled",
+            "jawata.experience.store", "jawata.memory.roots"), SettingKeys.all().stream().filter(k -> k.audience() == Audience.MEMORY_SCREEN)
+                .map(SettingKey::name).toList(), "the memory screen's settings are these six, and a host's memory screen shows exactly them");
+        for (SettingKey key : SettingKeys.all()) {
+            assertFalse(SettingKeys.labelOf(key).equals(key.name()) || SettingKeys.labelOf(key).isBlank(),
+                key.name() + " has words a settings screen labels it with");
+        }
+        assertEquals(List.of("jawata.transcript.enabled", "jawata.experience.allowSchemaUpgrade", "jawata.absolute.paths", "jawata.embed.disabled",
+            "jawata.embed.symptoms", "jawata.seats.sealed"), SettingKeys.all().stream().filter(SettingKeys::isOnOff).map(SettingKey::name).toList(),
+            "the on-or-off settings, which a screen shows as checkboxes");
 
         List<String> forThePerson = SettingKeys.all().stream().filter(k -> k.audience() == Audience.PERSON).map(SettingKey::name).toList();
         assertEquals(SettingKeys.all().size() - 16, forThePerson.size(), "the other keys are the person's: " + forThePerson);

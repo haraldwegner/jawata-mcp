@@ -24,8 +24,10 @@ public record SettingKey(String name, String fallback, String meaning, String en
         LAUNCHER,
         /** A measurement arm of the engine's own development, which the person is never asked about. */
         EXPERIMENT,
-        /** The person chooses it, on a screen of its own, so the list of general settings leaves it out. */
-        OWN_SCREEN
+        /** The person chooses it on the seats' own screens (Seats, Workflow), so the list of general settings leaves it out. */
+        OWN_SCREEN,
+        /** The person chooses it on the memory settings' own screen, so the list of general settings leaves it out. */
+        MEMORY_SCREEN
     }
 
     /** A key says who it is for: a key nobody classified would be shown to the person by a screen that cannot tell. */

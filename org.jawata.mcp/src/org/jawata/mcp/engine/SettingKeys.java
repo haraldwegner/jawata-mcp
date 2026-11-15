@@ -26,11 +26,11 @@ public final class SettingKeys {
     /** How many copies of the knowledge store are kept before a destructive operation. */
     public static final SettingKey BACKUPS_DEPTH = register("jawata.backups.depth", "10",
         "How many copies of the knowledge store are kept for the operations that can destroy it; the least is 1, since 0 would "
-            + "switch the safety copy off.", null, Audience.OWN_SCREEN);
+            + "switch the safety copy off.", null, Audience.MEMORY_SCREEN);
 
     /** How many of the daily scheduled copies are kept. */
     public static final SettingKey BACKUPS_SCHEDULED_DEPTH = register("jawata.backups.scheduled.depth", "14",
-        "How many of the daily scheduled copies of the knowledge store are kept; the least is 1.", null, Audience.OWN_SCREEN);
+        "How many of the daily scheduled copies of the knowledge store are kept; the least is 1.", null, Audience.MEMORY_SCREEN);
 
     /** The most promoted rules one seat's brief carries. */
     public static final SettingKey RULES_LIMIT = register("jawata.rules.limit", "0, which is no limit",
@@ -39,12 +39,12 @@ public final class SettingKeys {
 
     /** Where accepted memory is also written as story files. */
     public static final SettingKey STORIES_DIR = register("jawata.stories.dir", "the knowledge store's own story folder",
-        "The folder accepted memory is also written to as story files; 'off' writes none.", null, Audience.OWN_SCREEN);
+        "The folder accepted memory is also written to as story files; 'off' writes none.", null, Audience.MEMORY_SCREEN);
 
     /** Whether the discussion is captured and recall can answer from it. */
     public static final SettingKey TRANSCRIPT_ENABLED = register("jawata.transcript.enabled", "on",
         "Whether the discussion with the person is captured and can be recalled; false, off, 0 or no switches it off and removes what "
-            + "was captured.", "JAWATA_TRANSCRIPT", Audience.OWN_SCREEN);
+            + "was captured.", "JAWATA_TRANSCRIPT", Audience.MEMORY_SCREEN);
 
     /** Whether this resident may upgrade the shared knowledge store's schema. */
     public static final SettingKey ALLOW_SCHEMA_UPGRADE = register("jawata.experience.allowSchemaUpgrade", "false",
@@ -54,7 +54,7 @@ public final class SettingKeys {
     /** Which knowledge store this resident opens. */
     public static final SettingKey EXPERIENCE_STORE = register("jawata.experience.store", "shared",
         "Which knowledge store the resident opens: shared (one per user, spanning workspaces), workspace, memory (nothing is kept), "
-            + "or the path of a folder.", null, Audience.OWN_SCREEN);
+            + "or the path of a folder.", null, Audience.MEMORY_SCREEN);
 
     /** Where the knowledge store shared by every resident of the user is kept. */
     public static final SettingKey EXPERIENCE_SHARED_DIR = register("jawata.experience.shared.dir",
@@ -83,7 +83,7 @@ public final class SettingKeys {
     /** The folders and files memory is loaded from. */
     public static final SettingKey MEMORY_ROOTS = register("jawata.memory.roots", "discovered from the project folders",
         "The folders and files memory is loaded from when no path is given, separated by the path separator; when set they are the "
-            + "whole answer and nothing else is discovered.", null, Audience.OWN_SCREEN);
+            + "whole answer and nothing else is discovered.", null, Audience.MEMORY_SCREEN);
 
     /** Where debug and profile artifacts are kept. */
     public static final SettingKey RUNTIME_DIR = register("jawata.runtime.dir",
@@ -170,6 +170,63 @@ public final class SettingKeys {
     /** Every setting the engine reads through its host, in the order they are declared. */
     public static List<SettingKey> all() {
         return Collections.unmodifiableList(ALL);
+    }
+
+    /** The short words a settings screen labels each setting with, by key (Sprint 28k, Amendment 3, Stage 25k). */
+    private static final java.util.Map<String, String> LABELS = java.util.Map.ofEntries(
+        java.util.Map.entry("jawata.backups.depth", "Backup copies"),
+        java.util.Map.entry("jawata.backups.scheduled.depth", "Daily backup copies"),
+        java.util.Map.entry("jawata.rules.limit", "Most rules in one seat's brief"),
+        java.util.Map.entry("jawata.stories.dir", "Story export folder"),
+        java.util.Map.entry("jawata.transcript.enabled", "Keep the discussion so it can be recalled"),
+        java.util.Map.entry("jawata.experience.allowSchemaUpgrade", "Allow upgrading the shared store's format"),
+        java.util.Map.entry("jawata.experience.store", "Knowledge store"),
+        java.util.Map.entry("jawata.experience.shared.dir", "Folder of the shared knowledge store"),
+        java.util.Map.entry("jawata.data.home", "Data folder"),
+        java.util.Map.entry("jawata.project.path", "Project folder when there is no workspace.json"),
+        java.util.Map.entry("jawata.timeout.seconds", "Seconds a health check waits for the workspace"),
+        java.util.Map.entry("jawata.absolute.paths", "Absolute paths in health check answers"),
+        java.util.Map.entry("jawata.memory.roots", "Folders to load memory from"),
+        java.util.Map.entry("jawata.runtime.dir", "Folder for heap dumps and recordings"),
+        java.util.Map.entry("jawata.coverage.dir", "Folder for coverage evidence"),
+        java.util.Map.entry("jawata.tools.dir", "Folder of the test runner's jars"),
+        java.util.Map.entry("jawata.engine.notes.dir", "Folder of the engines' notes"),
+        java.util.Map.entry("jawata.dist.root", "Distribution folder"),
+        java.util.Map.entry("jawata.workspace.root", "Workspace folder"),
+        java.util.Map.entry("jawata.memory.maxDepth", "Deepest level the memory crawl follows"),
+        java.util.Map.entry("jawata.memory.maxFiles", "Most files one memory crawl reads"),
+        java.util.Map.entry("jawata.memory.maxBytes", "Most bytes one memory crawl reads"),
+        java.util.Map.entry("jawata.corpus.max.incremental", "Changed entries before a full refresh"),
+        java.util.Map.entry("jawata.embed.disabled", "Search by keywords only, with no embedding model"),
+        java.util.Map.entry("jawata.embed.symptoms", "Embed symptoms with each lesson (measurement)"),
+        java.util.Map.entry("jawata.seats.off", "Seats switched off"),
+        java.util.Map.entry("jawata.seats.brains", "Brain of each seat"),
+        java.util.Map.entry("jawata.seats.workflow", "Place of each seat in the workflow"),
+        java.util.Map.entry("jawata.seats.sealed", "Hire only the seats sealed in the engine"));
+
+    /** The settings that are on or off, so a screen shows each as a checkbox rather than a text field. */
+    private static final java.util.Set<String> ON_OFF = java.util.Set.of("jawata.transcript.enabled", "jawata.experience.allowSchemaUpgrade",
+        "jawata.absolute.paths", "jawata.embed.disabled", "jawata.embed.symptoms", "jawata.seats.sealed");
+
+    /**
+     * The short words a settings screen labels a setting with, the same for every host; the dotted key belongs in the mouseover. A host may
+     * shorten them where its own heading already says the rest.
+     *
+     * @param key the setting
+     * @return its words, or the key itself for a setting no words are written for (the engine's test refuses that for a listed key)
+     */
+    public static String labelOf(SettingKey key) {
+        return LABELS.getOrDefault(key.name(), key.name());
+    }
+
+    /**
+     * Whether a setting is on or off, so a screen shows it as a checkbox.
+     *
+     * @param key the setting
+     * @return true for an on-or-off setting
+     */
+    public static boolean isOnOff(SettingKey key) {
+        return ON_OFF.contains(key.name());
     }
 
     /**
