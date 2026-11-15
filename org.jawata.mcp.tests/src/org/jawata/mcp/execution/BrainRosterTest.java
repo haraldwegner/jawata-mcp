@@ -350,10 +350,16 @@ class BrainRosterTest {
         program("claude-code-acp", "exit 0");
         program("copilot", "exit 0");
         String registry = roster().agentSettings().settings().get("jawata.agent.hireBrains");
-        assertEquals(Optional.of(new AcpBrainSession.Program(List.of(bin.resolve("claude-code-acp").toString()), Map.of())),
+        // the adapter's folder first on its PATH, so an npm script finds the node beside it; this path holds only that folder, and no empty
+        // entry (which would mean the current folder) is added
+        Map<String, String> folderFirst = Map.of("PATH", bin.toString());
+        assertEquals(Optional.of(new AcpBrainSession.Program(List.of(bin.resolve("claude-code-acp").toString()), folderFirst)),
             AcpBrainSession.programFor(registry, "claude-code"), "the second adapter of a brain serves when the first is missing: " + registry);
-        assertEquals(Optional.of(new AcpBrainSession.Program(List.of(bin.resolve("copilot").toString(), "--acp"), Map.of())),
+        assertEquals(Optional.of(new AcpBrainSession.Program(List.of(bin.resolve("copilot").toString(), "--acp"), folderFirst)),
             AcpBrainSession.programFor(registry, "copilot"), "Copilot's program is started with its ACP argument: " + registry);
+        String longer = new BrainRoster("/elsewhere" + java.io.File.pathSeparator + bin).agentSettings().settings().get("jawata.agent.hireBrains");
+        assertEquals(bin + java.io.File.pathSeparator + "/elsewhere", AcpBrainSession.programFor(longer, "copilot").orElseThrow().environment().get("PATH"),
+            "with more folders on the path, the adapter's folder moves to the front and the rest keep their order");
         assertEquals(Optional.empty(), AcpBrainSession.programFor(registry, "codex"), "codex-acp is not on the path: " + registry);
         assertEquals(List.of(new BrainRoster.MissingAdapter("codex", "npm install -g @zed-industries/codex-acp")), roster().missingAdapters());
     }

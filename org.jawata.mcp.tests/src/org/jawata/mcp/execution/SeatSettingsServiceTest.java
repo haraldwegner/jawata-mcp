@@ -72,6 +72,24 @@ class SeatSettingsServiceTest {
             "asked again, the kept answer comes back: the agent's program is gone, so nothing could have been started");
     }
 
+    /**
+     * Stage 25m, one catalogue: the models a session of a brain offered as it opened, the way the chat opens its own, are what the Seats page is
+     * answered; it starts nothing of its own, as the brain's program is gone when it asks.
+     */
+    @Test
+    void theModelsAChatSessionOfferedAreTheOnesTheSeatsPageReads(@TempDir Path agentDir) throws IOException {
+        String registry = fakeAgent(agentDir, "default=Default,haiku=Haiku " + agentDir.getFileName());
+        stored.put("jawata.agent.hireBrains", registry);
+        AcpBrainSession.Program program = AcpBrainSession.programFor(registry, "fake").orElseThrow();
+        AcpBrainSession.Conversation chat = AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program, HireSite.in(agentDir),
+            null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)));
+        chat.close();
+        Files.delete(agentDir.resolve("FakeAcpAgent.java"));
+
+        assertEquals(List.of("Haiku " + agentDir.getFileName()), door().conversationModels("fake"),
+            "the chat's session's models, less the brain's own default, with no program started for the page");
+    }
+
     @Test
     void theRegistrysBrainsAreReadyAndAnUnknownOneIsRefused(@TempDir Path agentDir) throws IOException {
         stored.put("jawata.agent.hireBrains", fakeAgent(agentDir, ""));

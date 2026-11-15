@@ -121,9 +121,6 @@ public final class SeatSettingsService implements SeatSettings {
             }, status.reason(), status.loginCommand(), status.models(), status.hirable(), status.takesModel(), status.writesHeldByInstruction())).toList();
     }
 
-    /** What each adapter's session offered, by its program (command line and environment): kept for the engine's life, so a page asking again starts nothing. */
-    private static final java.util.Map<AcpBrainSession.Program, List<String>> OFFERED = new java.util.concurrent.ConcurrentHashMap<>();
-
     @Override
     public List<ConversationBrain> conversationBrains() {
         String registry = settings.get(Hirer.BRAINS_SETTING).orElse("");
@@ -148,16 +145,15 @@ public final class SeatSettingsService implements SeatSettings {
         String registry = settings.get(Hirer.BRAINS_SETTING).orElse("");
         AcpBrainSession.Program program = AcpBrainSession.programFor(registry, brain)
             .orElseThrow(() -> new IllegalArgumentException("The brain registry names no program for " + brain + "."));
-        return OFFERED.computeIfAbsent(program, started -> {
+        // the engine's one catalogue: what the chat's own session of this brain offered, or, when none has opened yet, one opened here
+        List<AcpBrainSession.Model> offered = AcpBrainSession.offeredBy(program).orElseGet(() -> {
             Path scratch = null;
             try {
                 scratch = java.nio.file.Files.createTempDirectory("jawata-models-");
                 AcpBrainSession.Conversation session = AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program,
                     HireSite.in(scratch), null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)));
                 try {
-                    // the brain's own default (Cursor's Auto, Claude's Default) has a value starting "default"; a screen offers it first already
-                    return session.models().stream().filter(model -> !model.value().toLowerCase(java.util.Locale.ROOT).startsWith("default"))
-                        .map(AcpBrainSession.Model::name).toList();
+                    return session.models();
                 } finally {
                     session.close();
                 }
@@ -173,6 +169,8 @@ public final class SeatSettingsService implements SeatSettings {
                 }
             }
         });
+        // the brain's own default (Cursor's Auto, Claude's Default) has a value starting "default"; a screen offers it first already
+        return offered.stream().filter(model -> !model.value().toLowerCase(java.util.Locale.ROOT).startsWith("default")).map(AcpBrainSession.Model::name).toList();
     }
 
     @Override

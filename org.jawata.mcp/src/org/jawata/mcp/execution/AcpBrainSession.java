@@ -47,8 +47,23 @@ public final class AcpBrainSession {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int STDERR_TAIL_LIMIT = 8_192;
     private static final int METHOD_NOT_FOUND = -32601;
+    /**
+     * What each brain program's session offered as models the last time one opened: the engine's one catalogue of them (Sprint 28k, Stage 25m).
+     * The chat's own session writes it as it opens, so a settings screen that reads it lists what the chat's brain offered.
+     */
+    private static final Map<Program, List<Model>> OFFERED = new java.util.concurrent.ConcurrentHashMap<>();
 
     private AcpBrainSession() {
+    }
+
+    /**
+     * The models this program's session offered the last time one of its sessions opened in this engine, in the order it listed them.
+     *
+     * @param program the brain program
+     * @return the models, empty in the optional when no session of it has opened yet
+     */
+    public static Optional<List<Model>> offeredBy(Program program) {
+        return Optional.ofNullable(OFFERED.get(program));
     }
 
     /**
@@ -239,6 +254,7 @@ public final class AcpBrainSession {
                 conversation.close();
                 throw e;
             }
+            OFFERED.put(program, conversation.models());
             return conversation;
         }
 

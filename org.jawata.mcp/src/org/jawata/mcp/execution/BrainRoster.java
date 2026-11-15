@@ -432,7 +432,13 @@ public final class BrainRoster {
                 locate(adapter.program(), true).ifPresent(program -> {
                     com.fasterxml.jackson.databind.node.ArrayNode command = JSON.createArrayNode().add(program.toString());
                     adapter.args().forEach(command::add);
-                    registry.putObject(adapter.brain()).<com.fasterxml.jackson.databind.node.ObjectNode>set("command", command).putObject("env");
+                    // an adapter npm installed is a script started through `node`, which lives in the same folder and may not be on the engine's
+                    // own PATH, so that folder goes first on the PATH the adapter starts with (the studio's D56 (e))
+                    // (an empty entry would mean the current folder, so none is written)
+                    String folder = program.getParent() == null ? "" : program.getParent().toString();
+                    String folderFirst = java.util.stream.Stream.concat(java.util.stream.Stream.of(folder), java.util.Arrays.stream(path.split(java.io.File.pathSeparator)))
+                        .filter(dir -> !dir.isEmpty()).distinct().collect(java.util.stream.Collectors.joining(java.io.File.pathSeparator));
+                    registry.putObject(adapter.brain()).<com.fasterxml.jackson.databind.node.ObjectNode>set("command", command).putObject("env").put("PATH", folderFirst);
                 });
             }
         }
