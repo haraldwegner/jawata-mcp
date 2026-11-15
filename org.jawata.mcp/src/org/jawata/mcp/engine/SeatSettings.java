@@ -205,6 +205,37 @@ public interface SeatSettings {
     Probe probe(String brain, String model);
 
     /**
+     * A brain the chat could run on (Sprint 28k, Amendment 3, Stage 25m): one the engine's brain registry names, which can be started, or one
+     * whose ACP adapter is not on this machine, which says how to get it.
+     *
+     * @param id      the brain's name, as a seat names it
+     * @param label   the name a person reads
+     * @param ready   whether the registry names a program for it, so a conversation can run on it
+     * @param install the command that installs its adapter, when it is not ready; empty when it is
+     */
+    record ConversationBrain(String id, String label, boolean ready, Optional<String> install) {
+    }
+
+    /**
+     * The brains the chat could run on: those the brain registry names, then those whose adapter is missing, each named once.
+     *
+     * @return the brains
+     */
+    List<ConversationBrain> conversationBrains();
+
+    /**
+     * The models a conversation brain's own session offers, as the brain names them. The first ask opens a session of the brain's adapter
+     * and ends it; the answer is kept, so later asks start nothing. A screen asks off its interface thread, and only when the person opens the
+     * choice, so reading a page starts no program.
+     *
+     * @param brain the brain's name, one the registry names
+     * @return the models' names, empty when the brain offers no choice of model
+     * @throws IllegalArgumentException when the registry names no program for the brain
+     * @throws java.io.UncheckedIOException when its adapter could not be started
+     */
+    List<String> conversationModels(String brain);
+
+    /**
      * Whether the engine would accept these values.
      *
      * @param proposed the values of {@link SettingKeys#SEATS_OFF}, {@link SettingKeys#SEATS_BRAINS} and {@link SettingKeys#SEATS_WORKFLOW} by key;

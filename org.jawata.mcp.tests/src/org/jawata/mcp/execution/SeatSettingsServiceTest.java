@@ -48,6 +48,41 @@ class SeatSettingsServiceTest {
         return SeatSettingsService.overFolder(folder, settings, Set.of("rename_symbol"));
     }
 
+    /** A registry naming one brain, "fake", started as the stand-in ACP agent that offers these models ({@code value=Name,...}). */
+    private String fakeAgent(Path dir, String models) throws IOException {
+        try (java.io.InputStream in = SeatSettingsServiceTest.class.getResourceAsStream("/test-resources/acp/FakeAcpAgent.java.txt")) {
+            Files.write(dir.resolve("FakeAcpAgent.java"), in.readAllBytes());
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode registry = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        com.fasterxml.jackson.databind.node.ObjectNode fake = registry.putObject("fake");
+        fake.putArray("command").add(Path.of(System.getProperty("java.home"), "bin", "java").toString()).add(dir.resolve("FakeAcpAgent.java").toString());
+        fake.putObject("env").put("FAKE_ACP_STATE", dir.toString()).put("FAKE_ACP_MODELS", models);
+        return registry.toString();
+    }
+
+    /** Stage 25m: the models a conversation brain offers come from its own session, opened once; the answer is kept, so asking again starts nothing. */
+    @Test
+    void aConversationBrainsModelsAreReadFromItsOwnSessionOnceAndKept(@TempDir Path agentDir) throws IOException {
+        stored.put("jawata.agent.hireBrains", fakeAgent(agentDir, "opus=Opus " + agentDir.getFileName() + ",sonnet=Sonnet"));
+
+        assertEquals(List.of("Opus " + agentDir.getFileName(), "Sonnet"), door().conversationModels("fake"), "the names the session's model option offers");
+        Files.delete(agentDir.resolve("FakeAcpAgent.java"));
+        assertEquals(List.of("Opus " + agentDir.getFileName(), "Sonnet"), door().conversationModels("fake"),
+            "asked again, the kept answer comes back: the agent's program is gone, so nothing could have been started");
+    }
+
+    @Test
+    void theRegistrysBrainsAreReadyAndAnUnknownOneIsRefused(@TempDir Path agentDir) throws IOException {
+        stored.put("jawata.agent.hireBrains", fakeAgent(agentDir, ""));
+
+        List<SeatSettings.ConversationBrain> brains = door().conversationBrains();
+        assertEquals(new SeatSettings.ConversationBrain("fake", "fake", true, Optional.empty()), brains.get(0), "the registry's brain first, ready");
+        assertTrue(brains.stream().skip(1).noneMatch(brain -> brain.ready() || brain.install().isEmpty()),
+            "every other brain is one whose adapter is missing, with its install line: " + brains);
+        IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> door().conversationModels("nobody"));
+        assertTrue(refused.getMessage().contains("nobody"), refused.getMessage());
+    }
+
     private SeatSettings.Seat seat(String name) {
         return door().seats().seats().stream().filter(row -> row.name().equals(name)).findFirst().orElseThrow();
     }

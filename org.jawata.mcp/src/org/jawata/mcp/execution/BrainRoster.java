@@ -80,6 +80,34 @@ public final class BrainRoster {
     public record AgentSettings(Map<String, String> settings, Optional<String> note) {
     }
 
+    /**
+     * A program that speaks ACP for one brain, so the chat can run on it, and what a person runs to get it (Sprint 28k, Amendment 3, Stage 25m;
+     * the studio's {@code agent_brain_settings.rs} ADAPTERS, carried over). None is downloaded here: the person is told the install line.
+     *
+     * @param brain   the brain it starts, named the way the engine's dialect names itself
+     * @param program the program looked for on the path
+     * @param args    the arguments that make it speak ACP (Copilot's program does so only with {@code --acp}; the others speak nothing else)
+     * @param install the command that installs it
+     */
+    public record Adapter(String brain, String program, List<String> args, String install) {
+    }
+
+    /**
+     * A brain the chat could run on whose adapter is not on this machine, with the command that installs its first adapter.
+     *
+     * @param brain   the brain
+     * @param install the command that installs it
+     */
+    public record MissingAdapter(String brain, String install) {
+    }
+
+    /** The adapters in the order they are tried: for a brain with two, the first found is used and the first is the one a person is told to install. */
+    public static final List<Adapter> ADAPTERS = List.of(
+        new Adapter("claude-code", "claude-agent-acp", List.of(), "npm install -g @agentclientprotocol/claude-agent-acp"),
+        new Adapter("claude-code", "claude-code-acp", List.of(), "npm install -g @zed-industries/claude-code-acp"),
+        new Adapter("codex", "codex-acp", List.of(), "npm install -g @zed-industries/codex-acp"),
+        new Adapter("copilot", "copilot", List.of("--acp"), "npm install -g @github/copilot"));
+
     private record Spec(String id, String label, String program, String loginCommand) {
     }
 
@@ -118,6 +146,16 @@ public final class BrainRoster {
     BrainRoster(String path, Duration checkTimeout) {
         this.path = path;
         this.checkTimeout = checkTimeout;
+    }
+
+    /**
+     * The name a person reads for a brain, from this roster's own table; a brain it does not know keeps its id.
+     *
+     * @param id the brain's name, as a seat names it
+     * @return its label
+     */
+    public static String labelOf(String id) {
+        return SPECS.stream().filter(spec -> spec.id().equals(id)).map(Spec::label).findFirst().orElse(id);
     }
 
     /** A roster over this process's own {@code PATH}. */
@@ -386,8 +424,38 @@ public final class BrainRoster {
         }
         String one = JSON.createObjectNode().<com.fasterxml.jackson.databind.node.ObjectNode>set("command", JSON.createArrayNode().add(found.get().toString()).add("acp"))
             .<com.fasterxml.jackson.databind.node.ObjectNode>set("env", JSON.createObjectNode()).toString();
-        String registry = "{\"cursor\":" + one + "}";
-        return new AgentSettings(Map.of("jawata.agent.brain", one, "jawata.agent.hireBrains", registry, "jawata.agent.reviewer", one), Optional.empty());
+        // the registry also names each brain whose ACP adapter is on the path (Stage 25m, as the studio's detect does), so the chat can run on it
+        com.fasterxml.jackson.databind.node.ObjectNode registry = JSON.createObjectNode();
+        registry.set("cursor", parsed(one).orElseThrow());
+        for (Adapter adapter : ADAPTERS) {
+            if (!registry.has(adapter.brain())) {
+                locate(adapter.program(), true).ifPresent(program -> {
+                    com.fasterxml.jackson.databind.node.ArrayNode command = JSON.createArrayNode().add(program.toString());
+                    adapter.args().forEach(command::add);
+                    registry.putObject(adapter.brain()).<com.fasterxml.jackson.databind.node.ObjectNode>set("command", command).putObject("env");
+                });
+            }
+        }
+        return new AgentSettings(Map.of("jawata.agent.brain", one, "jawata.agent.hireBrains", registry.toString(), "jawata.agent.reviewer", one), Optional.empty());
+    }
+
+    /**
+     * The brains the chat could run on whose ACP adapter is on no folder of the path, each with the install command of its first adapter, in
+     * {@link #ADAPTERS} order. It reads the same table {@link #agentSettings()} reads, so what is offered and what is said to be missing cannot
+     * disagree.
+     *
+     * @return the missing adapters
+     */
+    public List<MissingAdapter> missingAdapters() {
+        List<MissingAdapter> missing = new ArrayList<>();
+        for (Adapter adapter : ADAPTERS) {
+            boolean said = missing.stream().anyMatch(one -> one.brain().equals(adapter.brain()));
+            boolean found = ADAPTERS.stream().filter(other -> other.brain().equals(adapter.brain())).anyMatch(other -> locate(other.program(), false).isPresent());
+            if (!said && !found) {
+                missing.add(new MissingAdapter(adapter.brain(), adapter.install()));
+            }
+        }
+        return missing;
     }
 
     /**

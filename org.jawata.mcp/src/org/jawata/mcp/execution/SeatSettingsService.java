@@ -121,6 +121,58 @@ public final class SeatSettingsService implements SeatSettings {
             }, status.reason(), status.loginCommand(), status.models(), status.hirable(), status.takesModel(), status.writesHeldByInstruction())).toList();
     }
 
+    /** What each adapter's session offered, by its program (command line and environment): kept for the engine's life, so a page asking again starts nothing. */
+    private static final java.util.Map<AcpBrainSession.Program, List<String>> OFFERED = new java.util.concurrent.ConcurrentHashMap<>();
+
+    @Override
+    public List<ConversationBrain> conversationBrains() {
+        String registry = settings.get(Hirer.BRAINS_SETTING).orElse("");
+        List<ConversationBrain> brains = new ArrayList<>();
+        try {
+            com.fasterxml.jackson.databind.JsonNode named = new com.fasterxml.jackson.databind.ObjectMapper().readTree(registry.isBlank() ? "{}" : registry);
+            named.fieldNames().forEachRemaining(id -> AcpBrainSession.programFor(registry, id)
+                .ifPresent(program -> brains.add(new ConversationBrain(id, BrainRoster.labelOf(id), true, Optional.empty()))));
+        } catch (java.io.IOException unreadable) {
+            // a registry that is not JSON names no brain; the hire path refuses it in its own words
+        }
+        for (BrainRoster.MissingAdapter missing : BrainRoster.onThisMachine().missingAdapters()) {
+            if (brains.stream().noneMatch(brain -> brain.id().equals(missing.brain()))) {
+                brains.add(new ConversationBrain(missing.brain(), BrainRoster.labelOf(missing.brain()), false, Optional.of(missing.install())));
+            }
+        }
+        return brains;
+    }
+
+    @Override
+    public List<String> conversationModels(String brain) {
+        String registry = settings.get(Hirer.BRAINS_SETTING).orElse("");
+        AcpBrainSession.Program program = AcpBrainSession.programFor(registry, brain)
+            .orElseThrow(() -> new IllegalArgumentException("The brain registry names no program for " + brain + "."));
+        return OFFERED.computeIfAbsent(program, started -> {
+            Path scratch = null;
+            try {
+                scratch = java.nio.file.Files.createTempDirectory("jawata-models-");
+                AcpBrainSession.Conversation session = AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program,
+                    HireSite.in(scratch), null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)));
+                try {
+                    return session.models().stream().map(AcpBrainSession.Model::name).toList();
+                } finally {
+                    session.close();
+                }
+            } catch (java.io.IOException failed) {
+                throw new java.io.UncheckedIOException(brain + "'s adapter could not be started: " + failed.getMessage(), failed);
+            } finally {
+                if (scratch != null) {
+                    try (java.util.stream.Stream<Path> files = java.nio.file.Files.walk(scratch)) {
+                        files.sorted(java.util.Comparator.reverseOrder()).forEach(file -> file.toFile().delete());
+                    } catch (java.io.IOException leftBehind) {
+                        // the folder is under the system's temporary folder and holds nothing of the person's
+                    }
+                }
+            }
+        });
+    }
+
     @Override
     public Probe probe(String brain, String model) {
         BrainRoster.Probe run = BrainRoster.onThisMachine().probe(brain, model);

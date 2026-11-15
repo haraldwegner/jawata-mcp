@@ -343,6 +343,28 @@ class BrainRosterTest {
         assertEquals(Optional.of(new AcpBrainSession.Program(List.of(bin.resolve("agent").toString(), "acp"), Map.of())), AcpBrainSession.programFor(registry, "cursor"));
     }
 
+    /** Stage 25m (the studio's ADAPTERS, carried over): each brain whose ACP adapter is on the path is named in the registry, the rest are missing. */
+    @Test
+    void eachAdapterOnThePathIsNamedInTheRegistryAndTheRestAreMissing() throws IOException {
+        program("agent", "exit 0");
+        program("claude-code-acp", "exit 0");
+        program("copilot", "exit 0");
+        String registry = roster().agentSettings().settings().get("jawata.agent.hireBrains");
+        assertEquals(Optional.of(new AcpBrainSession.Program(List.of(bin.resolve("claude-code-acp").toString()), Map.of())),
+            AcpBrainSession.programFor(registry, "claude-code"), "the second adapter of a brain serves when the first is missing: " + registry);
+        assertEquals(Optional.of(new AcpBrainSession.Program(List.of(bin.resolve("copilot").toString(), "--acp"), Map.of())),
+            AcpBrainSession.programFor(registry, "copilot"), "Copilot's program is started with its ACP argument: " + registry);
+        assertEquals(Optional.empty(), AcpBrainSession.programFor(registry, "codex"), "codex-acp is not on the path: " + registry);
+        assertEquals(List.of(new BrainRoster.MissingAdapter("codex", "npm install -g @zed-industries/codex-acp")), roster().missingAdapters());
+    }
+
+    @Test
+    void aBrainWithNoAdapterIsMissingOnceWithItsFirstInstallLine() {
+        assertEquals(List.of(new BrainRoster.MissingAdapter("claude-code", "npm install -g @agentclientprotocol/claude-agent-acp"),
+            new BrainRoster.MissingAdapter("codex", "npm install -g @zed-industries/codex-acp"),
+            new BrainRoster.MissingAdapter("copilot", "npm install -g @github/copilot")), roster().missingAdapters());
+    }
+
     @Test
     void theLongNameIsTakenWhereTheShortOneIsMissing() throws IOException {
         program("cursor-agent", "exit 0");
