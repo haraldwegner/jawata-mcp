@@ -26,7 +26,7 @@ class SettingKeyAudienceTest {
     }
 
     @Test
-    @DisplayName("the two launcher-set keys are for the launcher, the measurement arm is an experiment, and every other key is for the person")
+    @DisplayName("the launcher's keys are the launcher's, the measurement arm is an experiment, the seat and memory keys have screens of their own, and every other key is for the person")
     void theAudienceOfEachKey() {
         assertEquals(Audience.LAUNCHER, SettingKeys.DIST_ROOT.audience());
         assertEquals(Audience.LAUNCHER, SettingKeys.WORKSPACE_ROOT.audience());
@@ -35,9 +35,18 @@ class SettingKeyAudienceTest {
         assertEquals(Audience.OWN_SCREEN, SettingKeys.SEATS_BRAINS.audience());
         assertEquals(Audience.OWN_SCREEN, SettingKeys.SEATS_WORKFLOW.audience());
         assertEquals(Audience.LAUNCHER, SettingKeys.SEATS_SEALED.audience());
+        // 28k Stage 25k (ux report section 5): three say in their own words they are not the person's here, and the six memory settings
+        // have a Memory page of their own
+        for (SettingKey notThePersons : List.of(SettingKeys.PROJECT_PATH, SettingKeys.TOOLS_DIR, SettingKeys.ENGINE_NOTES_DIR)) {
+            assertEquals(Audience.LAUNCHER, notThePersons.audience(), notThePersons.name());
+        }
+        for (SettingKey memory : List.of(SettingKeys.MEMORY_ROOTS, SettingKeys.EXPERIENCE_STORE, SettingKeys.BACKUPS_DEPTH,
+            SettingKeys.BACKUPS_SCHEDULED_DEPTH, SettingKeys.STORIES_DIR, SettingKeys.TRANSCRIPT_ENABLED)) {
+            assertEquals(Audience.OWN_SCREEN, memory.audience(), memory.name());
+        }
 
         List<String> forThePerson = SettingKeys.all().stream().filter(k -> k.audience() == Audience.PERSON).map(SettingKey::name).toList();
-        assertEquals(SettingKeys.all().size() - 7, forThePerson.size(), "the other keys are the person's: " + forThePerson);
+        assertEquals(SettingKeys.all().size() - 16, forThePerson.size(), "the other keys are the person's: " + forThePerson);
         assertFalse(forThePerson.contains("jawata.dist.root") || forThePerson.contains("jawata.workspace.root")
             || forThePerson.contains("jawata.embed.symptoms"));
     }

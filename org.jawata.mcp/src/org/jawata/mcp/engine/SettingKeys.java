@@ -26,11 +26,11 @@ public final class SettingKeys {
     /** How many copies of the knowledge store are kept before a destructive operation. */
     public static final SettingKey BACKUPS_DEPTH = register("jawata.backups.depth", "10",
         "How many copies of the knowledge store are kept for the operations that can destroy it; the least is 1, since 0 would "
-            + "switch the safety copy off.", null, Audience.PERSON);
+            + "switch the safety copy off.", null, Audience.OWN_SCREEN);
 
     /** How many of the daily scheduled copies are kept. */
     public static final SettingKey BACKUPS_SCHEDULED_DEPTH = register("jawata.backups.scheduled.depth", "14",
-        "How many of the daily scheduled copies of the knowledge store are kept; the least is 1.", null, Audience.PERSON);
+        "How many of the daily scheduled copies of the knowledge store are kept; the least is 1.", null, Audience.OWN_SCREEN);
 
     /** The most promoted rules one seat's brief carries. */
     public static final SettingKey RULES_LIMIT = register("jawata.rules.limit", "0, which is no limit",
@@ -39,12 +39,12 @@ public final class SettingKeys {
 
     /** Where accepted memory is also written as story files. */
     public static final SettingKey STORIES_DIR = register("jawata.stories.dir", "the knowledge store's own story folder",
-        "The folder accepted memory is also written to as story files; 'off' writes none.", null, Audience.PERSON);
+        "The folder accepted memory is also written to as story files; 'off' writes none.", null, Audience.OWN_SCREEN);
 
     /** Whether the discussion is captured and recall can answer from it. */
     public static final SettingKey TRANSCRIPT_ENABLED = register("jawata.transcript.enabled", "on",
         "Whether the discussion with the person is captured and can be recalled; false, off, 0 or no switches it off and removes what "
-            + "was captured.", "JAWATA_TRANSCRIPT", Audience.PERSON);
+            + "was captured.", "JAWATA_TRANSCRIPT", Audience.OWN_SCREEN);
 
     /** Whether this resident may upgrade the shared knowledge store's schema. */
     public static final SettingKey ALLOW_SCHEMA_UPGRADE = register("jawata.experience.allowSchemaUpgrade", "false",
@@ -54,7 +54,7 @@ public final class SettingKeys {
     /** Which knowledge store this resident opens. */
     public static final SettingKey EXPERIENCE_STORE = register("jawata.experience.store", "shared",
         "Which knowledge store the resident opens: shared (one per user, spanning workspaces), workspace, memory (nothing is kept), "
-            + "or the path of a folder.", null, Audience.PERSON);
+            + "or the path of a folder.", null, Audience.OWN_SCREEN);
 
     /** Where the knowledge store shared by every resident of the user is kept. */
     public static final SettingKey EXPERIENCE_SHARED_DIR = register("jawata.experience.shared.dir",
@@ -68,7 +68,7 @@ public final class SettingKeys {
 
     /** The project the engine loads when no workspace file names any. */
     public static final SettingKey PROJECT_PATH = register("jawata.project.path", "none",
-        "The folder of the one project the engine loads when the workspace has no workspace.json", "JAVA_PROJECT_PATH", Audience.PERSON);
+        "The folder of the one project the engine loads when the workspace has no workspace.json", "JAVA_PROJECT_PATH", Audience.LAUNCHER);
 
     /** How long health_check calls wait on the workspace. */
     public static final SettingKey TIMEOUT_SECONDS = register("jawata.timeout.seconds", "30",
@@ -83,7 +83,7 @@ public final class SettingKeys {
     /** The folders and files memory is loaded from. */
     public static final SettingKey MEMORY_ROOTS = register("jawata.memory.roots", "discovered from the project folders",
         "The folders and files memory is loaded from when no path is given, separated by the path separator; when set they are the "
-            + "whole answer and nothing else is discovered.", null, Audience.PERSON);
+            + "whole answer and nothing else is discovered.", null, Audience.OWN_SCREEN);
 
     /** Where debug and profile artifacts are kept. */
     public static final SettingKey RUNTIME_DIR = register("jawata.runtime.dir",
@@ -98,12 +98,12 @@ public final class SettingKeys {
     /** Where the test runner's jars are found. */
     public static final SettingKey TOOLS_DIR = register("jawata.tools.dir", "tools/ in the distribution folder",
         "Where the jars the forked test runner needs are found; for a development run that has no distribution folder.",
-        null, Audience.PERSON);
+        null, Audience.LAUNCHER);
 
     /** Where the notes of engines running inside an IDE are looked for. */
     public static final SettingKey ENGINE_NOTES_DIR = register("jawata.engine.notes.dir", "jawata-studio/engines in the OS cache folder",
         "The folder the notes of jawata engines running inside an IDE are read from, so this resident can reach them as siblings; "
-            + "studio's own data folder setting does not move it.", null, Audience.PERSON);
+            + "studio's own data folder setting does not move it.", null, Audience.LAUNCHER);
 
     /** The distribution folder. */
     public static final SettingKey DIST_ROOT = register("jawata.dist.root", "set by the launcher",
