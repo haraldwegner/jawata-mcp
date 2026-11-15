@@ -1,8 +1,6 @@
 package org.jawata.mcp.execution;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -11,16 +9,16 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
+
+import org.jawata.core.host.HostCommand;
+import org.jawata.core.host.HostProcessOutcome;
+import org.jawata.core.host.HostProcesses;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -97,6 +95,8 @@ public final class BrainRoster {
     /** Each dialect holds this answer, which needs a running resident's address to ask; BrainRosterTest pins this line to it. */
     private static final List<String> HELD_BY_AN_INSTRUCTION = List.of("cursor");
     private static final ExecutorService WORK = Executors.newVirtualThreadPerTaskExecutor();
+    /** The one place a process is launched and an executable is spelled for this operating system. */
+    private static final HostProcesses HOST = HostProcesses.system();
     private static final Duration CHECK_TIMEOUT = Duration.ofSeconds(20);
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(120);
     private static final String PROBE_PROMPT = "Reply with the single word OK.";
@@ -401,8 +401,7 @@ public final class BrainRoster {
         if (path == null) {
             return Optional.empty();
         }
-        boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
-        List<String> files = windows ? List.of(name + ".exe", name + ".cmd", name + ".bat") : List.of(name);
+        List<String> files = HOST.executableCandidates(name);
         for (String entry : path.split(java.io.File.pathSeparator)) {
             Optional<Path> folder = folderOf(entry).filter(found -> !absoluteOnly || found.isAbsolute());
             for (String file : folder.isEmpty() ? List.<String>of() : files) {
@@ -436,60 +435,20 @@ public final class BrainRoster {
         List<String> command = new ArrayList<>();
         command.add(found.get().toString());
         command.addAll(args);
-        ProcessBuilder builder = new ProcessBuilder(command);
-        if (folder != null) {
-            builder.directory(folder.toFile());
-        }
-        Process process;
+        // the host boundary launches, gives the program no input, kills it and what it started at the timeout, and reads
+        // its output on its own thread; stderr is merged, as the program's own words are on either stream
+        HostCommand launch = HostCommand.of(command).waitingAtMost(timeout);
+        HostProcessOutcome outcome;
         try {
-            process = builder.start();
-            process.getOutputStream().close();
-        } catch (IOException cannot) {
+            outcome = HOST.run(folder == null ? launch : launch.in(folder));
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return Optional.of(new Outcome(false, ""));
+        }
+        if (outcome instanceof HostProcessOutcome.CannotLaunch) {
             return Optional.empty();
         }
-        CompletableFuture<String> out = CompletableFuture.supplyAsync(() -> read(process.getInputStream()), WORK);
-        CompletableFuture<String> err = CompletableFuture.supplyAsync(() -> read(process.getErrorStream()), WORK);
-        boolean success;
-        try {
-            if (process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
-                success = process.exitValue() == 0;
-            } else {
-                stop(process);
-                process.waitFor();
-                success = false;
-            }
-        } catch (InterruptedException interrupted) {
-            stop(process);
-            Thread.currentThread().interrupt();
-            success = false;
-        }
-        return Optional.of(new Outcome(success, collected(out) + collected(err)));
-    }
-
-    /** Stops a program and what it started: a child left running holds the pipes open, and the answer would never finish being read. */
-    private static void stop(Process process) {
-        process.descendants().forEach(ProcessHandle::destroyForcibly);
-        process.destroyForcibly();
-    }
-
-    /** What a reader has, not waiting long: the program has ended, and only something it left behind can still hold the pipe open. */
-    private static String collected(CompletableFuture<String> reader) {
-        try {
-            return reader.get(2, TimeUnit.SECONDS);
-        } catch (ExecutionException | TimeoutException unfinished) {
-            return "";
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            return "";
-        }
-    }
-
-    private static String read(InputStream stream) {
-        try {
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException gone) {
-            return "";
-        }
+        return Optional.of(new Outcome(outcome.succeeded(), outcome.output()));
     }
 
     private static void remove(Path folder) {

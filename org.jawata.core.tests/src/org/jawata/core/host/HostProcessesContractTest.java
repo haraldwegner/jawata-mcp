@@ -89,6 +89,20 @@ class HostProcessesContractTest {
     }
 
     @Test
+    @DisplayName("a process that reads its input is given the end of it, not left waiting for the timeout")
+    void aProcessThatReadsItsInputIsGivenTheEndOfIt(@org.junit.jupiter.api.io.TempDir Path dir) throws Exception {
+        Path reader = dir.resolve("ReadsInput.java");
+        Files.writeString(reader, "class ReadsInput { public static void main(String[] a) throws Exception { System.out.print(\"read:\" + System.in.read()); } }");
+
+        long started = System.nanoTime();
+        HostProcessOutcome outcome = host.run(HostCommand.of(javaExecutable(), reader.toString()).waitingAtMost(Duration.ofSeconds(60)));
+
+        HostProcessOutcome.Completed completed = assertInstanceOf(HostProcessOutcome.Completed.class, outcome, outcome.describe());
+        assertTrue(completed.output().contains("read:-1"), "the child read the end of its input: " + completed.output());
+        assertTrue(Duration.ofNanos(System.nanoTime() - started).toSeconds() < 50, "and did not wait out the timeout");
+    }
+
+    @Test
     @DisplayName("a process that cannot START is CannotLaunch, naming the executable — the distinction the old code lost")
     void aMissingExecutableIsCannotLaunch() throws Exception {
         HostProcessOutcome outcome =

@@ -60,6 +60,15 @@ final class SystemHostProcesses implements HostProcesses {
             return new HostProcessOutcome.CannotLaunch(command.executable(), reasonFor(e));
         }
 
+        // run() never gives a process input, so its input is closed at once: a child that reads
+        // it gets the end of input, as from a launch with no terminal, instead of waiting out the
+        // timeout. An agent program reads its input whenever that input is a pipe (28k CR3).
+        try {
+            process.getOutputStream().close();
+        } catch (IOException ignored) {
+            // closing an input nobody writes to cannot lose anything
+        }
+
         // The output is drained on its OWN thread, and this is not a style
         // choice. InputStream.readAllBytes() returns at end of stream — which
         // for a pipe means when the process exits — so reading inline BEFORE

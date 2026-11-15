@@ -94,12 +94,14 @@ class BrainRosterTest {
     @Test
     void whoseWritesAreHeldOnlyByAnInstructionIsWhatEachDialectAnswers() {
         SelfEndpoint self = new SelfEndpoint("http://127.0.0.1:1/mcp", "t");
-        for (BrainRoster.Status brain : roster().statuses()) {
-            if (brain.hirable()) {
-                boolean contained = SeatHire.read("---\nname: probe\nbrain: " + brain.id() + "\n---\n").dialect(self, List.of()).writeContainment().isContained();
-                assertEquals(!contained, brain.writesHeldByInstruction(), brain.id());
-            }
-        }
+        List<BrainRoster.Status> hirable = roster().statuses().stream().filter(BrainRoster.Status::hirable).toList();
+        List<String> roster = hirable.stream().filter(BrainRoster.Status::writesHeldByInstruction).map(BrainRoster.Status::id).toList();
+        List<String> dialects = hirable.stream()
+            .filter(brain -> !SeatHire.read("---\nname: probe\nbrain: " + brain.id() + "\n---\n").dialect(self, List.of()).writeContainment().isContained())
+            .map(BrainRoster.Status::id).toList();
+
+        assertEquals(List.of("claude-code", "codex", "cursor", "copilot"), hirable.stream().map(BrainRoster.Status::id).toList(), "the brains asked about");
+        assertEquals(dialects, roster, "the roster's brains held only by an instruction are the dialects' own answer");
     }
 
     @Test
