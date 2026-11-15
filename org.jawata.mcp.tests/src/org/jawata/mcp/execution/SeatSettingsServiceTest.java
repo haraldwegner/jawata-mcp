@@ -175,5 +175,15 @@ class SeatSettingsServiceTest {
             "profiler", "report", "review", "rottenmeier", "senior-developer", "spec-auditor", "spec-editor", "test-manager", "test-writer", "ux"),
             view.seats().stream().map(SeatSettings.Seat::name).toList());
         assertEquals(List.of(), view.errors(), "every sealed seat is readable and the sealed tree has no refusal");
+        assertEquals("on a package nobody has described; resumes where it stopped",
+            view.seats().stream().filter(seat -> seat.name().equals("cataloguer")).findFirst().orElseThrow().when(), "a seat says when it is used, in its file's words");
+    }
+
+    @Test
+    void aBundleWithNoSeatsFolderHasNoSealedSeats() {
+        // org.jawata.core carries no seats: an answer of none, not a failure
+        SeatFiles.Listing listing = SeatFiles.sealed(org.jawata.core.host.HostProcesses.class);
+        assertEquals(List.of(), listing.seats());
+        assertEquals(List.of(), listing.unreadable());
     }
 }

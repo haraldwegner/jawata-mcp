@@ -92,7 +92,8 @@ final class SeatFiles {
             return new Listing(List.of(), List.of("the engine runs outside an OSGi framework, so it has no sealed seats to read"));
         }
         Enumeration<URL> entries = bundle.findEntries(SEALED_FOLDER, "*.md", false);
-        List<URL> found = entries == null ? List.of() : new ArrayList<>(Collections.list(entries));
+        // a list that can be sorted either way: a bundle with no seats folder has none, which is an answer, not a failure
+        List<URL> found = entries == null ? new ArrayList<>() : new ArrayList<>(Collections.list(entries));
         found.sort(Comparator.comparing(URL::getPath));
         List<SeatFile> seats = new ArrayList<>();
         List<String> unreadable = new ArrayList<>();
