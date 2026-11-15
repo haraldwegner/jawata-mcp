@@ -49,6 +49,10 @@ public final class SeatSettingsService implements SeatSettings {
      * The door for a running engine: the folder {@code jawata.agent.seatsDir} names, as a studio-started engine has, else the seats sealed
      * in the engine's own bundle (Sprint 28k, Amendment 3, M10), which an engine inside Eclipse uses and nothing extracts.
      *
+     * <p>Which seats a screen shows is a different question from whether a hire may name a seat file. A hire takes its seat by name only where
+     * the host says so ({@link SettingKeys#SEATS_SEALED}), so a headless engine with no folder still hires the seat files its clients name; the
+     * Eclipse plug-in sets both, and the two answers agree there.</p>
+     *
      * @param settings the engine's settings
      * @param tools    the engine's tools
      * @return the door
@@ -108,9 +112,26 @@ public final class SeatSettingsService implements SeatSettings {
     }
 
     @Override
-    public View seats() {
+    public List<Brain> brains() {
+        return BrainRoster.onThisMachine().statuses().stream().map(status -> new Brain(status.id(), status.label(), status.installed(),
+            switch (status.login()) {
+                case LOGGED_IN -> "loggedIn";
+                case NOT_LOGGED_IN -> "notLoggedIn";
+                case UNKNOWN -> "unknown";
+            }, status.reason(), status.loginCommand(), status.models(), status.hirable(), status.takesModel(), status.writesHeldByInstruction())).toList();
+    }
+
+    @Override
+    public Probe probe(String brain, String model) {
+        BrainRoster.Probe run = BrainRoster.onThisMachine().probe(brain, model);
+        return new Probe(run.brain(), run.ok(), run.answer(), run.modelsUsed(), run.costUsd(), run.seconds(), run.error(), run.loginCommand());
+    }
+
+    @Override
+    public View seats(Map<String, String> proposed) {
         SeatFiles.Listing listing = source.get();
-        Overrides overrides = storedOverrides();
+        Overrides overrides = Overrides.parse(value(proposed, SettingKeys.SEATS_OFF.name()), value(proposed, SettingKeys.SEATS_BRAINS.name()),
+            value(proposed, SettingKeys.SEATS_WORKFLOW.name()));
         List<String> errors = new ArrayList<>(listing.unreadable());
         errors.addAll(overrides.problems());
         SeatTree.Loaded loaded = SeatTree.fromSeatFiles(withWorkflow(listing.seats(), overrides.workflow()), codeChangingTools);

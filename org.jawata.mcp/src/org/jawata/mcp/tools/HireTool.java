@@ -526,9 +526,12 @@ public class HireTool extends NeutralTool {
         // when nothing is stored; the person's replace below still wins for this one hire.
         if (sealedRow != null) {
             Optional<SeatHire.Brain> stored = SeatHire.Brain.named(sealedRow.brain());
-            if (stored.isPresent()) {
-                seat = seat.withBrain(stored.get(), sealedRow.model().orElse(null));
+            if (stored.isEmpty()) {
+                // as the seat-file path refuses an unknown brain rather than defaulting to one: hiring the wrong brain would run and report a result
+                return ToolResponse.error("INVALID_PARAMETER", "seat '" + hired + "' is set to run on '" + sealedRow.brain() + "', which is not a brain a hire can start",
+                    "choose its brain again in Preferences > jawata > Seats");
             }
+            seat = seat.withBrain(stored.get(), sealedRow.model().orElse(null));
         }
 
         // THE PERSON'S REPLACE (D53 (i)): a hire moved onto another brain in the Agent Control panel runs on that brain this once; the seat file, its

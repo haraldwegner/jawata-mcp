@@ -73,6 +73,20 @@ class SeatSettingsServiceTest {
     }
 
     @Test
+    void aProposedChangeIsShownAndNothingIsStored() {
+        SeatSettings.View held = door().seats(Map.of(SettingKeys.SEATS_OFF.name(), "architect", SettingKeys.SEATS_BRAINS.name(), "developer=codex",
+            SettingKeys.SEATS_WORKFLOW.name(), "developer=architect,worker"));
+        SeatSettings.Seat architect = held.seats().stream().filter(row -> row.name().equals("architect")).findFirst().orElseThrow();
+        SeatSettings.Seat developer = held.seats().stream().filter(row -> row.name().equals("developer")).findFirst().orElseThrow();
+
+        assertFalse(architect.on(), "the held switch is shown");
+        assertEquals("codex", developer.brain(), "the held brain is shown");
+        assertEquals(Optional.of("architect"), developer.parent(), "the held place is shown");
+        assertTrue(seat("architect").on(), "and nothing was stored: the stored view is as it was");
+        assertFalse(seat("developer").parent().equals(Optional.of("architect")), "the stored place is not the held one");
+    }
+
+    @Test
     void aSeatsFileThatSwitchesItselfOffIsReportedOff() throws IOException {
         Files.writeString(folder.resolve("developer.md"), "---\nname: developer\nenabled: false\n---\nbody\n");
         assertFalse(seat("developer").on());

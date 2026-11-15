@@ -2157,6 +2157,23 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28k D15: on a sealed engine a seat moved in the stored workflow is hired only by the parent it was moved under")
+    void aSealedSeatIsHiredOnlyByTheParentItsStoredWorkflowGivesIt() throws Exception {
+        Map<String, String> moved = Map.of(SettingKeys.SEATS_SEALED.name(), "true", SettingKeys.SEATS_WORKFLOW.name(), "cataloguer=pm,worker");
+        ToolResponse byOldParent = toolWithSettings(aHostThatMustNotSpawn(), moved).execute(sealedHireArgs("cataloguer"));
+        ObjectNode byNewParent = sealedHireArgs("cataloguer");
+        byNewParent.put("hirer", "pm");
+        StandsIn processes = new StandsIn(host, aBrainThatAnswers());
+        ToolResponse moves = toolWithSettings(processes, moved).execute(byNewParent);
+
+        assertAll(
+            () -> assertFalse(byOldParent.isSuccess(), "the seat's old parent could still hire it after it moved"),
+            () -> assertTrue(String.valueOf(byOldParent.getError()).contains("its hirer is pm"), String.valueOf(byOldParent.getError())),
+            () -> assertTrue(moves.isSuccess(), "the parent it was moved under could not hire it: " + moves.getError()),
+            () -> assertFalse(processes.asked().isEmpty(), "no brain was started for the hire its new parent made"));
+    }
+
+    @Test
     @DisplayName("28k D15, the control: an engine whose seats are not sealed still requires a seat file")
     void anUnsealedEngineStillNeedsASeatFile() throws Exception {
         ToolResponse response = toolWithSettings(aHostThatMustNotSpawn(), Map.of()).execute(sealedHireArgs("cataloguer"));
