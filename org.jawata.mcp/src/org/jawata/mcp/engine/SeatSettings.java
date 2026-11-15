@@ -229,7 +229,8 @@ public interface SeatSettings {
      * choice, so reading a page starts no program.
      *
      * @param brain the brain's name, one the registry names
-     * @return the models' names, empty when the brain offers no choice of model
+     * @return the models' names, empty when the brain offers no choice of model; the brain's own default is left out, since a screen offers it
+     *         first as "its default model"
      * @throws IllegalArgumentException when the registry names no program for the brain
      * @throws java.io.UncheckedIOException when its adapter could not be started
      */

@@ -155,7 +155,9 @@ public final class SeatSettingsService implements SeatSettings {
                 AcpBrainSession.Conversation session = AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program,
                     HireSite.in(scratch), null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)));
                 try {
-                    return session.models().stream().map(AcpBrainSession.Model::name).toList();
+                    // the brain's own default (Cursor's Auto, Claude's Default) has a value starting "default"; a screen offers it first already
+                    return session.models().stream().filter(model -> !model.value().toLowerCase(java.util.Locale.ROOT).startsWith("default"))
+                        .map(AcpBrainSession.Model::name).toList();
                 } finally {
                     session.close();
                 }

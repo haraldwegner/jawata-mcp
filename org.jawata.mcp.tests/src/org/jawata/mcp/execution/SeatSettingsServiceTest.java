@@ -63,9 +63,10 @@ class SeatSettingsServiceTest {
     /** Stage 25m: the models a conversation brain offers come from its own session, opened once; the answer is kept, so asking again starts nothing. */
     @Test
     void aConversationBrainsModelsAreReadFromItsOwnSessionOnceAndKept(@TempDir Path agentDir) throws IOException {
-        stored.put("jawata.agent.hireBrains", fakeAgent(agentDir, "opus=Opus " + agentDir.getFileName() + ",sonnet=Sonnet"));
+        stored.put("jawata.agent.hireBrains", fakeAgent(agentDir, "default=Default,opus=Opus " + agentDir.getFileName() + ",sonnet=Sonnet"));
 
-        assertEquals(List.of("Opus " + agentDir.getFileName(), "Sonnet"), door().conversationModels("fake"), "the names the session's model option offers");
+        assertEquals(List.of("Opus " + agentDir.getFileName(), "Sonnet"), door().conversationModels("fake"),
+            "the names the session's model option offers, less the brain's own default, which a screen offers first");
         Files.delete(agentDir.resolve("FakeAcpAgent.java"));
         assertEquals(List.of("Opus " + agentDir.getFileName(), "Sonnet"), door().conversationModels("fake"),
             "asked again, the kept answer comes back: the agent's program is gone, so nothing could have been started");
