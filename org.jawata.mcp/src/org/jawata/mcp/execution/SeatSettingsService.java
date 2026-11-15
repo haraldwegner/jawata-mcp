@@ -135,13 +135,82 @@ public final class SeatSettingsService implements SeatSettings {
         List<String> errors = new ArrayList<>(listing.unreadable());
         errors.addAll(overrides.problems());
         SeatTree.Loaded loaded = SeatTree.fromSeatFiles(withWorkflow(listing.seats(), overrides.workflow()), codeChangingTools);
-        errors.addAll(loaded.refusals());
         List<Seat> rows = new ArrayList<>();
         for (SeatFiles.SeatFile file : listing.seats()) {
             rows.add(row(file, overrides, loaded.tree(), errors));
         }
         rows.sort(Comparator.comparing(Seat::name));
-        return new View(rows, errors);
+        return new View(rows, errors, loaded.refusals());
+    }
+
+    @Override
+    public Edited edit(Map<String, String> held, String seat, Change change) {
+        if (seat == null || seat.isBlank()) {
+            throw new IllegalArgumentException("A change names no seat.");
+        }
+        String name = seat.strip();
+        String off = SettingKeys.SEATS_OFF.name();
+        String brains = SettingKeys.SEATS_BRAINS.name();
+        String workflow = SettingKeys.SEATS_WORKFLOW.name();
+        Map<String, String> next = new LinkedHashMap<>();
+        for (String key : List.of(off, brains, workflow)) {
+            next.put(key, value(held, key));
+        }
+        switch (change.kind()) {
+            case SWITCH -> next.put(off, Entries.withName(next.get(off), ",", name, change.on() ? null : name));
+            case BRAIN -> {
+                if (change.brain() == null || change.brain().isBlank()) {
+                    throw new IllegalArgumentException("A brain change names no brain.");
+                }
+                String model = change.model() == null || change.model().isBlank() ? "" : "/" + change.model().strip();
+                next.put(brains, Entries.withName(next.get(brains), ";", name, name + "=" + change.brain().strip() + model));
+            }
+            case RESET -> {
+                next.put(off, Entries.withName(next.get(off), ",", name, null));
+                next.put(brains, Entries.withName(next.get(brains), ";", name, null));
+            }
+            case PLACE -> {
+                if (change.parent() == null || change.parent().isBlank() || change.role() == null || change.role().isBlank()) {
+                    throw new IllegalArgumentException("A place in the workflow names the seat that hires it and its role.");
+                }
+                String escalation = change.escalatesTo() == null || change.escalatesTo().isBlank() ? "" : "," + change.escalatesTo().strip();
+                next.put(workflow, Entries.withName(next.get(workflow), ";", name, name + "=" + change.parent().strip() + "," + change.role().strip() + escalation));
+            }
+            case DEFAULT_PLACE -> next.put(workflow, Entries.withName(next.get(workflow), ";", name, null));
+        }
+        return new Edited(next, check(next));
+    }
+
+    /** A setting's value as a list of entries, each named by its seat: the part before {@code =}, or the whole entry. */
+    private static final class Entries {
+
+        private Entries() {
+        }
+
+        /**
+         * The value with the seat's own entry replaced, or removed when {@code entry} is null; every other entry is kept as written, in order,
+         * and a new entry goes last.
+         */
+        static String withName(String value, String separator, String seat, String entry) {
+            List<String> kept = new ArrayList<>();
+            boolean placed = false;
+            for (String each : value.split(java.util.regex.Pattern.quote(separator))) {
+                if (each.isBlank()) {
+                    continue;
+                }
+                String named = each.contains("=") ? each.substring(0, each.indexOf('=')).strip() : each.strip();
+                if (!named.equals(seat)) {
+                    kept.add(each.strip());
+                } else if (entry != null && !placed) {
+                    kept.add(entry);
+                    placed = true;
+                }
+            }
+            if (entry != null && !placed) {
+                kept.add(entry);
+            }
+            return String.join(separator, kept);
+        }
     }
 
     private Seat row(SeatFiles.SeatFile file, Overrides overrides, SeatTree tree, List<String> errors) {
@@ -154,7 +223,19 @@ public final class SeatSettingsService implements SeatSettings {
             : declaredBrain == null ? SeatHire.Brain.CLAUDE_CODE.label() : SeatHire.Brain.named(declaredBrain).map(SeatHire.Brain::label).orElse(declaredBrain);
         Optional<String> model = picked != null ? Optional.ofNullable(picked[1]) : textOf(front, "model");
         return new Seat(name, textOf(front, "command"), textOf(front, "purpose").orElse(""), on, brain, model, tree.parentOf(name),
-            tree.roleOf(name).map(SeatTree.Role::spelling).orElse(""), tree.escalatesTo(name), textOf(front, "fires").orElse(""));
+            tree.roleOf(name).map(SeatTree.Role::spelling).orElse(""), tree.escalatesTo(name), textOf(front, "fires").orElse(""),
+            overrides.off().contains(name) || overrides.brains().containsKey(name), overrides.workflow().containsKey(name),
+            acceptsUncontained(name, front, errors));
+    }
+
+    /** The seat file's own word on a brain whose writes only an instruction holds, as a hire reads it ({@code SeatHire}). */
+    private static boolean acceptsUncontained(String name, Map<String, String> front, List<String> errors) {
+        try {
+            return Frontmatter.readSwitch("accepts_uncontained_writes", front.get("accepts_uncontained_writes"), false);
+        } catch (IllegalArgumentException misspelled) {
+            errors.add(name + ": " + misspelled.getMessage());
+            return false;
+        }
     }
 
     private static boolean declaredOn(String name, Map<String, String> front, List<String> errors) {

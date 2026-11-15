@@ -140,8 +140,64 @@ class SeatSettingsServiceTest {
     void aStoredTreeTheEngineRefusesIsNamedAndTheSignedOneIsShown() {
         stored.put(SettingKeys.SEATS_WORKFLOW.name(), "architect=nobody,reviewer");
         SeatSettings.View view = door().seats();
-        assertEquals(List.of("architect: its parent 'nobody' is no seat"), view.errors());
+        assertEquals(List.of("architect: its parent 'nobody' is no seat"), view.refusals(), "a refused tree is named as a refusal");
+        assertEquals(List.of(), view.errors(), "and not among the errors, so a screen can say the default tree is used in its place");
         assertEquals(Optional.of("main"), seat("architect").parent(), "the engine uses the signed tree, and the screen says what the engine uses");
+    }
+
+    @Test
+    void aSeatThePersonChangedIsMarkedSoAScreenCanTakeTheChangeBack() {
+        stored.put(SettingKeys.SEATS_BRAINS.name(), "architect=codex");
+        stored.put(SettingKeys.SEATS_WORKFLOW.name(), "developer=architect,worker");
+        assertTrue(seat("architect").customised(), "a brain the person gave it");
+        assertFalse(seat("architect").placed());
+        assertTrue(seat("developer").placed(), "a place the person gave it");
+        assertFalse(seat("developer").customised());
+        stored.put(SettingKeys.SEATS_OFF.name(), "developer");
+        assertTrue(seat("developer").customised(), "a switch the person turned off");
+    }
+
+    @Test
+    void aSeatFileSaysWhetherItAcceptsABrainOnlyAnInstructionHolds() throws IOException {
+        Files.writeString(folder.resolve("developer.md"), "---\nname: developer\naccepts_uncontained_writes: true\n---\nbody\n");
+        assertTrue(seat("developer").acceptsUncontainedWrites());
+        assertFalse(seat("architect").acceptsUncontainedWrites(), "a file that says nothing does not");
+    }
+
+    @Test
+    void aChangeTouchesOnlyItsSeatsEntryAndKeepsEveryOtherAsWritten() {
+        Map<String, String> held = Map.of(SettingKeys.SEATS_OFF.name(), "developer", SettingKeys.SEATS_BRAINS.name(), "developer=codex",
+            SettingKeys.SEATS_WORKFLOW.name(), "");
+        SeatSettings.Edited off = door().edit(held, "architect", SeatSettings.Change.switched(false));
+        assertEquals("developer,architect", off.values().get(SettingKeys.SEATS_OFF.name()));
+        assertEquals("developer=codex", off.values().get(SettingKeys.SEATS_BRAINS.name()), "another key is as it was");
+        assertEquals(Optional.empty(), off.refusal());
+
+        SeatSettings.Edited brain = door().edit(off.values(), "architect", SeatSettings.Change.brain("copilot", "gpt-5"));
+        assertEquals("developer=codex;architect=copilot/gpt-5", brain.values().get(SettingKeys.SEATS_BRAINS.name()));
+        SeatSettings.Edited reset = door().edit(brain.values(), "architect", SeatSettings.Change.reset());
+        assertEquals("developer", reset.values().get(SettingKeys.SEATS_OFF.name()), "Reset takes back the switch");
+        assertEquals("developer=codex", reset.values().get(SettingKeys.SEATS_BRAINS.name()), "and the brain, and only this seat's");
+
+        SeatSettings.Edited placed = door().edit(reset.values(), "developer", SeatSettings.Change.place("architect", "worker", null));
+        assertEquals("developer=architect,worker", placed.values().get(SettingKeys.SEATS_WORKFLOW.name()));
+        assertEquals("", door().edit(placed.values(), "developer", SeatSettings.Change.defaultPlace()).values().get(SettingKeys.SEATS_WORKFLOW.name()));
+    }
+
+    @Test
+    void anEntryTheEngineCannotReadIsKeptAndNamedNotDroppedByAChangeToAnotherSeat() {
+        stored.put(SettingKeys.SEATS_BRAINS.name(), "developer=eliza");
+        SeatSettings.Edited edited = door().edit(Map.of(), "architect", SeatSettings.Change.brain("codex", null));
+        assertEquals("developer=eliza;architect=codex", edited.values().get(SettingKeys.SEATS_BRAINS.name()), "the unreadable entry is still there");
+        assertTrue(edited.refusal().orElse("").contains("'eliza' is not a brain a hire can start"), "and the refusal names it: " + edited.refusal());
+        assertEquals("", door().edit(Map.of(), "developer", SeatSettings.Change.reset()).values().get(SettingKeys.SEATS_BRAINS.name()),
+            "Reset of that seat takes the entry out");
+    }
+
+    @Test
+    void aMoveTheTreeRefusesComesBackWithTheEnginesWords() {
+        SeatSettings.Edited refused = door().edit(Map.of(), "architect", SeatSettings.Change.place("nobody", "reviewer", null));
+        assertEquals(Optional.of("the engine would refuse this tree: architect: its parent 'nobody' is no seat"), refused.refusal());
     }
 
     @Test

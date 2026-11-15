@@ -12,7 +12,7 @@ Service-Component: OSGI-INF/org.jawata.mcp.java.JavaProvider.xml,
  OSGI-INF/org.jawata.mcp.java.dap.DapFace.xml
 Export-Package: org.jawata.mcp,
  org.jawata.mcp.domain,
- org.jawata.mcp.engine;version="1.1.0",
+ org.jawata.mcp.engine;version="1.2.0",
  org.jawata.mcp.models,
  org.jawata.mcp.protocol,
  org.jawata.mcp.refactoring,

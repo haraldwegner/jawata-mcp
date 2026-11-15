@@ -24,25 +24,118 @@ public interface SeatSettings {
      * @param role        lead, worker or reviewer
      * @param escalatesTo where a task it could not do goes next, when anywhere
      * @param when        when the seat is meant to be used, in the seat file's own words; empty when the file declares none
+     * @param customised  whether the person switched it off or gave it a brain: what a screen's Reset takes back
+     * @param placed      whether the person gave it a place in the workflow: what a screen's Back to default takes back
+     * @param acceptsUncontainedWrites whether the seat's file accepts a brain whose writes are held only by an instruction to the model;
+     *                    a hire of a seat that does not refuses such a brain, so a screen does not offer it
      */
     record Seat(String name, Optional<String> command, String purpose, boolean on, String brain, Optional<String> model, Optional<String> parent,
-        String role, Optional<String> escalatesTo, String when) {
+        String role, Optional<String> escalatesTo, String when, boolean customised, boolean placed, boolean acceptsUncontainedWrites) {
     }
 
     /**
      * The seats and what could not be used.
      *
      * @param seats  every seat that could be read, sorted by name
-     * @param errors one line for each seat file, stored setting or workflow the engine could not use, each naming what it refused
+     * @param errors   one line for each seat file or stored setting the engine could not use, each naming what it refused
+     * @param refusals the rules the workflow broke; the engine then uses its default tree in place of the stored one
      */
-    record View(List<Seat> seats, List<String> errors) {
+    record View(List<Seat> seats, List<String> errors, List<String> refusals) {
 
-        /** Both lists are copied, so a view is not changed by whoever built it. */
+        /** The lists are copied, so a view is not changed by whoever built it. */
         public View {
             seats = List.copyOf(seats);
             errors = List.copyOf(errors);
+            refusals = List.copyOf(refusals);
         }
     }
+
+    /**
+     * One change a settings screen makes to one seat, held until the screen's Apply.
+     *
+     * @param kind        what is changed
+     * @param on          for {@link Kind#SWITCH}: on or off
+     * @param brain       for {@link Kind#BRAIN}: the brain's name
+     * @param model       for {@link Kind#BRAIN}: the model, or null for the brain's own default
+     * @param parent      for {@link Kind#PLACE}: the seat that hires it
+     * @param role        for {@link Kind#PLACE}: lead, worker or reviewer
+     * @param escalatesTo for {@link Kind#PLACE}: where a task it could not do goes next, or null
+     */
+    record Change(Kind kind, boolean on, String brain, String model, String parent, String role, String escalatesTo) {
+
+        /** What a change does to a seat. */
+        public enum Kind {
+            /** Switches it on or off. */
+            SWITCH,
+            /** Gives it a brain, and optionally a model. */
+            BRAIN,
+            /** Takes back its switch and its brain, so the shipped seat applies. */
+            RESET,
+            /** Gives it a place in the workflow. */
+            PLACE,
+            /** Takes back its place, so the default tree applies. */
+            DEFAULT_PLACE
+        }
+
+        /** A change names what it does. */
+        public Change {
+            if (kind == null) {
+                throw new IllegalArgumentException("A change says what it does.");
+            }
+        }
+
+        /** Switches the seat on or off. */
+        public static Change switched(boolean on) {
+            return new Change(Kind.SWITCH, on, null, null, null, null, null);
+        }
+
+        /** Gives the seat this brain and model; a null model is the brain's own default. */
+        public static Change brain(String brain, String model) {
+            return new Change(Kind.BRAIN, true, brain, model, null, null, null);
+        }
+
+        /** Takes back the seat's switch and brain. */
+        public static Change reset() {
+            return new Change(Kind.RESET, true, null, null, null, null, null);
+        }
+
+        /** Gives the seat this place in the workflow; a null {@code escalatesTo} sends its failures nowhere. */
+        public static Change place(String parent, String role, String escalatesTo) {
+            return new Change(Kind.PLACE, true, null, null, parent, role, escalatesTo);
+        }
+
+        /** Takes back the seat's place in the workflow. */
+        public static Change defaultPlace() {
+            return new Change(Kind.DEFAULT_PLACE, true, null, null, null, null, null);
+        }
+    }
+
+    /**
+     * The three settings after one change, and whether the engine would take them.
+     *
+     * @param values  the three settings by key, with the change made
+     * @param refusal the engine's refusal in words; when present, the values must not be held
+     */
+    record Edited(Map<String, String> values, Optional<String> refusal) {
+
+        /** The values are copied, so an answer is not changed by whoever built it. */
+        public Edited {
+            values = Map.copyOf(values);
+        }
+    }
+
+    /**
+     * Makes one change to one seat in these values and asks whether the engine would take the result. Only the seat's own entry is touched:
+     * every other entry stays as it is written, so an entry the engine cannot read is not lost by a change to another seat, and the refusal
+     * names it.
+     *
+     * @param held   the values a screen holds, by key; a key left out is the stored value
+     * @param seat   the seat changed
+     * @param change the change
+     * @return the three settings with the change made, and the engine's refusal of them if it would refuse
+     * @throws IllegalArgumentException when the seat is blank, or a brain change names no brain, or a place no parent or role
+     */
+    Edited edit(Map<String, String> held, String seat, Change change);
 
     /** The seats as the engine would use them with the settings stored now. */
     default View seats() {
