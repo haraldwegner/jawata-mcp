@@ -34,9 +34,10 @@ class SettingKeyAudienceTest {
         assertEquals(Audience.OWN_SCREEN, SettingKeys.SEATS_OFF.audience());
         assertEquals(Audience.OWN_SCREEN, SettingKeys.SEATS_BRAINS.audience());
         assertEquals(Audience.OWN_SCREEN, SettingKeys.SEATS_WORKFLOW.audience());
+        assertEquals(Audience.LAUNCHER, SettingKeys.SEATS_SEALED.audience());
 
         List<String> forThePerson = SettingKeys.all().stream().filter(k -> k.audience() == Audience.PERSON).map(SettingKey::name).toList();
-        assertEquals(SettingKeys.all().size() - 6, forThePerson.size(), "the other keys are the person's: " + forThePerson);
+        assertEquals(SettingKeys.all().size() - 7, forThePerson.size(), "the other keys are the person's: " + forThePerson);
         assertFalse(forThePerson.contains("jawata.dist.root") || forThePerson.contains("jawata.workspace.root")
             || forThePerson.contains("jawata.embed.symptoms"));
     }
@@ -122,7 +123,10 @@ class SettingKeyAudienceTest {
         Map.entry("jawata.seats.brains",
             "The brain each seat runs on, as seat=brain or seat=brain/model, separated by semicolons."),
         Map.entry("jawata.seats.workflow",
-            "Where each seat sits in the workflow, as seat=parent,role or seat=parent,role,escalates-to, separated by semicolons."));
+            "Where each seat sits in the workflow, as seat=parent,role or seat=parent,role,escalates-to, separated by semicolons."),
+        Map.entry("jawata.seats.sealed",
+            "When true, a hire names its seat and takes it from the seats sealed in the engine; a seat file given by path is refused. "
+                + "Which seats are on, the brain each runs on and the workflow then come from the three seat settings."));
 
     @Test
     @DisplayName("the wording for the engine that runs alone is, for every key, exactly what it was before the sentence about the variable moved")

@@ -18,6 +18,7 @@ import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostOS;
 import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap;
@@ -2089,6 +2090,79 @@ class HireToolTest {
         public ToolResponse execute(JsonNode arguments) {
             return runAndKeep(arguments, new HireCall(arguments, null, "", org.jawata.mcp.models.CallerIdentity.serving()));
         }
+    }
+
+    /** The arguments of a hire on an engine whose seats are sealed: the seat is named, and no file is. */
+    private ObjectNode sealedHireArgs(String seatName) {
+        ObjectNode args = (ObjectNode) hireArgs(dir, seatName);
+        args.remove("seatFile");
+        return args;
+    }
+
+    @Test
+    @DisplayName("28k D15: an engine whose seats are sealed hires a seat by its name alone, from the seat sealed in it")
+    void aSealedEngineHiresASeatByName() throws Exception {
+        StandsIn processes = new StandsIn(host, aBrainThatAnswers());
+        ToolResponse response = toolWithSettings(processes, Map.of(SettingKeys.SEATS_SEALED.name(), "true")).execute(sealedHireArgs("cataloguer"));
+
+        assertAll(
+            () -> assertTrue(response.isSuccess(), String.valueOf(response.getError())),
+            () -> assertFalse(processes.asked().isEmpty(), "no brain was started for the sealed seat"),
+            () -> assertTrue(String.valueOf(processes.asked()).contains("Describe every member of org.jawata.mcp.execution."),
+                "the brain was not given the brief: " + processes.asked()));
+    }
+
+    @Test
+    @DisplayName("28k D15: on a sealed engine a seat file named by path is refused and nothing is started; a seat no file seals is refused by name")
+    void aSealedEngineRefusesASeatFileAndAnUnknownSeat() throws Exception {
+        Map<String, String> sealed = Map.of(SettingKeys.SEATS_SEALED.name(), "true");
+        ToolResponse byPath = toolWithSettings(aHostThatMustNotSpawn(), sealed).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+        ToolResponse unknown = toolWithSettings(aHostThatMustNotSpawn(), sealed).execute(sealedHireArgs("nobody"));
+
+        assertAll(
+            () -> assertFalse(byPath.isSuccess(), "a seat file was hired on a sealed engine"),
+            () -> assertTrue(String.valueOf(byPath.getError()).contains("refused"), String.valueOf(byPath.getError())),
+            () -> assertFalse(unknown.isSuccess(), "a seat nothing seals was hired"),
+            () -> assertTrue(String.valueOf(unknown.getError()).contains("no seat named 'nobody'"), String.valueOf(unknown.getError())));
+    }
+
+    @Test
+    @DisplayName("28k D15: a sealed seat switched off in the seat settings is refused and no brain is started; the control is the same seat on")
+    void aSealedSeatSwitchedOffIsRefused() throws Exception {
+        ToolResponse off = toolWithSettings(aHostThatMustNotSpawn(),
+            Map.of(SettingKeys.SEATS_SEALED.name(), "true", SettingKeys.SEATS_OFF.name(), "cataloguer")).execute(sealedHireArgs("cataloguer"));
+        StandsIn on = new StandsIn(host, aBrainThatAnswers());
+        ToolResponse control = toolWithSettings(on,
+            Map.of(SettingKeys.SEATS_SEALED.name(), "true", SettingKeys.SEATS_OFF.name(), "pm")).execute(sealedHireArgs("cataloguer"));
+
+        assertAll(
+            () -> assertFalse(off.isSuccess(), "a switched-off sealed seat was hired"),
+            () -> assertTrue(String.valueOf(off.getError()).contains("switched off"), String.valueOf(off.getError())),
+            () -> assertTrue(control.isSuccess(), String.valueOf(control.getError())),
+            () -> assertFalse(on.asked().isEmpty(), "the seat that is on was not started"));
+    }
+
+    @Test
+    @DisplayName("28k D15: on a sealed engine the brain and model stored for a seat in the seat settings are the ones the hire runs on")
+    void aSealedSeatRunsOnTheModelItsSettingsStore() throws Exception {
+        StandsIn stored = new StandsIn(host, aBrainThatAnswers());
+        toolWithSettings(stored, Map.of(SettingKeys.SEATS_SEALED.name(), "true", SettingKeys.SEATS_BRAINS.name(), "cataloguer=claude-code/stored-model"))
+            .execute(sealedHireArgs("cataloguer"));
+        StandsIn none = new StandsIn(host, aBrainThatAnswers());
+        toolWithSettings(none, Map.of(SettingKeys.SEATS_SEALED.name(), "true")).execute(sealedHireArgs("cataloguer"));
+
+        assertAll(
+            () -> assertEquals("stored-model", modelOf(stored.asked()), String.valueOf(stored.asked())),
+            () -> assertFalse(String.valueOf(none.asked()).contains("stored-model"), "a model was stored where none was set: " + none.asked()));
+    }
+
+    @Test
+    @DisplayName("28k D15, the control: an engine whose seats are not sealed still requires a seat file")
+    void anUnsealedEngineStillNeedsASeatFile() throws Exception {
+        ToolResponse response = toolWithSettings(aHostThatMustNotSpawn(), Map.of()).execute(sealedHireArgs("cataloguer"));
+        assertAll(
+            () -> assertFalse(response.isSuccess(), "an unsealed engine hired a seat it was given no file for"),
+            () -> assertTrue(String.valueOf(response.getError()).contains("seatFile"), String.valueOf(response.getError())));
     }
 
     /** A hire tool that runs the hire to its end, whose host settings are exactly these, by key. */

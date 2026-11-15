@@ -1,8 +1,5 @@
 package org.jawata.mcp.execution;
 
-import java.io.IOException;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -49,20 +46,8 @@ public final class SeatSettingsService implements SeatSettings {
     }
 
     /**
-     * The door over the seats sealed in an installed jar, read from inside it and never extracted.
-     *
-     * @param jar               the jar, whose {@code seats} folder holds the seat files
-     * @param settings          where the three settings are read from, per call
-     * @param codeChangingTools the engine's tools that change code, which the tree check needs
-     * @return the door
-     */
-    public static SeatSettings sealedIn(Path jar, EngineSettings settings, Set<String> codeChangingTools) {
-        return new SeatSettingsService(() -> readJar(jar), settings, codeChangingTools);
-    }
-
-    /**
-     * The door for a running engine: the folder {@code jawata.agent.seatsDir} names, as a studio-started engine has, else no seat files.
-     * The seats sealed in the plug-in are handed in through {@link #sealedIn} by the stage that ships them.
+     * The door for a running engine: the folder {@code jawata.agent.seatsDir} names, as a studio-started engine has, else the seats sealed
+     * in the engine's own bundle (Sprint 28k, Amendment 3, M10), which an engine inside Eclipse uses and nothing extracts.
      *
      * @param settings the engine's settings
      * @param tools    the engine's tools
@@ -71,23 +56,61 @@ public final class SeatSettingsService implements SeatSettings {
     public static SeatSettings forEngine(EngineSettings settings, ToolCalls tools) {
         Set<String> codeChanging = SeatTree.codeChangingIn(tools.getToolDefinitions());
         Optional<String> folder = settings.get(ScheduledHires.SEATS_SETTING).filter(value -> !value.isBlank());
-        return folder.map(path -> overFolder(Path.of(path), settings, codeChanging))
-            .orElseGet(() -> new SeatSettingsService(() -> new SeatFiles.Listing(List.of(), List.of()), settings, codeChanging));
+        return folder.map(path -> overFolder(Path.of(path), settings, codeChanging)).orElseGet(() -> sealed(settings, tools));
     }
 
-    private static SeatFiles.Listing readJar(Path jar) {
-        try (FileSystem inside = FileSystems.newFileSystem(jar)) {
-            return SeatFiles.read(inside.getPath("/seats"));
-        } catch (IOException | RuntimeException unreadable) {
-            return new SeatFiles.Listing(List.of(), List.of(jar + ": " + unreadable.getMessage()));
-        }
+    /**
+     * The seats sealed in the engine's own bundle with the stored settings laid over them: the door a hire uses on an engine whose host
+     * keeps its seats sealed ({@link SettingKeys#SEATS_SEALED}).
+     *
+     * @param settings the engine's settings
+     * @param tools    the engine's tools
+     * @return the door
+     */
+    public static SeatSettingsService sealed(EngineSettings settings, ToolCalls tools) {
+        return new SeatSettingsService(() -> SeatFiles.sealed(SeatSettingsService.class), settings, SeatTree.codeChangingIn(tools.getToolDefinitions()));
+    }
+
+    /**
+     * What a hire takes of one seat: the seat file as written, and the row the stored settings make of it.
+     *
+     * @param text the seat file's whole text, read as the hire's seat
+     * @param row  on or off, the brain and model, and the place in the workflow, with the stored settings laid over the file
+     */
+    public record Hireable(String text, Seat row) {
+    }
+
+    /**
+     * The seat of this name, as a hire takes it.
+     *
+     * @param name the seat's name
+     * @return the seat, or empty when no seat of this door has the name
+     */
+    public Optional<Hireable> hireable(String name) {
+        SeatFiles.Listing listing = source.get();
+        Overrides overrides = storedOverrides();
+        SeatTree tree = SeatTree.fromSeatFiles(withWorkflow(listing.seats(), overrides.workflow()), codeChangingTools).tree();
+        return listing.seats().stream().filter(file -> file.name().equals(name)).findFirst()
+            .map(file -> new Hireable(file.text(), row(file, overrides, tree, new ArrayList<>())));
+    }
+
+    /**
+     * Who hires whom: the seats with the stored places in the workflow laid over them, as the engine's own tree judges them.
+     *
+     * @return the tree, with the rules a stored workflow broke
+     */
+    public SeatTree.Loaded workflow() {
+        return SeatTree.fromSeatFiles(withWorkflow(source.get().seats(), storedOverrides().workflow()), codeChangingTools);
+    }
+
+    private Overrides storedOverrides() {
+        return Overrides.parse(stored(SettingKeys.SEATS_OFF.name()), stored(SettingKeys.SEATS_BRAINS.name()), stored(SettingKeys.SEATS_WORKFLOW.name()));
     }
 
     @Override
     public View seats() {
         SeatFiles.Listing listing = source.get();
-        Overrides overrides = Overrides.parse(stored(SettingKeys.SEATS_OFF.name()), stored(SettingKeys.SEATS_BRAINS.name()),
-            stored(SettingKeys.SEATS_WORKFLOW.name()));
+        Overrides overrides = storedOverrides();
         List<String> errors = new ArrayList<>(listing.unreadable());
         errors.addAll(overrides.problems());
         SeatTree.Loaded loaded = SeatTree.fromSeatFiles(withWorkflow(listing.seats(), overrides.workflow()), codeChangingTools);
@@ -110,7 +133,7 @@ public final class SeatSettingsService implements SeatSettings {
             : declaredBrain == null ? SeatHire.Brain.CLAUDE_CODE.label() : SeatHire.Brain.named(declaredBrain).map(SeatHire.Brain::label).orElse(declaredBrain);
         Optional<String> model = picked != null ? Optional.ofNullable(picked[1]) : textOf(front, "model");
         return new Seat(name, textOf(front, "command"), textOf(front, "purpose").orElse(""), on, brain, model, tree.parentOf(name),
-            tree.roleOf(name).map(SeatTree.Role::spelling).orElse(""), tree.escalatesTo(name));
+            tree.roleOf(name).map(SeatTree.Role::spelling).orElse(""), tree.escalatesTo(name), textOf(front, "fires").orElse(""));
     }
 
     private static boolean declaredOn(String name, Map<String, String> front, List<String> errors) {
@@ -166,12 +189,12 @@ public final class SeatSettingsService implements SeatSettings {
             }
             Map<String, String> front = new LinkedHashMap<>(file.front());
             placeInto(front, place);
-            laid.add(new SeatFiles.SeatFile(file.name(), file.file(), front, file.body()));
+            laid.add(new SeatFiles.SeatFile(file.name(), file.file(), front, file.body(), file.text()));
         }
         left.forEach((seat, place) -> {
             Map<String, String> front = new LinkedHashMap<>();
             placeInto(front, place);
-            laid.add(new SeatFiles.SeatFile(seat, Path.of(seat + ".md"), front, ""));
+            laid.add(new SeatFiles.SeatFile(seat, Path.of(seat + ".md"), front, "", ""));
         });
         return laid;
     }

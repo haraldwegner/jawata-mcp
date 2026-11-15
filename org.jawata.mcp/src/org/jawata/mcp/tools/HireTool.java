@@ -13,6 +13,8 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 import org.jawata.core.host.HostProcesses;
+import org.jawata.mcp.engine.SeatSettings;
+import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.BrainDialect;
 import org.jawata.mcp.execution.HireRegistry;
@@ -25,6 +27,7 @@ import org.jawata.mcp.execution.Instructions;
 import org.jawata.mcp.execution.Observer;
 import org.jawata.mcp.execution.RunEffects;
 import org.jawata.mcp.execution.SeatHire;
+import org.jawata.mcp.execution.SeatSettingsService;
 import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.execution.ToolGateRunner;
@@ -467,7 +470,11 @@ public class HireTool extends NeutralTool {
                         + " frontmatter, and the inputs hire reads are " + read);
             }
         }
-        for (String required : List.of("hirer", "seat", "seatFile", "brief", "workingDirectory")) {
+        // D15 (Sprint 28k, Amendment 3): an engine whose host keeps its seats sealed (Eclipse) hires by NAME from the seats sealed in it, with
+        // on, off, brain and workflow from the seat settings; a seat file named by path is refused there, so no agent can hand a hire a seat
+        // it wrote. Every other engine reads the seat file the caller names, as before.
+        boolean sealedSeats = settings.get().get(SettingKeys.SEATS_SEALED.name()).map(Boolean::parseBoolean).orElse(false);
+        for (String required : sealedSeats ? List.of("hirer", "seat", "brief", "workingDirectory") : List.of("hirer", "seat", "seatFile", "brief", "workingDirectory")) {
             ToolResponse missing = requireParam(call.getArguments(), required);
             if (missing != null) {
                 return missing;
@@ -477,9 +484,31 @@ public class HireTool extends NeutralTool {
         String hired = getStringParam(call.getArguments(), "seat");
         String brief = getStringParam(call.getArguments(), "brief");
 
+        SeatSettingsService sealedDoor = null;
+        SeatSettings.Seat sealedRow = null;
         SeatHire seat;
         try {
-            seat = SeatHire.read(readSeatFile(getStringParam(call.getArguments(), "seatFile")));
+            if (sealedSeats) {
+                String named = getStringParam(call.getArguments(), "seatFile");
+                if (named != null && !named.isBlank()) {
+                    return ToolResponse.error("INVALID_PARAMETER", "this engine hires only the seats sealed in it, so a seat file named by path ("
+                        + named + ") is refused", "name the seat with seat and leave seatFile out; the seats are those of the plug-in");
+                }
+                sealedDoor = SeatSettingsService.sealed(settings.get(), registry.get());
+                Optional<SeatSettingsService.Hireable> sealed = sealedDoor.hireable(hired);
+                if (sealed.isEmpty()) {
+                    return ToolResponse.error("INVALID_PARAMETER", "no seat named '" + hired + "' is sealed in this engine",
+                        "name one of the seats the plug-in carries; Preferences > jawata > Seats lists them");
+                }
+                sealedRow = sealed.get().row();
+                if (!sealedRow.on()) {
+                    return ToolResponse.error("PRECONDITION_NOT_MET", "seat '" + hired + "' is switched off in the seat settings",
+                        "turn it on in Preferences > jawata > Seats, or hire a seat that is on");
+                }
+                seat = SeatHire.read(sealed.get().text());
+            } else {
+                seat = SeatHire.read(readSeatFile(getStringParam(call.getArguments(), "seatFile")));
+            }
         } catch (IOException | InvalidPathException e) {
             return ToolResponse.error("FILE_NOT_FOUND",
                 "the hired seat's file could not be read: " + e.getMessage(),
@@ -491,6 +520,15 @@ public class HireTool extends NeutralTool {
             return ToolResponse.error("INVALID_PARAMETER",
                 "the seat file does not describe a hireable seat: " + e.getMessage(),
                 "check its brain: field — an unknown brain is refused rather than defaulted");
+        }
+
+        // THE SEAT SETTINGS' BRAIN (D15): on a sealed engine the brain and model stored for the seat are the seat's own, the file's default
+        // when nothing is stored; the person's replace below still wins for this one hire.
+        if (sealedRow != null) {
+            Optional<SeatHire.Brain> stored = SeatHire.Brain.named(sealedRow.brain());
+            if (stored.isPresent()) {
+                seat = seat.withBrain(stored.get(), sealedRow.model().orElse(null));
+            }
         }
 
         // THE PERSON'S REPLACE (D53 (i)): a hire moved onto another brain in the Agent Control panel runs on that brain this once; the seat file, its
@@ -511,7 +549,8 @@ public class HireTool extends NeutralTool {
         // refused as a whole, the signed tree is used in its place and the hire's answer says which rules it broke.
         ToolRegistry known = registry.get();
         Set<String> codeChanging = known == null ? Set.of() : SeatTree.codeChangingIn(known.getToolDefinitions());
-        SeatTree.Loaded declaredTree = SeatTree.in(Path.of(getStringParam(call.getArguments(), "seatFile")).toAbsolutePath().getParent(), codeChanging);
+        SeatTree.Loaded declaredTree = sealedDoor != null ? sealedDoor.workflow()
+            : SeatTree.in(Path.of(getStringParam(call.getArguments(), "seatFile")).toAbsolutePath().getParent(), codeChanging);
         Hirer hiring = new Hirer(declaredTree.tree(), Map.of(), Set.of());
         Hirer deciding = settings.get().get(Hirer.MAIN_BRAIN_SETTING).flatMap(Hirer::brainOf)
             .map(main -> hiring.withBrain("main", main)).orElse(hiring);
@@ -882,7 +921,17 @@ public class HireTool extends NeutralTool {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("escalatedFrom", failedPlan);
         row.put("to", next);
-        Path sibling = Path.of(getStringParam(arguments, "seatFile")).resolveSibling(next + ".md");
+        String failedFile = getStringParam(arguments, "seatFile");
+        if (failedFile == null || failedFile.isBlank()) {
+            // a hire on a sealed engine names no file: the senior seat is hired by name from the same sealed set
+            ObjectNode again = (ObjectNode) arguments.deepCopy();
+            again.put("seat", next);
+            ToolResponse answered = execute(again);
+            row.put("hired", answered.isSuccess());
+            row.put(answered.isSuccess() ? "hire" : "because", answered.isSuccess() ? answered.getData() : answered.getError().getMessage());
+            return row;
+        }
+        Path sibling = Path.of(failedFile).resolveSibling(next + ".md");
         if (!Files.isRegularFile(sibling)) {
             row.put("hired", false);
             row.put("because", "there is no seat file for " + next + " beside the failed seat's own (" + sibling + ")");

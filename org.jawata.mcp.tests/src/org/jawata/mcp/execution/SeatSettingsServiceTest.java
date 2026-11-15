@@ -13,8 +13,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 import org.jawata.mcp.engine.SeatSettings;
 import org.jawata.mcp.engine.SettingKeys;
@@ -22,11 +20,11 @@ import org.jawata.mcp.engine.ToolCalls;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.spi.host.EngineSettings;
-
-import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /** Sprint 28k, Amendment 3, Stage 25d: the seats a host's screen is shown and the check of a change, over fixture seats. */
 class SeatSettingsServiceTest {
@@ -150,24 +148,6 @@ class SeatSettingsServiceTest {
         }
     }
 
-    @Test
-    void sealedSeatsAreReadFromInsideTheJarAndNotExtracted(@TempDir Path sealedHome) throws IOException {
-        Path jar = sealedHome.resolve("engine.jar");
-        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
-            zip.putNextEntry(new ZipEntry("seats/architect.md"));
-            zip.write(ARCHITECT.getBytes());
-            zip.closeEntry();
-            zip.putNextEntry(new ZipEntry("org/jawata/Other.class"));
-            zip.closeEntry();
-        }
-        SeatSettings.View view = SeatSettingsService.sealedIn(jar, settings, Set.of()).seats();
-        assertEquals(List.of("architect"), view.seats().stream().map(SeatSettings.Seat::name).toList());
-        assertEquals("Reviews the design.", view.seats().get(0).purpose());
-        try (Stream<Path> files = Files.walk(sealedHome)) {
-            assertEquals(List.of(sealedHome, jar), files.sorted().toList(), "nothing was extracted beside the jar");
-        }
-    }
-
     private static final ToolCalls NO_TOOLS = new ToolCalls() {
         @Override
         public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {
@@ -188,21 +168,12 @@ class SeatSettingsServiceTest {
     }
 
     @Test
-    void anEngineWithoutASeatsFolderHasNoSeatFilesToShow() {
+    void anEngineWithoutASeatsFolderReadsTheSeatsSealedInItsBundle() {
+        // the seats sealed in the engine bundle (org.jawata.mcp/resources/seats), read from inside it: an engine in Eclipse has no folder
         SeatSettings.View view = SeatSettingsService.forEngine(settings, NO_TOOLS).seats();
-        assertEquals(List.of(), view.seats());
-        assertEquals(List.of(), view.errors());
-    }
-
-    @Test
-    void aJarWithoutSeatsIsNamedAsNotReadable(@TempDir Path sealedHome) throws IOException {
-        Path jar = sealedHome.resolve("empty.jar");
-        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(jar))) {
-            zip.putNextEntry(new ZipEntry("other.txt"));
-            zip.closeEntry();
-        }
-        SeatSettings.View view = SeatSettingsService.sealedIn(jar, settings, Set.of()).seats();
-        assertEquals(List.of(), view.seats());
-        assertEquals(1, view.errors().size(), "not an empty answer that reads as no seats at all: " + view.errors());
+        assertEquals(List.of("architect", "btw", "cataloguer", "chief-engineer", "debugger", "developer", "javadoc-writer", "main", "observer", "pm",
+            "profiler", "report", "review", "rottenmeier", "senior-developer", "spec-auditor", "spec-editor", "test-manager", "test-writer", "ux"),
+            view.seats().stream().map(SeatSettings.Seat::name).toList());
+        assertEquals(List.of(), view.errors(), "every sealed seat is readable and the sealed tree has no refusal");
     }
 }

@@ -153,6 +153,11 @@ public final class SettingKeys {
         "Where each seat sits in the workflow, as seat=parent,role or seat=parent,role,escalates-to, separated by semicolons.", null,
         Audience.OWN_SCREEN);
 
+    /** Whether the engine hires only the seats sealed in it (Sprint 28k, Amendment 3, D15): the Eclipse plug-in says so, a studio-started engine does not. */
+    public static final SettingKey SEATS_SEALED = register("jawata.seats.sealed", "false",
+        "When true, a hire names its seat and takes it from the seats sealed in the engine; a seat file given by path is refused. "
+            + "Which seats are on, the brain each runs on and the workflow then come from the three seat settings.", null, Audience.LAUNCHER);
+
     private SettingKeys() {
     }
 

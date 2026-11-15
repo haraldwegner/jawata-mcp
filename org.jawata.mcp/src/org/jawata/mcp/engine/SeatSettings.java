@@ -23,9 +23,10 @@ public interface SeatSettings {
      * @param parent      the seat that hires it, or none for main
      * @param role        lead, worker or reviewer
      * @param escalatesTo where a task it could not do goes next, when anywhere
+     * @param when        when the seat is meant to be used, in the seat file's own words; empty when the file declares none
      */
     record Seat(String name, Optional<String> command, String purpose, boolean on, String brain, Optional<String> model, Optional<String> parent,
-        String role, Optional<String> escalatesTo) {
+        String role, Optional<String> escalatesTo, String when) {
     }
 
     /**
