@@ -16,7 +16,11 @@ public interface StepLedger {
      * @param index    its position in the plan
      * @param gateTool the tool whose passing call would move the plan past it
      */
-    record Pending(String planId, int index, String gateTool) {
+    record Pending(String planId, int index, String gateTool, boolean inFlight) {
+
+        public Pending(String planId, int index, String gateTool) {
+            this(planId, index, gateTool, false);
+        }
     }
 
     /** The steps still waiting, oldest plan first; empty when none is, and when the ledger cannot be asked. */

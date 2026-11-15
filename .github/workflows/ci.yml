@@ -57,6 +57,8 @@ jobs:
     # remove. A longer cap costs nothing healthy — a passing job returns at 45 min
     # and never waits for it.
     - name: Test (in-framework)
+      # 100: the slowest healthy run took 58 min (windows, run 42721138523). The 240 of 4.6.5 hid a test that leaked a
+      # thread spinning for the rest of the suite (DapServerTest, 2026-11-12); a slowdown must fail here, not be absorbed.
       timeout-minutes: 100
       shell: bash
       run: |
@@ -279,6 +281,8 @@ jobs:
       run: mvn -B -f build/pom.xml install -DskipTests
 
     - name: The suite with the embedder switched off
+      # 100: the slowest healthy run took 58 min (windows, run 42721138523). The 240 of 4.6.5 hid a test that leaked a
+      # thread spinning for the rest of the suite (DapServerTest, 2026-11-12); a slowdown must fail here, not be absorbed.
       timeout-minutes: 100
       shell: bash
       run: |

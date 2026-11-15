@@ -51,7 +51,7 @@ class JavaLanguageServerRenameTest {
     }
 
     /** The edits of one file, applied to its text: the last edit first, so the earlier positions still hold. */
-    private static String applied(String text, JsonNode edits) {
+    static String applied(String text, JsonNode edits) {
         String[] lines = text.split("\n", -1);
         int[] starts = new int[lines.length];
         for (int i = 1; i < lines.length; i++) {

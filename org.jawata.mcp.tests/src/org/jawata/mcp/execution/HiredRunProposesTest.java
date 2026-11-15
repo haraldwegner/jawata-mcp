@@ -208,9 +208,9 @@ class HiredRunProposesTest {
         HostCommand sends = brain("echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.03}'");
         HostCommand silent = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
 
-        HiredRun.Proposal paid = new HiredRun(new RecordsTheArgv(host, sends), artifacts, plans, events).labelled("pm", "main")
+        HiredRun.Proposal paid = new HiredRun(new RecordsTheArgv(host, sends), artifacts, plans, events).labelled("pm", "main", "")
             .issue(seat, site(sends), "Do it.", twoSteps(), HiredRunProposesTest::passed, List.of());
-        HiredRun.Proposal free = new HiredRun(new RecordsTheArgv(host, silent), artifacts, plans, events).labelled("pm", "main")
+        HiredRun.Proposal free = new HiredRun(new RecordsTheArgv(host, silent), artifacts, plans, events).labelled("pm", "main", "")
             .issue(seat, site(silent), "Do it again.", twoSteps(), HiredRunProposesTest::passed, List.of());
 
         JsonNode withCost = JSON.readTree(events.eventsOfSession(paid.plan().value()).orElseThrow().get(0).detailJson());

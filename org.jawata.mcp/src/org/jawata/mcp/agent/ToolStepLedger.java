@@ -53,7 +53,7 @@ public final class ToolStepLedger implements StepLedger {
         for (JsonNode row : rows) {
             JsonNode step = row.path("step");
             if (row.hasNonNull("planId") && step.hasNonNull("tool")) {
-                pending.add(new Pending(row.get("planId").asText(), step.path("index").asInt(), step.get("tool").asText()));
+                pending.add(new Pending(row.get("planId").asText(), step.path("index").asInt(), step.get("tool").asText(), row.path("inFlight").asBoolean(false)));
             }
         }
         return pending;

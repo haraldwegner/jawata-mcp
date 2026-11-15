@@ -35,7 +35,8 @@ public final class PlanStepsTool implements Tool {
 
             USAGE: plan_steps()
 
-            Answers {pending: [{planId, passedStep, step: {index, tool, arguments}}]}, oldest plan first. A plan whose every step has
+            Answers {pending: [{planId, passedStep, inFlight, step: {index, tool, arguments}}]}, oldest plan first. inFlight is true
+            when a hire of that plan is running right now, so the step is waiting because someone is working on it. A plan whose every step has
             passed is not listed. A plan advances only when its next step's gate call answered and reported no errors, so an empty
             list means no step is waiting, and a listed plan names the gate tool that would move it.
             """;
@@ -63,6 +64,8 @@ public final class PlanStepsTool implements Tool {
             row.put("planId", open.id().toString());
             row.put("passedStep", open.passedStep());
             row.put("step", step);
+            // A step of a plan whose hire is running is waiting because the hire is working on it (Stage 24, M11), not because it was left behind.
+            row.put("inFlight", org.jawata.mcp.execution.HireRegistry.shared().isRunningPlan(open.id().toString()));
             pending.add(row);
         }
         Map<String, Object> data = new LinkedHashMap<>();

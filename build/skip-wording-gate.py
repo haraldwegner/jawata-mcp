@@ -39,7 +39,7 @@ import os
 import re
 import sys
 
-SKIP_DIRS = {".git", "target", "node_modules", "dist", "docs", "evidence", "test-resources"}
+SKIP_DIRS = {".git", ".worktrees", "target", "node_modules", "dist", "docs", "evidence", "test-resources"}
 CALL = re.compile(r"(?<![\w.])(?:(?:org\.junit\.jupiter\.api\.)?Assumptions\.)?"
                   r"(assumeTrue|assumeFalse|abort)\s*\(")
 UNICODE = re.compile(r"\\u([0-9a-fA-F]{4})")

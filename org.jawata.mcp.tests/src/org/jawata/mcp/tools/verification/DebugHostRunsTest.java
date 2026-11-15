@@ -103,8 +103,13 @@ class DebugHostRunsTest {
                     "com.example.debug.DebugTarget").redirectErrorStream(true).start();
                 started.add(process);
                 long deadline = System.currentTimeMillis() + 20_000;
-                while (JvmTargets.debugAddress(process.pid()) == null && System.currentTimeMillis() < deadline) {
+                while (process.isAlive() && JvmTargets.debugAddress(process.pid()) == null && System.currentTimeMillis() < deadline) {
                     Thread.sleep(100);
+                }
+                if (!process.isAlive()) {
+                    // A host never answers with the pid of a program that has already ended; say how it ended instead.
+                    throw new CoreException(new Status(Status.ERROR, "test", "the started program ended with exit code " + process.exitValue()
+                        + ": " + new String(process.getInputStream().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)));
                 }
                 RunForJawata run = new RunForJawata(configuration, process.pid(), "", AGENT);
                 running.add(run);

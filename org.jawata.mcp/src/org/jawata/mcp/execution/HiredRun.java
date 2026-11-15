@@ -234,8 +234,7 @@ public final class HiredRun {
         // a history of their own instead of the one every caller that sends no session id shares, and a check of "this session" is about
         // this brain and no other agent. The first dialect above only answered the containment question, which does not depend on it.
         List<GatedStep> planned = withAnswerGates(steps, seat.answerGates());
-        PlanId plan = plans.open(planned, perStepCeiling(seat.ceilings(), planned.size()));
-        owner.ifPresent(opener -> plans.ownedBy(plan, opener));
+        PlanId plan = openPlan(seat, planned);
         // S13 (the audit of C6, finding F2): the seat's tool list is kept where the choke reads it, from the moment the plan opens, so a brain
         // that ignores the permission answer, or never asks, still cannot call outside it. Over ACP an empty list means none. A dialect-started
         // brain is bounded the same way when the seat lists tools; with none listed it keeps its own configuration, as the javadoc of the
@@ -253,6 +252,14 @@ public final class HiredRun {
         } finally {
             plans.close(plan);
         }
+    }
+
+    private PlanId openPlan(SeatHire seat, List<GatedStep> planned) {
+        PlanId plan = plans.open(planned, perStepCeiling(seat.ceilings(), planned.size()));
+        owner.ifPresent(opener -> plans.ownedBy(plan, opener));
+        // The registry learns the plan id of the hire running on this thread, so a hire this hire's brain issues can name this one as its lead.
+        HireRegistry.shared().planOpened(plan.value());
+        return plan;
     }
 
     /**
@@ -387,10 +394,31 @@ public final class HiredRun {
     private String seatName = "";
     private String hirerName = "";
 
-    /** Names the seat that runs and the seat that hired it; a run is built for one hire, so the names belong to that hire alone. */
-    public HiredRun labelled(String seat, String hirer) {
+    private String hireName = "";
+
+    private boolean lead;
+
+    /**
+     * Says whether the seat of this run may hire others (Stage 24, M12). A seat that may is run as a lead: its brain stays alive while the hires
+     * it started in the background are out, and is prompted with each report. Any other seat runs one turn.
+     */
+    public HiredRun leading(boolean mayHire) {
+        this.lead = mayHire;
+        return this;
+    }
+
+    /**
+     * Names the seat that runs, the seat that hired it and the first name the hire carries; a run is built for one hire, so the names belong to
+     * that hire alone.
+     *
+     * @param seat     the seat that runs
+     * @param hirer    the seat that hired it
+     * @param hireName the first name the hire was given when it was registered, or empty
+     */
+    public HiredRun labelled(String seat, String hirer, String hireName) {
         this.seatName = seat == null ? "" : seat;
         this.hirerName = hirer == null ? "" : hirer;
+        this.hireName = hireName == null ? "" : hireName;
         return this;
     }
 
@@ -457,10 +485,13 @@ public final class HiredRun {
         HiredBrain.Outcome outcome;
         final long brainStartedMs = System.currentTimeMillis();
         try (SessionFolders.Binding ignored = folders == null ? null : folders.bind(plan.value(), base.workingDirectory())) {
-            outcome = acp.isPresent()
-                ? AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                    resume, ceilings, null, live, update -> { })
-                : HiredBrain.hire(host, dialect, base, brief, tools, ceilings);
+            outcome = acp.isEmpty()
+                ? HiredBrain.hire(host, dialect, base, brief, tools, ceilings)
+                : lead
+                    ? AcpBrainSession.runAsLead(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
+                        resume, ceilings, null, live, update -> { }, HireRegistry.shared().inboxFor(plan.value()), plan.value())
+                    : AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
+                        resume, ceilings, null, live, update -> { });
         }
 
         final long brainRanMs = System.currentTimeMillis() - brainStartedMs;
@@ -552,6 +583,9 @@ public final class HiredRun {
                 // when it said. A cost the brain did not send is absent from the row and never 0.
                 detail.put("seat", seatName);
                 detail.put("hirer", hirerName);
+                if (!hireName.isEmpty()) {
+                    detail.put("name", hireName);
+                }
                 if (!fixesPlan.isEmpty()) {
                     detail.put("fixes", fixesPlan);
                 }

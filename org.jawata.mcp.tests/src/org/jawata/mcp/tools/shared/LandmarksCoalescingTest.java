@@ -221,4 +221,31 @@ class LandmarksCoalescingTest {
                     + " this feature depends on — `ready` with nothing in it has to mean"
                     + " `nothing here`, not `we once looked at something else`"));
     }
+
+    /**
+     * A caller that has just been told a ranking is FINISHED must never find it still registered as running.
+     *
+     * <p>The ranking thread used to complete its future and only then remove it from the in-flight map. A caller woken by the
+     * completion and asking again in that gap JOINED the finished ranking and started nothing, so an empty ranking, which is not
+     * cached, was served twice without a recompute. That is the red run of {@code anEmptyRankingIsNotCached} on the 4.6.1 release
+     * build (CI run 42711847681), whose single call pair hits the gap only on a loaded machine. This one repeats the pair so the gap
+     * is hit on any machine: the counter must rise on every second call.</p>
+     */
+    @Test
+    @DisplayName("a finished ranking is never joined: the next call of an uncached empty answer starts another")
+    void aFinishedRankingIsNeverJoined() throws Exception {
+        JdtServiceImpl empty = helper.disposeAfter(new JdtServiceImpl());
+        int joinedAFinishedOne = 0;
+        for (int i = 0; i < 3000; i++) {
+            Landmarks.invalidate();
+            awaitReady(empty);
+            int afterFirst = Landmarks.RANKINGS_STARTED.get();
+            awaitReady(empty);
+            if (Landmarks.RANKINGS_STARTED.get() == afterFirst) {
+                joinedAFinishedOne++;
+            }
+        }
+        assertEquals(0, joinedAFinishedOne,
+            "the second call joined a ranking that had already finished, in this many of 3000 rounds");
+    }
 }

@@ -23,7 +23,27 @@ public class FakeAcpAgent {
     /** With FAKE_ACP_LOGIN set, a session is refused with "Authentication required" until the client has called authenticate. */
     static final boolean loginRequired = System.getenv("FAKE_ACP_LOGIN") != null;
     static boolean authenticated;
-    static final BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+    /**
+     * With FAKE_ACP_MODELS set to {@code value=Name,value=Name,...} the agent offers those models in a "model" config option when it opens a session,
+     * is on the first, and moves to another when told through session/set_config_option. A prompt WHICHMODEL answers the value it is on (D54 (a)).
+     */
+    static final String[] offeredModels = System.getenv().getOrDefault("FAKE_ACP_MODELS", "").isBlank() ? new String[0]
+        : System.getenv("FAKE_ACP_MODELS").split(",");
+    static String modelNow = offeredModels.length == 0 ? "" : offeredModels[0].split("=")[0];
+
+    static String modelOption() {
+        StringBuilder options = new StringBuilder();
+        for (String offered : offeredModels) {
+            String[] pair = offered.split("=", 2);
+            options.append(options.length() == 0 ? "" : ",").append("{\"value\":\"").append(pair[0]).append("\",\"name\":\"").append(pair[1]).append("\"}");
+        }
+        return "{\"id\":\"model\",\"name\":\"Model\",\"category\":\"model\",\"type\":\"select\",\"currentValue\":\"" + modelNow + "\",\"options\":[" + options + "]}";
+    }
+    // UTF-8 both ways, as a real agent speaks: on Windows the default is the system's code page, and a hire's name "Joe · developer" came
+    // back as "Joe ? developer" (CI, November 2026).
+    static final BufferedReader in = new BufferedReader(new InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8));
+    static final java.io.PrintStream out = new java.io.PrintStream(new java.io.FileOutputStream(java.io.FileDescriptor.out), true,
+        java.nio.charset.StandardCharsets.UTF_8);
 
     public static void main(String[] args) throws Exception {
         Path state = Path.of(System.getenv().getOrDefault("FAKE_ACP_STATE", System.getProperty("java.io.tmpdir")));
@@ -34,7 +54,8 @@ public class FakeAcpAgent {
             String method = field(line, "method");
             String id = idOf(line);
             switch (method == null ? "" : method) {
-                case "initialize" -> reply(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"mcpCapabilities\":{\"http\":true}}"
+                case "initialize" -> reply(id, "{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"mcpCapabilities\":{\"http\":true},\"promptCapabilities\":{\"image\":"
+                    + (System.getenv("FAKE_ACP_IMAGES") != null) + "}}"
                     + (loginRequired ? ",\"authMethods\":[{\"id\":\"fake_login\",\"name\":\"Fake login\"}]" : "") + "}");
                 case "authenticate" -> {
                     authenticated = "fake_login".equals(field(line, "methodId"));
@@ -47,7 +68,18 @@ public class FakeAcpAgent {
                     }
                     String session = "fake-" + (++counter) + "-" + Long.toHexString(System.nanoTime());
                     servers.put(session, between(line, "\"mcpServers\":"));
-                    reply(id, "{\"sessionId\":\"" + session + "\"}");
+                    reply(id, "{\"sessionId\":\"" + session + "\""
+                        + (offeredModels.length == 0 ? "" : ",\"configOptions\":[" + modelOption() + "]") + "}");
+                }
+                case "session/set_config_option" -> {
+                    String wanted = field(line, "value");
+                    boolean offered = "model".equals(field(line, "configId")) && java.util.Arrays.stream(offeredModels).anyMatch(m -> m.split("=")[0].equals(wanted));
+                    if (offered) {
+                        modelNow = wanted;
+                        reply(id, "{\"configOptions\":[" + modelOption() + "]}");
+                    } else {
+                        send("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":-32602,\"message\":\"no such model\"}}");
+                    }
                 }
                 case "session/load" -> {
                     String session = field(line, "sessionId");
@@ -94,6 +126,20 @@ public class FakeAcpAgent {
             chunk(session, "noted");
         } else if (text.contains("HIRERECALL")) {
             chunk(session, Files.exists(memory) ? Files.readString(memory) : "nothing");
+        } else if (text.contains("ASKTRANSCRIPT")) {
+            chunk(session, text.contains("EARLIERWORD") ? "knows" : "does not know");
+        } else if (text.contains("WHICHMODEL")) {
+            chunk(session, modelNow);
+        } else if (text.contains("WHICHFOLDER")) {
+            chunk(session, java.nio.file.Path.of("").toAbsolutePath().toString());
+        } else if (text.contains("ASKGREETING")) {
+            chunk(session, text.contains("answered at once") ? "told" : "not told");
+        } else if (text.contains("WHICHPROCESS")) {
+            chunk(session, String.valueOf(ProcessHandle.current().pid()));
+        } else if (text.contains("ASKSTANCE")) {
+            chunk(session, text.contains("THE-MAIN-STANCE") ? "with stance" : "no stance");
+        } else if (text.contains("COUNTIMAGES")) {
+            chunk(session, String.valueOf(line.split("\"type\":\"image\"", -1).length - 1));
         } else if (text.startsWith("REMEMBER:")) {
             Files.writeString(memory, text.substring("REMEMBER:".length()));
             chunk(session, "noted");
@@ -146,26 +192,44 @@ public class FakeAcpAgent {
                 + "\",\"update\":{\"sessionUpdate\":\"agent_thought_chunk\",\"content\":{\"type\":\"text\",\"text\":\"by 7 and 13.\"}}}}");
             chunk(session, "thought");
         } else if (text.startsWith("SPEND")) {
-            for (int i = 1; i <= 5; i++) {
-                send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
-                    + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"s" + i
-                    + "\",\"title\":\"mcp__jawata__inspect\",\"kind\":\"read\",\"status\":\"pending\",\"rawInput\":{}}}}");
-                send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
-                    + "\",\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":" + (i * 100) + ",\"size\":1000,\"cost\":{\"amount\":"
-                    + (i * 0.25) + ",\"currency\":\"USD\"}}}}");
-                Thread.sleep(50);
-            }
+            spend(session);
             chunk(session, "spent");
+        } else if (text.contains("A hire you started has ended")) {
+            // a report from a hire this brain started (Stage 24): it says which hire, and a report whose answer is SPEND makes the five tool calls again
+            chunk(session, "report read: " + text.substring(text.indexOf("Hire: ")).split("\n")[0]);
+            if (text.contains("Answer: SPEND")) {
+                spend(session);
+            }
         } else if (text.startsWith("STREAM")) {
             chunk(session, "first");
             Thread.sleep(1500);
             chunk(session, "second");
+        } else if (text.startsWith("WAITCANCEL")) {
+            // says it is waiting, then reads until the client cancels the turn, which is how a real brain ends one
+            chunk(session, "waiting");
+            for (String next = in.readLine(); next != null && !"session/cancel".equals(field(next, "method")); next = in.readLine()) {
+            }
+            reply(id, "{\"stopReason\":\"cancelled\"}");
+            return;
         } else if (text.startsWith("HANG")) {
             Thread.sleep(60_000);
         } else if (text.startsWith("DIE")) {
             System.exit(3);
         }
         reply(id, "{\"stopReason\":\"end_turn\"}");
+    }
+
+    /** Five tool calls, each with a usage update that raises the cost. */
+    static void spend(String session) throws Exception {
+        for (int i = 1; i <= 5; i++) {
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"s" + i
+                + "\",\"title\":\"mcp__jawata__inspect\",\"kind\":\"read\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":" + (i * 100) + ",\"size\":1000,\"cost\":{\"amount\":"
+                + (i * 0.25) + ",\"currency\":\"USD\"}}}}");
+            Thread.sleep(50);
+        }
     }
 
     static void chunk(String session, String text) {
@@ -178,8 +242,8 @@ public class FakeAcpAgent {
     }
 
     static synchronized void send(String message) {
-        System.out.println(message);
-        System.out.flush();
+        out.println(message);
+        out.flush();
     }
 
     static String idOf(String line) {

@@ -172,6 +172,13 @@ public final class Landmarks {
             PROGRESS.put(key, new int[] {0, 0});
             RANKINGS_STARTED.incrementAndGet();
             RANKER.submit(() -> {
+                // THE FUTURE IS COMPLETED LAST, after the key has left INFLIGHT. It used to be completed inside the try and removed in
+                // the finally, so a caller woken by the completion and asking again in the gap between the two found the FINISHED
+                // future still registered, joined it and started nothing: an uncached empty ranking was served twice without a
+                // recompute (LandmarksCoalescingTest#aFinishedRankingIsNeverJoined: 11 of 3000 rounds on an idle machine; the red
+                // run of anEmptyRankingIsNotCached on the 4.6.1 release build). A caller that arrives while it is still running joins
+                // it as before; a caller after the removal finds the answer in CACHE or starts a new ranking.
+                Entry result;
                 try {
                     Entry computed = new Entry(rank(service, PROGRESS.get(key)),
                         System.currentTimeMillis());
@@ -222,16 +229,17 @@ public final class Landmarks {
                         }
                         CACHE.put(key, computed);
                     }
-                    fresh.complete(computed);
+                    result = computed;
                 } catch (Throwable t) {
                     // A ranking that failed must not wedge every later caller on a future
                     // nobody will ever complete.
                     log.warn("Landmark ranking failed: {}", t.toString());
-                    fresh.complete(new Entry(List.of(), System.currentTimeMillis()));
+                    result = new Entry(List.of(), System.currentTimeMillis());
                 } finally {
                     INFLIGHT.remove(key);
                     PROGRESS.remove(key);
                 }
+                fresh.complete(result);
             });
         }
         // WAIT BRIEFLY, then report. Returning "working" the instant a ranking starts would

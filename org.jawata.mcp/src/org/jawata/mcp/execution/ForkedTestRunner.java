@@ -435,25 +435,29 @@ public final class ForkedTestRunner {
             return t;
         }
 
-        synchronized String tail() {
+        String tail() {
+            // The wait for the reader is NOT inside the lock: the reader takes this lock to file each line, so waiting while holding it
+            // locked out every line still being read, and on a slow machine the tail came back empty (CI, November 2026).
             try {
                 thread.join(2000);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
             }
-            // S19-20, S19-30, S19-30b: DEBUG and TRACE lines are set aside as they arrive, so the last 100 lines that are
-            // left are the end of the run however many lines came before it. A run with nothing else to show, or with no
-            // DEBUG or TRACE line, shows its last 100 lines as they came.
-            boolean somethingElse = lastKept.stream().anyMatch(l -> !l.isBlank());
-            boolean setAside = noiseLines > 0 && somethingElse;
-            StringBuilder out = new StringBuilder();
-            for (String l : setAside ? lastKept : lastLines) {
-                out.append(l).append('\n');
+            synchronized (this) {
+                // S19-20, S19-30, S19-30b: DEBUG and TRACE lines are set aside as they arrive, so the last 100 lines that are
+                // left are the end of the run however many lines came before it. A run with nothing else to show, or with no
+                // DEBUG or TRACE line, shows its last 100 lines as they came.
+                boolean somethingElse = lastKept.stream().anyMatch(l -> !l.isBlank());
+                boolean setAside = noiseLines > 0 && somethingElse;
+                StringBuilder out = new StringBuilder();
+                for (String l : setAside ? lastKept : lastLines) {
+                    out.append(l).append('\n');
+                }
+                if (setAside) {
+                    out.append('[').append(noiseLines).append(" DEBUG/TRACE lines left out]\n");
+                }
+                return out.toString();
             }
-            if (setAside) {
-                out.append('[').append(noiseLines).append(" DEBUG/TRACE lines left out]\n");
-            }
-            return out.toString();
         }
     }
 

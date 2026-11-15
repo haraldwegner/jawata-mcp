@@ -54,6 +54,10 @@ public final class JawataBoot {
         if (List.of(args).contains("--lsp")) {
             System.exit(Bridge.runLsp(args, System.in, System.out, System.err));
         }
+        // Sprint 28i, Stage 25, step A1: --dap is the same pipe for an editor's debug adapter client, to the resident's /dap route.
+        if (List.of(args).contains("--dap")) {
+            System.exit(Bridge.runDap(args, System.in, System.out, System.err));
+        }
         Path home = Path.of(System.getProperty("jawata.boot.home",
             Path.of(JawataBoot.class.getProtectionDomain().getCodeSource()
                 .getLocation().toURI()).getParent().toString()));

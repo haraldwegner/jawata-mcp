@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import java.nio.file.Path;
 
 import org.jawata.mcp.contract.FakeHost;
+import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.runtime.RuntimeArtifactStore;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
@@ -47,6 +48,24 @@ class DebugRefusesWhileThePersonDebugsTest {
         assertFalse(attach.isSuccess());
         assertEquals("PERSON_IS_DEBUGGING", attach.getError().getCode());
         assertNotNull(launch.getError().getHint(), "the refusal says what to do next");
+    }
+
+    @Test
+    @DisplayName("Stage 25, F2: the person's own debugger is an editor caller, and the rule that keeps the agent out does not refuse it")
+    void anEditorCallerIsNotRefusedWhileThePersonDebugs() {
+        FakeHost.Turn turn = new FakeHost.Turn();
+        turn.personStartsDebugging();
+        DebugTool tool = toolOver(turn);
+
+        ToolResponse launch = CallerIdentity.editor("test").speaking(() -> {
+            try {
+                return tool.execute(JSON.readTree("{\"action\":\"launch\",\"mainClass\":\"p.Main\"}"));
+            } catch (Exception e) {
+                throw new IllegalStateException(e);
+            }
+        });
+
+        assertEquals("INVALID_PARAMETER", launch.getError().getCode(), "the classpath is what is missing, which is the tool's own answer and not the person's turn");
     }
 
     @Test

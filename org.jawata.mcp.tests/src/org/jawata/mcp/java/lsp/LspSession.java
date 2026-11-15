@@ -66,6 +66,13 @@ final class LspSession {
             "organize_imports", new org.jawata.mcp.tools.OrganizeImportsTool(() -> service, new RefactoringChangeCache()),
             "move", new org.jawata.mcp.tools.MoveTool(() -> service, new RefactoringChangeCache())));
         byName.put("extract", new org.jawata.mcp.tools.ExtractTool(() -> service, new RefactoringChangeCache()));
+        // the refactoring families the editor is offered beyond rename and extract (Sprint 28i, Stage 25, step A5)
+        byName.put("inline", new org.jawata.mcp.tools.InlineTool(() -> service, new RefactoringChangeCache()));
+        byName.put("convert_anonymous_to_lambda", new org.jawata.mcp.tools.ConvertAnonymousToLambdaTool(() -> service, new RefactoringChangeCache()));
+        byName.put("apply_cleanup", new org.jawata.mcp.tools.ApplyCleanupTool(() -> service, new RefactoringChangeCache()));
+        byName.put("hierarchy", new org.jawata.mcp.tools.HierarchyTool(() -> service, new RefactoringChangeCache()));
+        byName.put("change_method_signature", new org.jawata.mcp.tools.ChangeMethodSignatureTool(() -> service, new RefactoringChangeCache()));
+        byName.put("refactor_to_pattern", new org.jawata.mcp.tools.RefactorToPatternTool(() -> service, new RefactoringChangeCache()));
         return new ToolCalls() {
             @Override
             public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {

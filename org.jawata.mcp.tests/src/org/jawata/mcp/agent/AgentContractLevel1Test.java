@@ -19,7 +19,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-import org.jawata.mcp.execution.RunningHires;
+import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -64,12 +64,12 @@ class AgentContractLevel1Test {
 
     private static final Map<String, String> HIRE_FIELDS = new LinkedHashMap<>();
     /** The fields a hire may leave out. */
-    private static final Set<String> OPTIONAL_HIRE_FIELDS = Set.of("brainSessionId", "parentPlanId", "costUsd", "level", "toolSteps", "contextTokens", "verdict", "enginePlan");
+    private static final Set<String> OPTIONAL_HIRE_FIELDS = Set.of("brainSessionId", "parentPlanId", "costUsd", "level", "toolSteps", "contextTokens", "verdict", "enginePlan", "name");
     private static final Set<String> HIRE_STATES = Set.of("running", "compacting", "done", "failed");
     private static final Set<String> HIRE_METHODS = Set.of("_jawata/hire/stop", "_jawata/hire/transcript", "_jawata/hire/brain");
 
     static {
-        for (String field : List.of("planId", "seat", "brain", "model", "state", "seatCommand", "task", "parentPlanId", "brainSessionId", "verdict", "enginePlan")) {
+        for (String field : List.of("planId", "seat", "brain", "model", "state", "seatCommand", "task", "parentPlanId", "brainSessionId", "verdict", "enginePlan", "name")) {
             HIRE_FIELDS.put(field, "string");
         }
         for (String field : List.of("elapsedMs", "tokens", "costUsd", "level", "toolSteps", "contextTokens")) {
@@ -178,7 +178,7 @@ class AgentContractLevel1Test {
             JsonNode options = msg.path("result").has("configOptions") ? msg.path("result").path("configOptions") : update.path("configOptions");
             for (JsonNode option : options) {
                 String id = option.path("id").asText("");
-                if (id.startsWith("seat-model:")) {
+                if (id.equals(AcpServer.PRINCIPAL_BRAIN)) {
                     if (!"model".equals(option.path("category").asText(null))) {
                         out.add(at + ": option " + id + ": category is " + option.get("category") + ", not \"model\"");
                     }
@@ -241,6 +241,19 @@ class AgentContractLevel1Test {
 
         Wire(List<Hire> hires) {
             AgentBrain brain = new AgentBrain() {
+                private String current = "cursor";
+
+                @Override
+                public java.util.Optional<String> currentBrain() {
+                    return java.util.Optional.of(current);
+                }
+
+                @Override
+                public boolean useBrain(String registry, String name) {
+                    current = name;
+                    return true;
+                }
+
                 @Override
                 public void answer(String prompt, Consumer<String> chunks) {
                     answer(prompt, chunks, call -> { });
@@ -261,7 +274,7 @@ class AgentContractLevel1Test {
                     chunks.accept("ok");
                 }
             };
-            server = new AcpServer(brain, List::of, message -> lines.add(new Line("recv", JSON.valueToTree(message))), TurnBoundary.open(), AgentRecorder.off(), null, null);
+            server = new AcpServer(brain, List::of, message -> lines.add(new Line("recv", JSON.valueToTree(message))), TurnBoundary.open(), AgentRecorder.off(), null);
             server.offerBrains(() -> REGISTRY);
             JsonNode opened = send(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/workspace"))).path("result");
             session = opened.path("sessionId").asText();
@@ -332,7 +345,7 @@ class AgentContractLevel1Test {
             new Hire("p-test-writer", "test-writer", "Write the tests the change owes.", seatFile(dir, "test-writer", "cover"), null)));
         CountDownLatch registered = new CountDownLatch(1);
         Thread running = new Thread(() -> {
-            try (RunningHires.Registration registration = RunningHires.shared().begin("test-writer", "Write the tests the change owes.")) {
+            try (HireRegistry.Registration registration = HireRegistry.shared().begin("test-writer", "Write the tests the change owes.", "")) {
                 registered.countDown();
                 Thread.sleep(30_000);
             } catch (InterruptedException stopped) {
@@ -385,7 +398,7 @@ class AgentContractLevel1Test {
     }
 
     @Test
-    @DisplayName("R12: the brains the agent offers and the pick of one for a hire's seat pass the checker, and the answer to the pick is the hire as it now is")
+    @DisplayName("R12: the brains the agent offers and the Replace of a running hire's brain pass the checker, and the answer is the hire as it now is")
     void r12TheBrainsAndABrainPickPassTheChecker(@TempDir Path dir) throws Exception {
         List<Line> r12 = recording("R12");
         Wire wire = new Wire(List.of(new Hire("p-pm", "pm", "Run sprint 28i.", seatFile(dir, "pm-r12", "pm"), null)));
@@ -395,8 +408,24 @@ class AgentContractLevel1Test {
         JsonNode brains = wire.send(JSON.convertValue(brainsRequest, JsonRpcMessage.class));
         ObjectNode pick = sentRequest(r12, "_jawata/hire/brain").msg().deepCopy();
         ((ObjectNode) pick.get("params")).put("planId", "p-pm").put("brain", "claude-code").put("model", "sonnet");
+        // The Replace ends the brain process of a hire the engine is running, so the hire stands on a thread of its own, waiting for that end.
+        java.util.concurrent.CountDownLatch registered = new java.util.concurrent.CountDownLatch(1);
+        Thread hire = new Thread(() -> {
+            try (var running = org.jawata.mcp.execution.HireRegistry.shared().begin("pm", "Run sprint 28i.", "")) {
+                java.util.concurrent.CountDownLatch brainEnded = new java.util.concurrent.CountDownLatch(1);
+                org.jawata.mcp.execution.HireRegistry.shared().onStop(brainEnded::countDown);
+                registered.countDown();
+                brainEnded.await(20, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        hire.setDaemon(true);
+        hire.start();
+        registered.await();
         JsonNode picked = wire.send(JSON.convertValue(pick, JsonRpcMessage.class));
-        org.jawata.mcp.execution.SeatBrainPicks.shared().forget("pm");
+        hire.join(5_000);
+        assertFalse(hire.isAlive(), "the Replace did not stop the hire");
 
         assertEquals(List.of(), violations(wire.lines));
         assertEquals(2, brains.path("result").path("brains").size(), brains.toString());
@@ -407,44 +436,24 @@ class AgentContractLevel1Test {
     }
 
     @Test
-    @DisplayName("R5: the model of one seat is a select option per seat in the category model, and setting it is answered with the options as they now stand")
-    void r5ASeatsModelChangePassesTheChecker() throws Exception {
-        List<Line> r5 = recording("R5");
+    @DisplayName("D53 (i): the principal's brain is one select option in the category model, no per-seat option is offered, and setting it is answered with the options as they now stand")
+    void thePrincipalsBrainIsTheOnlyBrainOption() {
         Wire wire = new Wire(List.of());
-        ObjectNode change = sentRequest(r5, "session/set_config_option").msg().deepCopy();
-        ((ObjectNode) change.get("params")).put("sessionId", wire.session).put("configId", "seat-model:test-writer").put("value", "claude-code");
+        ObjectNode params = JSON.createObjectNode().put("sessionId", wire.session).put("configId", AcpServer.PRINCIPAL_BRAIN).put("value", "claude-code");
 
-        JsonNode answer;
-        try {
-            answer = wire.send(JSON.convertValue(change, JsonRpcMessage.class));
-        } finally {
-            ObjectNode back = change.deepCopy();
-            ((ObjectNode) back.get("params")).put("value", "seat-file");
-            wire.send(JSON.convertValue(back, JsonRpcMessage.class));
-        }
+        JsonNode answer = wire.send(JsonRpcMessage.request(90, "session/set_config_option", params));
 
         assertEquals(List.of(), violations(wire.lines));
         JsonNode option = null;
         for (JsonNode candidate : answer.path("result").path("configOptions")) {
-            if ("seat-model:test-writer".equals(candidate.path("id").asText())) {
+            assertFalse(candidate.path("id").asText().startsWith("seat-model:"), candidate.toString());
+            if (AcpServer.PRINCIPAL_BRAIN.equals(candidate.path("id").asText())) {
                 option = candidate;
             }
         }
         assertNotNull(option, answer.toString());
         assertEquals("claude-code", option.path("currentValue").asText());
-        JsonNode recordedOption = null;
-        for (Line line : r5) {
-            for (JsonNode candidate : line.msg().path("result").path("configOptions")) {
-                if ("seat-model:test-writer".equals(candidate.path("id").asText())) {
-                    recordedOption = candidate;
-                }
-            }
-        }
-        assertNotNull(recordedOption);
-        for (String field : List.of("id", "name", "category", "type", "currentValue", "options")) {
-            assertTrue(option.has(field), "the option the engine sent has no " + field + ": " + option);
-            assertEquals(recordedOption.get(field).getNodeType(), option.get(field).getNodeType(), field);
-        }
+        assertEquals("model", option.path("category").asText());
     }
 
     @Test
@@ -464,17 +473,17 @@ class AgentContractLevel1Test {
                 started.putObject("rawInput").put("hirer", "main").put("seat", "ctx-seat").put("brief", "ctx brief");
                 ObjectNode working = JSON.createObjectNode().put("sessionUpdate", "tool_call_update").put("toolCallId", "ctx-1").put("status", "in_progress")
                     .put("title", "mcp__jawata-javata-dev__hire");
-                try (RunningHires.Registration running = RunningHires.shared().begin("ctx-seat", "ctx brief")) {
+                try (HireRegistry.Registration running = HireRegistry.shared().begin("ctx-seat", "ctx brief", "")) {
                     toolCalls.accept(started);
-                    RunningHires.shared().noteUsage(java.util.OptionalLong.of(9_000), java.util.OptionalDouble.empty());
+                    HireRegistry.shared().noteUsage(java.util.OptionalLong.of(9_000), java.util.OptionalDouble.empty());
                     toolCalls.accept(working.deepCopy());
-                    RunningHires.shared().noteUsage(java.util.OptionalLong.of(2_500), java.util.OptionalDouble.empty());
+                    HireRegistry.shared().noteUsage(java.util.OptionalLong.of(2_500), java.util.OptionalDouble.empty());
                     toolCalls.accept(working.deepCopy());
                 }
                 chunks.accept("ok");
             }
         };
-        AcpServer server = new AcpServer(brain, List::of, message -> lines.add(new Line("recv", JSON.valueToTree(message))), TurnBoundary.open(), AgentRecorder.off(), null, null);
+        AcpServer server = new AcpServer(brain, List::of, message -> lines.add(new Line("recv", JSON.valueToTree(message))), TurnBoundary.open(), AgentRecorder.off(), null);
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/workspace")));
         String session = lines.stream().filter(l -> l.msg().path("result").has("sessionId")).findFirst().orElseThrow().msg().path("result").path("sessionId").asText();
         ObjectNode params = JSON.createObjectNode().put("sessionId", session);

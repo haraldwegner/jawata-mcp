@@ -12,9 +12,8 @@ import java.util.OptionalDouble;
 import java.util.OptionalLong;
 import java.util.function.LongSupplier;
 
-import org.jawata.mcp.execution.FinishedHires;
+import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.execution.RunEffects;
-import org.jawata.mcp.execution.RunningHires;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.TreeAttribution;
 
@@ -52,6 +51,8 @@ final class HireWatch {
         Optional<String> model = Optional.empty();
         Optional<String> parent = Optional.empty();
         Optional<String> brainSessionId = Optional.empty();
+        /** The first name the hire carries: read from the registry while it runs and from its answer once it has answered (Stage 24, D55). */
+        Optional<String> name = Optional.empty();
         /** The slash command the seat file gives the seat, when it gives one. */
         Optional<String> seatCommand = Optional.empty();
         List<String> changedFiles = List.of();
@@ -263,10 +264,6 @@ final class HireWatch {
             hire.seatFile = input.get("seatFile").asText();
             readSeatFile(hire);
         }
-        if (hire.parent.isEmpty() && !hire.hirer.isEmpty() && !MAIN.equals(hire.hirer)) {
-            hire.parent = hires.values().stream().filter(other -> other != hire && other.endedMs < 0 && other.seat.equals(hire.hirer))
-                .reduce((first, second) -> second).map(other -> other.id);
-        }
     }
 
     private void readSeatFile(Live hire) {
@@ -289,10 +286,28 @@ final class HireWatch {
     /** The finished hire's own answer: whether it ended clean, what it spent, what it cost. */
     private void readAnswer(Live hire, JsonNode update) {
         JsonNode answer = answerOf(update);
-        if (!answer.has("cleanExit")) {
-            // The brain's echo carries no answer (Cursor sends {"success": true} only): the engine ran the hire and kept what it answered.
-            answer = FinishedHires.shared().answerOf(hire.seat, hire.task).orElse(answer);
+        if ("running".equals(answer.path("state").asText("")) && answer.hasNonNull("hireId")) {
+            // The background answer (Stage 24, M7): the hire is out and no result is in yet. The card stays running until the engine says it
+            // ended; this answer only names the hire.
+            hire.enginePlan = answer.get("hireId").asText();
+            if (answer.hasNonNull("name")) {
+                hire.name = Optional.of(answer.get("name").asText());
+            }
+            return;
         }
+        if (!answer.has("cleanExit")) {
+            // The brain's echo carries no answer (Cursor sends {"success": true} only). The engine keeps what a hire answered once it ends; with
+            // nothing kept the hire is still running, and the engine's own event ends this card, so an echo must not (found live, 2026-11-10).
+            Optional<JsonNode> kept = HireRegistry.shared().answerOf(hire.seat, hire.task);
+            if (kept.isEmpty()) {
+                return;
+            }
+            answer = kept.get();
+        }
+        applyAnswer(hire, answer);
+    }
+
+    private void applyAnswer(Live hire, JsonNode answer) {
         boolean clean = answer.isMissingNode() || !(answer.path("cleanExit").asText("true").equals("false")
             || answer.path("timedOut").asBoolean(false));
         finish(hire, clean ? HireEntry.DONE : HireEntry.FAILED);
@@ -302,7 +317,15 @@ final class HireWatch {
         if (!ran.isBlank() && !NO_MODEL_NAMED.equals(ran)) {
             hire.model = Optional.of(ran);
         }
+        // The same for the brain: after a Replace it is another brain than the one the seat file named when the hire began (D53 (i)).
+        String answeredBy = answer.path("brain").path("brain").asText("");
+        if (!answeredBy.isBlank()) {
+            hire.brain = Optional.of(answeredBy);
+        }
         hire.enginePlan = answer.path("plan").asText("");
+        if (answer.hasNonNull("name")) {
+            hire.name = Optional.of(answer.get("name").asText());
+        }
         hire.answer = answer.path("answer").asText("");
         hire.brainSessionId = answer.hasNonNull("brainSessionId") ? Optional.of(answer.get("brainSessionId").asText()) : Optional.empty();
         List<String> files = new java.util.ArrayList<>();
@@ -327,6 +350,48 @@ final class HireWatch {
         if (answer.path("costUsd").isNumber()) {
             hire.cost = OptionalDouble.of(answer.get("costUsd").asDouble());
         }
+    }
+
+    /** A card this watch shows for a hire: the entry, and whether the host has not seen this card before. */
+    record Seen(HireEntry entry, boolean created) {
+    }
+
+    /**
+     * What the engine's registry says about a hire, as a card (Stage 24, M8): a hire that started or finished. A hire the principal's own brain
+     * issued already has a card from that brain's call, which the event links to by seat and brief and by the plan id the call's answer gave; a
+     * hire a lead issued has none, and the event creates it, with the plan id as its id. Nothing here reads a brain's echo.
+     */
+    synchronized Optional<Seen> engineEvent(HireRegistry.Event event) {
+        Live hire = null;
+        for (Live other : hires.values()) {
+            boolean byPlan = !event.planId().isEmpty() && event.planId().equals(other.enginePlan);
+            // Only a card whose call is still open can be the one this event is for: a refused call's card has ended, and a retry of the same call
+            // (found by the C24 audit of the live runs) would otherwise have its events land on that failed card.
+            boolean byCall = other.endedMs < 0 && other.enginePlan.isEmpty() && other.seat.equals(event.seat()) && other.task.equals(event.brief());
+            if (byPlan || byCall) {
+                hire = other;
+                break;
+            }
+        }
+        boolean created = false;
+        if (hire == null) {
+            if (event.planId().isEmpty()) {
+                return Optional.empty();
+            }
+            hire = new Live(event.planId(), clock.getAsLong());
+            hire.seat = event.seat();
+            hire.task = event.brief();
+            hires.put(hire.id, hire);
+            created = true;
+        }
+        hire.enginePlan = event.planId();
+        if (!event.name().isEmpty()) {
+            hire.name = Optional.of(event.name());
+        }
+        if ("finished".equals(event.kind()) && event.answer() != null) {
+            applyAnswer(hire, event.answer());
+        }
+        return Optional.of(new Seen(entryOf(hire), created));
     }
 
     /** The hire tool's answer as JSON: the call's raw output, or the text of its content, with the tool's {@code data} wrapper removed. */
@@ -368,17 +433,25 @@ final class HireWatch {
         long end = hire.endedMs >= 0 ? hire.endedMs : clock.getAsLong();
         // While the hire runs, what its brain has reported so far is read from the engine's registry of running hires; once it has answered,
         // the figures are the answer's own.
-        Optional<RunningHires.Progress> live = HireEntry.RUNNING.equals(hire.state)
-            ? RunningHires.shared().progress(hire.seat, hire.task) : Optional.empty();
+        Optional<HireRegistry.Progress> live = HireEntry.RUNNING.equals(hire.state)
+            ? HireRegistry.shared().progress(hire.seat, hire.task) : Optional.empty();
         OptionalDouble cost = live.isPresent() && live.get().costUsd().isPresent() ? live.get().costUsd() : hire.cost;
-        int steps = live.map(RunningHires.Progress::toolSteps).orElse(hire.toolSteps);
-        OptionalLong context = live.map(RunningHires.Progress::contextTokens).orElse(OptionalLong.empty());
+        int steps = live.map(HireRegistry.Progress::toolSteps).orElse(hire.toolSteps);
+        OptionalLong context = live.map(HireRegistry.Progress::contextTokens).orElse(OptionalLong.empty());
         // A hire whose brain is compacting its context is still running; its card says what it is doing.
-        String state = HireEntry.RUNNING.equals(hire.state) && RunningHires.shared().compacting(hire.seat, hire.task)
+        String state = HireEntry.RUNNING.equals(hire.state) && HireRegistry.shared().compacting(hire.seat, hire.task)
             ? HireEntry.COMPACTING : hire.state;
+        if (hire.name.isEmpty()) {
+            hire.name = HireRegistry.shared().nameOf(hire.seat, hire.task);
+        }
+        // THE PARENT FROM WHO ISSUED THE HIRE (Stage 24, D55): the caller's id is the plan id of the lead's own hire, so the lead is the hire
+        // whose plan id it names. This wins over the guess by seat name that readInput makes, which cannot tell two project managers apart.
+        HireRegistry.shared().leadPlanOf(hire.seat, hire.task).ifPresent(leadPlan -> hires.values().stream()
+            .filter(other -> other != hire && leadPlan.equals(HireRegistry.shared().planOf(other.seat, other.task).orElse(other.enginePlan)))
+            .findFirst().ifPresent(lead -> hire.parent = Optional.of(lead.id)));
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, state, end - hire.startedMs, hire.tokens, cost,
             hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand,
-            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan));
+            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan), hire.name);
     }
 
     /** How many hires the agent saw above this one, so a root is level 0, the chief engineer it hires 1, and the developer under that 2. */

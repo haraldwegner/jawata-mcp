@@ -234,7 +234,82 @@ class SiblingPeekTest {
             () -> assertTrue(elapsed.compareTo(SiblingPeek.PER_SIBLING.multipliedBy(4)) < 0,
                 "the walk took " + elapsed.toMillis() + "ms — it asked every sibling, so the"
                     + " total budget did nothing"),
+            // The budget ends the walk, not one ask after it: a last ask started at 1500ms with
+            // the full 750ms ran to 2250ms on Linux and to 3270ms on Windows (CI, 2026-11-11).
+            () -> assertTrue(elapsed.compareTo(SiblingPeek.TOTAL_BUDGET.plusMillis(200)) < 0,
+                "the walk took " + elapsed.toMillis() + "ms against a "
+                    + SiblingPeek.TOTAL_BUDGET.toMillis() + "ms budget: the last ask ran past it"),
             () -> assertTrue(sweep.describe().contains("time budget ran out"), sweep.describe()));
+    }
+
+    /**
+     * One ask to a wedged sibling ends at the limit it is given. After the walk was made to give each ask only what is
+     * left of its budget, the walk still ran 2352 ms on Windows and 2660 ms on macOS against 2000 ms (CI, 2026-11-12)
+     * and 2000 ms on Linux. This says where the rest goes: in STARTING the request (the client's sendAsync) or in
+     * WAITING for it past its limit.
+     */
+    @Test
+    @DisplayName("mcp#27: one ask to a wedged sibling ends at its limit, and says where its time went")
+    void oneAskEndsAtItsLimit() throws Exception {
+        Duration limit = Duration.ofMillis(500);
+        SiblingRegistry.Sibling silent = wedged("silent");
+        SiblingPeek.askOne(silent, "com.foo.Warm", client, limit); // the client's first use is not this question
+
+        java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+            .uri(java.net.URI.create("http://127.0.0.1:" + wedged("raw").port() + "/mcp"))
+            .timeout(limit).POST(java.net.http.HttpRequest.BodyPublishers.ofString("{}")).build();
+        long t0 = System.nanoTime();
+        var pending = client.sendAsync(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+        long started = System.nanoTime();
+        try {
+            pending.get(limit.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (Exception expected) {
+            pending.cancel(true);
+        }
+        long waited = System.nanoTime();
+        long startMs = (started - t0) / 1_000_000;
+        long waitMs = (waited - started) / 1_000_000;
+
+        // CI 2026-11-12: the raw request above waited 506ms (macOS) and 587ms (Windows), one whole ask 975ms and
+        // 1014ms. So the replica below takes askOne's steps one at a time, with askOne's own headers.
+        long r0 = System.nanoTime();
+        java.net.http.HttpRequest replica = java.net.http.HttpRequest.newBuilder()
+            .uri(java.net.URI.create("http://127.0.0.1:" + wedged("replica").port() + "/mcp"))
+            .header("Content-Type", "application/json").header(SiblingPeek.PEEK_HEADER, "1")
+            .header("Authorization", "Bearer tok").timeout(limit)
+            .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"jsonrpc\":\"2.0\",\"id\":1}")).build();
+        long r1 = System.nanoTime();
+        var replicaPending = client.sendAsync(replica, java.net.http.HttpResponse.BodyHandlers.ofString());
+        long r2 = System.nanoTime();
+        String replicaEnd;
+        try {
+            replicaPending.get(limit.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            replicaEnd = "answered";
+        } catch (java.util.concurrent.TimeoutException late) {
+            replicaEnd = "timed out in the wait";
+        } catch (java.util.concurrent.ExecutionException failed) {
+            replicaEnd = "failed with " + failed.getCause();
+        }
+        long r3 = System.nanoTime();
+        replicaPending.cancel(true);
+        long r4 = System.nanoTime();
+
+        StringBuilder asks = new StringBuilder();
+        long askMs = 0;
+        for (int n = 1; n <= 3; n++) {
+            long a0 = System.nanoTime();
+            SiblingPeek.askOne(wedged("asked" + n), "com.foo.Bar", client, limit);
+            long ms = (System.nanoTime() - a0) / 1_000_000;
+            askMs = Math.max(askMs, ms);
+            asks.append(n == 1 ? "" : ", ").append(ms).append("ms");
+        }
+
+        String where = "starting the request took " + startMs + "ms, waiting " + waitMs + "ms; replica: build "
+            + (r1 - r0) / 1_000_000 + "ms, send " + (r2 - r1) / 1_000_000 + "ms, wait " + (r3 - r2) / 1_000_000
+            + "ms (" + replicaEnd + "), cancel " + (r4 - r3) / 1_000_000 + "ms; three whole asks " + asks
+            + ", against a " + limit.toMillis() + "ms limit";
+        System.out.println("SIBLING-ASK-TIMING " + where);
+        assertTrue(askMs < limit.toMillis() + 150, where);
     }
 
     @Test

@@ -80,7 +80,10 @@ jobs:
     # selection would mean teaching -runTests to emit per-test segments, which
     # is a change to the runner and not to this file.
     - name: Test (in-framework)
-      timeout-minutes: 100
+      # A backstop against a hang, not a budget: it must sit far above the slowest healthy run. The hosted runners of November 2026
+      # run this suite about 2.4 times slower than before: the 4.6.3 run that passed took 99 min 12 s, and 4.6.3's first run and
+      # 4.6.4's run were stopped at 100 min with every class proportionally slower and none failing (2026-11-11).
+      timeout-minutes: 240
       run: |
         java -Djawata.test.fixtures="$PWD/org.jawata.core.tests/test-resources/sample-projects" \
              -Djawata.experience.shared.dir="$RUNNER_TEMP/jawata-test-store" \

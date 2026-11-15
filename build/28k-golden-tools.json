@@ -2830,6 +2830,13 @@
      "description": "The instruction the hired brain is given, verbatim.",
      "type": "string"
     },
+    "claims": {
+     "description": "Optional. The packages this hire will work in, such as org.jawata.mcp.execution. A claim that overlaps one that another running agent holds is refused, and the refusal names the agent that holds it; a claim an agent above this one holds admits this hire. The claim lasts until the hire ends, however it ends.",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
     "fixes": {
      "description": "Optional. The plan id, from an earlier hire's answer, of the hire this one CORRECTS. Send it when a result was mostly right and a few parts are not acceptable: the brief names exactly what to correct, the earlier hire is accepted with this fix to follow, and this hire's journal row and answer name it. Leave it out when this hire corrects nothing.",
      "type": "string"

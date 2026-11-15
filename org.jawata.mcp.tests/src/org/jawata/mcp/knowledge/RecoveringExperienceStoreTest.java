@@ -87,7 +87,10 @@ class RecoveringExperienceStoreTest {
                 attempts.incrementAndGet();
                 throw new IllegalStateException("still newer");
             }, 30);
-        Thread.sleep(300);
+        long deadline = System.currentTimeMillis() + 10_000;
+        while (attempts.get() < 2 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(30);
+        }
         assertNotNull(store.degradedNotice(), "still degraded, still announcing");
         assertTrue(attempts.get() >= 2, "keeps trying in the background");
         assertTrue(store.degradedNotice().contains("schema written by a newer resident"));

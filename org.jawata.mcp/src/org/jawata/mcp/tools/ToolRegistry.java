@@ -1036,7 +1036,9 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
     static final long STEERING_BUDGET_MILLIS = 400;
 
     private void priorWork(String name, JsonNode arguments, ToolResponse response) {
-        if (advisor == null) {
+        // A sibling's peek reads only the project key and gives up after 750 ms; this lookup may take 400 of them, and on a resident
+        // that had just started it did, so the asking resident hung up first (4.6.5 release gate, 2026-11-11).
+        if (advisor == null || org.jawata.mcp.models.SiblingPeek.servingAPeek()) {
             return;
         }
         try {
@@ -1087,8 +1089,8 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
 
     private void precedent(CallerIdentity caller, String name, JsonNode arguments,
             ToolResponse response) {
-        if (precedentRetriever == null) {
-            return;
+        if (precedentRetriever == null || org.jawata.mcp.models.SiblingPeek.servingAPeek()) {
+            return; // a peek has no reader for it, as in priorWork
         }
         try {
             String target = org.jawata.mcp.learn.ToolExperienceRecorder.target(name, arguments);

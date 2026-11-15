@@ -186,29 +186,6 @@ for line in sys.stdin:
 PY
 export JAWATA_AGENT_BRAIN="{\"command\":[\"python3\",\"$WS/e2e-brain.py\"],\"env\":{}}"
 
-# Sprint 28h, S11 (D25): the reviewer every message of the main seat passes before the person reads it. The stand-in reads the draft out of
-# the prompt it is given and answers REVIEW: REVISED with that draft and a marker, so a prompt through the launcher can only come back
-# carrying the marker if the review sits in front of the one road to the person.
-cat > "$WS/e2e-reviewer.py" <<'PY'
-import json, sys
-for line in sys.stdin:
-    m = json.loads(line)
-    i, method = m.get("id"), m.get("method")
-    def reply(result):
-        print(json.dumps({"jsonrpc": "2.0", "id": i, "result": result}), flush=True)
-    if method == "initialize":
-        reply({"protocolVersion": 1, "agentCapabilities": {"loadSession": False, "mcpCapabilities": {"http": True}}})
-    elif method == "session/new":
-        reply({"sessionId": "e2e-reviewer-session"})
-    elif method == "session/prompt":
-        text = m["params"]["prompt"][0]["text"]
-        draft = text.split("THE DRAFT TO REVIEW:\n", 1)[1].split("\n\nAnswer with the first line", 1)[0]
-        print(json.dumps({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": "e2e-reviewer-session",
-              "update": {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "REVIEW: REVISED\n" + draft + " (reviewed)"}}}}), flush=True)
-        reply({"stopReason": "end_turn"})
-PY
-export JAWATA_AGENT_REVIEWER="{\"command\":[\"python3\",\"$WS/e2e-reviewer.py\"],\"env\":{}}"
-
 # Sprint 28h, S12 (D29 category C): the folder of seat files whose schedules the engine fires. One seat declares a schedule that is due every
 # minute and a brain that leaves a marker; the control has the same kind of brain and no schedule. The check further down waits for the
 # marker, so a resident that never starts the scheduler, or never hires a due seat through the hire tool, fails there.
@@ -310,10 +287,10 @@ case "$BRAIN_OUT" in
     *"the e2e brain answered"*) pass "agent-brain a prompt through the launcher is answered by the hired brain" ;;
     *) fail "agent-brain the prompt was not answered by the hired brain: $(printf '%s' "$BRAIN_OUT" | head -c 300)" ;;
 esac
-# S11 (D25): what reached the host is the REVIEWED text, so the review sits in front of the one road to the person in the running product.
-case "$BRAIN_OUT" in
-    *"the e2e brain answered (reviewed)"*) pass "agent-review a prompt through the launcher reaches the host as the reviewed text, not the draft" ;;
-    *) fail "agent-review the prompt did not come back reviewed: $(printf '%s' "$BRAIN_OUT" | head -c 300)" ;;
+# D56 (a): the main seat's text reaches the host as the brain wrote it, once; no second session rewrites or holds it.
+case "$(printf '%s' "$BRAIN_OUT" | grep -o 'the e2e brain answered' | wc -l)" in
+    1) pass "agent-direct a prompt through the launcher reaches the host once, as the brain wrote it" ;;
+    *) fail "agent-direct the brain's text did not reach the host exactly once: $(printf '%s' "$BRAIN_OUT" | head -c 300)" ;;
 esac
 # S9 (D31): the turn just answered was written to the transcript lane, and session/list returns that session.
 case "$BRAIN_OUT" in
@@ -431,9 +408,12 @@ printf -- '---\nname: e2e-ground-read\nbrain: claude-code\naccepts_uncontained_w
 GROUND_BRIEF="Change how the quokka ground carrier hands the settlement ledger its window."
 rm -f "$WS/ground-argv"
 G_CODE="$(call hire "{\"hirer\":\"e2e\",\"seat\":\"e2e-ground-code\",\"seatFile\":\"$WS/e2e-ground-code.md\",\"brief\":\"$GROUND_BRIEF\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}")"
+# A hire answers at once and runs on the engine's own thread (Stage 24), so the brain's command line is waited for, not assumed.
+for _ in $(seq 1 60); do [ -s "$WS/ground-argv" ] && break; sleep 1; done
 G_CODE_ARGV="$(cat "$WS/ground-argv" 2>/dev/null)"
 rm -f "$WS/ground-argv"
 G_READ="$(call hire "{\"hirer\":\"e2e\",\"seat\":\"e2e-ground-read\",\"seatFile\":\"$WS/e2e-ground-read.md\",\"brief\":\"$GROUND_BRIEF\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}")"
+for _ in $(seq 1 60); do [ -s "$WS/ground-argv" ] && break; sleep 1; done
 G_READ_ARGV="$(cat "$WS/ground-argv" 2>/dev/null)"
 case "$G_CODE_ARGV" in
     *"The ground you work on"*"E13 the quokka ground carrier"*"Your brief"*) pass "area-ground the area's job is in the prompt of a seat that changes code, before its brief" ;;

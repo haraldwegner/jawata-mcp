@@ -7,12 +7,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-import org.jawata.mcp.agent.ReviewBeforeSend.Reviewer;
+import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.Hirer;
-import org.jawata.mcp.execution.RunningHires;
-import org.jawata.mcp.execution.SeatBrainPicks;
+import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.execution.SeatHire;
-import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -35,13 +33,11 @@ public final class AcpServer {
 
     static final int PROTOCOL_VERSION = 1;
     static final String AGENT_NAME = "jawata";
-    static final String AGENT_VERSION = "5.0-dev";
+    static final String AGENT_VERSION = versionOfThisBundle();
     /** The id of the select config option that carries the grant of autonomy (agreed with the 28i chat). */
     static final String AUTONOMY = "autonomy";
-    /** The prefix of the select config options that carry one seat's brain and model: the id is this and the seat's name (contract E6). */
-    static final String SEAT_MODEL = "seat-model:";
-    /** The value of a seat's option that leaves the choice to the seat's own file. */
-    static final String SEAT_FILE = "seat-file";
+    /** The id of the select config option that shows the principal's brain and changes it from the next message (D53 (i)). */
+    static final String PRINCIPAL_BRAIN = "principal-brain";
 
     private static final int METHOD_NOT_FOUND = -32601;
     private static final int INVALID_PARAMS = -32602;
@@ -57,8 +53,6 @@ public final class AcpServer {
     private final AgentRecorder recorder;
     /** Supplies the brain a side thread is answered by; {@code null} answers it with {@link #brain}. */
     private final Supplier<AgentBrain> sideBrains;
-    /** The review every message of the main seat passes before the person reads it (S11, D25); {@code null} sends them as they are written. */
-    private final Reviewer reviewer;
     /** The brain of each side thread, made when its first question arrives and kept so the thread has a conversation of its own. */
     private final Map<String, AgentBrain> sideBrainOf = new ConcurrentHashMap<>();
     /** The hires the brain has made through this connection, read from its tool calls as they stream. */
@@ -68,19 +62,21 @@ public final class AcpServer {
     private final Map<String, Thread> running = new ConcurrentHashMap<>();
     /** Sessions whose running prompt the person cancelled; read at each turn end so a cancelled prompt is not resumed. */
     private final java.util.Set<String> cancelled = ConcurrentHashMap.newKeySet();
+    /** Ends this connection's subscription to the registry's hire events, which it holds from its start to its close (Stage 24, M8). */
+    private final Runnable endSubscription;
 
     AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out) {
-        this(brain, commands, out, TurnBoundary.open(), AgentRecorder.off(), null, null);
+        this(brain, commands, out, TurnBoundary.open(), AgentRecorder.off(), null);
     }
 
-    AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out, TurnBoundary boundary, AgentRecorder recorder, Supplier<AgentBrain> sideBrains, Reviewer reviewer) {
+    AcpServer(AgentBrain brain, Supplier<List<AdvertisedCommand>> commands, Consumer<JsonRpcMessage> out, TurnBoundary boundary, AgentRecorder recorder, Supplier<AgentBrain> sideBrains) {
         this.brain = brain;
         this.commands = commands;
         this.out = out;
         this.boundary = boundary;
         this.recorder = recorder;
         this.sideBrains = sideBrains;
-        this.reviewer = reviewer;
+        this.endSubscription = HireRegistry.shared().subscribe(this::registryEvent);
     }
 
     /** Takes one message from the host, on the person's channel. A request is answered through the sink; a notification needs no answer. */
@@ -103,6 +99,34 @@ public final class AcpServer {
         if ("session/new".equals(message.getMethod()) && response.getError() == null && !isSide(message.getParams())) {
             advertiseCommands(((ObjectNode) response.getResult()).get("sessionId").asText());
         }
+        // A chat opened again is told what finished while it was closed (Stage 24, M14, ND4), after its load has been answered.
+        if ("session/load".equals(message.getMethod()) && response.getError() == null) {
+            PrincipalSession loaded = sessions.get(textField(message.getParams(), "sessionId"));
+            if (loaded != null) {
+                HireRegistry.shared().undeliveredFor(loaded.id()).forEach(late -> deliver(loaded, late,
+                    "Note: this report arrived while the chat was closed, and is delivered now.\n"));
+            }
+        }
+    }
+
+    /** The host's connection ended: what the brains hold for it, a running process among them, goes now. */
+    public void closed() {
+        endSubscription.run();
+        deliveries.shutdownNow();
+        brain.close();
+        sideBrainOf.values().forEach(AgentBrain::close);
+    }
+
+    /** What a side thread sends is worked beside the main turn, because a person asks it while that turn is running (D53 (b)). */
+    boolean worksBeside(JsonRpcMessage message) {
+        if ("session/new".equals(message.getMethod())) {
+            return isSide(message.getParams());
+        }
+        if ("session/prompt".equals(message.getMethod())) {
+            PrincipalSession session = sessionOf(message.getParams());
+            return session != null && session.side();
+        }
+        return false;
     }
 
     private void cancel(JsonRpcMessage message) {
@@ -111,6 +135,12 @@ public final class AcpServer {
             cancelled.add(target);
             Thread working = running.get(target);
             if (working != null) {
+                // The brain's answer is read from its process, which an interrupt cannot end: the brain itself is told, and its turn ends with its reply.
+                PrincipalSession session = sessions.get(target);
+                AgentBrain answering = session != null && session.side() ? sideBrainOf.get(target) : brain;
+                if (answering != null) {
+                    answering.cancel();
+                }
                 working.interrupt();
             }
         }
@@ -163,14 +193,6 @@ public final class AcpServer {
         this.brainRegistry = registry == null ? () -> "" : registry;
     }
 
-    /** Where the tree of seats is read from, each time it is asked for (D51); none offered reads as the signed tree. */
-    private volatile Supplier<SeatTree> seatTree = SeatTree::standard;
-
-    /** Installs the source of the seat tree whose seats get a brain-and-model choice (application wiring). */
-    void offerSeats(Supplier<SeatTree> tree) {
-        this.seatTree = tree == null ? SeatTree::standard : tree;
-    }
-
     /**
      * The brains the studio offers with their models, for the Agent Control panel's brain control (S9; his ruling 2026-10-31). The method name is
      * provisional until the chat's recording R12 carries it. A registry that is not readable offers none, which is an empty list and not an error.
@@ -206,11 +228,11 @@ public final class AcpServer {
     }
 
     /**
-     * The Agent Control panel's brain control (S9; his ruling 2026-10-31): the pick sets the brain and model of that agent's seat for its next hire
-     * and every hire after it, because a process already started cannot change its brain. The answer is the agent's hire entry as it will be.
-     * The method name is provisional until the chat's recording R12 carries it. A hire the agent never saw, a brain this product has no dialect
-     * for, and the script brain (which needs a program of its own) are bad requests. A model named for a brain whose command line takes none
-     * is not applied and is not echoed.
+     * The Agent Control panel's brain control (D53 (i)), which is a Replace: the running hire is stopped and the same seat and task are hired again
+     * on the new brain with what was said so far; the principal is told it was a replacement, and the seat's default is untouched. The answer is
+     * the agent's hire entry as it will be. The method name is provisional until the chat's recording R12 carries it. A hire the agent never saw or
+     * that has ended, a brain this product has no dialect for, and the script brain (which needs a program of its own) are bad requests. A model
+     * named for a brain whose command line takes none is not applied and is not echoed.
      */
     private JsonRpcMessage hireBrain(Object id, JsonNode params) {
         String planId = textField(params, "planId");
@@ -225,7 +247,13 @@ public final class AcpServer {
         }
         String model = textField(params, "model");
         String applied = model != null && !model.isBlank() && brain.get().takesAModel() ? model.strip() : "";
-        SeatBrainPicks.shared().pick(entry.get().seat(), brain.get(), applied);
+        if (!HireEntry.RUNNING.equals(entry.get().state())) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "hire " + planId + " has already " + entry.get().state() + "; there is nothing to replace", null);
+        }
+        if (HireRegistry.shared().replace(entry.get().seat(), entry.get().task(), brain.get(), applied) == 0) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
+                "this engine is not running a hire of " + entry.get().seat() + " for that brief, so there is nothing here to replace", null);
+        }
         ObjectNode meta = entry.get().toMeta();
         meta.put("brain", brain.get().label());
         if (applied.isEmpty()) {
@@ -250,7 +278,10 @@ public final class AcpServer {
         if (!HireEntry.RUNNING.equals(entry.get().state())) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "hire " + planId + " has already " + entry.get().state() + "; there is nothing to stop", null);
         }
-        int stopped = RunningHires.shared().stop(entry.get().seat(), entry.get().task());
+        // A hire the engine knows by plan id is stopped with every hire below it, and the answer names them (Stage 24, M14, ND3); one it does not
+        // know by plan id is found by its seat and brief as before.
+        List<String> names = entry.get().enginePlan().map(plan -> HireRegistry.shared().stopTree(plan)).orElse(List.of());
+        int stopped = names.isEmpty() ? HireRegistry.shared().stop(entry.get().seat(), entry.get().task()) : names.size();
         if (stopped == 0) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
                 "this engine is not running a hire of " + entry.get().seat() + " for that brief, so there is nothing here to stop", null);
@@ -259,7 +290,19 @@ public final class AcpServer {
         result.put("ok", true);
         result.put("planId", planId);
         result.put("stopped", stopped);
+        ArrayNode who = result.putArray("stoppedNames");
+        names.forEach(who::add);
         return JsonRpcMessage.successResponse(id, result);
+    }
+
+    /** This bundle's own version, so the agent reports what is really running (D53 (s)); "dev" outside the framework. */
+    private static String versionOfThisBundle() {
+        org.osgi.framework.Bundle bundle = org.osgi.framework.FrameworkUtil.getBundle(AcpServer.class);
+        if (bundle == null) {
+            return "dev";
+        }
+        org.osgi.framework.Version version = bundle.getVersion();
+        return version.getMajor() + "." + version.getMinor() + "." + version.getMicro();
     }
 
     private ObjectNode initializeResult() {
@@ -269,7 +312,7 @@ public final class AcpServer {
         capabilities.put("loadSession", true);
         capabilities.putObject("sessionCapabilities").putObject("list");
         ObjectNode prompt = capabilities.putObject("promptCapabilities");
-        prompt.put("image", false);
+        prompt.put("image", true); // whether the brain takes the picture is said at the moment of sending, because a brain can be changed live
         prompt.put("audio", false);
         prompt.put("embeddedContext", false);
         ObjectNode mcp = capabilities.putObject("mcpCapabilities");
@@ -291,6 +334,9 @@ public final class AcpServer {
         result.put("sessionId", session.id());
         if (!session.side()) {
             result.set("configOptions", configOptions(session));
+            brain.workIn(cwd);
+            // The brain's own models and the one it is on are known only once its session is open: the host is told then (D54 (a)).
+            brain.prepare(() -> update(session.id(), configOptionUpdate(session)));
         }
         return result;
     }
@@ -305,7 +351,11 @@ public final class AcpServer {
      * step ledger is not asked, no try is spent, the grant of autonomy is neither read nor ended, and nothing is recorded or listed.
      */
     private JsonRpcMessage sidePrompt(Object id, JsonNode params, PrincipalSession session) {
-        AgentBrain own = sideBrainOf.computeIfAbsent(session.id(), key -> sideBrains == null ? brain : sideBrains.get());
+        AgentBrain own = sideBrainOf.computeIfAbsent(session.id(), key -> {
+            AgentBrain made = sideBrains == null ? brain : sideBrains.get();
+            made.workIn(session.cwd());
+            return made;
+        });
         String messageId = "msg_" + UUID.randomUUID();
         cancelled.remove(session.id());
         running.put(session.id(), Thread.currentThread());
@@ -319,40 +369,65 @@ public final class AcpServer {
             running.remove(session.id());
             Thread.interrupted();
         }
+        if (!session.side()) {
+            // The brain may have opened its session during this turn, which is when its model becomes known (D54 (a)).
+            update(session.id(), configOptionUpdate(session));
+        }
         ObjectNode result = JSON.createObjectNode();
         result.put("stopReason", stopReason);
         return JsonRpcMessage.successResponse(id, result);
     }
 
     /**
-     * The session's config options as ACP shows them: the select {@code autonomy} with the grant as its current value, then one select per hired
-     * seat, {@code seat-model:<seat>} (category {@code model}), whose choices are the brains the registry offers and whose current value is the
-     * brain picked for the seat or {@value #SEAT_FILE} while nobody has picked (contract E6; R5).
+     * The session's config options as ACP shows them: the select {@code autonomy} with the grant as its current value and, when the principal
+     * runs in a brain the engine knows the name of, the select {@value #PRINCIPAL_BRAIN} (D53 (c), (i)).
      */
     private ArrayNode configOptions(PrincipalSession session) {
         ArrayNode options = JSON.createArrayNode();
         addAutonomy(options, session);
-        seatTree.get().seats().forEach(seat -> addSeatModel(options, seat));
+        brain.currentBrain().ifPresent(current -> addPrincipalBrain(options, current));
         return options;
     }
 
-    private void addSeatModel(ArrayNode options, String seat) {
+    private void addPrincipalBrain(ArrayNode options, String current) {
         ObjectNode option = options.addObject();
-        option.put("id", SEAT_MODEL + seat);
-        option.put("name", "Brain and model for " + seat);
+        option.put("id", PRINCIPAL_BRAIN);
+        option.put("name", "Brain of the principal");
         option.put("category", "model");
-        option.put("description", "Which brain, with which model, the " + seat + " seat uses for its next hire and every hire after it. "
-            + "'As the seat file says' leaves the choice to the seat's own file. A hire already running keeps the brain it started with.");
+        option.put("description", "The brain the principal runs on, and the model. A change holds from the next message.");
         option.put("type", "select");
-        option.put("currentValue", SeatBrainPicks.shared().forSeat(seat).map(pick -> pick.brain().label()).orElse(SEAT_FILE));
+        // The brain that is running is named with the model it is on, which is what answers (D54 (a)); when it offers models each is a choice, so
+        // the row shows them and a pick moves the session to one. The other brains are named with the model the registry says they would start with.
+        java.util.Optional<String> running = brain.currentModel();
+        java.util.List<AcpBrainSession.Model> models = brain.models();
+        boolean choosable = !models.isEmpty() && brain.currentModelValue().isPresent();
+        option.put("currentValue", choosable ? current + MODEL_SEPARATOR + brain.currentModelValue().get() : current);
         ArrayNode values = option.putArray("options");
-        values.addObject().put("value", SEAT_FILE).put("name", "As the seat file says");
-        Hirer.brainsIn(brainRegistry.get()).forEach((name, brain) -> {
-            // Only a brain a hire can use is offered: the registry may name a program for one this product has no dialect for.
-            if (SeatHire.Brain.named(name).filter(dialect -> dialect != SeatHire.Brain.SCRIPT).isPresent()) {
-                values.addObject().put("value", name).put("name", brain.model().isBlank() ? name : name + " · " + brain.model());
+        Map<String, Hirer.Brain> offered = Hirer.brainsIn(brainRegistry.get());
+        if (!offered.containsKey(current)) {
+            addChoices(values, current, running, models);
+        }
+        offered.forEach((name, offeredBrain) -> {
+            if (name.equals(current)) {
+                addChoices(values, name, running, models);
+            } else {
+                values.addObject().put("value", name).put("name", offeredBrain.model().isBlank() ? name : name + " · " + offeredBrain.model());
             }
         });
+    }
+
+    /** What separates a brain from a model in a choice of the principal's brain option: {@code cursor|grok-4.5[effort=high]}. */
+    static final String MODEL_SEPARATOR = "|";
+
+    /** The choices for the brain that is running: one per model it offers, or the brain alone, named with the model it is on when it has said. */
+    private static void addChoices(ArrayNode values, String name, java.util.Optional<String> running, java.util.List<AcpBrainSession.Model> models) {
+        if (models.isEmpty()) {
+            values.addObject().put("value", name).put("name", running.map(model -> name + " · " + model).orElse(name));
+            return;
+        }
+        for (AcpBrainSession.Model model : models) {
+            values.addObject().put("value", name + MODEL_SEPARATOR + model.value()).put("name", name + " · " + model.name());
+        }
     }
 
     private static void addAutonomy(ArrayNode options, PrincipalSession session) {
@@ -374,8 +449,8 @@ public final class AcpServer {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown session: " + textField(params, "sessionId"), null);
         }
         String configId = textField(params, "configId");
-        if (configId != null && configId.startsWith(SEAT_MODEL)) {
-            return setSeatModel(id, session, configId.substring(SEAT_MODEL.length()), textField(params, "value"), from);
+        if (PRINCIPAL_BRAIN.equals(configId)) {
+            return setPrincipalBrain(id, session, textField(params, "value"), from);
         }
         if (!AUTONOMY.equals(configId)) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown config option: " + configId, null);
@@ -394,30 +469,26 @@ public final class AcpServer {
     }
 
     /**
-     * The person's choice of brain and model for one seat (contract R5, E6): {@link #SEAT_FILE} hands the seat back to its own file, and any
-     * other value must be a brain the registry offers, taken with the model the registry names for it (none for a brain whose command line
-     * takes none). The answer carries the options as they now stand, because a host that sets an option is answered in its own response.
+     * The person's choice of the principal's brain (D53 (i)): a brain the registry offers, from the next message. The answer carries the options
+     * as they now stand, because a host that sets an option is answered in its own response.
      */
-    private JsonRpcMessage setSeatModel(Object id, PrincipalSession session, String seat, String value, Channel from) {
+    private JsonRpcMessage setPrincipalBrain(Object id, PrincipalSession session, String value, Channel from) {
         if (from != Channel.HOST) {
             return JsonRpcMessage.errorResponse(id, NOT_PERMITTED,
-                "Only the person chooses a seat's brain; a message from a hired agent does not change it.", null);
+                "Only the person chooses the principal's brain; a message from a hired agent does not change it.", null);
         }
-        if (!seatTree.get().seats().contains(seat)) {
-            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown seat: " + seat, null);
+        Map<String, Hirer.Brain> offered = Hirer.brainsIn(brainRegistry.get());
+        // A pick is a brain, or a brain and one of the models it offers: `cursor|<model value>` (D54 (a)).
+        int separator = value == null ? -1 : value.indexOf(MODEL_SEPARATOR);
+        String picked = separator < 0 ? value : value.substring(0, separator);
+        String model = separator < 0 ? "" : value.substring(separator + MODEL_SEPARATOR.length());
+        boolean running = picked != null && brain.currentBrain().filter(picked::equals).isPresent();
+        if (picked == null || !offered.containsKey(picked) || (!(running && !model.isEmpty()) && !brain.useBrain(brainRegistry.get(), picked))) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
+                "A brain the registry offers, not: " + value + " (offered: " + String.join(", ", offered.keySet()) + ")", null);
         }
-        if (SEAT_FILE.equals(value)) {
-            SeatBrainPicks.shared().forget(seat);
-        } else {
-            Map<String, Hirer.Brain> offered = Hirer.brainsIn(brainRegistry.get());
-            java.util.Optional<SeatHire.Brain> brain = value == null || !offered.containsKey(value)
-                ? java.util.Optional.empty() : SeatHire.Brain.named(value);
-            if (brain.isEmpty() || brain.get() == SeatHire.Brain.SCRIPT) {
-                return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
-                    "A brain the registry offers, or " + SEAT_FILE + ", not: " + value + " (offered: " + String.join(", ", offered.keySet()) + ")", null);
-            }
-            String model = brain.get().takesAModel() ? offered.get(value).model().strip() : "";
-            SeatBrainPicks.shared().pick(seat, brain.get(), model);
+        if (!model.isEmpty() && !brain.useModel(model)) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, picked + " does not offer the model " + model, null);
         }
         ObjectNode result = JSON.createObjectNode();
         result.set("configOptions", configOptions(session));
@@ -513,6 +584,113 @@ public final class AcpServer {
             answered.map(entry -> List.of(entry.cardLine())).orElse(List.of()));
     }
 
+    /**
+     * A hire started or finished, as the engine's registry says (Stage 24, M8): its card is made or changed on the connection whose conversation
+     * the hire traces back to, whatever depth it is at. A hire of another connection's conversation is not this connection's to show.
+     */
+    private void registryEvent(HireRegistry.Event event) {
+        PrincipalSession session = sessions.get(HireRegistry.shared().rootOf(event.leadId()));
+        if (session == null) {
+            return;
+        }
+        hires.engineEvent(event).ifPresent(seen -> showHire(session, seen));
+        // A hire the session's own brain started in the background reports back to that brain as a new turn. A hire of a lead that is still running
+        // is that lead's to receive; a hire of a lead that has ended has nobody above it to read its report but the chat, so it comes to the
+        // principal, with a line saying whose hire it was (Stage 24, M14).
+        if ("finished".equals(event.kind()) && event.background()) {
+            boolean own = session.id().equals(event.leadId()) || HireRegistry.shared().isRoot(event.leadId());
+            if (own || !HireRegistry.shared().isRunningPlan(event.leadId())) {
+                deliver(session, event, own ? ""
+                    : "Note: this hire was started by " + HireRegistry.shared().labelOf(event.leadId()) + ", which has ended, so its report comes to you.\n");
+            }
+        }
+    }
+
+    /**
+     * One turn at a time per session: the person's message and the report of a finished hire both go to the same brain, and a brain takes one
+     * prompt at a time (measured: a second prompt while one is in flight cancels the first on two of the three brains). Whichever comes second waits.
+     */
+    private final Map<String, java.util.concurrent.locks.ReentrantLock> turnLocks = new ConcurrentHashMap<>();
+
+    /**
+     * How many messages of the person wait for a session's turn. A report that is only queued gives way to them: the person is answered after the
+     * turn that is running, not after every report in line (Stage 24, D55). A turn already running is not cut short.
+     */
+    private final Map<String, java.util.concurrent.atomic.AtomicInteger> personsWaiting = new ConcurrentHashMap<>();
+
+    /** The threads that carry the reports of finished hires to the brains, one task per report; they end with the connection. */
+    private final java.util.concurrent.ExecutorService deliveries = java.util.concurrent.Executors.newCachedThreadPool(job -> {
+        Thread thread = new Thread(job, "jawata-report");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /**
+     * A hire this session's brain started in the background has finished: its report becomes a new turn of that brain (Stage 24, M10), so the
+     * principal answers it, and the person sees it, without anyone having asked. It waits for a turn that is running, and the person's next
+     * message waits for it.
+     */
+    private void deliver(PrincipalSession session, HireRegistry.Event event, String note) {
+        // This connection has taken the report, so the registry no longer keeps it for a connection opened later.
+        HireRegistry.shared().markDelivered(event);
+        deliveries.execute(() -> {
+            java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());
+            if (!takeTheTurnAfterThePersons(turn, session.id())) {
+                return;
+            }
+            try {
+                conductTurn(JSON.createObjectNode(), session, "msg_" + UUID.randomUUID(), "[report of " + event.name() + " · " + event.seat() + "]",
+                    note + reportOf(session, event));
+            } catch (RuntimeException failed) {
+                java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.WARNING, "the report of a hire could not be delivered", failed);
+            } finally {
+                turn.unlock();
+            }
+        });
+    }
+
+    /**
+     * Takes the session's turn for a report, but only while no message of the person waits for it: a report in line gives way to the person's
+     * message, which then waits only for the turn that is already running. Returns false when the connection ended while it waited.
+     */
+    private boolean takeTheTurnAfterThePersons(java.util.concurrent.locks.ReentrantLock turn, String sessionId) {
+        java.util.concurrent.atomic.AtomicInteger waiting = personsWaiting.computeIfAbsent(sessionId, key -> new java.util.concurrent.atomic.AtomicInteger());
+        try {
+            while (waiting.get() > 0 || !turn.tryLock()) {
+                Thread.sleep(50);
+            }
+            return true;
+        } catch (InterruptedException ended) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /**
+     * What the brain is told when a hire it started has ended: who, how it ended and what it answered, framed as information from an agent that
+     * works for it and never as an instruction, and what is still out. The changes themselves are not in it: they are in the hire's record.
+     */
+    private String reportOf(PrincipalSession session, HireRegistry.Event event) {
+        return org.jawata.mcp.execution.HireReport.of(event, HireRegistry.shared().runningNamesFor(session.id()));
+    }
+
+    /** Sends the host a hire's card: the first time as a tool call of its own, afterwards as an update of it. */
+    private void showHire(PrincipalSession session, HireWatch.Seen seen) {
+        HireEntry entry = seen.entry();
+        ObjectNode shown = JSON.createObjectNode();
+        shown.put("sessionUpdate", seen.created() ? "tool_call" : "tool_call_update");
+        shown.put("toolCallId", entry.planId());
+        if (seen.created()) {
+            // A client with no jawata view still shows each running agent as one tool-call line with its status (contract E3).
+            shown.put("kind", "execute");
+            shown.put("title", entry.title());
+        }
+        boolean working = HireEntry.RUNNING.equals(entry.state()) || HireEntry.COMPACTING.equals(entry.state());
+        shown.put("status", working ? "in_progress" : HireEntry.FAILED.equals(entry.state()) ? "failed" : "completed");
+        shown.putObject("_meta").set("jawata/hire", entry.toMeta());
+        update(session.id(), shown);
+    }
+
     /** Shows the host a hire's card as it now stands, as an update of the hire's own tool call. */
     private void showCardUpdate(String sessionId, HireEntry entry) {
         ObjectNode shown = JSON.createObjectNode();
@@ -542,8 +720,8 @@ public final class AcpServer {
             return sidePrompt(id, params, session);
         }
         String messageId = "msg_" + UUID.randomUUID();
-        String text = textOf(params.get("prompt"));
-        String typed = text;
+        String typed = textOf(params.get("prompt"));
+        String text = expanded(typed);
         if (from == Channel.HOST) {
             // Only the person's message is the person's word: it restarts the tries and ends a grant. The same call from a hired agent
             // does neither.
@@ -555,12 +733,35 @@ public final class AcpServer {
                 text = "[jawata] autonomy: off (the person typed a message, which ends it)\n" + text;
             }
         }
+        java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());
+        String stopReason;
+        java.util.concurrent.atomic.AtomicInteger waiting = personsWaiting.computeIfAbsent(session.id(), key -> new java.util.concurrent.atomic.AtomicInteger());
+        boolean person = from == Channel.HOST;
+        if (person) {
+            waiting.incrementAndGet();
+        }
+        try {
+            turn.lock();
+        } finally {
+            if (person) {
+                waiting.decrementAndGet();
+            }
+        }
+        try {
+            stopReason = conductTurn(params, session, messageId, typed, text);
+        } finally {
+            turn.unlock();
+        }
+        ObjectNode result = JSON.createObjectNode();
+        result.put("stopReason", stopReason);
+        return JsonRpcMessage.successResponse(id, result);
+    }
+
+    private String conductTurn(JsonNode params, PrincipalSession session, String messageId, String typed, String text) {
         StringBuilder said = new StringBuilder();
-        // WITH A REVIEWER, THE MAIN SEAT'S TEXT IS HELD AND ONLY THE REVIEWED TEXT IS SENT (S11, D25): the one road to the person is the
-        // release below, so there is no way for a message to reach the person unreviewed.
-        ReviewBeforeSend review = reviewer == null ? null
-            : new ReviewBeforeSend(reviewer, reviewed -> update(session.id(), messageChunk("agent_message_chunk", reviewed, messageId)));
-        Consumer<String> chunks = review != null ? review::hold : chunk -> {
+        // The main seat's text reaches the person as the brain writes it. The review before sending (S11, D25) was removed by D56 (a): it
+        // doubled every turn's time and rewrote plain answers into decisions; a lead puts its hires' results into the reader's terms instead.
+        Consumer<String> chunks = chunk -> {
             said.append(chunk);
             update(session.id(), messageChunk("agent_message_chunk", chunk, messageId));
         };
@@ -574,6 +775,9 @@ public final class AcpServer {
                 // A client with no jawata view still shows each running agent as one tool-call line with its status (contract E3).
                 forwarded.put("kind", "execute");
                 forwarded.put("title", entry.title());
+                if (HireEntry.FAILED.equals(entry.state())) {
+                    forwarded.put("status", "failed"); // the call itself returned, and what it says is that the hire failed
+                }
             });
             update(session.id(), forwarded);
             seen.ifPresent(entry -> askAboutProposal(session, entry));
@@ -589,37 +793,79 @@ public final class AcpServer {
         cancelled.remove(session.id());
         running.put(session.id(), Thread.currentThread());
         try {
-            while (true) {
-                brain.answer(text, chunks, toolCalls, thought -> update(session.id(), ((ObjectNode) thought).deepCopy()));
-                if (cancelled.contains(session.id())) {
-                    stopReason = "cancelled";
-                    break;
-                }
-                TurnBoundary.Verdict verdict = boundary.atTurnEnd(session);
-                if (verdict.kind() == TurnBoundary.Kind.RESUME) {
-                    chunks.accept("\n\n" + verdict.text() + "\n\n");
-                    text = "[jawata] autonomy: " + (session.autonomy() ? "on" : "off") + "\n" + verdict.text();
-                    continue;
-                }
-                if (verdict.kind() == TurnBoundary.Kind.REPORT) {
-                    chunks.accept("\n\n" + verdict.text());
-                }
-                break;
-            }
+            // The brain presents a key of its own on its tool calls, not the chat's id: tell the registry whose chat it speaks for, so a hire
+            // this brain starts is shown and reported on this connection.
+            brain.toolSessionKey().ifPresent(key -> HireRegistry.shared().speaksFor(key, session.id()));
+            brain.attachImages(imagesOf(params.get("prompt")));
+            stopReason = answerUntilTheTurnEnds(session, text, chunks, toolCalls, stopReason);
         } finally {
             running.remove(session.id());
             Thread.interrupted(); // a cancel that arrived after the brain finished must not poison the connection's worker
-            if (review != null) {
-                said.append(review.release());
-            }
             recorder.record(AgentRecorder.Level.PRINCIPAL, session, messageId, typed, said.toString(),
                 // A hire is kept as its card, so a session loaded later shows the hire's figures and state again; any other call as one finished line.
                 toolState.entrySet().stream()
                     .map(call -> hires.entry(call.getKey()).map(HireEntry::cardLine).orElseGet(() -> toolLine(call.getValue()))).toList());
         }
-        ObjectNode result = JSON.createObjectNode();
-        result.put("stopReason", stopReason);
-        return JsonRpcMessage.successResponse(id, result);
+        return stopReason;
+    }
+
+    private String answerUntilTheTurnEnds(PrincipalSession session, String text, Consumer<String> chunks,
+            Consumer<JsonNode> toolCalls, String stopReason) {
+        while (true) {
+            brain.answer(text, chunks, toolCalls, thought -> update(session.id(), ((ObjectNode) thought).deepCopy()));
+            if (cancelled.contains(session.id())) {
+                stopReason = "cancelled";
+                break;
+            }
+            TurnBoundary.Verdict verdict = boundary.atTurnEnd(session);
+            if (verdict.kind() == TurnBoundary.Kind.RESUME) {
+                chunks.accept("\n\n" + verdict.text() + "\n\n");
+                text = "[jawata] autonomy: " + (session.autonomy() ? "on" : "off") + "\n" + verdict.text();
+                continue;
+            }
+            if (verdict.kind() == TurnBoundary.Kind.REPORT) {
+                chunks.accept("\n\n" + verdict.text());
+            }
+            break;
+        }
+        return stopReason;
+    }
+
+    /** Where the text of a seat's or a skill's word comes from; none offered leaves every prompt as it was typed. */
+    private volatile java.util.function.Function<String, java.util.Optional<String>> commandTexts = name -> java.util.Optional.empty();
+
+    /** Installs the source of the texts of the words a person types (application wiring). */
+    void offerCommandTexts(java.util.function.Function<String, java.util.Optional<String>> texts) {
+        this.commandTexts = texts;
+    }
+
+    private static final java.util.regex.Pattern A_TYPED_WORD = java.util.regex.Pattern.compile("^/([\\w-]+)(?:\\s+([\\s\\S]*))?$");
+
+    /**
+     * The prompt the brain is sent for what the person typed (D53 (d)): a {@code /word} of a seat or a skill becomes the text of that seat or
+     * skill, followed by what was typed after the word. Anything else is sent as it was typed.
+     */
+    private String expanded(String typed) {
+        java.util.regex.Matcher word = A_TYPED_WORD.matcher(typed.strip());
+        if (!word.matches()) {
+            return typed;
+        }
+        return commandTexts.apply(word.group(1))
+            .map(text -> word.group(2) == null || word.group(2).isBlank() ? text : text + "\n\nARGUMENTS: " + word.group(2))
+            .orElse(typed);
+    }
+
+    /** The picture blocks of a prompt, as the host sent them. */
+    private static List<JsonNode> imagesOf(JsonNode prompt) {
+        List<JsonNode> images = new java.util.ArrayList<>();
+        if (prompt != null) {
+            prompt.forEach(block -> {
+                if ("image".equals(block.path("type").asText())) {
+                    images.add(block);
+                }
+            });
+        }
+        return images;
     }
 
     /**
@@ -659,6 +905,7 @@ public final class AcpServer {
         }
         String cwd = textField(params, "cwd");
         PrincipalSession session = sessions.computeIfAbsent(sessionId, key -> new PrincipalSession(key, cwd == null ? "" : cwd, false));
+        brain.workIn(session.cwd());
         int turnNo = 0;
         java.util.Set<String> replayedCards = new java.util.HashSet<>();
         for (AgentRecorder.Turn turn : turns) {

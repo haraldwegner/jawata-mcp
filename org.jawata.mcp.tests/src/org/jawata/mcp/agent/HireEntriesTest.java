@@ -11,7 +11,6 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
-import org.jawata.mcp.execution.FinishedHires;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -48,6 +47,35 @@ class HireEntriesTest {
         update.put("status", "completed");
         update.put("rawOutput", answerJson);
         return update;
+    }
+
+    private final List<Thread> registered = new ArrayList<>();
+    private final java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
+
+    @org.junit.jupiter.api.AfterEach
+    void endTheRegisteredHires() throws InterruptedException {
+        release.countDown();
+        for (Thread thread : registered) {
+            thread.join(5_000);
+        }
+    }
+
+    /** A hire the engine's registry holds as running, asked for by this caller and with this plan id of its own: who hired it is read from this, not from a seat name. */
+    private void issued(String seat, String brief, String callerId, String planId) throws InterruptedException {
+        java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+        Thread thread = new Thread(() -> {
+            try (org.jawata.mcp.execution.HireRegistry.Registration ignored = org.jawata.mcp.execution.HireRegistry.shared().begin(seat, brief, callerId)) {
+                org.jawata.mcp.execution.HireRegistry.shared().planOpened(planId);
+                started.countDown();
+                release.await();
+            } catch (InterruptedException ended) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        thread.setDaemon(true);
+        registered.add(thread);
+        thread.start();
+        assertTrue(started.await(5, java.util.concurrent.TimeUnit.SECONDS), "the hire did not register as running");
     }
 
     @Test
@@ -89,6 +117,22 @@ class HireEntriesTest {
             "{\"cleanExit\":true,\"brain\":{\"brain\":\"cursor\",\"vendor\":\"Cursor\",\"model\":\"THE BRAIN'S OWN DEFAULT\"}}")).orElseThrow();
         assertTrue(unnamed.model().isEmpty(), "a sentence saying no model was named was shown as a model");
         assertFalse(unnamed.toMeta().has("model"));
+    }
+
+    @Test
+    @DisplayName("D53 (i): after a Replace the card and its line name the brain that answered, not the one the seat file named")
+    void theCardNamesTheBrainThatAnswered(@TempDir java.nio.file.Path dir) throws Exception {
+        java.nio.file.Path plain = Files.writeString(dir.resolve("plain.md"), "---\nname: pm\nbrain: cursor\n---\n\nbody\n");
+        ObjectNode call = withInput(hireCall("tool_call", "b1", "pending"), "main", "pm", "plan it");
+        ((ObjectNode) call.get("rawInput")).put("seatFile", plain.toString());
+        assertEquals("cursor", watch.observe(call).orElseThrow().toMeta().path("brain").asText());
+
+        HireEntry done = watch.observe(answered(hireCall("tool_call_update", "b1", "completed"),
+            "{\"cleanExit\":true,\"brain\":{\"brain\":\"claude-code\",\"vendor\":\"anthropic\",\"model\":\"THE BRAIN'S OWN DEFAULT\"}}")).orElseThrow();
+
+        assertEquals("claude-code", done.toMeta().path("brain").asText());
+        assertTrue(done.title().contains("claude-code"), done.title());
+        assertFalse(done.title().contains("cursor"), done.title());
     }
 
     @Test
@@ -146,7 +190,7 @@ class HireEntriesTest {
     }
 
     @Test
-    @DisplayName("S17: a hire as Cursor's agent streams it is seen — the call is unnamed at first, a later update names it \"jawata: hire\" with the arguments under rawInput.args, and it ends with an answer that holds no data")
+    @DisplayName("S17: a hire as Cursor's agent streams it is seen — the call is unnamed at first, a later update names it \"jawata: hire\" with the arguments under rawInput.args, and the echo that ends the call holds no data and does not end the card")
     void aHireAsCursorStreamsItIsSeen() throws Exception {
         ObjectNode first = JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "c1").put("title", "MCP: tool").put("kind", "other").put("status", "pending");
         first.putObject("rawInput");
@@ -166,7 +210,8 @@ class HireEntriesTest {
         assertEquals("pm", seen.seat());
         assertEquals("Reply with the one word ok.", seen.task());
         assertEquals(HireEntry.RUNNING, seen.state());
-        assertEquals(HireEntry.DONE, ended.state());
+        // The echo holds no data, and the engine kept no answer for this hire: it is still running, and the engine's own event ends the card.
+        assertEquals(HireEntry.RUNNING, ended.state());
     }
 
     @Test
@@ -174,10 +219,10 @@ class HireEntriesTest {
     void aHireWithNoEchoedAnswerTakesTheEnginesOwn() throws Exception {
         ObjectNode refused = JSON.createObjectNode();
         refused.put("cleanExit", false).put("error", "steps cannot be empty");
-        FinishedHires.shared().record("echo-less-seat", "refused brief", refused);
+        org.jawata.mcp.execution.HireRegistry.shared().record("echo-less-seat", "refused brief", refused);
         ObjectNode spent = JSON.createObjectNode();
         spent.put("cleanExit", true).put("answer", "ok").put("costUsd", 0.04).putObject("tokens").put("input", 100).put("output", 20);
-        FinishedHires.shared().record("echo-less-seat", "spent brief", spent);
+        org.jawata.mcp.execution.HireRegistry.shared().record("echo-less-seat", "spent brief", spent);
 
         HireEntry failed = echoOnlySuccess("e1", "refused brief");
         HireEntry done = echoOnlySuccess("e2", "spent brief");
@@ -243,10 +288,10 @@ class HireEntriesTest {
         watch.observe(withInput(hireCall("tool_call", "t2", "pending"), "main", "ux", "look at the screen"));
         HireEntry idle = watch.entry("t1").orElseThrow();
 
-        try (org.jawata.mcp.execution.RunningHires.Registration running =
-                 org.jawata.mcp.execution.RunningHires.shared().begin("developer", "build the stage")) {
-            org.jawata.mcp.execution.RunningHires.shared().noteToolStep();
-            org.jawata.mcp.execution.RunningHires.shared().noteUsage(java.util.OptionalLong.of(4_000), java.util.OptionalDouble.of(0.25));
+        try (org.jawata.mcp.execution.HireRegistry.Registration running =
+                 org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "build the stage", "")) {
+            org.jawata.mcp.execution.HireRegistry.shared().noteToolStep();
+            org.jawata.mcp.execution.HireRegistry.shared().noteUsage(java.util.OptionalLong.of(4_000), java.util.OptionalDouble.of(0.25));
             HireEntry working = watch.entry("t1").orElseThrow();
 
             assertEquals(1, working.toolSteps());
@@ -306,7 +351,9 @@ class HireEntriesTest {
 
     @Test
     @DisplayName("a hire made by a hired seat is a child of that seat's running hire, a hire made by main is a root, and a call that is not a hire is not read")
-    void theHierarchyIsRead() {
+    void theHierarchyIsRead() throws Exception {
+        issued("pm", "run the sprint", "entries-chat-1", "entries-plan-pm1");
+        issued("chief-engineer", "build", "entries-plan-pm1", "entries-plan-ce1");
         watch.observe(withInput(hireCall("tool_call", "pm1", "pending"), "main", "pm", "run the sprint"));
         HireEntry child = watch.observe(withInput(hireCall("tool_call", "ce1", "pending"), "pm", "chief-engineer", "build")).orElseThrow();
         HireEntry root = watch.entry("pm1").orElseThrow();
@@ -337,7 +384,7 @@ class HireEntriesTest {
                 chunks.accept("ok");
             }
         };
-        AcpServer server = new AcpServer(brain, List::of, m -> said.add(JSON.valueToTree(m)), TurnBoundary.open(), AgentRecorder.off(), null, null);
+        AcpServer server = new AcpServer(brain, List::of, m -> said.add(JSON.valueToTree(m)), TurnBoundary.open(), AgentRecorder.off(), null);
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
         String session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
         ObjectNode params = JSON.createObjectNode().put("sessionId", session);
@@ -363,7 +410,10 @@ class HireEntriesTest {
 
     @Test
     @DisplayName("a hire's level is how many hires sit above it: a root is 0, the chief engineer it hires 1, the developer under that 2; and its title names the seat, the brain and the model where known")
-    void theLevelAndTheTitleAreRead() {
+    void theLevelAndTheTitleAreRead() throws Exception {
+        issued("pm", "run the sprint", "entries-chat-2", "entries-plan-pm2");
+        issued("chief-engineer", "build", "entries-plan-pm2", "entries-plan-ce2");
+        issued("developer", "edit", "entries-plan-ce2", "entries-plan-d2");
         watch.observe(withInput(hireCall("tool_call", "pm1", "pending"), "main", "pm", "run the sprint"));
         watch.observe(withInput(hireCall("tool_call", "ce1", "pending"), "pm", "chief-engineer", "build"));
         HireEntry developer = watch.observe(withInput(hireCall("tool_call", "d1", "pending"), "chief-engineer", "developer", "edit")).orElseThrow();
@@ -375,5 +425,45 @@ class HireEntriesTest {
         HireEntry named = new HireEntry("p", "test-writer", Optional.of("claude-code"), Optional.of("sonnet"), HireEntry.RUNNING, 0, 0,
             java.util.OptionalDouble.empty(), "t", Optional.empty());
         assertEquals("test-writer · claude-code · sonnet — running", named.title());
+    }
+
+    @Test
+    @DisplayName("C24 audit: a call the engine refused leaves a failed card, and the same call asked again and accepted gets its own card, which the engine's events then follow")
+    void theEventsOfAnAcceptedRetryDoNotLandOnTheRefusedCallsCard() {
+        watch.observe(withInput(hireCall("tool_call", "refused1", "pending"), "main", "retry-seat", "retry brief for the audit"));
+        HireEntry refused = watch.observe(hireCall("tool_call_update", "refused1", "failed")).orElseThrow();
+        watch.observe(withInput(hireCall("tool_call", "retry2", "pending"), "main", "retry-seat", "retry brief for the audit"));
+
+        java.util.List<org.jawata.mcp.execution.HireRegistry.Event> events = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Runnable unsubscribe = org.jawata.mcp.execution.HireRegistry.shared().subscribe(events::add);
+        try (org.jawata.mcp.execution.HireRegistry.Registration running =
+                 org.jawata.mcp.execution.HireRegistry.shared().begin("retry-seat", "retry brief for the audit", "audit-chat")) {
+            org.jawata.mcp.execution.HireRegistry.shared().planOpened("audit-plan-retry");
+            org.jawata.mcp.execution.HireRegistry.shared().record("retry-seat", "retry brief for the audit",
+                JSON.createObjectNode().put("plan", "audit-plan-retry").put("name", "Ida").put("cleanExit", true).put("answer", "ok"));
+        } finally {
+            unsubscribe.run();
+        }
+        // The engine's two events, started and finished, in the order it told them.
+        events.forEach(watch::engineEvent);
+
+        assertEquals(HireEntry.FAILED, watch.entry("refused1").orElseThrow().state(), "the refused call's card was taken by the retry's events");
+        assertEquals(HireEntry.DONE, watch.entry("retry2").orElseThrow().state(), "the retry's card did not follow the engine to its end");
+        assertEquals(HireEntry.FAILED, refused.state());
+    }
+
+    @Test
+    @DisplayName("S24 (found live with Cursor): an echo that says only success does not end the card of a hire the engine still runs, and ends it once the engine has kept the hire's answer")
+    void anEchoOfOnlySuccessLeavesARunningHireRunning() {
+        watch.observe(withInput(hireCall("tool_call", "echo1", "pending"), "main", "echo-seat", "echo brief that no hire has answered"));
+
+        HireEntry afterTheEcho = watch.observe(answered(hireCall("tool_call_update", "echo1", "completed"), "{\"success\":true}")).orElseThrow();
+        assertEquals(HireEntry.RUNNING, afterTheEcho.state(), "the echo ended a card whose hire is still running");
+
+        // THE CONTROL: the same echo once the engine holds the hire's answer ends the card, so the branch above is not just a card that never ends.
+        org.jawata.mcp.execution.HireRegistry.shared().record("echo-seat", "echo brief that no hire has answered",
+            JSON.createObjectNode().put("cleanExit", true).put("answer", "kept"));
+        HireEntry afterTheAnswer = watch.observe(answered(hireCall("tool_call_update", "echo1", "completed"), "{\"success\":true}")).orElseThrow();
+        assertEquals(HireEntry.DONE, afterTheAnswer.state());
     }
 }

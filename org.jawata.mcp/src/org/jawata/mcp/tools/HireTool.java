@@ -15,7 +15,8 @@ import java.util.function.Supplier;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.BrainDialect;
-import org.jawata.mcp.execution.FinishedHires;
+import org.jawata.mcp.execution.HireRegistry;
+import org.jawata.mcp.execution.HireRegistry.Replacement;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.HiredRun;
@@ -23,8 +24,6 @@ import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.Instructions;
 import org.jawata.mcp.execution.Observer;
 import org.jawata.mcp.execution.RunEffects;
-import org.jawata.mcp.execution.RunningHires;
-import org.jawata.mcp.execution.SeatBrainPicks;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
@@ -72,12 +71,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  *
  * <h2>What this call is NOT</h2>
  *
- * <p>It is SYNCHRONOUS, and bounded by the hired seat's own wall-clock ceiling rather than by
- * anything here. A seat declaring fifteen minutes will hold this call open for up to fifteen
- * minutes and a client may give up first; the run continues and its record still lands, because
- * the journal write is the hire's, not the caller's. An asynchronous start/status pair is the
- * shape {@code run_tests} uses for the same reason and is recorded as a finding rather than built
- * ahead of a brief that needs it.</p>
+ * <p>It does NOT wait for the hire (Sprint 28h, Stage 24, D55). The hire runs on the engine's own
+ * thread, bounded by the hired seat's own wall-clock ceiling, and the call answers as soon as the
+ * plan is open with the hire's id and name and no result. The result reaches the seat that hired
+ * as a new turn, so a caller whose own request times out after a minute no longer makes a long
+ * hire fail, and the record still lands, because the journal write is the hire's, not the
+ * caller's.</p>
  */
 public class HireTool extends NeutralTool {
 
@@ -221,9 +220,15 @@ public class HireTool extends NeutralTool {
             tool registry after the brain answers, and a gate that did not answer is reported as
             not having answered rather than as zero errors — the two are otherwise identical.
 
-            SYNCHRONOUS, and bounded by the HIRED seat's wall-clock ceiling, not by this call. A
-            seat declaring a long ceiling will hold the call open; the run's record lands either
-            way, because the journal write belongs to the hire and not to the caller.
+            ANSWERS AT ONCE, WITH NO RESULT. The hire runs on the engine's own thread, and this call
+            answers as soon as the hire's plan is open with {hireId, name, state: running, hirer,
+            hired}. The hire's result is never this call's answer: it comes back LATER, AS A NEW
+            TURN of the seat that hired, framed as a report. Start the hires that can run beside
+            each other, then end your turn. A hire is bounded by the HIRED seat's wall-clock
+            ceiling, a caller's own timeout does not end it, and its record lands either way.
+
+            `claims` names the packages the hire works on. A claim that overlaps a running hire's
+            is refused, naming the holder.
 
             A brain that cannot be told which tools to attach is REPORTED in the result rather
             than left out of it: `toolsSettableByTheHirer` is false and `toolAttachment` says what
@@ -269,6 +274,10 @@ public class HireTool extends NeutralTool {
         properties.put("boardFile", Map.of("type", "string",
             "description", "Optional. The sprint's ...-plan.md. When given, the plan board in it is drawn from the plan"
                 + " ledger as soon as this hire's gates have run, and the answer carries what was drawn or why it was not."));
+        properties.put("claims", Map.of("type", "array", "items", Map.of("type", "string"),
+            "description", "Optional. The packages this hire will work in, such as org.jawata.mcp.execution. A claim that overlaps one that another"
+                + " running agent holds is refused, and the refusal names the agent that holds it; a claim an agent above this one holds admits"
+                + " this hire. The claim lasts until the hire ends, however it ends."));
         properties.put("workingDirectory", Map.of("type", "string",
             "description", "Where the brain runs — REQUIRED, never defaulted. It is the hire's"
                 + " blast radius: the brain reads and may write here, so a caller states it rather"
@@ -299,15 +308,134 @@ public class HireTool extends NeutralTool {
      */
     @Override
     public ToolResponse execute(JsonNode arguments) {
-        ToolResponse response = hire(arguments);
+        // The caller is read here, on the thread the call arrived on: a hire started on an engine thread would find no caller there.
+        HireCall call = new HireCall(arguments, null, "", org.jawata.mcp.models.CallerIdentity.serving());
+        return startInBackground(arguments, call);
+    }
+
+    /** The host setting that caps how many hires run at once when they run in the background (Stage 24, ND7); zero or less means no cap. */
+    public static final String MAX_RUNNING_SETTING = "jawata.hire.maxRunning";
+
+    private static final int DEFAULT_MAX_RUNNING = 8;
+
+    /** How long a call waits for a hire to open its plan before it gives up: opening a plan is quick, and nothing in it waits for a brain. */
+    private static final long OPENS_WITHIN_SECONDS = 30;
+
+    /** The engine's own threads that run hires started in the background; they end when the engine does. */
+    private static final java.util.concurrent.ExecutorService HIRES = java.util.concurrent.Executors.newCachedThreadPool(new java.util.concurrent.ThreadFactory() {
+        private final java.util.concurrent.atomic.AtomicInteger count = new java.util.concurrent.atomic.AtomicInteger();
+
+        @Override
+        public Thread newThread(Runnable job) {
+            Thread thread = new Thread(job, "jawata-hire-" + count.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        }
+    });
+
+    /**
+     * Runs the hire on one of the engine's threads and answers once its plan is open, with the hire's identity and no result: the hire's plan id, its
+     * first name and the state running. A refusal, or a hire that ends before it opens a plan, is answered as it is. The brain's work is not waited
+     * for, so a caller whose own request times out after a minute is no longer a reason for a hire to fail.
+     */
+    private ToolResponse startInBackground(JsonNode arguments, HireCall call) {
+        // THE CAP (Stage 24, M14, ND7): a lead that hires without limit can flood the machine, so a hire past the number the host allows is refused,
+        // and the refusal says who is running. The number is provisional until a brain's memory and cost are measured.
+        int cap = settings.get().get(MAX_RUNNING_SETTING).map(text -> {
+            try {
+                return Integer.parseInt(text.strip());
+            } catch (NumberFormatException notANumber) {
+                return DEFAULT_MAX_RUNNING;
+            }
+        }).orElse(DEFAULT_MAX_RUNNING);
+        if (cap > 0 && HireRegistry.shared().runningCount() >= cap) {
+            return ToolResponse.error("TOO_MANY_HIRES", "refused: " + HireRegistry.shared().runningCount() + " hires are running, which is the most this"
+                + " engine runs at once (" + cap + "): " + String.join(", ", HireRegistry.shared().runningNames()),
+                "wait for one of them to end, or stop one from the Agent Control panel; the limit is the setting " + MAX_RUNNING_SETTING);
+        }
+        java.util.concurrent.CompletableFuture<Map<String, Object>> opened = new java.util.concurrent.CompletableFuture<>();
+        java.util.concurrent.CompletableFuture<ToolResponse> ended = new java.util.concurrent.CompletableFuture<>();
+        HIRES.execute(() -> {
+            HireRegistry.shared().whenPlanOpened((plan, name) -> {
+                Map<String, Object> answer = new LinkedHashMap<>();
+                answer.put("hireId", plan);
+                answer.put("name", name);
+                answer.put("state", "running");
+                answer.put("hirer", getStringParam(arguments, "hirer"));
+                answer.put("hired", getStringParam(arguments, "seat"));
+                opened.complete(answer);
+            });
+            HireRegistry.shared().nextHireIsBackground();
+            try {
+                ended.complete(runAndKeep(arguments, call));
+            } catch (RuntimeException | Error failure) {
+                ended.completeExceptionally(failure);
+            } finally {
+                HireRegistry.shared().forgetPlanListener();
+            }
+        });
+        try {
+            java.util.concurrent.CompletableFuture.anyOf(opened, ended).get(OPENS_WITHIN_SECONDS, java.util.concurrent.TimeUnit.SECONDS);
+            return opened.isDone() ? ToolResponse.success(opened.get()) : ended.get();
+        } catch (java.util.concurrent.ExecutionException failed) {
+            return ToolResponse.error("INTERNAL_ERROR", "the hire could not be started: " + failed.getCause(),
+                "the hire ran on the engine's own thread and ended with that error before it opened its plan");
+        } catch (java.util.concurrent.TimeoutException slow) {
+            return ToolResponse.error("INTERNAL_ERROR", "the hire did not open its plan within " + OPENS_WITHIN_SECONDS + " seconds",
+                "it is still starting on the engine's own thread; its record lands when it ends");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return ToolResponse.error("INTERNAL_ERROR", "the call was interrupted while the hire was starting",
+                "the hire goes on starting on the engine's own thread");
+        }
+    }
+
+    ToolResponse runAndKeep(JsonNode arguments, HireCall call) {
+        ToolResponse response = hire(call);
         // Every exit of the hire, a refusal included, is kept for the agent face, which cannot rely on a brain echoing the answer back.
         JsonNode outcome = response.isSuccess() ? JSON.valueToTree(response.getData())
             : JSON.createObjectNode().put("cleanExit", false).put("error", response.getError().getMessage());
-        FinishedHires.shared().record(arguments.path("seat").asText(""), arguments.path("brief").asText(""), outcome);
+        HireRegistry.shared().record(arguments.path("seat").asText(""), arguments.path("brief").asText(""), outcome);
         return response;
     }
 
-    private ToolResponse hire(JsonNode arguments) {
+    /**
+     * One request to hire: the arguments the caller sent, the replacement the person chose while an earlier brain worked, what that brain had
+     * said, and the caller who sent it. The caller is read from the thread's context when the call is made, because the context lives on the
+     * calling thread and an engine thread that carries the call out later would find it empty.
+     */
+    public static class HireCall {
+        private final JsonNode arguments;
+        private final Replacement replacing;
+        private final String saidBefore;
+        private final Optional<org.jawata.mcp.models.CallerIdentity> serving;
+
+        public HireCall(JsonNode arguments, Replacement replacing, String saidBefore, Optional<org.jawata.mcp.models.CallerIdentity> serving) {
+            this.arguments = arguments;
+            this.replacing = replacing;
+            this.saidBefore = saidBefore;
+            this.serving = serving;
+        }
+
+        public JsonNode getArguments() {
+            return arguments;
+        }
+
+        public Replacement getReplacing() {
+            return replacing;
+        }
+
+        public String getSaidBefore() {
+            return saidBefore;
+        }
+
+        /** The caller this hire serves, captured when the call was made; empty when none was identified. */
+        public Optional<org.jawata.mcp.models.CallerIdentity> getServing() {
+            return serving;
+        }
+    }
+
+    ToolResponse hire(HireCall call) {
         LearnerEventStore landsIn = journal.get();
         if (landsIn == null) {
             // DEGRADATION ON THE RESPONSE CHANNEL, which is the only one a client can see. A hire
@@ -324,10 +452,10 @@ public class HireTool extends NeutralTool {
         // real claude in the developer's repository. Deleting the input from the schema left the
         // same hole for any caller still sending it, because an ignored argument IS an inert
         // input. Which executable a brain is comes from the seat file alone.
-        if (arguments != null) {
+        if (call.getArguments() != null) {
             Set<String> read = schemaProperties();
             List<String> unread = new ArrayList<>();
-            arguments.fieldNames().forEachRemaining(name -> {
+            call.getArguments().fieldNames().forEachRemaining(name -> {
                 if (!read.contains(name)) {
                     unread.add(name);
                 }
@@ -340,18 +468,18 @@ public class HireTool extends NeutralTool {
             }
         }
         for (String required : List.of("hirer", "seat", "seatFile", "brief", "workingDirectory")) {
-            ToolResponse missing = requireParam(arguments, required);
+            ToolResponse missing = requireParam(call.getArguments(), required);
             if (missing != null) {
                 return missing;
             }
         }
-        String hirer = getStringParam(arguments, "hirer");
-        String hired = getStringParam(arguments, "seat");
-        String brief = getStringParam(arguments, "brief");
+        String hirer = getStringParam(call.getArguments(), "hirer");
+        String hired = getStringParam(call.getArguments(), "seat");
+        String brief = getStringParam(call.getArguments(), "brief");
 
         SeatHire seat;
         try {
-            seat = SeatHire.read(readSeatFile(getStringParam(arguments, "seatFile")));
+            seat = SeatHire.read(readSeatFile(getStringParam(call.getArguments(), "seatFile")));
         } catch (IOException | InvalidPathException e) {
             return ToolResponse.error("FILE_NOT_FOUND",
                 "the hired seat's file could not be read: " + e.getMessage(),
@@ -365,11 +493,10 @@ public class HireTool extends NeutralTool {
                 "check its brain: field — an unknown brain is refused rather than defaulted");
         }
 
-        // THE PERSON'S PICK (S9, his ruling 2026-10-31): the brain and model picked for this seat in the Agent Control panel replace the seat file's,
-        // before the registry fills a model the seat names none of, so the pick wins over the registry's default for the brain.
-        Optional<SeatBrainPicks.Pick> picked = SeatBrainPicks.shared().forSeat(hired);
-        if (picked.isPresent()) {
-            seat = seat.withBrain(picked.get().brain(), picked.get().model());
+        // THE PERSON'S REPLACE (D53 (i)): a hire moved onto another brain in the Agent Control panel runs on that brain this once; the seat file, its
+        // default, is not touched. It comes before the registry fills a model the seat names none of, so the person's choice wins over the registry's default.
+        if (call.getReplacing() != null) {
+            seat = seat.withBrain(call.getReplacing().brain(), call.getReplacing().model());
         }
 
         // THE MODEL REGISTRY AND THE VENDOR RULE (S12, D11, D48). The registry setting offers each brain with its vendor and model; the seat file's own
@@ -384,7 +511,7 @@ public class HireTool extends NeutralTool {
         // refused as a whole, the signed tree is used in its place and the hire's answer says which rules it broke.
         ToolRegistry known = registry.get();
         Set<String> codeChanging = known == null ? Set.of() : SeatTree.codeChangingIn(known.getToolDefinitions());
-        SeatTree.Loaded declaredTree = SeatTree.in(Path.of(getStringParam(arguments, "seatFile")).toAbsolutePath().getParent(), codeChanging);
+        SeatTree.Loaded declaredTree = SeatTree.in(Path.of(getStringParam(call.getArguments(), "seatFile")).toAbsolutePath().getParent(), codeChanging);
         Hirer hiring = new Hirer(declaredTree.tree(), Map.of(), Set.of());
         Hirer deciding = settings.get().get(Hirer.MAIN_BRAIN_SETTING).flatMap(Hirer::brainOf)
             .map(main -> hiring.withBrain("main", main)).orElse(hiring);
@@ -408,7 +535,7 @@ public class HireTool extends NeutralTool {
 
         List<GatedStep> steps;
         try {
-            steps = gatedSteps(arguments);
+            steps = gatedSteps(call.getArguments());
         } catch (IllegalArgumentException e) {
             return ToolResponse.invalidParameter("steps", e.getMessage());
         }
@@ -468,7 +595,7 @@ public class HireTool extends NeutralTool {
         // runs is the dialect's alone.)
         HireSite base;
         try {
-            base = HireSite.in(Path.of(getStringParam(arguments, "workingDirectory")));
+            base = HireSite.in(Path.of(getStringParam(call.getArguments(), "workingDirectory")));
         } catch (InvalidPathException e) {
             return ToolResponse.invalidParameter("workingDirectory", e.getMessage());
         }
@@ -476,21 +603,41 @@ public class HireTool extends NeutralTool {
         // D4: a later hire of the same seat in the same principal session continues the brain's own session. Only a caller that sent a session
         // id of its own has one: callers with none share a transport's anonymous bucket, and continuing one of them for another would hand a
         // stranger the earlier conversation.
-        Optional<String> principalSession = org.jawata.mcp.models.CallerIdentity.serving()
+        Optional<String> principalSession = call.getServing()
             .filter(caller -> caller.origin() == org.jawata.mcp.models.CallerIdentity.Origin.CLIENT_SUPPLIED)
             .map(org.jawata.mcp.models.CallerIdentity::id);
-        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area)
-            .resuming(principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
-            // The plan this hire opens belongs to the session that issued it, whoever it is: only that session's turn waits on its step (S10).
-            .ownedBy(org.jawata.mcp.models.CallerIdentity.serving().map(org.jawata.mcp.models.CallerIdentity::id))
-            .labelled(hired, hirer)
-            .fixing(getStringParam(arguments, "fixes"))
-            .issuedFrom(getStringParam(arguments, "instructionsFrom"));
-        HiredRun.Proposal proposal;
         // While the brain runs this hire can be stopped from the Agent Control panel (S9): the panel's stop interrupts this thread, which ends the
-        // run the way any interruption does, and the answer says the person stopped it.
-        RunningHires.Registration running = RunningHires.shared().begin(hired, brief);
+        // run the way any interruption does, and the answer says the person stopped it. The hire is registered before the run is built because
+        // registering gives it its first name (Stage 24, D55), which the run writes into its journal row.
+        HireRegistry.Registration running = HireRegistry.shared().begin(hired, brief,
+            call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""));
+        // THE CLAIM (Stage 24, M13): the packages this hire will work in, taken before anything starts. An overlap with another running agent's
+        // claim is refused with who holds it, and nothing has been spent; the claim is released when the registration closes, however the hire ends.
+        List<String> claimed = new ArrayList<>();
+        call.getArguments().path("claims").forEach(claim -> claimed.add(claim.asText()));
+        if (!claimed.isEmpty()) {
+            Optional<String> refused = running.claim(claimed);
+            if (refused.isPresent()) {
+                running.close();
+                return ToolResponse.error("CLAIM_REFUSED", "refused: " + refused.get(),
+                    "wait for that agent to end, which releases its claim, or claim a package that does not overlap");
+            }
+        }
+        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area)
+            // A replacement starts on another brain, which cannot continue the session of the one it replaces.
+            .resuming(call.getReplacing() != null ? Optional.empty() : principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
+            // The plan this hire opens belongs to the session that issued it, whoever it is: only that session's turn waits on its step (S10).
+            .ownedBy(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id))
+            .labelled(hired, hirer, running.name())
+            .leading(declaredTree.tree().isLead(hired))
+            .fixing(getStringParam(call.getArguments(), "fixes"))
+            .issuedFrom(getStringParam(call.getArguments(), "instructionsFrom"));
+        HiredRun.Proposal proposal;
         boolean stoppedByPerson = false;
+        Optional<HireRegistry.Replacement> replacement = Optional.empty();
+        // The registration keeps the brief the principal gave, so the panel still finds this hire; the brain is also told what was said before it took over.
+        String briefToBrain = call.getSaidBefore().isBlank() ? brief
+            : brief + "\n\nYou are taking over this work from another brain, which was stopped. What it had said so far:\n\n" + call.getSaidBefore();
         try {
             // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
             // The registry names a brain by its product name, as the panel's choices and the vendor rule do ("cursor"); the dialect names itself
@@ -499,7 +646,7 @@ public class HireTool extends NeutralTool {
             Optional<AcpBrainSession.Program> acp = brainsRegistry
                 .flatMap(registryText -> AcpBrainSession.programFor(registryText, productName)
                     .or(() -> AcpBrainSession.programFor(registryText, dialect.name())));
-            proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()),
+            proposal = run.issue(seat, base, briefToBrain, steps, new ToolGateRunner(registry.get()),
                 hiddenTools, acp);
         } catch (IOException e) {
             return ToolResponse.error("INTERNAL_ERROR",
@@ -508,6 +655,12 @@ public class HireTool extends NeutralTool {
                     + " that CLI is installed and on the resident's PATH. Which executable a brain"
                     + " IS cannot be set per call; it is the dialect's, chosen by the seat's brain");
         } catch (InterruptedException e) {
+            replacement = running.replacement();
+            if (replacement.isPresent()) {
+                running.wasStopped();
+                running.close();
+                return hire(new HireCall(call.getArguments(), replacement.get(), call.getSaidBefore(), call.getServing()));
+            }
             if (running.wasStopped()) {
                 // The person's stop is handled here and ends with this answer, so the thread is left as it is for the next request.
                 return ToolResponse.error("HIRE_STOPPED",
@@ -520,6 +673,7 @@ public class HireTool extends NeutralTool {
                 "the child process is reaped; nothing is left running");
         } finally {
             // A killed process ends the read normally and no interrupt exception follows, so the stop is looked for here as well.
+            replacement = replacement.or(running::replacement);
             stoppedByPerson = running.wasStopped() || stoppedByPerson;
             running.close();
             if (stoppedByPerson) {
@@ -527,6 +681,10 @@ public class HireTool extends NeutralTool {
                 // served on this thread must not start interrupted.
                 Thread.interrupted();
             }
+        }
+        if (replacement.isPresent()) {
+            // D53 (i): the same seat and task again, on the brain the person chose, with what the stopped brain had said. The answer tells the principal.
+            return hire(new HireCall(call.getArguments(), replacement.get(), call.getSaidBefore() + proposal.outcome().text(), call.getServing()));
         }
         if (stoppedByPerson) {
             return ToolResponse.error("HIRE_STOPPED",
@@ -539,7 +697,11 @@ public class HireTool extends NeutralTool {
         // answered is not an attribution.
         data.put("hirer", hirer);
         data.put("hired", hired);
-        String corrects = getStringParam(arguments, "fixes");
+        data.put("name", running.name());
+        if (call.getReplacing() != null) {
+            data.put("replaced", "the person moved this agent onto " + seat.brain().label() + " while it worked: its first brain was stopped and this seat was hired again with what had been said; this answer is the replacement's, and the seat's default brain is unchanged");
+        }
+        String corrects = getStringParam(call.getArguments(), "fixes");
         if (corrects != null && !corrects.isBlank()) {
             data.put("fixes", corrects.strip());
         }
@@ -571,7 +733,7 @@ public class HireTool extends NeutralTool {
         data.put("gates", gateRows(proposal));
         // S10 (D18): the plan board is drawn from the ledger the moment the gates have run, by the
         // hire itself, so the plan file says what the gates say without anyone remembering to ask.
-        String boardFile = getStringParam(arguments, "boardFile");
+        String boardFile = getStringParam(call.getArguments(), "boardFile");
         if (boardFile != null && !boardFile.isBlank()) {
             ToolResponse drawn = new PlanBoardTool(plans).execute(JSON.createObjectNode().put("file", boardFile));
             data.put("board", drawn.isSuccess() ? drawn.getData() : "NOT DRAWN: " + drawn.getError());
@@ -663,12 +825,12 @@ public class HireTool extends NeutralTool {
             data.put("instructionFaults", instructionFaults);
         }
         // THE PM'S MEASURE, for a worker hired to carry those instructions out.
-        String instructionsFrom = getStringParam(arguments, "instructionsFrom");
+        String instructionsFrom = getStringParam(call.getArguments(), "instructionsFrom");
         if (instructionsFrom != null && !instructionsFrom.isBlank()) {
-            String observerSeatFile = getStringParam(arguments, "observerSeatFile");
+            String observerSeatFile = getStringParam(call.getArguments(), "observerSeatFile");
             Observer.Judge judge = observerSeatFile == null || observerSeatFile.isBlank()
                 ? null
-                : hiredJudge(observerSeatFile.trim(), landsIn, endpoint, base);
+                : hiredJudge(observerSeatFile.trim(), landsIn, endpoint, base, call.getServing().map(org.jawata.mcp.models.CallerIdentity::id));
             data.put("instructionScore", instructionScore(landsIn, instructionsFrom.trim(), proposal.outcome(), engine, effects.notOffered(), judge));
         }
         data.put("shellCalls", effects.shell());
@@ -700,7 +862,7 @@ public class HireTool extends NeutralTool {
         seat.budgetReport().ifPresent(report -> data.put("budget", report));
         // S12 (D11): a hire that did not pass its gates goes up one rung where the tree has one (a developer to the senior developer).
         if (!proposal.complete()) {
-            deciding.escalateTo(hired).ifPresent(next -> data.put("escalation", escalate(arguments, next, proposal.plan().value())));
+            deciding.escalateTo(hired).ifPresent(next -> data.put("escalation", escalate(call.getArguments(), next, proposal.plan().value())));
         }
         if (declaredTree.refused()) {
             data.put("seatTreeRefused", declaredTree.refusals());
@@ -859,11 +1021,14 @@ public class HireTool extends NeutralTool {
     /**
      * The observer's judging tier: the observer seat, hired through the same path as any seat, shown one flagged step. A hire that cannot
      * be made or answers with no verdict line gives no verdict, so the flag is reported as unjudged and not as clear.
+     *
+     * @param judgeIssuer the id of the caller that issued the worker the judge judges, captured when the hire was requested
      */
-    private Observer.Judge hiredJudge(String seatFile, LearnerEventStore landsIn, SelfEndpoint endpoint, HireSite base) {
-        // The judge's plan belongs to the session that issued the worker it judges, read here on the tool's own thread: a plan nobody owns is
-        // listed to every caller and would hold their turns while the judge runs (S10, F7).
-        Optional<String> issuer = org.jawata.mcp.models.CallerIdentity.serving().map(org.jawata.mcp.models.CallerIdentity::id);
+    private Observer.Judge hiredJudge(String seatFile, LearnerEventStore landsIn, SelfEndpoint endpoint, HireSite base, Optional<String> judgeIssuer) {
+        // The judge's plan belongs to the session that issued the worker it judges: a plan nobody owns is listed to every caller and would hold
+        // their turns while the judge runs (S10, F7). It is handed in by the call, which read it from the thread that made the call, because this
+        // method may run on an engine thread that has no caller of its own.
+        Optional<String> issuer = judgeIssuer;
         return (flag, instruction, window) -> {
             try {
                 SeatHire observerSeat = SeatHire.read(readSeatFile(seatFile));
