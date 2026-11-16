@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Sprint 28h, Stage 23, D54 (a): the principal's row names the model that is answering. His words: "The model is not shown. You should be able
@@ -199,6 +200,82 @@ class PrincipalModelOptionTest {
             }
         }
         assertEquals(true, namesModel, told.toString());
+    }
+
+    /** A brain whose session opens with its first answer: it names no model before that, and its own models and the one it is on from then. */
+    private static final class OpensWithItsFirstAnswer implements AgentBrain {
+        boolean open;
+
+        @Override
+        public Optional<String> currentBrain() {
+            return Optional.of("claude-code");
+        }
+
+        @Override
+        public Optional<String> currentModelValue() {
+            return open ? Optional.of("fable") : Optional.empty();
+        }
+
+        @Override
+        public Optional<String> currentModel() {
+            return open ? Optional.of("Fable 5.2") : Optional.empty();
+        }
+
+        @Override
+        public List<org.jawata.mcp.execution.AcpBrainSession.Model> models() {
+            return open ? List.of(new org.jawata.mcp.execution.AcpBrainSession.Model("opus", "Opus 5.5"),
+                new org.jawata.mcp.execution.AcpBrainSession.Model("fable", "Fable 5.2")) : List.of();
+        }
+
+        @Override
+        public void answer(String prompt, Consumer<String> chunks) {
+            open = true;
+            chunks.accept("ok");
+        }
+    }
+
+    /** The current value of the principal's brain option in each options update among {@code received}, in the order they were sent. */
+    private static List<String> brainRowsTold(List<JsonNode> received) {
+        List<String> told = new ArrayList<>();
+        for (JsonNode message : received) {
+            JsonNode update = message.path("params").path("update");
+            if (!"session/update".equals(message.path("method").asText()) || !"config_option_update".equals(update.path("sessionUpdate").asText())) {
+                continue;
+            }
+            for (JsonNode option : update.path("configOptions")) {
+                if (AcpServer.PRINCIPAL_BRAIN.equals(option.path("id").asText())) {
+                    told.add(option.path("currentValue").asText());
+                }
+            }
+        }
+        return told;
+    }
+
+    @Test
+    @DisplayName("a brain whose session opens during a turn: the host is told its own models and the one it is on in that turn, and not again while nothing changes")
+    void theHostIsToldTheBrainsOwnModelsWhenItsSessionOpensInATurn() {
+        List<JsonNode> received = new ArrayList<>();
+        AcpServer server = new AcpServer(new OpensWithItsFirstAnswer(), List::of, message -> received.add(JSON.valueToTree(message)),
+            TurnBoundary.open(), AgentRecorder.off(), null);
+        server.offerBrains(() -> REGISTRY);
+        server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/workspace")));
+        String session = received.stream().filter(m -> m.has("result") && m.path("result").has("sessionId")).findFirst().orElseThrow()
+            .path("result").path("sessionId").asText();
+        assertEquals(List.of("claude-code"), brainRowsTold(received), "CONTROL: before its session is open the brain is named alone");
+        received.clear();
+
+        ObjectNode first = JSON.createObjectNode().put("sessionId", session);
+        first.putArray("prompt").addObject().put("type", "text").put("text", "hello");
+        server.receive(JsonRpcMessage.request(2, "session/prompt", first));
+
+        assertEquals(List.of("claude-code|fable"), brainRowsTold(received), "the row was not corrected in the turn that opened the brain's session: " + received);
+        received.clear();
+
+        ObjectNode second = JSON.createObjectNode().put("sessionId", session);
+        second.putArray("prompt").addObject().put("type", "text").put("text", "again");
+        server.receive(JsonRpcMessage.request(3, "session/prompt", second));
+
+        assertEquals(List.of(), brainRowsTold(received), "nothing changed, so the host is not told again");
     }
 
     @Test
