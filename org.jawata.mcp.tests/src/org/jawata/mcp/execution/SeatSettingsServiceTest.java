@@ -90,6 +90,28 @@ class SeatSettingsServiceTest {
             "the chat's session's models, less the brain's own default, with no program started for the page");
     }
 
+    /**
+     * C25m audit, B6: a resumed session names no models, so it leaves the catalogue as a new session of the brain wrote it; otherwise the chat
+     * resuming a conversation would empty the Seats page's list for that brain.
+     */
+    @Test
+    void aResumedSessionLeavesTheModelsTheBrainOffered(@TempDir Path agentDir) throws IOException {
+        String registry = fakeAgent(agentDir, "default=Default,sonnet=Sonnet " + agentDir.getFileName());
+        stored.put("jawata.agent.hireBrains", registry);
+        AcpBrainSession.Program program = AcpBrainSession.programFor(registry, "fake").orElseThrow();
+        HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60));
+        AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program, HireSite.in(agentDir), null, List.of(), Optional.empty(),
+            ceilings).close();
+        AcpBrainSession.Conversation resumed = AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program, HireSite.in(agentDir),
+            null, List.of(), Optional.of("an-earlier-session"), ceilings);
+        assertEquals(List.of(), resumed.models(), "the resumed session named no models, which is the case this test is about");
+        resumed.close();
+        Files.delete(agentDir.resolve("FakeAcpAgent.java"));
+
+        assertEquals(List.of("Sonnet " + agentDir.getFileName()), door().conversationModels("fake"),
+            "the models the new session offered are still the catalogue's after the resumed one opened");
+    }
+
     @Test
     void theRegistrysBrainsAreReadyAndAnUnknownOneIsRefused(@TempDir Path agentDir) throws IOException {
         stored.put("jawata.agent.hireBrains", fakeAgent(agentDir, ""));

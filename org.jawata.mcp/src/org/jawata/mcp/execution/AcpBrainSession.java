@@ -215,6 +215,8 @@ public final class AcpBrainSession {
         /** The models the brain offered when it opened this session, and the value of the one it is on; empty when it offers none. */
         private List<Model> models = List.of();
         private String modelValue = "";
+        /** Whether the brain answered a new session here, which is where it names its models: a resumed session names none, and says nothing about them. */
+        private boolean modelsAnswered;
 
         private StringBuilder said = new StringBuilder();
         private List<String> toolNames = new ArrayList<>();
@@ -254,7 +256,10 @@ public final class AcpBrainSession {
                 conversation.close();
                 throw e;
             }
-            OFFERED.put(program, conversation.models());
+            // only a new session's answer names the models; a resumed one would replace what the brain offered with nothing
+            if (conversation.modelsAnswered) {
+                OFFERED.put(program, conversation.models());
+            }
             return conversation;
         }
 
@@ -327,6 +332,7 @@ public final class AcpBrainSession {
             if (created == null) {
                 return;
             }
+            modelsAnswered = true;
             for (JsonNode option : created.path("configOptions")) {
                 if ("model".equals(option.path("id").asText()) || "model".equals(option.path("category").asText())) {
                     List<Model> offered = new ArrayList<>();
