@@ -798,6 +798,7 @@ public final class AcpServer {
             brain.toolSessionKey().ifPresent(key -> HireRegistry.shared().speaksFor(key, session.id()));
             brain.attachImages(imagesOf(params.get("prompt")));
             stopReason = answerUntilTheTurnEnds(session, text, chunks, toolCalls, stopReason);
+            tellOptionsIfChanged(session);
         } finally {
             running.remove(session.id());
             Thread.interrupted(); // a cancel that arrived after the brain finished must not poison the connection's worker
@@ -983,11 +984,26 @@ public final class AcpServer {
         update(sessionId, update);
     }
 
+    /** The options each session's host was last sent in an update, so a turn tells it only what changed. */
+    private final Map<String, String> optionsTold = new java.util.concurrent.ConcurrentHashMap<>();
+
     private ObjectNode configOptionUpdate(PrincipalSession session) {
         ObjectNode update = JSON.createObjectNode();
         update.put("sessionUpdate", "config_option_update");
-        update.set("configOptions", configOptions(session));
+        ArrayNode options = configOptions(session);
+        update.set("configOptions", options);
+        optionsTold.put(session.id(), options.toString());
         return update;
+    }
+
+    /**
+     * Tells the host the options when they differ from what it was last told: a brain picked by the person opens its session in the turn
+     * that follows, and only then are its models and the one it is on known (2026-11-16: the row kept the previous brain's models).
+     */
+    private void tellOptionsIfChanged(PrincipalSession session) {
+        if (!configOptions(session).toString().equals(optionsTold.get(session.id()))) {
+            update(session.id(), configOptionUpdate(session));
+        }
     }
 
     /** One piece of a message as an ACP update; {@code kind} says whose it is: {@code user_message_chunk} or {@code agent_message_chunk}. */

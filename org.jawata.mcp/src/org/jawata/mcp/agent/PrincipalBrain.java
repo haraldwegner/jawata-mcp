@@ -350,8 +350,13 @@ public final class PrincipalBrain implements AgentBrain {
         }
     }
 
+    /**
+     * The session that answers the next prompt: none while another brain has been picked and has not opened its own, because the session still
+     * open then is the previous brain's, and its models and the one it is on are not the picked brain's (2026-11-16: the row read
+     * "claude-code · claude-opus-5-5" over Cursor's model list while Claude answered on Fable).
+     */
     private Optional<AcpBrainSession.Conversation> liveConversation() {
-        return conversation != null && conversation.alive() ? Optional.of(conversation) : Optional.empty();
+        return conversation != null && conversation.alive() && !brainChanged ? Optional.of(conversation) : Optional.empty();
     }
 
     @Override

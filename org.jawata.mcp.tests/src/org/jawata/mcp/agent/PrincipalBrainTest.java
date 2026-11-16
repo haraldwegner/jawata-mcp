@@ -490,6 +490,28 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("a brain picked while another's session is open is not given that session's models: none until its own session opens, then its own")
+    void aPickedBrainIsNotGivenTheModelsOfTheSessionStillOpen() {
+        PrincipalBrain brain = brain(Optional.of(fakeWithModels()));
+        ask(brain, "hello", new ArrayList<>());
+        assertEquals(Optional.of("Alpha"), brain.currentModel(), "CONTROL: the first brain's session is open and names its model");
+        String other = "{\"command\":[\"" + inJson(fake.command().get(0)) + "\",\"" + inJson(fake.command().get(1)) + "\"],\"env\":{\"FAKE_ACP_STATE\":\""
+            + inJson(dir.toString()) + "\",\"FAKE_ACP_MODELS\":\"x=Xray,y=Yankee\"}}";
+
+        assertEquals(true, brain.useBrain("{\"other\":" + other + "}", "other"));
+
+        assertEquals(List.of(), brain.models(), "the session still open is the previous brain's, and its models are not the picked brain's");
+        assertEquals(Optional.empty(), brain.currentModel());
+        assertEquals(Optional.empty(), brain.currentModelValue());
+        assertEquals(true, brain.useModel("y"), "a model picked for the brain that takes over is kept for its session, not asked of the one that goes");
+
+        assertEquals("y", ask(brain, "WHICHMODEL", new ArrayList<>()), "the picked brain answered, on the model picked for it");
+        assertEquals(List.of(new AcpBrainSession.Model("x", "Xray"), new AcpBrainSession.Model("y", "Yankee")), brain.models());
+        assertEquals(Optional.of("Yankee"), brain.currentModel());
+        brain.close();
+    }
+
+    @Test
     @DisplayName("D54 (a): the model the principal's setting names beside its command line is the one the session is moved to")
     void theModelTheSettingNamesIsAppliedToTheSession() {
         String setting = "{\"command\":[\"" + inJson(fake.command().get(0)) + "\",\"" + inJson(fake.command().get(1)) + "\"],\"model\":\"Beta\",\"env\":{\"FAKE_ACP_STATE\":\""
