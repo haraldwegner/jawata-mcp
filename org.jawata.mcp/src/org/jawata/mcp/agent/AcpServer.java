@@ -984,24 +984,35 @@ public final class AcpServer {
         update(sessionId, update);
     }
 
-    /** The options each session's host was last sent in an update, so a turn tells it only what changed. */
-    private final Map<String, String> optionsTold = new java.util.concurrent.ConcurrentHashMap<>();
+    /** The principal's brain option each session's host was last sent in an update, so a turn tells it only when that row changed. */
+    private final Map<String, String> brainRowTold = new java.util.concurrent.ConcurrentHashMap<>();
 
     private ObjectNode configOptionUpdate(PrincipalSession session) {
         ObjectNode update = JSON.createObjectNode();
         update.put("sessionUpdate", "config_option_update");
         ArrayNode options = configOptions(session);
         update.set("configOptions", options);
-        optionsTold.put(session.id(), options.toString());
+        brainRowTold.put(session.id(), brainOptionOf(options));
         return update;
     }
 
+    /** The principal's brain option among {@code options}, as text; empty when there is none. */
+    private static String brainOptionOf(ArrayNode options) {
+        for (JsonNode option : options) {
+            if (PRINCIPAL_BRAIN.equals(option.path("id").asText())) {
+                return option.toString();
+            }
+        }
+        return "";
+    }
+
     /**
-     * Tells the host the options when they differ from what it was last told: a brain picked by the person opens its session in the turn
-     * that follows, and only then are its models and the one it is on known (2026-11-16: the row kept the previous brain's models).
+     * Tells the host the options when the principal's brain row differs from what it was last told: a brain picked by the person opens its
+     * session in the turn that follows, and only then are its models and the one it is on known (2026-11-16: the row kept the previous
+     * brain's models). Only that row is compared, so a turn changes nothing else the host shows, the autonomy switch least of all.
      */
     private void tellOptionsIfChanged(PrincipalSession session) {
-        if (!configOptions(session).toString().equals(optionsTold.get(session.id()))) {
+        if (!brainOptionOf(configOptions(session)).equals(brainRowTold.get(session.id()))) {
             update(session.id(), configOptionUpdate(session));
         }
     }
