@@ -83,12 +83,29 @@ public final class AgentRecorder {
     public record Turn(List<String> his, List<String> agent, List<String> tools) {
     }
 
+    /** How long a turn waits for the lane to take it before the prompt is answered without it, in milliseconds. */
+    static final long WAITS_MILLIS = 5_000;
+
     private final ToolCalls tools;
     private final Depth depth;
+    private final long waitMillis;
+    /** The one thread that writes turns to the lane, so they land in the order they were recorded whether or not a turn waited for its write. */
+    private final java.util.concurrent.ThreadPoolExecutor writer = new java.util.concurrent.ThreadPoolExecutor(1, 1, 30, java.util.concurrent.TimeUnit.SECONDS,
+        new java.util.concurrent.LinkedBlockingQueue<>(), task -> {
+            Thread thread = new Thread(task, "jawata-agent-recorder");
+            thread.setDaemon(true);
+            return thread;
+        });
 
     public AgentRecorder(ToolCalls tools, Depth depth) {
+        this(tools, depth, WAITS_MILLIS);
+    }
+
+    AgentRecorder(ToolCalls tools, Depth depth, long waitMillis) {
         this.tools = tools;
         this.depth = depth;
+        this.waitMillis = waitMillis;
+        this.writer.allowCoreThreadTimeOut(true);
     }
 
     /** A recorder that records nothing and lists nothing, for a connection built without an engine behind it. */
@@ -107,7 +124,9 @@ public final class AgentRecorder {
 
     /**
      * Writes one turn. A turn the lane refuses or cannot take is logged and the conversation goes on: recording is never a reason
-     * for the person's prompt to fail.
+     * for the person's prompt to fail, and it is not a reason for it to wait either (28h S19-1): the write is made by the recorder's own
+     * thread and this call waits for it only up to a bound, then returns and leaves the write to land when the lane takes it. A lane that is
+     * ready has taken the turn when this returns, so a history read at once sees it.
      */
     public void record(Level level, PrincipalSession session, String turnKey, String his, String agent, List<String> toolLines) {
         if (!records(level) || tools == null) {
@@ -122,13 +141,28 @@ public final class AgentRecorder {
         args.put("his", his);
         args.put("agent", agent);
         toolLines.forEach(args.putArray("tools")::add);
+        CallerIdentity identity = session.identity();
+        java.util.concurrent.Future<?> written = writer.submit(() -> write(session.id(), args, identity));
         try {
-            ToolResponse response = tools.callTool("experience", args, session.identity());
+            written.get(waitMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException slow) {
+            log.warn("the transcript lane has not taken a turn of session {} within {} ms: the prompt is answered without waiting for it", session.id(), waitMillis);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+        } catch (java.util.concurrent.ExecutionException failed) {
+            log.warn("a turn of session {} could not be recorded", session.id(), failed.getCause());
+        }
+    }
+
+    /** The write itself, on the recorder's thread. */
+    private void write(String sessionId, ObjectNode args, CallerIdentity identity) {
+        try {
+            ToolResponse response = tools.callTool("experience", args, identity);
             if (response == null || !response.isSuccess()) {
-                log.warn("the transcript lane did not take a turn of session {}: {}", session.id(), response == null ? "no answer" : response.getError());
+                log.warn("the transcript lane did not take a turn of session {}: {}", sessionId, response == null ? "no answer" : response.getError());
             }
         } catch (Exception e) {
-            log.warn("a turn of session {} could not be recorded", session.id(), e);
+            log.warn("a turn of session {} could not be recorded", sessionId, e);
         }
     }
 
