@@ -395,9 +395,14 @@ public class HireTool extends NeutralTool {
 
     ToolResponse runAndKeep(JsonNode arguments, HireCall call) {
         ToolResponse response = hire(call);
+        java.util.Optional<HireRegistry.Ended> ended = HireRegistry.shared().takeEnded();
         // Every exit of the hire, a refusal included, is kept for the agent face, which cannot rely on a brain echoing the answer back.
         JsonNode outcome = response.isSuccess() ? JSON.valueToTree(response.getData())
             : JSON.createObjectNode().put("cleanExit", false).put("error", response.getError().getMessage());
+        // A hire that opened its plan and then failed or was stopped is announced under that plan and name, or no card and no lead can tell it ended.
+        if (!response.isSuccess() && outcome instanceof com.fasterxml.jackson.databind.node.ObjectNode failed) {
+            ended.ifPresent(end -> failed.put("plan", end.planId()).put("name", end.name()));
+        }
         HireRegistry.shared().record(arguments.path("seat").asText(""), arguments.path("brief").asText(""), outcome);
         return response;
     }

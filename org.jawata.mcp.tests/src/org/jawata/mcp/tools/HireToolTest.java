@@ -2385,6 +2385,44 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h S19-2: a hire the person stops is announced as finished under its own plan id and name, so its card ends and its lead is told (it was announced with no plan, which nothing could match)")
+    void aStoppedHireIsAnnouncedAsFinishedUnderItsOwnPlan() throws Exception {
+        org.jawata.mcp.execution.HireRegistry registry = org.jawata.mcp.execution.HireRegistry.shared();
+        String brief = "S19-2 a hire the person stops";
+        Path started = dir.resolve("brain-started-s19-2");
+        List<org.jawata.mcp.execution.HireRegistry.Event> told = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Runnable unsubscribe = registry.subscribe(told::add);
+        try {
+            HireTool background = plainToolWithSettings(new StandsIn(host, aBrainThatBlocks(started)), Map.of());
+            Map<String, Object> opened = dataOf(background.execute(hireWithBrief(seatFile(CATALOGUER_SEAT), brief)));
+            for (int i = 0; i < 200 && !Files.exists(started); i++) {
+                Thread.sleep(50);
+            }
+            assertTrue(Files.exists(started), "the brain never started");
+            String plan = String.valueOf(opened.get("hireId"));
+
+            // what the chat's Stop on a hire's card asks the engine for
+            registry.stopTree(plan);
+
+            org.jawata.mcp.execution.HireRegistry.Event ended = null;
+            for (int i = 0; i < 200 && ended == null; i++) {
+                ended = told.stream().filter(event -> "finished".equals(event.kind()) && plan.equals(event.planId())).findFirst().orElse(null);
+                if (ended == null) {
+                    Thread.sleep(100);
+                }
+            }
+            org.jawata.mcp.execution.HireRegistry.Event finished = ended;
+            assertAll(
+                () -> org.junit.jupiter.api.Assertions.assertNotNull(finished, "no finished event carries the stopped hire's plan id; the events told: " + told),
+                () -> assertEquals(opened.get("name"), finished == null ? null : finished.name(), "the finished event does not carry the hire's name"),
+                () -> assertTrue(finished != null && "false".equals(finished.answer().path("cleanExit").asText()), "the stopped hire did not end as not clean: " + (finished == null ? null : finished.answer())),
+                () -> assertTrue(finished != null && finished.answer().path("error").asText().contains("stopped"), "its answer does not say it was stopped: " + (finished == null ? null : finished.answer())));
+        } finally {
+            unsubscribe.run();
+        }
+    }
+
+    @Test
     @DisplayName("S9: a hire stopped from the Agent Control panel ends at once, its answer says the person stopped it, and it is no longer listed as running")
     void aHireStoppedFromThePanelEndsAtOnceAndSaysSo() throws Exception {
         org.jawata.mcp.execution.HireRegistry running = org.jawata.mcp.execution.HireRegistry.shared();

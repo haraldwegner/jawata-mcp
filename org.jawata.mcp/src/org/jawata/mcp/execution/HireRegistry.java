@@ -100,8 +100,26 @@ public final class HireRegistry {
                 running.remove(hire);
                 stopped.remove(hire.thread);
                 replacements.remove(hire.thread);
+                if (!hire.planId.isEmpty()) {
+                    endedOn.put(hire.thread, new Ended(hire.planId, hire.name));
+                }
             }
         }
+    }
+
+    /** Which hire ended last on a thread: its plan id and first name. */
+    public record Ended(String planId, String name) {
+    }
+
+    /**
+     * The hire that last ended on each thread, until the caller that ran it reads it. A hire that ends in an error, a stop included, has no answer
+     * to carry its plan id and name, so without this the end of it is announced under neither (28h S19-2: a stopped hire's card went on running).
+     */
+    private final java.util.Map<Thread, Ended> endedOn = new ConcurrentHashMap<>();
+
+    /** The plan id and name of the hire that last ended on the current thread, once; none when it ended before its plan opened or none ended. */
+    public Optional<Ended> takeEnded() {
+        return Optional.ofNullable(endedOn.remove(Thread.currentThread()));
     }
 
     /** The brain, and the model of it, a running hire is to continue on after its stop (D53 (i)). The model is empty for a brain that takes none. */
@@ -131,6 +149,7 @@ public final class HireRegistry {
         Running hire = new Running(seat, normal(brief), HireNames.shared().assign(rootOf(conversationKey)), conversationKey == null ? "" : conversationKey,
             Thread.currentThread());
         stopped.remove(hire.thread);
+        endedOn.remove(hire.thread); // an end nobody read belongs to an earlier hire of this thread
         hire.background = backgroundNext.remove(hire.thread);
         running.add(hire);
         return new Registration(hire);
