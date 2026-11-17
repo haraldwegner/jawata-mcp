@@ -280,18 +280,69 @@ class TurnBoundaryTest {
     }
 
     @Test
-    @DisplayName("a message the person types ends the grant, says so in the conversation, announces the new value and tells the brain")
-    void aTypedMessageEndsTheGrantVisibly() {
+    @DisplayName("D57 (m): an instruction the person types while the grant is on leaves it on, so 'Fix' runs on to the next checkpoint")
+    void aTypedInstructionLeavesTheGrantOn() {
+        // His words, 2026-11-17: "The button is not wired". Typing "Fix" after switching the button on switched it off again.
         Run run = new Run(new PlanLedger(), false, "ok");
         run.setAutonomy("on", Channel.HOST);
+        run.said.clear();
 
-        run.prompt("stop that");
+        run.prompt("Fix");
 
-        assertTrue(run.answer().contains("Autonomy ended"), run.answer());
+        assertFalse(run.answer().contains("Autonomy ended"), "a typed instruction ended the grant: " + run.answer());
+        assertTrue(run.said.stream().noneMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())
+            && "off".equals(m.path("params").path("update").path("configOptions").get(0).path("currentValue").asText())),
+            "a typed instruction switched the button off");
+        assertFalse(run.brainSaw.get(0).startsWith("[jawata] autonomy: off"), "the brain was told the grant ended: " + run.brainSaw.get(0));
+    }
+
+    @Test
+    @DisplayName("D57 (m): the brain is told of every change of the grant, by the button and by a typed command, so the hook inside it obeys the same switch")
+    void theBrainIsToldOfEveryChangeOfTheGrant() {
+        List<Boolean> told = new ArrayList<>();
+        List<JsonNode> said = new ArrayList<>();
+        AgentBrain brain = new AgentBrain() {
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks) {
+                chunks.accept("ok");
+            }
+
+            @Override
+            public void autonomyChanged(boolean on) {
+                told.add(on);
+            }
+        };
+        AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null);
+        server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+        String session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
+
+        server.receive(JsonRpcMessage.request(2, "session/set_config_option",
+            JSON.createObjectNode().put("sessionId", session).put("configId", "autonomy").put("value", "on")), Channel.HOST);
+        ObjectNode off = JSON.createObjectNode().put("sessionId", session);
+        off.putArray("prompt").addObject().put("type", "text").put("text", "/autocontinue-off");
+        server.receive(JsonRpcMessage.request(3, "session/prompt", off), Channel.HOST);
+
+        assertEquals(List.of(true, false), told, "the brain was not told of the button's switch and the typed /autocontinue-off");
+    }
+
+    @Test
+    @DisplayName("D57 (m): a typed /autocontinue switches the grant on and /autocontinue-off switches it off, exactly as the button does, and both are shown")
+    void aTypedAutocontinueSwitchesTheGrantLikeTheButton() {
+        Run run = new Run(new PlanLedger(), false, "ok");
+
+        run.prompt("/autocontinue");
         assertTrue(run.said.stream().anyMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())
-            && "off".equals(m.path("params").path("update").path("configOptions").get(0).path("currentValue").asText())));
-        assertTrue(run.brainSaw.get(0).startsWith("[jawata] autonomy: off"), "the brain was not told the state changed: " + run.brainSaw.get(0));
-        assertFalse(run.answer().contains("free check"));
+            && "on".equals(m.path("params").path("update").path("configOptions").get(0).path("currentValue").asText())),
+            "a typed /autocontinue did not switch the button on: " + run.said);
+        assertTrue(run.brainSaw.get(0).startsWith("[jawata] autonomy: on"), "the brain was not told the grant began: " + run.brainSaw.get(0));
+
+        run.said.clear();
+        run.prompt("/autocontinue-off");
+        assertTrue(run.said.stream().anyMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())
+            && "off".equals(m.path("params").path("update").path("configOptions").get(0).path("currentValue").asText())),
+            "a typed /autocontinue-off did not switch the button off: " + run.said);
+        assertTrue(run.brainSaw.get(run.brainSaw.size() - 1).startsWith("[jawata] autonomy: off"),
+            "the brain was not told the grant ended: " + run.brainSaw);
     }
 
     @Test
@@ -309,8 +360,8 @@ class TurnBoundaryTest {
             "a hired agent's prompt changed the switch");
         assertEquals(4, run.brainSaw.size(), "the grant stood, so the brain was resumed three times: " + run.brainSaw);
 
-        run.prompt("now the person types");
-        assertTrue(run.answer().contains("Autonomy ended"), "CONTROL: the person's own prompt must still end the grant: " + run.answer());
+        run.prompt("/autocontinue-off");
+        assertTrue(run.answer().contains("Autonomy ended"), "CONTROL: the person's own /autocontinue-off must still end the grant: " + run.answer());
     }
 
     @Test

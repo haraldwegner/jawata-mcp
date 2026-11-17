@@ -132,15 +132,36 @@ public final class AgentRecorder {
         }
     }
 
-    /** The sessions the lane holds, most recently active first; empty when none is held or the lane cannot be read. */
+    /**
+     * The conversations this agent face opened, most recently active first; empty when none is held or the lane cannot be read (28h D57 (a)).
+     * The lane holds every session any client wrote, among them the hook's captures of a hired brain's or an observer's own conversation; only
+     * the ones written under this face's own client name, which is set when the turn is written and never read from what was said, are the
+     * person's conversations with the chat. Others may be newer, so the read widens, doubling, until enough are found, the lane has no more
+     * rows, or {@value #MOST_ROWS_READ} rows have been read.
+     */
     public List<SessionInfo> sessions(int limit) {
-        JsonNode data = ask(recall().put("sessions", limit));
-        List<SessionInfo> found = new ArrayList<>();
-        for (JsonNode row : data.path("sessions")) {
-            found.add(new SessionInfo(row.path("sessionId").asText(), row.path("title").asText(""), row.path("updatedAt").asText("")));
+        int asked = Math.max(limit, Math.min(limit * OTHERS_PER_LISTED, MOST_ROWS_READ));
+        while (true) {
+            JsonNode rows = ask(recall().put("sessions", asked)).path("sessions");
+            List<SessionInfo> found = new ArrayList<>();
+            for (JsonNode row : rows) {
+                if (found.size() == limit) {
+                    break;
+                }
+                if (CLIENT.equals(row.path("client").asText(""))) {
+                    found.add(new SessionInfo(row.path("sessionId").asText(), row.path("title").asText(""), row.path("updatedAt").asText("")));
+                }
+            }
+            if (found.size() == limit || rows.size() < asked || asked >= MOST_ROWS_READ) {
+                return found;
+            }
+            asked = Math.min(asked * 2, MOST_ROWS_READ);
         }
-        return found;
     }
+
+    /** How many rows of other clients are read for each conversation listed, and the most rows one listing reads. */
+    private static final int OTHERS_PER_LISTED = 10;
+    private static final int MOST_ROWS_READ = 2000;
 
     /** Every turn of a session in order, in full; empty when the lane holds none. */
     public List<Turn> turns(String sessionId) {

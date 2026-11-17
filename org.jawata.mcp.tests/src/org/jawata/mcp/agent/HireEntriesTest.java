@@ -79,6 +79,21 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("28h D57 (i): a hire call the engine refused (no plan opened) ends its card, so Agent Control shows no hire that did not run; a running hire's card stays")
+    void aRefusedHireCallLeavesNoWorkingCard() {
+        watch.observe(withInput(hireCall("tool_call", "r1", "pending"), "main", "pm", "plan it"));
+        HireEntry refused = watch.observe(answered(hireCall("tool_call_update", "r1", "completed"),
+            "{\"success\":false,\"error\":{\"code\":\"ACCESS_DENIED\",\"message\":\"the working directory is outside the workspace\"}}")).orElseThrow();
+        watch.observe(withInput(hireCall("tool_call", "r2", "pending"), "main", "pm", "plan it"));
+        HireEntry running = watch.observe(answered(hireCall("tool_call_update", "r2", "completed"),
+            "{\"success\":true,\"data\":{\"hireId\":\"plan-1\",\"name\":\"Rafael\",\"state\":\"running\",\"hirer\":\"main\",\"hired\":\"pm\"}}")).orElseThrow();
+
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertEquals(HireEntry.FAILED, refused.state(), "a refused hire call stays a running card: " + refused),
+            () -> assertEquals(HireEntry.RUNNING, running.state(), "THE CONTROL: a hire that opened its plan runs until the engine says it ended"));
+    }
+
+    @Test
     @DisplayName("the entry carries the slash command the hire's seat file names, on the entry and on the wire, and nothing when the file names none")
     void theSeatCommandIsReadFromTheSeatFile(@TempDir java.nio.file.Path dir) throws Exception {
         java.nio.file.Path named = Files.writeString(dir.resolve("named.md"), "---\nname: architect\ncommand: refactor\n---\n\nbody\n");
@@ -290,7 +305,7 @@ class HireEntriesTest {
 
         try (org.jawata.mcp.execution.HireRegistry.Registration running =
                  org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "build the stage", "")) {
-            org.jawata.mcp.execution.HireRegistry.shared().noteToolStep();
+            org.jawata.mcp.execution.HireRegistry.shared().noteToolCall("");
             org.jawata.mcp.execution.HireRegistry.shared().noteUsage(java.util.OptionalLong.of(4_000), java.util.OptionalDouble.of(0.25));
             HireEntry working = watch.entry("t1").orElseThrow();
 
@@ -309,6 +324,23 @@ class HireEntriesTest {
         assertEquals(7, done.toolSteps(), "the answer's own count did not replace the running figure");
         assertEquals(0.5, done.costUsd().getAsDouble());
         assertTrue(done.contextTokens().isEmpty(), "a finished hire kept a context size from while it ran");
+    }
+
+    @Test
+    @DisplayName("28h D57 (i): a running hire's transcript shows the calls its brain has made so far, by their titles, after its brief")
+    void aRunningHiresTranscriptShowsItsCallsSoFar() {
+        watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "developer", "build the stage"));
+        try (org.jawata.mcp.execution.HireRegistry.Registration running =
+                 org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "build the stage", "")) {
+            org.jawata.mcp.execution.HireRegistry.shared().noteToolCall("Read Foo.java");
+            org.jawata.mcp.execution.HireRegistry.shared().noteToolCall("Edit Foo.java");
+
+            List<HireWatch.Said> turns = watch.transcript("t1").orElseThrow();
+
+            assertEquals(List.of("user", "tool", "tool"), turns.stream().map(HireWatch.Said::role).toList(), turns.toString());
+            assertEquals(List.of("Read Foo.java", "Edit Foo.java"), turns.subList(1, 3).stream().map(HireWatch.Said::text).toList());
+            assertEquals(2, watch.entry("t1").orElseThrow().toolSteps(), "each call is still counted");
+        }
     }
 
     @Test

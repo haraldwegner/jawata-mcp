@@ -105,21 +105,13 @@ class BrainRosterTest {
     }
 
     @Test
-    void aSignedInClaudeSaysSoAndNamesItsModels() throws IOException {
+    void aSignedInClaudeSaysSoAndNamesNoModelsOfItsOwn() throws IOException {
         program("claude", "case \"$1\" in --version) echo 2.1.0;; auth) echo '{\"loggedIn\": true}';; --help) cat <<'EOF'\n" + CLAUDE_HELP + "EOF\n;; esac");
         BrainRoster.Status claude = status("claude-code");
         assertTrue(claude.installed());
         assertEquals(Optional.of("2.1.0"), claude.version());
         assertEquals(BrainRoster.Login.LOGGED_IN, claude.login());
-        assertEquals(Optional.of(List.of("fable", "opus", "sonnet", "claude-fable-5")), claude.models());
-    }
-
-    @Test
-    void aModelNamedTwiceIsListedOnceAndAHelpNamingNoneGivesNoList() throws IOException {
-        program("claude", "case \"$1\" in --version) echo 2;; auth) echo '{\"loggedIn\": true}';; --help) echo \"  --model <model>  'opus' or 'opus' again\";; esac");
-        assertEquals(Optional.of(List.of("opus")), status("claude-code").models());
-        program("claude", "case \"$1\" in --version) echo 2;; auth) echo '{\"loggedIn\": true}';; --help) echo 'no such option here';; esac");
-        assertEquals(Optional.empty(), status("claude-code").models());
+        assertEquals(Optional.empty(), claude.models(), "28h D57 (c): the names in --help are not its models; its ACP session's catalogue is");
     }
 
     @Test

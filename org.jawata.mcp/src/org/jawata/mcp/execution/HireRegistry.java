@@ -25,7 +25,11 @@ public final class HireRegistry {
      * What a running hire's brain has reported so far, read off its stream as it arrives (S9, E3): the tool calls it has made, the size of
      * its context at its last usage report, and the cost it last reported. A figure the brain has not sent is absent, never zero.
      */
-    public record Progress(int toolSteps, OptionalLong contextTokens, OptionalDouble costUsd) {
+    public record Progress(int toolSteps, OptionalLong contextTokens, OptionalDouble costUsd, List<String> calls) {
+
+        public Progress(int toolSteps, OptionalLong contextTokens, OptionalDouble costUsd) {
+            this(toolSteps, contextTokens, costUsd, List.of());
+        }
     }
 
     private static final class Running {
@@ -149,12 +153,19 @@ public final class HireRegistry {
         }
     }
 
-    /** Counts one more tool call for the hire running on the current thread; a thread running no hire is ignored. */
-    public void noteToolStep() {
+    /**
+     * Counts one more tool call for the hire running on the current thread and keeps its title, so Agent Control can show the calls of a hire
+     * that still runs (28h D57 (i)); a thread running no hire is ignored.
+     *
+     * @param title the call's title as the brain streamed it; a blank one is counted and not kept
+     */
+    public void noteToolCall(String title) {
         for (Running hire : running) {
             if (hire.thread == Thread.currentThread()) {
                 Progress seen = hire.progress;
-                hire.progress = new Progress(seen.toolSteps() + 1, seen.contextTokens(), seen.costUsd());
+                List<String> calls = title == null || title.isBlank() ? seen.calls()
+                    : java.util.stream.Stream.concat(seen.calls().stream(), java.util.stream.Stream.of(title)).toList();
+                hire.progress = new Progress(seen.toolSteps() + 1, seen.contextTokens(), seen.costUsd(), calls);
             }
         }
     }
@@ -168,7 +179,7 @@ public final class HireRegistry {
             if (hire.thread == Thread.currentThread()) {
                 Progress seen = hire.progress;
                 hire.progress = new Progress(seen.toolSteps(), contextTokens.isPresent() ? contextTokens : seen.contextTokens(),
-                    costUsd.isPresent() ? costUsd : seen.costUsd());
+                    costUsd.isPresent() ? costUsd : seen.costUsd(), seen.calls());
             }
         }
     }
@@ -319,6 +330,39 @@ public final class HireRegistry {
             issuedBy.put(callerKey, sessionId);
             speakingKeys.add(callerKey);
         }
+    }
+
+    /**
+     * Records that the hire with this plan id was started by the brain of this chat session, because the chat saw its own brain's hire call
+     * come back with that plan id (D57 (l)). {@link #speaksFor} learns a chat's brain from the key the brain presents on its tool calls; a brain
+     * whose calls reached the engine under another caller id left its hires traced to a caller no chat had registered, so neither their
+     * reports nor the end of their cards reached the chat (seen live 2026-11-16, three hires in a row). Learning it from the call itself does
+     * not depend on any header.
+     *
+     * @param planId    the plan id the brain's hire call answered with
+     * @param sessionId the chat session whose brain made the call
+     * @return the hire's finished event, addressed to this chat, when the hire had already ended and its report was held for the caller the
+     *         engine saw: the chat takes it now, since nothing else will
+     */
+    public Optional<Event> startedFrom(String planId, String sessionId) {
+        if (planId == null || planId.isEmpty() || sessionId == null || sessionId.isEmpty()) {
+            return Optional.empty();
+        }
+        String before = issuedBy.put(planId, sessionId);
+        if (before == null || before.equals(sessionId)) {
+            return Optional.empty();
+        }
+        List<Event> held = waiting.get(rootOf(before));
+        if (held == null) {
+            return Optional.empty();
+        }
+        for (Event kept : held) {
+            if (kept.planId().equals(planId) && held.remove(kept)) {
+                return Optional.of(new Event(kept.kind(), kept.planId(), kept.name(), kept.seat(), kept.brief(), sessionId, kept.answer(),
+                    kept.background()));
+            }
+        }
+        return Optional.empty();
     }
 
     /** Whether this caller is a principal brain's own key, so a hire it issued has no lead above it but the chat. */
@@ -607,6 +651,17 @@ public final class HireRegistry {
     /** The answer of the latest hire of this seat for this brief, or none when this engine ran no such hire. */
     public synchronized Optional<com.fasterxml.jackson.databind.JsonNode> answerOf(String seat, String brief) {
         return Optional.ofNullable(finished.get(seat + "\u0000" + normal(brief)));
+    }
+
+    /**
+     * The kept answer of the hire whose plan this is (28h D57 (j)): what the commit tool reads the files a step produced from. None when this
+     * engine kept no answer for that plan, which is also the answer for a plan older than the {@value #KEPT} kept.
+     */
+    public synchronized Optional<com.fasterxml.jackson.databind.JsonNode> answerOfPlan(String planId) {
+        if (planId == null || planId.isBlank()) {
+            return Optional.empty();
+        }
+        return finished.values().stream().filter(answer -> planId.equals(answer.path("plan").asText(""))).reduce((first, later) -> later);
     }
 
     private static String normal(String brief) {

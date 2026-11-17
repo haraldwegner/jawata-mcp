@@ -269,6 +269,12 @@ final class Bridge {
     private final PrintStream out;
     private final PrintStream err;
     private volatile boolean closing;
+    /** The event stream stopped waiting for an engine that did not answer; the next message the engine accepts opens it again. */
+    private volatile boolean eventsGaveUp;
+
+    /** How long a refused event stream is tried again: longer than an engine takes from listening to answering, short of a person's patience. */
+    private static final long EVENTS_WAIT_MILLIS = 30_000;
+    private static final long EVENTS_RETRY_MILLIS = 200;
 
     Bridge(String flag, String route, Framing framing, String base, String key, PrintStream out, PrintStream err) {
         this.flag = flag;
@@ -319,10 +325,22 @@ final class Bridge {
         events.start();
         MessageReader messages = framing.reader(in);
         for (String message = messages.next(); message != null; message = messages.next()) {
-            int status = send("POST", route, HttpRequest.BodyPublishers.ofString(message));
+            int status;
+            try {
+                status = send("POST", route, HttpRequest.BodyPublishers.ofString(message));
+            } catch (java.net.ConnectException unreachable) {
+                return unreachable(message);
+            }
             if (status != 202) {
                 err.println("jawata " + flag + ": the resident answered " + status + " to a message" + (status == 401 ? " (the key was refused)" : ""));
                 return REFUSED;
+            }
+            if (eventsGaveUp) {
+                // the engine answers now, after the event stream stopped waiting for it: its answers need a stream again (28h C26)
+                eventsGaveUp = false;
+                events = new Thread(this::stream, flag.substring(2) + "-events");
+                events.setDaemon(true);
+                events.start();
             }
         }
         closing = true;
@@ -333,6 +351,23 @@ final class Bridge {
             Thread.currentThread().interrupt();
         }
         return 0;
+    }
+
+    /**
+     * The engine does not answer at the bridge's address (28h D57 (e)): a host request in {@code message} is answered with an error that says
+     * so in one sentence and what to do, since that answer is what the person reads, and the bridge ends refusing. Measured before: a stack
+     * trace on the error stream and no answer at all, so the chat could not say why it was not connected. Over DAP, which is not JSON-RPC, only
+     * the error stream is told.
+     */
+    private int unreachable(String message) {
+        String why = "The jawata engine at " + base + " does not answer; start the jawata studio, which starts it, then connect again.";
+        java.util.regex.Matcher id = java.util.regex.Pattern.compile("\"id\"\\s*:\\s*(\"(?:[^\"\\\\]|\\\\.)*\"|-?\\d+)").matcher(message);
+        if (framing != DAP && message.contains("\"method\"") && id.find()) {
+            framing.write(out, "{\"jsonrpc\":\"2.0\",\"id\":" + id.group(1) + ",\"error\":{\"code\":-32000,\"message\":\"" + why + "\"}}");
+            out.flush();
+        }
+        err.println("jawata " + flag + ": " + why);
+        return REFUSED;
     }
 
     private int send(String method, String path, HttpRequest.BodyPublisher body) throws IOException {
@@ -347,8 +382,7 @@ final class Bridge {
 
     private void stream() {
         try {
-            HttpResponse<java.util.stream.Stream<String>> response = http.send(request(route + "/events").GET().build(),
-                HttpResponse.BodyHandlers.ofLines());
+            HttpResponse<java.util.stream.Stream<String>> response = connectEvents();
             if (response.statusCode() != 200) {
                 err.println("jawata " + flag + ": the resident answered " + response.statusCode() + " to the event stream"
                     + (response.statusCode() == 401 ? " (the key was refused)" : ""));
@@ -359,6 +393,12 @@ final class Bridge {
                     framing.write(out, line.substring("data: ".length()));
                 }
             });
+        } catch (java.net.ConnectException unreachable) {
+            // nothing listened at the address for the whole wait: the request the host sent is answered with why, by pipe(), which then ends
+            // the bridge (28h D57 (e)); a host that sent nothing meanwhile is told the same way at its first message, or, if the engine
+            // answers by then, pipe() opens the stream again
+            eventsGaveUp = true;
+            return;
         } catch (IOException | UncheckedIOException e) {
             err.println("jawata " + flag + ": the event stream ended: " + e.getMessage());
         } catch (InterruptedException e) {
@@ -369,6 +409,26 @@ final class Bridge {
             err.println("jawata " + flag + ": the resident closed the event stream; ending so the host sees it");
             err.flush();
             Runtime.getRuntime().halt(STREAM_ENDED);
+        }
+    }
+
+    /**
+     * Opens the event stream, trying again while nothing listens at the address, for at most {@link #EVENTS_WAIT_MILLIS} (the architect's watch of
+     * 28h C26): the engine may finish starting between this connect and the first message, which then goes through, and a bridge whose event
+     * stream gave up at once would carry messages to an engine whose answers reach no one, the host waiting with nothing said. While the engine
+     * still does not answer, the first message is refused too and {@link #unreachable(String)} tells the host why, so the wait adds no delay there.
+     */
+    private HttpResponse<java.util.stream.Stream<String>> connectEvents() throws IOException, InterruptedException {
+        long until = System.currentTimeMillis() + EVENTS_WAIT_MILLIS;
+        while (true) {
+            try {
+                return http.send(request(route + "/events").GET().build(), HttpResponse.BodyHandlers.ofLines());
+            } catch (java.net.ConnectException refused) {
+                if (System.currentTimeMillis() >= until) {
+                    throw refused;
+                }
+                Thread.sleep(EVENTS_RETRY_MILLIS);
+            }
         }
     }
 

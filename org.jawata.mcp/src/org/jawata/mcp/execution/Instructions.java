@@ -43,6 +43,14 @@ public final class Instructions {
     /** The argument every tool accepts and none reads as part of its work; ignored when comparing. */
     private static final String META_ARGUMENT = "precedentOverride";
 
+    /**
+     * 28h D57 (d): the defaults a brain's own editor spells out in its call when the instruction left them out, by tool. Measured
+     * 2026-11-17: a Claude developer's Edit through ACP carried {@code "replace_all": false} beside the three arguments it was told.
+     * A default the instruction did not name changes nothing it asked for; the same argument with another value does.
+     */
+    private static final Map<String, Map<String, JsonNode>> EDITOR_DEFAULTS = Map.of(
+        "Edit", Map.of("replace_all", com.fasterxml.jackson.databind.node.BooleanNode.FALSE));
+
     private Instructions() {
     }
 
@@ -232,7 +240,8 @@ public final class Instructions {
             for (int i = 0; i < made.size(); i++) {
                 if (instruction.tool().equals(made.get(i).bareName())) {
                     sameTool.add(i);
-                    if (equalArguments(instruction.arguments(), made.get(i).arguments())) {
+                    if (equalArguments(instruction.arguments(), withoutSpelledOutDefaults(instruction, made.get(i).arguments()))
+                            || sameEditAsItsDiff(instruction, made.get(i).arguments())) {
                         exact.add(i);
                     }
                 }
@@ -263,6 +272,45 @@ public final class Instructions {
             }
         }
         return new Score(issued.size(), ran, List.copyOf(notAsWritten), List.copyOf(extra));
+    }
+
+    /**
+     * 28h D57 (d): whether an editor's call known only by its diff (as Cursor's agent reports an edit over ACP: the file, its text before
+     * and after) made exactly the one replacement an {@code Edit} instruction wrote: the same file, the old text found once before, and the
+     * text after is the text before with that one occurrence replaced.
+     */
+    private static boolean sameEditAsItsDiff(Instruction instruction, JsonNode made) {
+        if (!"Edit".equals(instruction.tool()) || made == null || !made.hasNonNull("oldText") || !made.hasNonNull("newText")) {
+            return false;
+        }
+        JsonNode written = instruction.arguments();
+        String oldString = written.path("old_string").asText(null);
+        String newString = written.path("new_string").asText(null);
+        if (oldString == null || oldString.isEmpty() || newString == null || written.path("replace_all").asBoolean(false)
+                || !written.path("file_path").asText("").equals(made.path("file_path").asText())) {
+            return false;
+        }
+        String before = made.get("oldText").asText();
+        int at = before.indexOf(oldString);
+        if (at < 0 || before.indexOf(oldString, at + 1) >= 0) {
+            return false;
+        }
+        return made.get("newText").asText().equals(before.substring(0, at) + newString + before.substring(at + oldString.length()));
+    }
+
+    /** The call's arguments less every default of {@link #EDITOR_DEFAULTS} it spells out that the instruction did not name. */
+    private static JsonNode withoutSpelledOutDefaults(Instruction instruction, JsonNode made) {
+        Map<String, JsonNode> defaults = EDITOR_DEFAULTS.getOrDefault(instruction.tool(), Map.of());
+        if (defaults.isEmpty() || made == null || !made.isObject()) {
+            return made;
+        }
+        ObjectNode copy = ((ObjectNode) made).deepCopy();
+        defaults.forEach((name, value) -> {
+            if (!instruction.arguments().has(name) && value.equals(copy.get(name))) {
+                copy.remove(name);
+            }
+        });
+        return copy;
     }
 
     private static boolean equalArguments(JsonNode written, JsonNode made) {

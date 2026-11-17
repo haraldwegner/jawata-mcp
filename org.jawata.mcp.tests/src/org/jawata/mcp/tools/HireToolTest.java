@@ -1582,6 +1582,76 @@ class HireToolTest {
         assertTrue(((List<?>) observed.get("corrections")).isEmpty(), String.valueOf(observed));
     }
 
+    /**
+     * A worker hired with the INSTRUCTION block in its own brief, the way a chief engineer hands one over, and with neither
+     * {@code instructionsFrom} nor {@code observerSeatFile} passed; the observer seat file lies beside the worker's, as in a seats folder.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> workerBriefedWith(String seatName, String workerCallArguments, String observerSeat) throws Exception {
+        if (observerSeat != null) {
+            Files.writeString(dir.resolve("observer.md"), observerSeat);
+        }
+        HireTool hire = toolWith(new StandsIn(host, aWorkerThenAnObserverWhoHalts(workerCallArguments).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), seatName);
+        args.put("brief", PM_ANSWER);
+        return dataOf(hire.execute(args));
+    }
+
+    @Test
+    @DisplayName("D57 (d): a worker whose brief carries an instruction is scored against it and its deviating step corrected by the observer seat beside it, without the hirer naming either")
+    @SuppressWarnings("unchecked")
+    void aBriefedWorkerIsScoredAndObservedWithoutTheHirerAsking() throws Exception {
+        Map<String, Object> worker = workerBriefedWith("developer", "{\"symbol\":\"a.B#c\",\"newName\":\"SOMETHING ELSE\"}", CATALOGUER_SEAT);
+
+        Map<String, Object> score = (Map<String, Object>) worker.get("instructionScore");
+        org.junit.jupiter.api.Assertions.assertNotNull(score, "the engine did not score the worker against the instruction in its brief: " + worker.keySet());
+        Map<String, Object> observed = (Map<String, Object>) score.get("observer");
+        List<Map<String, Object>> corrections = (List<Map<String, Object>>) observed.get("corrections");
+        assertAll(
+            () -> assertEquals(Boolean.TRUE, score.get("computable"), String.valueOf(score)),
+            () -> assertEquals(0, score.get("ranAsWritten"), String.valueOf(score)),
+            () -> assertEquals(1, corrections.size(), "the engine did not hand the deviating step to the observer seat: " + observed),
+            () -> assertEquals(1, corrections.get(0).get("instruction"), "the correction does not carry the instruction's number"));
+    }
+
+    @Test
+    @DisplayName("D57 (d), the control: a briefed worker that ran its instruction as written is scored, and no observer is started")
+    @SuppressWarnings("unchecked")
+    void aBriefedWorkerThatRanAsWrittenStartsNoObserver() throws Exception {
+        Map<String, Object> worker = workerBriefedWith("developer", "{\"symbol\":\"a.B#c\",\"newName\":\"d\"}", CATALOGUER_SEAT);
+
+        Map<String, Object> score = (Map<String, Object>) worker.get("instructionScore");
+        org.junit.jupiter.api.Assertions.assertNotNull(score, "the engine did not score the worker: " + worker.keySet());
+        Map<String, Object> observed = (Map<String, Object>) score.get("observer");
+        assertAll(
+            () -> assertEquals(1, score.get("ranAsWritten"), String.valueOf(score)),
+            () -> assertTrue(((List<?>) observed.get("flagged")).isEmpty(), String.valueOf(observed)),
+            () -> assertTrue(((List<?>) observed.get("corrections")).isEmpty(), String.valueOf(observed)));
+    }
+
+    @Test
+    @DisplayName("D57 (d), the control: a seat that is not a worker is not scored, whatever its brief carries")
+    void aSeatThatIsNotAWorkerIsNotScored() throws Exception {
+        Map<String, Object> reviewer = workerBriefedWith("cataloguer", "{\"symbol\":\"a.B#c\",\"newName\":\"SOMETHING ELSE\"}", CATALOGUER_SEAT);
+
+        org.junit.jupiter.api.Assertions.assertFalse(reviewer.containsKey("instructionScore"), String.valueOf(reviewer.get("instructionScore")));
+    }
+
+    @Test
+    @DisplayName("D57 (d): with the observer seat switched off, a deviating step is listed as unjudged and no observer is hired")
+    @SuppressWarnings("unchecked")
+    void aSwitchedOffObserverLeavesTheStepUnjudged() throws Exception {
+        Map<String, Object> worker = workerBriefedWith("developer", "{\"symbol\":\"a.B#c\",\"newName\":\"SOMETHING ELSE\"}",
+            CATALOGUER_SEAT.replace("name: cataloguer", "name: observer\nenabled: false"));
+
+        Map<String, Object> observed = (Map<String, Object>) ((Map<String, Object>) worker.get("instructionScore")).get("observer");
+        assertAll(
+            () -> assertTrue(((List<?>) observed.get("corrections")).isEmpty(), "an observer switched off was hired: " + observed),
+            () -> assertEquals(1, ((List<?>) observed.get("unjudged")).size(), "the deviating step was dropped instead of listed as unjudged: " + observed));
+    }
+
     @Test
     @DisplayName("S10 (F7): the plan of the observer-judge hire belongs to the caller that issued the worker, so no other caller's turn waits on it")
     void aJudgesHirePlanBelongsToTheCallerThatIssuedTheWorker() throws Exception {

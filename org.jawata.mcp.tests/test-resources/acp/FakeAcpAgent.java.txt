@@ -30,6 +30,23 @@ public class FakeAcpAgent {
     static final String[] offeredModels = System.getenv().getOrDefault("FAKE_ACP_MODELS", "").isBlank() ? new String[0]
         : System.getenv("FAKE_ACP_MODELS").split(",");
     static String modelNow = offeredModels.length == 0 ? "" : offeredModels[0].split("=")[0];
+    /**
+     * With FAKE_ACP_MODES set to {@code id,id,...} the agent offers those session modes, as Cursor's agent offers agent, plan and ask, is on the first,
+     * and moves when told through session/set_mode. A prompt WHICHMODE answers the mode it is on; WITHHELD answers the tools the client asked it to
+     * withhold in the session's {@code _meta.claudeCode.options.disallowedTools}, as the Claude adapter reads them, or "none" (28h D57 (j)).
+     */
+    static final String[] offeredModes = System.getenv().getOrDefault("FAKE_ACP_MODES", "").isBlank() ? new String[0]
+        : System.getenv("FAKE_ACP_MODES").split(",");
+    static String modeNow = offeredModes.length == 0 ? "" : offeredModes[0];
+    static final Map<String, String> withheld = new HashMap<>();
+
+    static String modes() {
+        StringBuilder available = new StringBuilder();
+        for (String mode : offeredModes) {
+            available.append(available.length() == 0 ? "" : ",").append("{\"id\":\"").append(mode).append("\",\"name\":\"").append(mode).append("\"}");
+        }
+        return "{\"currentModeId\":\"" + modeNow + "\",\"availableModes\":[" + available + "]}";
+    }
 
     static String modelOption() {
         StringBuilder options = new StringBuilder();
@@ -68,8 +85,19 @@ public class FakeAcpAgent {
                     }
                     String session = "fake-" + (++counter) + "-" + Long.toHexString(System.nanoTime());
                     servers.put(session, between(line, "\"mcpServers\":"));
+                    withheld.put(session, between(line, "\"disallowedTools\":"));
                     reply(id, "{\"sessionId\":\"" + session + "\""
-                        + (offeredModels.length == 0 ? "" : ",\"configOptions\":[" + modelOption() + "]") + "}");
+                        + (offeredModels.length == 0 ? "" : ",\"configOptions\":[" + modelOption() + "]")
+                        + (offeredModes.length == 0 ? "" : ",\"modes\":" + modes()) + "}");
+                }
+                case "session/set_mode" -> {
+                    String wanted = field(line, "modeId");
+                    if (java.util.Arrays.asList(offeredModes).contains(wanted)) {
+                        modeNow = wanted;
+                        reply(id, "{}");
+                    } else {
+                        send("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":-32602,\"message\":\"no such mode\"}}");
+                    }
                 }
                 case "session/set_config_option" -> {
                     String wanted = field(line, "value");
@@ -84,8 +112,9 @@ public class FakeAcpAgent {
                 case "session/load" -> {
                     String session = field(line, "sessionId");
                     servers.put(session, between(line, "\"mcpServers\":"));
+                    withheld.put(session, between(line, "\"disallowedTools\":"));
                     chunk(session, "HISTORY of the earlier session");
-                    reply(id, "{}");
+                    reply(id, offeredModes.length == 0 ? "{}" : "{\"modes\":" + modes() + "}");
                 }
                 case "session/prompt" -> prompt(line, id, state);
                 default -> { }
@@ -128,6 +157,10 @@ public class FakeAcpAgent {
             chunk(session, Files.exists(memory) ? Files.readString(memory) : "nothing");
         } else if (text.contains("ASKTRANSCRIPT")) {
             chunk(session, text.contains("EARLIERWORD") ? "knows" : "does not know");
+        } else if (text.contains("WHICHMODE") && !text.contains("WHICHMODEL")) {
+            chunk(session, modeNow.isEmpty() ? "no modes" : modeNow);
+        } else if (text.contains("WITHHELD")) {
+            chunk(session, withheld.getOrDefault(session, "none"));
         } else if (text.contains("WHICHMODEL")) {
             chunk(session, modelNow);
         } else if (text.contains("WHICHFOLDER")) {
@@ -181,6 +214,35 @@ public class FakeAcpAgent {
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"c1\",\"title\":\"jawata: health_check\","
                 + "\"rawInput\":{\"providerIdentifier\":\"jawata\",\"toolName\":\"health_check\",\"args\":{}}}}}");
             chunk(session, "called");
+        } else if (text.startsWith("CLAUDECALL")) {
+            // As Claude's ACP adapter sends a call (recorded 2026-11-17, 28h D57 (d)): opened with an empty input, the input streamed in later
+            // updates, partial and then whole, then updates with no input at all as the call runs and completes.
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"e1\",\"title\":\"Edit\",\"kind\":\"edit\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"e1\",\"rawInput\":{\"file_path\":\"/p/notes.md\"}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"e1\",\"rawInput\":{\"file_path\":\"/p/notes.md\","
+                + "\"old_string\":\"colour: red\",\"new_string\":\"colour: blue\"}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"e1\",\"rawInput\":null}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"e1\",\"status\":\"completed\"}}}");
+            chunk(session, "edited");
+        } else if (text.startsWith("CURSOREDIT")) {
+            // As Cursor's agent sends an edit of its own (measured 2026-11-17, 28h D57 (d)): opened with no input, then only the path,
+            // and the replacement itself only as the diff of the completed call.
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"f1\",\"title\":\"Edit File\",\"kind\":\"edit\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"f1\",\"title\":\"Edit `/p/notes.md`\","
+                + "\"rawInput\":{\"path\":\"/p/notes.md\"},\"locations\":[{\"path\":\"/p/notes.md\"}]}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"f1\",\"status\":\"in_progress\"}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"f1\",\"status\":\"completed\",\"content\":[{\"type\":\"diff\","
+                + "\"path\":\"/p/notes.md\",\"oldText\":\"colour: red\\n\",\"newText\":\"colour: blue\\n\"}]}}}");
+            chunk(session, "edited");
         } else if (text.startsWith("THINK")) {
             // thinking in two chunks and a plan update, then the answer: the three kinds the contract's R9 and R10 rows carry
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session

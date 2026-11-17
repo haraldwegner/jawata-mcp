@@ -114,6 +114,35 @@ public final class AcpBrainSession {
     }
 
     /**
+     * Whether a brain keeps its own tools that write files or run commands (28h D57 (j)). Measured 2026-11-17 on this machine
+     * ({@code 28h-S22-evidence/s26-j-probe}): Claude's ACP adapter ran its shell and wrote a file without asking the client, and Cursor's agent
+     * asked before its shell but wrote a file without asking, even with the client's own file writing offered. So a permission answer alone
+     * bounds neither; what does is the Claude adapter's session option {@code disallowedTools} and Cursor's read-only "ask" mode.
+     */
+    public enum OwnTools {
+        /** The brain keeps its own editors and shell: a worker that changes code with them. */
+        KEPT,
+        /**
+         * They are withheld: the session is opened with them disallowed, a brain that offers a read-only mode is moved into it, and every
+         * permission request for an edit or a command is refused, whatever the allowlist says. The principal, which changes no code.
+         */
+        WITHHELD
+    }
+
+    /**
+     * The Claude adapter's own tools that write a file or run a command, withheld through its {@code disallowedTools} option; with them its
+     * helper agents ({@code Task}, {@code Agent}), which carry editors of their own (seen 2026-11-17: the principal, its editors withheld, tried to
+     * hand the edit to one).
+     */
+    static final List<String> OWN_WRITERS = List.of("Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "BashOutput", "KillShell", "Task", "Agent");
+
+    /** The session modes a brain names for working without edits or commands: Cursor's agent calls it "ask" (measured 2026-11-17). */
+    static final List<String> READ_ONLY_MODES = List.of("ask");
+
+    /** The kinds of tool call ACP gives an edit or a command; a permission request for one is refused when the brain's own tools are withheld. */
+    static final Set<String> WRITING_KINDS = Set.of("edit", "delete", "move", "execute");
+
+    /**
      * Runs one prompt.
      *
      * @param host         the process boundary
@@ -129,11 +158,14 @@ public final class AcpBrainSession {
      *                     host sees the brain's tool calls as they happen; null when nobody is listening
      * @param onThinking   called with each {@code agent_thought_chunk} (thinking) and {@code plan} (a plan update) the brain streams, the
      *                     moment it is read, so a host sees them as they happen; null when nobody is listening
+     * @param model        the model the seat names, by the value or the name its session offers; null or blank for the brain's own default
+     * @throws IOException when the brain cannot be started, or offers models and none is the one named
      */
     public static HiredBrain.Outcome run(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
-            List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate, Consumer<JsonNode> onThinking) throws IOException, InterruptedException {
-        Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings);
+            List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate, Consumer<JsonNode> onThinking, String model) throws IOException, InterruptedException {
+        Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings, OwnTools.KEPT);
         try {
+            onModel(conversation, model);
             conversation.turn(prompt, List.of(), ceilings, onText, onToolUpdate, onThinking);
         } finally {
             conversation.end();
@@ -142,20 +174,37 @@ public final class AcpBrainSession {
     }
 
     /**
+     * Moves a hire's session to the model its seat names (28h D57 (c)), before the brief is sent. Over ACP the model is a session option, not a
+     * command-line flag (Cursor's agent ignores {@code --model} in this mode), so without this every hire ran on the brain's own default. A brain
+     * that offers models but not this one refuses the hire, naming what it offers, so a hire never runs on another model than the one chosen; a
+     * session that names none (a resumed one) runs as it opened.
+     */
+    private static void onModel(Conversation conversation, String model) throws IOException {
+        if (model == null || model.isBlank() || conversation.models().isEmpty()) {
+            return;
+        }
+        if (!conversation.selectModel(model)) {
+            throw new IOException("The brain could not be moved to the model " + model + "; its session offers "
+                + conversation.models().stream().map(Model::name).toList() + ".");
+        }
+    }
+
+    /**
      * Runs the brain of a hired lead (Stage 24, M12): the first prompt as {@link #run} does, and then, while hires its brain started in the
      * background are still out, one more turn for each set of reports that comes, until nothing is out and nothing is waiting. The brain's
      * process stays alive between turns, so its context carries the reports. The wall-clock ceiling is armed for each turn and not across the
      * waits, and the tool-step ceiling is counted across the turns, so a lead that keeps going cannot spend without end. A wait is as long as the
      * longest a hire may run, and a lead whose hires never report is not waited for beyond it.
-     *
      * @param inbox  the reports of this lead's background hires, opened before the first turn so that none is missed
      * @param leadId the id this lead's hires are issued under, to say which of them are still out
+     * @param model  the model the seat names, as {@link #run} takes it
      */
     public static HiredBrain.Outcome runAsLead(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
             List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate,
-            Consumer<JsonNode> onThinking, HireRegistry.Inbox inbox, String leadId) throws IOException, InterruptedException {
-        Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings);
+            Consumer<JsonNode> onThinking, HireRegistry.Inbox inbox, String leadId, String model) throws IOException, InterruptedException {
+        Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings, OwnTools.KEPT);
         try {
+            onModel(conversation, model);
             conversation.turn(prompt, List.of(), ceilings, onText, onToolUpdate, onThinking);
             HiredBrain.Outcome last = conversation.outcome();
             int steps = last.toolSteps();
@@ -224,31 +273,38 @@ public final class AcpBrainSession {
         private OptionalDouble cost = OptionalDouble.empty();
         private String stoppedBy;
         private boolean answered;
+        /** Whether the brain keeps its own editors and shell for this conversation (28h D57 (j)). */
+        private final OwnTools ownTools;
 
-        private Conversation(Process child, Set<String> allowed, HiredBrain.Ceilings ceilings) {
+        private Conversation(Process child, Set<String> allowed, HiredBrain.Ceilings ceilings, OwnTools ownTools) {
+            this.ownTools = ownTools;
             this.child = child;
             this.stderrTail = new StringBuilder();
             this.drain = AcpBrainSession.drain(child, stderrTail);
-            this.wire = new Wire(child, allowed, ceilings);
+            this.wire = new Wire(child, allowed, ceilings, ownTools);
         }
 
-        /** Starts the brain and opens its session, with no ceiling running afterwards: the conversation waits for its first prompt. */
+        /**
+         * Starts the brain and opens its session, with no ceiling running afterwards: the conversation waits for its first prompt.
+         *
+         * @param ownTools whether the brain keeps its own editors and shell; the principal's are withheld (28h D57 (j))
+         */
         public static Conversation start(HostProcesses host, Program program, HireSite base, SelfEndpoint mcp, List<String> allowedTools,
-                Optional<String> resume, HiredBrain.Ceilings ceilings) throws IOException {
-            Conversation conversation = open(host, program, base, mcp, allowedTools, resume, ceilings);
+                Optional<String> resume, HiredBrain.Ceilings ceilings, OwnTools ownTools) throws IOException {
+            Conversation conversation = open(host, program, base, mcp, allowedTools, resume, ceilings, ownTools);
             conversation.disarm();
             return conversation;
         }
 
         private static Conversation open(HostProcesses host, Program program, HireSite base, SelfEndpoint mcp, List<String> allowedTools,
-                Optional<String> resume, HiredBrain.Ceilings ceilings) throws IOException {
+                Optional<String> resume, HiredBrain.Ceilings ceilings, OwnTools ownTools) throws IOException {
             Map<String, String> environment = new LinkedHashMap<>(base.environment());
             environment.putAll(program.environment());
             Process child = host.start(new HostCommand(program.command(), base.workingDirectory(), environment,
                 ceilings.wallClock(), false, base.cleanEnvironment()));
             // A stop from the Agent Control panel kills this process: the read of its output is blocked and a thread interrupt cannot end it.
             HireRegistry.shared().onStop(() -> HostProcesses.reap(child));
-            Conversation conversation = new Conversation(child, new HashSet<>(allowedTools == null ? List.of() : allowedTools), ceilings);
+            Conversation conversation = new Conversation(child, new HashSet<>(allowedTools == null ? List.of() : allowedTools), ceilings, ownTools);
             conversation.arm(ceilings);
             try {
                 conversation.handshake(base, mcp, resume);
@@ -297,13 +353,16 @@ public final class AcpBrainSession {
             takesImages = capabilities.path("promptCapabilities").path("image").asBoolean(false);
             String cwd = base.workingDirectory() == null ? "" : base.workingDirectory().toString();
             ArrayNode servers = mcpServers(mcp, capabilities.path("mcpCapabilities").path("http").asBoolean(false));
+            JsonNode opened = null;
             if (resume.isPresent() && capabilities.path("loadSession").asBoolean(false)) {
                 String earlier = resume.get();
-                if (wire.call(2, "session/load", params -> {
+                opened = wire.call(2, "session/load", params -> {
                     params.put("sessionId", earlier);
                     params.put("cwd", cwd);
                     params.set("mcpServers", servers);
-                }) != null) {
+                    withholdOwnTools(params);
+                });
+                if (opened != null) {
                     sessionId = earlier;
                 }
             }
@@ -311,6 +370,7 @@ public final class AcpBrainSession {
                 Consumer<ObjectNode> newSession = params -> {
                     params.put("cwd", cwd);
                     params.set("mcpServers", servers);
+                    withholdOwnTools(params);
                 };
                 JsonNode created = wire.call(2, "session/new", newSession);
                 if (created == null && wire.refusedForWantOfLogin() && init.path("authMethods").size() > 0) {
@@ -324,6 +384,39 @@ public final class AcpBrainSession {
                 }
                 sessionId = created == null ? null : created.path("sessionId").asText(null);
                 readModels(created);
+                opened = created;
+            }
+            enterReadOnlyMode(opened);
+        }
+
+        /**
+         * Asks the brain, in the session's own options, to leave out its editors and its shell, when they are withheld (28h D57 (j)). Measured: the
+         * Claude adapter honours {@code _meta.claudeCode.options.disallowedTools} on session/new and session/load and then refuses both; a brain
+         * that does not know the option ignores it.
+         */
+        private void withholdOwnTools(ObjectNode params) {
+            if (ownTools != OwnTools.WITHHELD) {
+                return;
+            }
+            ArrayNode disallowed = params.putObject("_meta").putObject("claudeCode").putObject("options").putArray("disallowedTools");
+            OWN_WRITERS.forEach(disallowed::add);
+        }
+
+        /**
+         * Moves a session whose brain's own tools are withheld into the brain's read-only mode, when the brain offers one (Cursor's agent: "ask",
+         * measured to refuse its own edits and write commands, which it otherwise makes without asking). A brain that offers none stays as it is.
+         */
+        private void enterReadOnlyMode(JsonNode opened) throws IOException {
+            if (ownTools != OwnTools.WITHHELD || opened == null || sessionId == null) {
+                return;
+            }
+            for (JsonNode mode : opened.path("modes").path("availableModes")) {
+                String id = mode.path("id").asText("");
+                if (READ_ONLY_MODES.contains(id)) {
+                    String session = sessionId;
+                    wire.call(6, "session/set_mode", params -> params.put("sessionId", session).put("modeId", id));
+                    return;
+                }
             }
         }
 
@@ -450,11 +543,15 @@ public final class AcpBrainSession {
 
         private void read(JsonNode stop) {
             Map<String, Integer> callAt = new HashMap<>();
+            java.util.Set<Integer> edits = new java.util.HashSet<>();
             for (JsonNode update : wire.events) {
                 switch (update.path("sessionUpdate").asText()) {
                     case "agent_message_chunk" -> said.append(update.path("content").path("text").asText(""));
                     case "tool_call" -> {
                         String name = update.path("title").asText(update.path("kind").asText("tool"));
+                        if ("edit".equals(update.path("kind").asText())) {
+                            edits.add(toolNames.size());
+                        }
                         callAt.put(update.path("toolCallId").asText(""), toolNames.size());
                         toolNames.add(name);
                         toolCalls.add(new ToolCall(name, update.has("rawInput") ? update.get("rawInput") : JSON.createObjectNode()));
@@ -469,6 +566,25 @@ public final class AcpBrainSession {
                             String name = "mcp__" + raw.get("providerIdentifier").asText() + "__" + raw.get("toolName").asText();
                             toolNames.set(index, name);
                             toolCalls.set(index, new ToolCall(name, raw.has("args") ? raw.get("args") : JSON.createObjectNode()));
+                        } else if (index != null && raw.isObject() && !raw.isEmpty()) {
+                            // 28h D57 (d): Claude's ACP adapter opens every call with an empty input and streams the input in later updates,
+                            // partial and then whole (recorded 2026-11-17); the last input sent is the call's, so an instruction can be
+                            // compared with it. An update with no input, as the call runs and completes, leaves it as it is.
+                            toolCalls.set(index, new ToolCall(toolCalls.get(index).name(), raw));
+                        }
+                        // 28h D57 (d): Cursor's agent reports an edit of its own as "Edit File" with the path alone, and the replacement only
+                        // as the diff of the completed call (measured 2026-11-17). Such an edit is kept as an Edit of that file with the text
+                        // before and after, which an Edit instruction can be compared with; an input that names the replaced text is kept.
+                        if (index != null && edits.contains(index) && !toolCalls.get(index).arguments().has("old_string")) {
+                            for (JsonNode shown : update.path("content")) {
+                                if ("diff".equals(shown.path("type").asText()) && shown.hasNonNull("oldText") && shown.hasNonNull("newText")) {
+                                    String name = java.util.Set.of("Edit", "Write", "MultiEdit").contains(toolNames.get(index)) ? toolNames.get(index) : "Edit";
+                                    toolNames.set(index, name);
+                                    toolCalls.set(index, new ToolCall(name, JSON.createObjectNode().put("file_path", shown.path("path").asText(""))
+                                        .put("oldText", shown.get("oldText").asText()).put("newText", shown.get("newText").asText())));
+                                    break;
+                                }
+                            }
                         }
                     }
                     case "usage_update" -> {
@@ -625,13 +741,22 @@ public final class AcpBrainSession {
         Consumer<JsonNode> onToolUpdate;
         /** Called with each thinking chunk and each plan update the moment it is read; null when nobody is listening. */
         Consumer<JsonNode> onThinking;
+        /** Whether the brain's own editors and shell are withheld, so a permission request for one is refused whatever the allowlist says. */
+        private final OwnTools ownTools;
 
-        Wire(Process child, Set<String> allowed, HiredBrain.Ceilings ceilings) {
+        Wire(Process child, Set<String> allowed, HiredBrain.Ceilings ceilings, OwnTools ownTools) {
             this.child = child;
             this.in = new BufferedReader(new InputStreamReader(child.getInputStream(), StandardCharsets.UTF_8));
             this.out = child.getOutputStream();
             this.allowed = allowed;
             this.ceilings = ceilings;
+            this.ownTools = ownTools;
+        }
+
+        /** Whether a permission request asks for an edit or a command of the brain's own, which a brain whose own tools are withheld is refused. */
+        private boolean withheld(JsonNode tool) {
+            return ownTools == OwnTools.WITHHELD && (WRITING_KINDS.contains(tool.path("kind").asText(""))
+                || OWN_WRITERS.contains(RunEffects.bareName(tool.path("title").asText(""))));
         }
 
         /** Readies the wire for the next prompt's answer: what streams from here on is that answer, not an earlier one or a history a load replayed. */
@@ -734,7 +859,7 @@ public final class AcpBrainSession {
                 // The brain compacting its context is not a tool call of the hire's work.
                 HireRegistry.shared().noteCompaction(compaction.get());
             } else if ("tool_call".equals(kind)) {
-                HireRegistry.shared().noteToolStep();
+                HireRegistry.shared().noteToolCall(update.path("title").asText(""));
             } else if ("usage_update".equals(kind)) {
                 JsonNode used = update.path("used");
                 JsonNode amount = update.path("cost").path("amount");
@@ -771,7 +896,7 @@ public final class AcpBrainSession {
                 // D22, the loop for lookups: a seat that may use the shell is still refused a text search over Java source
                 boolean listed = allowed.contains(name) || allowed.contains(RunEffects.bareName(name))
                     || ofTheResident != null && allowed.contains(ofTheResident);
-                String wanted = listed && LookupDriver.refusal(tool.path("rawInput")).isEmpty() ? "allow" : "reject";
+                String wanted = listed && !withheld(tool) && LookupDriver.refusal(tool.path("rawInput")).isEmpty() ? "allow" : "reject";
                 String chosen = null;
                 for (JsonNode option : request.path("params").path("options")) {
                     if (option.path("kind").asText("").startsWith(wanted)) {

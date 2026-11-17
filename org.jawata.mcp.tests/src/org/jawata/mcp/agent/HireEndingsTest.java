@@ -70,12 +70,13 @@ class HireEndingsTest {
         };
     }
 
-    /** A connection whose brain notes every prompt it is given. */
+    /** A connection whose brain notes every prompt it is given, and makes the tool calls a test gives it on its first turn. */
     private final class Connection {
         final List<JsonNode> said = new CopyOnWriteArrayList<>();
         final List<String> prompts = new CopyOnWriteArrayList<>();
         final AcpServer server;
         String session;
+        volatile Consumer<Consumer<JsonNode>> firstTurnCalls = calls -> { };
 
         Connection() {
             AgentBrain brain = new AgentBrain() {
@@ -87,6 +88,9 @@ class HireEndingsTest {
                 @Override
                 public void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls) {
                     prompts.add(prompt);
+                    Consumer<Consumer<JsonNode>> calls = firstTurnCalls;
+                    firstTurnCalls = made -> { };
+                    calls.accept(toolCalls);
                     chunks.accept("ok");
                 }
             };
@@ -160,6 +164,65 @@ class HireEndingsTest {
             () -> assertTrue(chat.prompts.get(0).contains("which has ended"), "the report does not say the lead has ended: " + chat.prompts),
             () -> assertTrue(chat.prompts.get(0).contains("pm"), "the report does not say whose hire it was: " + chat.prompts),
             () -> assertTrue(chat.prompts.get(0).contains("Joe · developer"), "the report does not name the hire: " + chat.prompts));
+    }
+
+    @Test
+    @DisplayName("D57 (l): a hire the chat's own brain started reports back to that chat as a turn, whatever caller id the engine saw the call under")
+    void aHireTheChatsBrainStartedReportsBackWhateverCallerIdTheEngineSaw() throws Exception {
+        Connection chat = new Connection();
+        chat.open();
+        String plan = "l-unregistered-caller-plan";
+        // Seen live 2026-11-16: the engine recorded the principal's hires under a caller id that no chat had registered, so no report and no
+        // card update ever reached the chat. The chat does see its own brain's hire call come back with the hire's plan id.
+        CountDownLatch end = aHireIsOut("pm", "l probe brief", "mcp-session-the-chat-never-registered", plan, true);
+        chat.firstTurnCalls = calls -> {
+            ObjectNode asked = JSON.createObjectNode().put("toolCallId", "toolu_l_probe").put("title", "mcp__jawata__hire").put("status", "pending");
+            asked.putObject("rawInput").put("hirer", "main").put("seat", "pm").put("brief", "l probe brief");
+            calls.accept(asked);
+            ObjectNode answeredAtOnce = JSON.createObjectNode().put("toolCallId", "toolu_l_probe").put("status", "completed");
+            answeredAtOnce.putObject("rawOutput").putObject("data").put("hireId", plan).put("name", "Henrik").put("state", "running");
+            calls.accept(answeredAtOnce);
+        };
+        chat.personSays("hire the pm for a probe");
+        assertTrue(waitUntil(() -> chat.prompts.size() == 1, 5), "the person's turn never ran: " + chat.prompts);
+
+        end.countDown();
+        Thread.sleep(300);
+        HireRegistry.shared().record("pm", "l probe brief", answered(plan, "Henrik", "PROBE 2 OK claude-sonnet-5-5"));
+
+        boolean reported = waitUntil(() -> chat.prompts.stream().anyMatch(p -> p.contains("PROBE 2 OK")), 10);
+        assertAll(
+            () -> assertTrue(reported, "the hire's report never reached the chat whose brain started it: " + chat.prompts),
+            () -> assertTrue(chat.said.stream().anyMatch(m -> m.path("params").path("update").path("_meta").path("jawata/hire")
+                    .path("state").asText("").matches("done|completed|finished")),
+                "the hire's card was never moved off running: " + chat.said));
+    }
+
+    @Test
+    @DisplayName("D57 (l): a hire that ended before the chat saw its own call's answer is still reported to that chat, once")
+    void aHireThatEndedBeforeTheChatSawItsAnswerIsStillReported() throws Exception {
+        Connection chat = new Connection();
+        chat.open();
+        String plan = "l-ended-early-plan";
+        CountDownLatch end = aHireIsOut("pm", "l early brief", "mcp-session-the-chat-never-registered", plan, true);
+        end.countDown();
+        Thread.sleep(300);
+        HireRegistry.shared().record("pm", "l early brief", answered(plan, "Ines", "PROBE OK early"));
+        chat.firstTurnCalls = calls -> {
+            ObjectNode asked = JSON.createObjectNode().put("toolCallId", "toolu_l_early").put("title", "mcp__jawata__hire").put("status", "pending");
+            asked.putObject("rawInput").put("hirer", "main").put("seat", "pm").put("brief", "l early brief");
+            calls.accept(asked);
+            ObjectNode answeredAtOnce = JSON.createObjectNode().put("toolCallId", "toolu_l_early").put("status", "completed");
+            answeredAtOnce.putObject("rawOutput").putObject("data").put("hireId", plan).put("name", "Ines").put("state", "running");
+            calls.accept(answeredAtOnce);
+        };
+        chat.personSays("hire the pm for an early probe");
+
+        boolean reported = waitUntil(() -> chat.prompts.stream().anyMatch(p -> p.contains("PROBE OK early")), 10);
+        Thread.sleep(300);
+        assertAll(
+            () -> assertTrue(reported, "the report of a hire that ended first never reached the chat: " + chat.prompts),
+            () -> assertEquals(1, chat.prompts.stream().filter(p -> p.contains("PROBE OK early")).count(), "reported more than once: " + chat.prompts));
     }
 
     @Test

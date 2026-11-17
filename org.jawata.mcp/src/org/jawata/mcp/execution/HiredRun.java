@@ -489,9 +489,9 @@ public final class HiredRun {
                 ? HiredBrain.hire(host, dialect, base, brief, tools, ceilings)
                 : lead
                     ? AcpBrainSession.runAsLead(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                        resume, ceilings, null, live, update -> { }, HireRegistry.shared().inboxFor(plan.value()), plan.value())
+                        resume, ceilings, null, live, update -> { }, HireRegistry.shared().inboxFor(plan.value()), plan.value(), model)
                     : AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                        resume, ceilings, null, live, update -> { });
+                        resume, ceilings, null, live, update -> { }, model);
         }
 
         final long brainRanMs = System.currentTimeMillis() - brainStartedMs;
@@ -520,7 +520,14 @@ public final class HiredRun {
                 continue;
             }
             GateOutcome gate;
-            if (UpwardMessageGate.STEP.equals(step.tool())) {
+            if (outcome.timedOut() || outcome.stoppedBy().isPresent()) {
+                // D57 (l): a brain a ceiling stopped did not finish its work, so no check run over what it left proves the step: the first
+                // step still open fails here, and the plan stops. Seen live 2026-11-16: a run stopped at $3.70 over a $2.00 ceiling, having
+                // changed nothing, was closed "3 of 3 passed" because its checks ran over the unchanged tree.
+                answerRefusals.add("the brain was stopped before it finished ("
+                    + outcome.stoppedBy().orElse("its wall-clock ceiling") + "), so no check run afterwards proves this step");
+                gate = new GateOutcome(step.tool(), step.gateArguments(), 1, true);
+            } else if (UpwardMessageGate.STEP.equals(step.tool())) {
                 List<String> refusals = UpwardMessageGate.refusals(outcome.text());
                 answerRefusals.addAll(refusals);
                 gate = new GateOutcome(step.tool(), step.gateArguments(), refusals.size(), true);

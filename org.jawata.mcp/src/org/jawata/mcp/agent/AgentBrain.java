@@ -103,4 +103,11 @@ public interface AgentBrain {
     /** The conversation is over: whatever this answerer started for it, a process among it, goes now. */
     default void close() {
     }
+
+    /**
+     * The chat's one autocontinue state changed, by the button or by a typed /autocontinue or /autocontinue-off (D57 (m)): an answerer that runs a
+     * brain process passes it on, so the jawata hook inside that brain obeys the same switch the person set.
+     */
+    default void autonomyChanged(boolean on) {
+    }
 }

@@ -33,8 +33,31 @@ public final class HireReport {
             text.append("Hire: ").append(event.name()).append(" · ").append(event.seat()).append(" (").append(event.planId()).append(")\n")
                 .append("State: ").append(clean ? "done" : "failed").append("\n")
                 .append("Answer: ").append(answer.path("answer").asText(answer.path("error").asText("(none)"))).append("\n");
+            appendInstructionScore(text, answer.path("instructionScore"));
         }
         text.append("Still out for you: ").append(stillOut.isEmpty() ? "nothing" : String.join(", ", stillOut));
         return text.toString();
+    }
+
+    /**
+     * 28h D57 (d): how a worker's steps compared with the instructions it was given, and the observer's corrections, each with its
+     * instruction's number. A hire answers at once, so this report is the only place its lead reads them; a hire with no score adds nothing.
+     */
+    private static void appendInstructionScore(StringBuilder text, JsonNode score) {
+        if (!score.isObject()) {
+            return;
+        }
+        if (!score.path("computable").asBoolean(false)) {
+            text.append("Instructions: not computable: ").append(score.path("because").asText("no reason given")).append("\n");
+            return;
+        }
+        text.append("Instructions: ").append(score.path("ranAsWritten").asInt()).append(" of ").append(score.path("instructionsIssued").asInt())
+            .append(" ran as written\n");
+        score.path("notAsWritten").forEach(why -> text.append("Not as written, ").append(why.asText()).append("\n"));
+        JsonNode observed = score.path("observer");
+        observed.path("corrections").forEach(correction -> text.append("Correction for instruction ").append(correction.path("instruction").asInt())
+            .append(": ").append(correction.path("text").asText()).append("\n"));
+        observed.path("unjudged").forEach(flag -> text.append("Not judged, instruction ").append(flag.path("instruction").asInt())
+            .append(": ").append(flag.path("why").asText()).append("\n"));
     }
 }

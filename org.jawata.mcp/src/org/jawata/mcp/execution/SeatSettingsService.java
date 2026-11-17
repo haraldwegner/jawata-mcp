@@ -151,7 +151,7 @@ public final class SeatSettingsService implements SeatSettings {
             try {
                 scratch = java.nio.file.Files.createTempDirectory("jawata-models-");
                 AcpBrainSession.Conversation session = AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program,
-                    HireSite.in(scratch), null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)));
+                    HireSite.in(scratch), null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)), AcpBrainSession.OwnTools.KEPT);
                 try {
                     return session.models();
                 } finally {
@@ -174,9 +174,35 @@ public final class SeatSettingsService implements SeatSettings {
     }
 
     @Override
+    public String commandLineModel(String brain, String model) {
+        return commandLineModel(settings.get(Hirer.BRAINS_SETTING).orElse(""), brain, model);
+    }
+
+    @Override
     public Probe probe(String brain, String model) {
-        BrainRoster.Probe run = BrainRoster.onThisMachine().probe(brain, model);
+        BrainRoster.Probe run = BrainRoster.onThisMachine().probe(brain, commandLineModel(brain, model));
         return new Probe(run.brain(), run.ok(), run.answer(), run.modelsUsed(), run.costUsd(), run.seconds(), run.error(), run.loginCommand());
+    }
+
+    /**
+     * The model a test run's command line is given for a model a seat names (28h D57 (c)). A seat stores the NAME its brain's session offers,
+     * which is what every Brain list shows; Claude's command line refuses that name and takes the session's VALUE (measured 2026-11-17: "Haiku
+     * 5.5" was refused as unrecognized, "haiku" answered), and Cursor's takes either. So a name the kept catalogue holds becomes its value; any
+     * other model, and a brain the registry names no program for, is passed as it is.
+     *
+     * @param registry the brain registry setting
+     * @param brain    the brain
+     * @param model    the model the seat names, or null for the brain's own
+     * @return the model for the command line, or null
+     */
+    static String commandLineModel(String registry, String brain, String model) {
+        if (model == null || model.isBlank()) {
+            return model;
+        }
+        return AcpBrainSession.programFor(registry, brain).flatMap(AcpBrainSession::offeredBy)
+            .flatMap(offered -> offered.stream().filter(one -> one.name().equalsIgnoreCase(model.strip())).findFirst())
+            .map(AcpBrainSession.Model::value)
+            .orElse(model);
     }
 
     @Override

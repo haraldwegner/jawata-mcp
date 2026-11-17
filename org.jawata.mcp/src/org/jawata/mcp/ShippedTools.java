@@ -22,10 +22,14 @@ import org.jawata.mcp.runtime.RuntimeSessionRegistry;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
 import org.jawata.mcp.tools.ExperienceTool;
 import org.jawata.mcp.tools.FieldTool;
+import org.jawata.mcp.tools.FilesTool;
 import org.jawata.mcp.tools.FindQualityIssueTool;
 import org.jawata.mcp.tools.GetDiagnosticsTool;
+import org.jawata.mcp.tools.GitTool;
 import org.jawata.mcp.tools.HealthCheckTool;
 import org.jawata.mcp.tools.HireTool;
+import org.jawata.mcp.tools.LookupTool;
+import org.jawata.mcp.tools.BrainsTool;
 import org.jawata.mcp.tools.PlanBoardTool;
 import org.jawata.mcp.tools.PlanStepsTool;
 import org.jawata.mcp.tools.ProjectTool;
@@ -206,6 +210,16 @@ public final class ShippedTools {
         tools.add(new PlanStepsTool(planLedger));
         // plan_board draws the same ledger into the sprint's plan file, so the file a person reads is the ledger's word (S10, D18).
         tools.add(new PlanBoardTool(planLedger));
+        // files reads and searches any file and writes a document: what the principal, whose brain's own editors and shell are withheld,
+        // still needs (28h D57 (j)).
+        tools.add(new FilesTool());
+        // lookup answers git status, history and diff and the running processes, read-only; git commits a passed step (the pm) and releases
+        // on the person's word (main), reading the same plan ledger the hire path opens (28h D57 (j)).
+        tools.add(new LookupTool());
+        tools.add(new GitTool(planLedger));
+        // brains answers a host outside this process, the studio, about the agent programs: each chat brain's models from the one catalogue,
+        // which programs this machine has, and the one-word test run, so the studio checks no program itself (28h D57 (c), the C26 review).
+        tools.add(new BrainsTool(() -> org.jawata.mcp.execution.SeatSettingsService.forEngine(w.settings().get(), w.registry().get())));
 
         tools.add(new RefreshWorkspaceTool(ports.workspace(), ports.verdict(), w.reconciler()));
         tools.add(new RefactoringTool(ports.workspace(), w.changeCache(), ports.changes(), plans::current));

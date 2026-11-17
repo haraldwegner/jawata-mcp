@@ -92,7 +92,7 @@ class LeadLoopTest {
 
     private HiredBrain.Outcome runAsLead(String prompt, HiredBrain.Ceilings ceilings, String leadId, HireRegistry.Inbox inbox) throws Exception {
         return AcpBrainSession.runAsLead(host, agent, HireSite.in(dir), prompt, null, List.of(), Optional.empty(), ceilings, null, null, update -> { },
-            inbox, leadId);
+            inbox, leadId, null);
     }
 
     @Test

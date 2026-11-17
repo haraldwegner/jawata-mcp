@@ -244,6 +244,42 @@ class TokensAndInstructionsTest {
     }
 
     @Test
+    @DisplayName("28h D57 (d): an edit the brain's own editor makes with its own default spelled out (replace_all false) ran as written; replace_all true did not")
+    void anEditorsSpelledOutDefaultIsNotADifference() throws Exception {
+        List<Instructions.Instruction> issued = List.of(new Instructions.Instruction(1, "Edit",
+            MAPPER.readTree("{\"file_path\":\"/p/notes.md\",\"old_string\":\"colour: red\",\"new_string\":\"colour: blue\"}")));
+        // As measured on a Claude developer through ACP, 2026-11-17: the editor's call carries its default.
+        Instructions.Score asMade = Instructions.score(issued, List.of(call("Edit",
+            "{\"replace_all\":false,\"file_path\":\"/p/notes.md\",\"old_string\":\"colour: red\",\"new_string\":\"colour: blue\"}")), ENGINE);
+        Instructions.Score everyOccurrence = Instructions.score(issued, List.of(call("Edit",
+            "{\"replace_all\":true,\"file_path\":\"/p/notes.md\",\"old_string\":\"colour: red\",\"new_string\":\"colour: blue\"}")), ENGINE);
+        assertAll(
+            () -> assertEquals(1, asMade.ranAsWritten(), String.valueOf(asMade.notAsWritten())),
+            () -> assertEquals(0, everyOccurrence.ranAsWritten(), "replacing every occurrence is not the one edit that was instructed"));
+    }
+
+    @Test
+    @DisplayName("28h D57 (d): an Edit instruction ran as written when the editor's diff of that file replaced its text exactly once; another file, a second occurrence or other new text did not")
+    void anEditReportedAsADiffIsComparedWithTheInstruction() throws Exception {
+        List<Instructions.Instruction> issued = List.of(new Instructions.Instruction(1, "Edit",
+            MAPPER.readTree("{\"file_path\":\"/p/notes.md\",\"old_string\":\"colour: red\",\"new_string\":\"colour: blue\"}")));
+        // As measured on a Cursor developer through ACP, 2026-11-17: the edit is known by its diff.
+        Instructions.Score asMade = Instructions.score(issued, List.of(call("Edit",
+            "{\"file_path\":\"/p/notes.md\",\"oldText\":\"colour: red\\n\",\"newText\":\"colour: blue\\n\"}")), ENGINE);
+        Instructions.Score otherFile = Instructions.score(issued, List.of(call("Edit",
+            "{\"file_path\":\"/p/other.md\",\"oldText\":\"colour: red\\n\",\"newText\":\"colour: blue\\n\"}")), ENGINE);
+        Instructions.Score everyOccurrence = Instructions.score(issued, List.of(call("Edit",
+            "{\"file_path\":\"/p/notes.md\",\"oldText\":\"colour: red\\ncolour: red\\n\",\"newText\":\"colour: blue\\ncolour: blue\\n\"}")), ENGINE);
+        Instructions.Score otherText = Instructions.score(issued, List.of(call("Edit",
+            "{\"file_path\":\"/p/notes.md\",\"oldText\":\"colour: red\\n\",\"newText\":\"colour: green\\n\"}")), ENGINE);
+        assertAll(
+            () -> assertEquals(1, asMade.ranAsWritten(), String.valueOf(asMade.notAsWritten())),
+            () -> assertEquals(0, otherFile.ranAsWritten(), "an edit of another file ran as written"),
+            () -> assertEquals(0, everyOccurrence.ranAsWritten(), "a text found twice cannot be the one replacement the instruction wrote"),
+            () -> assertEquals(0, otherText.ranAsWritten(), "other new text ran as written"));
+    }
+
+    @Test
     @DisplayName("precedentOverride, the meta-argument every call may carry, is not part of what was written")
     void theMetaArgumentIsIgnored() throws Exception {
         List<Instructions.Instruction> issued = List.of(

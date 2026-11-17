@@ -68,6 +68,8 @@ final class HireWatch {
         OptionalDouble cost = OptionalDouble.empty();
         /** Tool calls the hire made, as its answer counted them (D10). */
         int toolSteps;
+        /** The names of the tool calls the hire made, in order, as its answer listed them (28h D57 (i)). */
+        List<String> toolsCalled = List.of();
         /** Code changes the hire's brain made by hand, outside any engine tool, as its answer counted them (D10). */
         int editsByHand;
         /** Whether an issuer gave the hire instructions that name tools, so an edit it made by hand was made where a tool was named (D10). */
@@ -209,9 +211,9 @@ final class HireWatch {
     }
 
     /**
-     * What was said in one hire, in order: the brief its issuer gave, then the answer the hire gave once it has finished. A hire still running
-     * has said nothing yet and an answer that holds no text adds no turn, so a failure is never shown as an empty reply. None when the agent
-     * never saw a hire with this id.
+     * What was said in one hire, in order: the brief its issuer gave, the tool calls the hire made (one {@code tool} turn each: by name as its
+     * answer listed them, or by title as its brain streamed them while it still runs), then the answer the hire gave once it has finished. A hire still running has said nothing yet and an answer that holds
+     * no text adds no turn, so a failure is never shown as an empty reply. None when the agent never saw a hire with this id.
      */
     synchronized Optional<List<Said>> transcript(String planId) {
         Live hire = hires.get(planId);
@@ -220,6 +222,10 @@ final class HireWatch {
         }
         List<Said> turns = new java.util.ArrayList<>();
         turns.add(new Said(hire.hirer.isEmpty() ? MAIN : hire.hirer, hire.task, "user"));
+        // A finished hire's answer lists its calls; a hire still running has them in the registry, by the titles its brain streamed.
+        List<String> calls = !hire.toolsCalled.isEmpty() ? hire.toolsCalled
+            : HireRegistry.shared().progress(hire.seat, hire.task).map(HireRegistry.Progress::calls).orElse(List.of());
+        calls.forEach(call -> turns.add(new Said(hire.seat, call, "tool")));
         if (!hire.answer.isEmpty()) {
             turns.add(new Said(hire.seat, hire.answer, "assistant"));
         }
@@ -295,6 +301,12 @@ final class HireWatch {
             }
             return;
         }
+        if (answer.path("success").isBoolean() && !answer.get("success").asBoolean() && !answer.hasNonNull("hireId")) {
+            // 28h D57 (i): a hire call the engine refused (the access policy, a refused seat, a bad argument) opened no plan, so no engine
+            // event will ever end its card; it ends here, and Agent Control, which shows only working hires, shows nothing for a hire that never ran.
+            finish(hire, HireEntry.FAILED);
+            return;
+        }
         if (!answer.has("cleanExit")) {
             // The brain's echo carries no answer (Cursor sends {"success": true} only). The engine keeps what a hire answered once it ends; with
             // nothing kept the hire is still running, and the engine's own event ends this card, so an echo must not (found live, 2026-11-10).
@@ -340,6 +352,9 @@ final class HireWatch {
         answer.path("changesOmitted").forEach(name -> omitted.add(name.asText()));
         hire.changesOmitted = List.copyOf(omitted);
         hire.toolSteps = answer.path("toolSteps").asInt(0);
+        List<String> called = new java.util.ArrayList<>();
+        answer.path("toolsCalled").forEach(name -> called.add(name.asText()));
+        hire.toolsCalled = List.copyOf(called);
         hire.editsByHand = answer.path("codeChangesByHand").asInt(0);
         hire.instructed = answer.path("instructionScore").path("instructionsIssued").asInt(0) > 0;
         JsonNode tokens = answer.path("tokens");

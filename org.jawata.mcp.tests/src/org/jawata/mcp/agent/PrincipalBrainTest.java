@@ -369,6 +369,16 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("28h D57 (j): the principal changes no code with its brain's own tools either: they are asked to be left out, and its shell is refused")
+    void thePrincipalsOwnEditorsAndShellAreWithheld() {
+        String withheld = ask(brain(Optional.of(fake)), "WITHHELD", new ArrayList<>());
+        String shell = ask(brain(Optional.of(fake)), "SHELL:ls", new ArrayList<>());
+
+        assertTrue(withheld.contains("\"Edit\"") && withheld.contains("\"Write\"") && withheld.contains("\"Bash\""), withheld);
+        assertEquals("permission:reject_once", shell);
+    }
+
+    @Test
     @DisplayName("the answer reaches the host while the turn is still running, not all at once at its end")
     void theAnswerArrivesBeforeTheTurnEnds() {
         PrincipalBrain brain = brain(Optional.of(fake));

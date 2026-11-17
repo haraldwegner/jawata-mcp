@@ -267,8 +267,9 @@ public final class PrincipalBrain implements AgentBrain {
                 brainChanged = false;
             }
             if (conversation == null || !conversation.alive()) {
-                conversation = AcpBrainSession.Conversation.start(host, program.get(), site, self == null ? null : self.forSession(sessionKey),
-                    hirer.allowlist("main", engineTools), resume, ceilings);
+                conversation = AcpBrainSession.Conversation.start(host, program.get(), siteWithAutonomyFile(), self == null ? null : self.forSession(sessionKey),
+                    hirer.allowlist("main", engineTools), resume, ceilings, AcpBrainSession.OwnTools.WITHHELD);
+                // 28h D57 (j): the principal changes no code, so its brain's own editors and shell are withheld, for any brain.
                 // The model the person or the studio chose, applied through the brain's own model option once its session is open (D54 (a)).
                 preferredModel.ifPresent(conversation::selectModel);
             }
@@ -447,7 +448,38 @@ public final class PrincipalBrain implements AgentBrain {
                 conversation.close();
                 conversation = null;
             }
+            if (autonomyFile != null) {
+                autonomyFile.close();
+                autonomyFile = null;
+            }
         }
+    }
+
+    /** The chat's autocontinue state as last told (D57 (m)); written into {@link #autonomyFile} for the hook inside the brain's process. */
+    private volatile boolean autonomy;
+
+    /** The file the brain's process is named in {@link AutonomyFile#VARIABLE}, made when the process is first started. */
+    private AutonomyFile autonomyFile;
+
+    @Override
+    public void autonomyChanged(boolean on) {
+        synchronized (starting) {
+            autonomy = on;
+            if (autonomyFile != null) {
+                autonomyFile.write(on);
+            }
+        }
+    }
+
+    /** The hire site with the autocontinue file named to the brain's process, the file made on first use and holding the state as last told. */
+    private HireSite siteWithAutonomyFile() throws IOException {
+        if (autonomyFile == null) {
+            autonomyFile = AutonomyFile.create();
+            autonomyFile.write(autonomy);
+        }
+        Map<String, String> environment = new java.util.LinkedHashMap<>(site.environment());
+        environment.put(AutonomyFile.VARIABLE, autonomyFile.path().toString());
+        return new HireSite(site.workingDirectory(), environment, site.cleanEnvironment());
     }
 
     /** The hire records of the prompts answered so far, oldest first. */

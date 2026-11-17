@@ -295,8 +295,9 @@ class AgentContractTest {
         try {
             org.jawata.mcp.tools.ExperienceTool experience = new org.jawata.mcp.tools.ExperienceTool(() -> null, store);
             experience.setTranscriptStore(new org.jawata.mcp.knowledge.TranscriptStore(store));
+            // recorded as the chat's own agent records a turn: History lists only those (28h D57 (a))
             ObjectNode turn = JSON.createObjectNode().put("kind", "transcript_append").put("session", recordedSession).put("key", "t1")
-                .put("his", typed).put("agent", String.join("", recordedAnswer(r6)));
+                .put("client", AgentRecorder.CLIENT).put("his", typed).put("agent", String.join("", recordedAnswer(r6)));
             assertTrue(experience.execute(turn).isSuccess(), "the recorded turn could not be put in the lane");
 
             List<JsonNode> said = play(r6, (prompt,chunks) -> {

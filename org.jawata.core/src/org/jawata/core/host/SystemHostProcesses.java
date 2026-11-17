@@ -157,7 +157,26 @@ final class SystemHostProcesses implements HostProcesses {
         // Draining an unread stderr is run()'s job, where this class owns the
         // streams; it is never start()'s.
         builder.redirectErrorStream(command.mergeStderr());
-        return builder.start();
+        Process started = builder.start();
+        STILL_RUNNING.add(started);
+        started.onExit().thenRun(() -> STILL_RUNNING.remove(started));
+        return started;
+    }
+
+    /** Every process {@link #start} handed out that has not exited yet; what {@link #endWhatIsStillRunning} ends. */
+    private static final java.util.Set<Process> STILL_RUNNING = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    static {
+        // 28h D57 (f): nothing the engine started outlives it. A Cursor agent started as a chat's brain does not exit when its input closes,
+        // and an engine that stopped before it reaped one left it running for good (measured 2026-11-17; 14 such agents ran a day long).
+        Runtime.getRuntime().addShutdownHook(new Thread(SystemHostProcesses::endWhatIsStillRunning, "jawata-end-what-is-still-running"));
+    }
+
+    /** Ends, with their children, the processes this class started that are still running; run when the JVM exits. */
+    static void endWhatIsStillRunning() {
+        for (Process process : List.copyOf(STILL_RUNNING)) {
+            HostProcesses.reap(process);
+        }
     }
 
     /**

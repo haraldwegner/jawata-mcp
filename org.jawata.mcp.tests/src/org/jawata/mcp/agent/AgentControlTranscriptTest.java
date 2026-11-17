@@ -95,6 +95,22 @@ class AgentControlTranscriptTest {
     }
 
     @Test
+    @DisplayName("28h D57 (i): a finished hire's transcript shows the tool calls it made, in order, between its brief and its answer")
+    void aFinishedHireShowsItsToolCallsBetweenTheBriefAndTheAnswer() {
+        Connection connection = new Connection(List.of(started(),
+            finished("{\"data\":{\"cleanExit\":true,\"toolsCalled\":[\"Read\",\"Edit\"],\"answer\":\"done\"}}")));
+
+        JsonNode turns = connection.transcriptOf("t1").path("result").path("turns");
+
+        assertEquals(4, turns.size(), turns.toString());
+        assertEquals(List.of("user", "tool", "tool", "assistant"), List.of(turns.get(0).path("role").asText(), turns.get(1).path("role").asText(),
+            turns.get(2).path("role").asText(), turns.get(3).path("role").asText()));
+        assertEquals("Read", turns.get(1).path("text").asText());
+        assertEquals("Edit", turns.get(2).path("text").asText());
+        assertEquals("chief-engineer", turns.get(1).path("from").asText(), "the hire made the call");
+    }
+
+    @Test
     @DisplayName("a hire still running has said nothing yet: its transcript is the brief alone, never an invented answer")
     void aRunningHireReturnsOnlyTheBrief() {
         Connection connection = new Connection(List.of(started()));

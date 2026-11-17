@@ -82,7 +82,7 @@ class SeatSettingsServiceTest {
         stored.put("jawata.agent.hireBrains", registry);
         AcpBrainSession.Program program = AcpBrainSession.programFor(registry, "fake").orElseThrow();
         AcpBrainSession.Conversation chat = AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program, HireSite.in(agentDir),
-            null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)));
+            null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)), AcpBrainSession.OwnTools.KEPT);
         chat.close();
         Files.delete(agentDir.resolve("FakeAcpAgent.java"));
 
@@ -101,15 +101,33 @@ class SeatSettingsServiceTest {
         AcpBrainSession.Program program = AcpBrainSession.programFor(registry, "fake").orElseThrow();
         HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60));
         AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program, HireSite.in(agentDir), null, List.of(), Optional.empty(),
-            ceilings).close();
+            ceilings, AcpBrainSession.OwnTools.KEPT).close();
         AcpBrainSession.Conversation resumed = AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program, HireSite.in(agentDir),
-            null, List.of(), Optional.of("an-earlier-session"), ceilings);
+            null, List.of(), Optional.of("an-earlier-session"), ceilings, AcpBrainSession.OwnTools.KEPT);
         assertEquals(List.of(), resumed.models(), "the resumed session named no models, which is the case this test is about");
         resumed.close();
         Files.delete(agentDir.resolve("FakeAcpAgent.java"));
 
         assertEquals(List.of("Sonnet " + agentDir.getFileName()), door().conversationModels("fake"),
             "the models the new session offered are still the catalogue's after the resumed one opened");
+    }
+
+    /**
+     * 28h D57 (c): a seat stores the name its session offers ("Haiku 5.5"), and Claude's command line refuses that name (measured 2026-11-17:
+     * unrecognized_model) and takes the session's value ("haiku"); the test run is given the value. A name the catalogue does not hold is
+     * passed as it is, so a brain with no session of its own keeps the models its check read.
+     */
+    @Test
+    void aTestRunIsGivenTheValueTheSessionOffersTheChosenModelUnder(@TempDir Path agentDir) throws IOException {
+        String registry = fakeAgent(agentDir, "default=Default,haiku=Haiku " + agentDir.getFileName() + ",opus=Opus");
+        stored.put("jawata.agent.hireBrains", registry);
+        door().conversationModels("fake");
+
+        assertEquals("haiku", SeatSettingsService.commandLineModel(registry, "fake", "Haiku " + agentDir.getFileName()));
+        assertEquals("opus", SeatSettingsService.commandLineModel(registry, "fake", "opus"), "a value is kept as it is");
+        assertEquals("sonnet", SeatSettingsService.commandLineModel(registry, "fake", "sonnet"), "a model the catalogue does not hold is passed as it is");
+        assertEquals("haiku", SeatSettingsService.commandLineModel(registry, "claude-code", "haiku"), "a brain with no program in the registry is not translated");
+        assertEquals(null, SeatSettingsService.commandLineModel(registry, "fake", null));
     }
 
     @Test

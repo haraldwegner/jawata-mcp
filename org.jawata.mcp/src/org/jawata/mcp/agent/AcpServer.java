@@ -102,6 +102,10 @@ public final class AcpServer {
         // A chat opened again is told what finished while it was closed (Stage 24, M14, ND4), after its load has been answered.
         if ("session/load".equals(message.getMethod()) && response.getError() == null) {
             PrincipalSession loaded = sessions.get(textField(message.getParams(), "sessionId"));
+            // 28h D57 (h): a chat opened again after a restart or from History holds the commands of its session like a new one, or its / list is empty.
+            if (loaded != null && !loaded.side()) {
+                advertiseCommands(loaded.id());
+            }
             if (loaded != null) {
                 HireRegistry.shared().undeliveredFor(loaded.id()).forEach(late -> deliver(loaded, late,
                     "Note: this report arrived while the chat was closed, and is delivered now.\n"));
@@ -435,7 +439,8 @@ public final class AcpServer {
         autonomy.put("id", AUTONOMY);
         autonomy.put("name", "Autonomy");
         autonomy.put("description", "on: the agent carries on after each turn while a step still waits for its gate, within the limit "
-            + "on tries per step. off: it stops at the end of each turn. Any message you type ends it.");
+            + "on tries per step. off: it stops at the end of each turn. Typing /autocontinue or /autocontinue-off switches it too; any other "
+            + "message you type leaves it as it is.");
         autonomy.put("type", "select");
         autonomy.put("currentValue", session.autonomy() ? "on" : "off");
         ArrayNode values = autonomy.putArray("options");
@@ -463,6 +468,8 @@ public final class AcpServer {
             return JsonRpcMessage.errorResponse(id, NOT_PERMITTED,
                 "Only the person sets autonomy; a message from a hired agent does not change it.", null);
         }
+        // D57 (m): the brain is told, so the jawata hook inside it obeys the button as well.
+        brain.autonomyChanged(session.autonomy());
         ObjectNode result = JSON.createObjectNode();
         result.set("configOptions", configOptions(session));
         return JsonRpcMessage.successResponse(id, result);
@@ -723,14 +730,25 @@ public final class AcpServer {
         String typed = textOf(params.get("prompt"));
         String text = expanded(typed);
         if (from == Channel.HOST) {
-            // Only the person's message is the person's word: it restarts the tries and ends a grant. The same call from a hired agent
-            // does neither.
+            // Only the person's message is the person's word: it restarts the tries. The same call from a hired agent does not.
             boundary.personSpoke(session);
-            if (session.autonomy()) {
-                session.setAutonomy(Channel.HOST, false);
-                update(session.id(), messageChunk("agent_message_chunk", "Autonomy ended: you sent a message.\n\n", messageId));
+            // 28h D57 (j): his message is what a release is checked against; only this path, the host's, writes it.
+            brain.toolSessionKey().ifPresent(key -> org.jawata.mcp.execution.PersonsWords.said(key, typed));
+            // D57 (m): the grant is ONE state, switched by the button or by his typed /autocontinue and /autocontinue-off alike; any other
+            // message he types leaves it as it is, so "Fix" typed under a grant runs on (his words 2026-11-17: "The button is not wired").
+            String command = typed == null ? "" : typed.strip();
+            if ("/autocontinue".equals(command) && !session.autonomy()) {
+                session.setAutonomy(Channel.HOST, true);
+                brain.autonomyChanged(true);
+                update(session.id(), messageChunk("agent_message_chunk", "Autonomy on: you typed /autocontinue.\n\n", messageId));
                 update(session.id(), configOptionUpdate(session));
-                text = "[jawata] autonomy: off (the person typed a message, which ends it)\n" + text;
+                text = "[jawata] autonomy: on (the person typed /autocontinue)\n" + text;
+            } else if ("/autocontinue-off".equals(command) && session.autonomy()) {
+                session.setAutonomy(Channel.HOST, false);
+                brain.autonomyChanged(false);
+                update(session.id(), messageChunk("agent_message_chunk", "Autonomy ended: you typed /autocontinue-off.\n\n", messageId));
+                update(session.id(), configOptionUpdate(session));
+                text = "[jawata] autonomy: off (the person typed /autocontinue-off)\n" + text;
             }
         }
         java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());
@@ -780,6 +798,10 @@ public final class AcpServer {
                 }
             });
             update(session.id(), forwarded);
+            // D57 (l): a hire this chat's own brain started belongs to this chat, whatever caller id the engine saw its call under; a hire that
+            // already ended before the chat learned it is shown and reported now.
+            seen.flatMap(HireEntry::enginePlan).flatMap(plan -> HireRegistry.shared().startedFrom(plan, session.id()))
+                .ifPresent(this::registryEvent);
             seen.ifPresent(entry -> askAboutProposal(session, entry));
             hires.takeFixed().ifPresent(fixed -> showFixed(session, fixed));
             ObjectNode state = toolState.computeIfAbsent(call.path("toolCallId").asText(), key -> JSON.createObjectNode());

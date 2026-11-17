@@ -3587,5 +3587,175 @@
    "type": "object"
   },
   "name": "plan_board"
+ },
+ {
+  "inputSchema": {
+   "properties": {
+    "action": {
+     "description": "What to do.",
+     "enum": [
+      "read",
+      "search",
+      "write"
+     ],
+     "type": "string"
+    },
+    "content": {
+     "description": "write: the document's whole text.",
+     "type": "string"
+    },
+    "folder": {
+     "description": "search: the folder searched with everything under it.",
+     "type": "string"
+    },
+    "glob": {
+     "description": "search: only file names matching this glob, such as *.java.",
+     "type": "string"
+    },
+    "limit": {
+     "description": "read: how many lines at most (default 2000).",
+     "type": "integer"
+    },
+    "maxResults": {
+     "description": "search: how many matching lines at most (default 200).",
+     "type": "integer"
+    },
+    "offset": {
+     "description": "read: the first line to answer, 0-based (default 0).",
+     "type": "integer"
+    },
+    "path": {
+     "description": "read/write: the file, as an absolute path.",
+     "type": "string"
+    },
+    "pattern": {
+     "description": "search: a Java regular expression matched against each line.",
+     "type": "string"
+    },
+    "precedentOverride": {
+     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "type": "string"
+    }
+   },
+   "required": [
+    "action"
+   ],
+   "type": "object"
+  },
+  "name": "files"
+ },
+ {
+  "inputSchema": {
+   "properties": {
+    "folder": {
+     "description": "git kinds: the repository, or a folder inside it, as an absolute path.",
+     "type": "string"
+    },
+    "kind": {
+     "description": "What to look up.",
+     "enum": [
+      "git_status",
+      "git_log",
+      "git_diff",
+      "processes"
+     ],
+     "type": "string"
+    },
+    "max": {
+     "description": "git_log: how many commits at most (default 30).",
+     "type": "integer"
+    },
+    "precedentOverride": {
+     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "type": "string"
+    },
+    "staged": {
+     "description": "git_diff: the staged change instead of the unstaged one.",
+     "type": "boolean"
+    }
+   },
+   "required": [
+    "kind"
+   ],
+   "type": "object"
+  },
+  "name": "lookup"
+ },
+ {
+  "inputSchema": {
+   "properties": {
+    "action": {
+     "description": "What to do.",
+     "enum": [
+      "commit",
+      "release"
+     ],
+     "type": "string"
+    },
+    "folder": {
+     "description": "The repository, or a folder inside it, as an absolute path.",
+     "type": "string"
+    },
+    "message": {
+     "description": "commit: the commit message.",
+     "type": "string"
+    },
+    "notes": {
+     "description": "release: the release notes, also the tag's message.",
+     "type": "string"
+    },
+    "planId": {
+     "description": "commit: the plan id of the hire whose step is committed.",
+     "type": "string"
+    },
+    "precedentOverride": {
+     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "type": "string"
+    },
+    "publish": {
+     "description": "release: publish the GitHub release through gh (default true).",
+     "type": "boolean"
+    },
+    "tag": {
+     "description": "release: the tag to make, such as v1.2.3.",
+     "type": "string"
+    }
+   },
+   "required": [
+    "action",
+    "folder"
+   ],
+   "type": "object"
+  },
+  "name": "git"
+ },
+ {
+  "inputSchema": {
+   "properties": {
+    "action": {
+     "description": "What to ask (default models).",
+     "enum": [
+      "models",
+      "status",
+      "probe"
+     ],
+     "type": "string"
+    },
+    "brain": {
+     "description": "The brain's id (e.g. claude-code, cursor). models: omit for every ready chat brain; probe: required.",
+     "type": "string"
+    },
+    "model": {
+     "description": "probe: the model to run on, as a Brain list shows it; omit for the brain's own default.",
+     "type": "string"
+    },
+    "precedentOverride": {
+     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "type": "string"
+    }
+   },
+   "type": "object"
+  },
+  "name": "brains"
  }
 ]

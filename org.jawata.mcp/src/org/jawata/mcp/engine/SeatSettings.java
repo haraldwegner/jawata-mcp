@@ -237,6 +237,19 @@ public interface SeatSettings {
     List<String> conversationModels(String brain);
 
     /**
+     * The value a brain's command line takes for a model its session offers under {@code model} (28h D57 (c)): a seat stores the name a Brain
+     * list shows ("Haiku 5.5"), and Claude's command line takes only the session's value ("haiku"). A model no kept catalogue holds is answered
+     * as it is.
+     *
+     * @param brain the brain's name
+     * @param model the model's name or value, or null
+     * @return the value for the command line, or {@code model} when none is known
+     */
+    default String commandLineModel(String brain, String model) {
+        return model;
+    }
+
+    /**
      * Whether the engine would accept these values.
      *
      * @param proposed the values of {@link SettingKeys#SEATS_OFF}, {@link SettingKeys#SEATS_BRAINS} and {@link SettingKeys#SEATS_WORKFLOW} by key;

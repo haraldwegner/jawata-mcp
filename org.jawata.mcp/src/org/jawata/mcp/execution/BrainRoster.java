@@ -188,7 +188,7 @@ public final class BrainRoster {
                     Optional<Boolean> loggedIn = parsed(answer.get().text()).map(tree -> tree.get("loggedIn")).filter(JsonNode::isBoolean).map(JsonNode::asBoolean);
                     login = loggedIn.map(yes -> yes ? Login.LOGGED_IN : Login.NOT_LOGGED_IN).orElse(Login.UNKNOWN);
                     reason = loggedIn.isEmpty() ? firstLine(answer.get().text()) : loggedIn.get() ? Optional.empty() : Optional.of("Claude Code says it is not logged in.");
-                    models = run(spec.program(), List.of("--help"), null, checkTimeout).map(help -> claudeModelNames(help.text())).filter(names -> !names.isEmpty());
+                    // 28h D57 (c): no models of its own here; its models are what its ACP session offers, the engine's one catalogue
                 }
             }
             case "codex" -> {
@@ -221,42 +221,6 @@ public final class BrainRoster {
             default -> reason = Optional.of(spec.label() + " has no command that reports its login without starting a session.");
         }
         return new Status(spec.id(), spec.label(), true, firstLine(version.get().text()), login, reason, spec.loginCommand(), models, hirable, takesModel, held);
-    }
-
-    /** The model names Claude Code's own {@code --help} gives for {@code --model}: the quoted single words in that option's description. */
-    private static List<String> claudeModelNames(String help) {
-        StringBuilder block = new StringBuilder();
-        boolean inside = false;
-        for (String line : help.split("\n")) {
-            String trimmed = line.stripLeading();
-            if (trimmed.startsWith("--model ")) {
-                inside = true;
-            } else if (inside && trimmed.startsWith("-")) {
-                break;
-            }
-            if (inside) {
-                block.append(trimmed).append(' ');
-            }
-        }
-        List<String> names = new ArrayList<>();
-        int i = 0;
-        while (i < block.length()) {
-            if (block.charAt(i) == '\'') {
-                int close = block.indexOf("'", i + 1);
-                if (close > 0) {
-                    String name = block.substring(i + 1, close);
-                    if (!name.isEmpty() && name.chars().allMatch(c -> Character.isLetterOrDigit(c) && c < 128 || "-._[]".indexOf(c) >= 0)) {
-                        if (!names.contains(name)) {
-                            names.add(name);
-                        }
-                        i = close + 1;
-                        continue;
-                    }
-                }
-            }
-            i++;
-        }
-        return names;
     }
 
     /**

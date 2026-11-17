@@ -228,6 +228,37 @@ class HostProcessesContractTest {
     }
 
     @Test
+    @DisplayName("28h D57 (f): what the engine started and is still running is ended with its children when the engine's JVM exits")
+    void whatIsStillRunningIsEndedWhenTheEngineExits() throws Exception {
+        // Measured 2026-11-17: a Cursor agent the engine started as a chat's brain does not exit when its input closes, and an engine
+        // stopped before it reaped the agent left it running for good (the 14 agents of D57 (f)). The hook does what this test calls.
+        org.junit.jupiter.api.Assumptions.assumeTrue(!HostOS.current().isWindows(),
+            "the fixture is a POSIX shell; the Windows path has no equivalent one-liner");
+        Process shell = host.start(HostCommand.of("/bin/sh", "-c", "sleep 300 & echo $! ; wait"));
+        long grandchild;
+        try (java.io.BufferedReader out = new java.io.BufferedReader(new java.io.InputStreamReader(shell.getInputStream()))) {
+            grandchild = Long.parseLong(out.readLine().trim());
+        }
+        assertTrue(ProcessHandle.of(grandchild).filter(ProcessHandle::isAlive).isPresent(), "the sleeper must run before it can be shown ended");
+
+        SystemHostProcesses.endWhatIsStillRunning();
+
+        boolean gone = false;
+        for (int i = 0; i < 100 && !gone; i++) {
+            gone = ProcessHandle.of(grandchild).filter(ProcessHandle::isAlive).isEmpty() && !shell.isAlive();
+            if (!gone) {
+                Thread.sleep(50);
+            }
+        }
+        if (!gone) {
+            ProcessHandle.of(grandchild).ifPresent(ProcessHandle::destroyForcibly);
+            shell.destroyForcibly();
+        }
+        assertTrue(gone, "a process the engine started and left running outlived the engine's exit: shell alive " + shell.isAlive()
+            + ", its child " + grandchild + " alive " + ProcessHandle.of(grandchild).map(ProcessHandle::isAlive).orElse(false));
+    }
+
+    @Test
     @DisplayName("a command is a value: built and inspected without spawning anything")
     void aCommandIsInspectableBeforeItRuns() {
         HostCommand command = HostCommand.of("git", "-C", "/repo", "diff")

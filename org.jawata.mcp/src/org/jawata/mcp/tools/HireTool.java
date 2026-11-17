@@ -868,12 +868,23 @@ public class HireTool extends NeutralTool {
         }
         // THE PM'S MEASURE, for a worker hired to carry those instructions out.
         String instructionsFrom = getStringParam(call.getArguments(), "instructionsFrom");
-        if (instructionsFrom != null && !instructionsFrom.isBlank()) {
-            String observerSeatFile = getStringParam(call.getArguments(), "observerSeatFile");
-            Observer.Judge judge = observerSeatFile == null || observerSeatFile.isBlank()
+        boolean named = instructionsFrom != null && !instructionsFrom.isBlank();
+        // D57 (d): a WORKER whose brief carries INSTRUCTION blocks is scored against them by the engine itself, and its deviating steps go to
+        // the observer seat beside its own seat file. No hirer has to remember to pass instructionsFrom or observerSeatFile: no real session ever
+        // did, so no worker was ever checked. The blocks are read from the brief because the lead that wrote them is still running when it hires.
+        List<Instructions.Instruction> briefed = named ? List.of()
+            : declaredTree.tree().roleOf(hired).filter(SeatTree.Role.WORKER::equals).map(worker -> Instructions.parse(brief)).orElse(List.of());
+        if (named || !briefed.isEmpty()) {
+            String observerSeatFile = Optional.ofNullable(getStringParam(call.getArguments(), "observerSeatFile")).filter(file -> !file.isBlank())
+                .or(() -> observerBeside(getStringParam(call.getArguments(), "seatFile")))
+                .orElse(null);
+            Observer.Judge judge = observerSeatFile == null
                 ? null
                 : hiredJudge(observerSeatFile.trim(), landsIn, endpoint, base, call.getServing().map(org.jawata.mcp.models.CallerIdentity::id));
-            data.put("instructionScore", instructionScore(landsIn, instructionsFrom.trim(), proposal.outcome(), engine, effects.notOffered(), judge));
+            data.put("instructionScore", named
+                ? instructionScore(landsIn, instructionsFrom.trim(), proposal.outcome(), engine, effects.notOffered(), judge)
+                : briefScore(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""), briefed, proposal.outcome(), engine,
+                    effects.notOffered(), judge));
         }
         data.put("shellCalls", effects.shell());
         data.put("unclassifiedCalls", effects.unknown());
@@ -1038,6 +1049,65 @@ public class HireTool extends NeutralTool {
                 + " whether any ran as written cannot be read");
             return score;
         }
+        Instructions.Score s = scoreAndObserve(worker, engine, refusedAttempts, judge, score, issued);
+        JsonNode spent = detail.path("tokensSpent");
+        if (!spent.isNumber()) {
+            score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: the issuer's brain reported no tokens");
+        } else if (s.ranAsWritten() == 0) {
+            score.put("issuerTokensSpent", spent.asLong());
+            score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: no instruction ran as written");
+        } else {
+            score.put("issuerTokensSpent", spent.asLong());
+            score.put("issuerTokensPerInstruction", (double) spent.asLong() / s.ranAsWritten());
+        }
+        return score;
+    }
+
+    /**
+     * D57 (d): the score of a worker against the INSTRUCTION blocks of its own brief, which is how a lead hands its instructions over while it
+     * is still running. The same reading as {@link #instructionScore}, except that the issuer's tokens are not recorded yet, which is said.
+     *
+     * @param issuer the id of the caller that issued the worker: the plan of the lead's own hire, or a conversation's id
+     */
+    static Map<String,Object> briefScore(String issuer, List<Instructions.Instruction> issued, HiredBrain.Outcome worker, ToolRegistry engine,
+            List<String> refusedAttempts, Observer.Judge judge) {
+        Map<String, Object> score = new LinkedHashMap<>();
+        score.put("issuerPlan", issuer);
+        score.put("instructionsFrom", "the brief of this hire");
+        if (worker.toolCalls().isEmpty() && worker.toolSteps() > 0) {
+            score.put("computable", false);
+            score.put("because", "the worker's brain shows how many calls it made but not what it passed, so"
+                + " whether any ran as written cannot be read");
+            return score;
+        }
+        scoreAndObserve(worker, engine, refusedAttempts, judge, score, issued);
+        score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: the instructions came in this hire's brief while their issuer was still"
+            + " running, so its tokens are not recorded yet");
+        return score;
+    }
+
+    /**
+     * D57 (d): the observer seat file in the same folder as the worker's own seat file, when there is one and it is switched on. A seat
+     * switched off in the Seats view judges nothing, so a deviating step is then listed as unjudged.
+     */
+    private Optional<String> observerBeside(String workerSeatFile) {
+        if (workerSeatFile == null || workerSeatFile.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            Path observer = Path.of(workerSeatFile.trim()).toAbsolutePath().resolveSibling("observer.md");
+            if (!Files.isRegularFile(observer) || !SeatHire.read(readSeatFile(observer.toString())).enabled()) {
+                return Optional.empty();
+            }
+            return Optional.of(observer.toString());
+        } catch (IOException | RuntimeException unreadable) {
+            return Optional.empty();
+        }
+    }
+
+    private static Instructions.Score scoreAndObserve(HiredBrain.Outcome worker, ToolRegistry engine,
+            List<String> refusedAttempts, Observer.Judge judge, Map<String, Object> score,
+            List<Instructions.Instruction> issued) {
         var made = worker.toolCalls().stream()
             .filter(call -> !refusedAttempts.contains(call.name()))
             .toList();
@@ -1057,17 +1127,7 @@ public class HireTool extends NeutralTool {
         observed.put("corrections", seen.corrections().stream().map(c -> Map.of("instruction", c.instruction(), "text", c.text())).toList());
         observed.put("unjudged", seen.unjudged().stream().map(f -> Map.of("instruction", f.instruction(), "why", f.why())).toList());
         score.put("observer", observed);
-        JsonNode spent = detail.path("tokensSpent");
-        if (!spent.isNumber()) {
-            score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: the issuer's brain reported no tokens");
-        } else if (s.ranAsWritten() == 0) {
-            score.put("issuerTokensSpent", spent.asLong());
-            score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: no instruction ran as written");
-        } else {
-            score.put("issuerTokensSpent", spent.asLong());
-            score.put("issuerTokensPerInstruction", (double) spent.asLong() / s.ranAsWritten());
-        }
-        return score;
+        return s;
     }
 
     /**

@@ -58,11 +58,47 @@ class AcpBrainSessionTest {
 
     private HiredBrain.Outcome hire(String prompt, List<String> allowed, Optional<String> resume, HiredBrain.Ceilings ceilings,
             SelfEndpoint mcp) throws Exception {
-        return AcpBrainSession.run(host, agent, HireSite.in(dir), prompt, mcp, allowed, resume, ceilings, null, null, update -> { });
+        return AcpBrainSession.run(host, agent, HireSite.in(dir), prompt, mcp, allowed, resume, ceilings, null, null, update -> { }, null);
     }
 
     private HiredBrain.Outcome hire(String prompt) throws Exception {
         return hire(prompt, List.of(), Optional.empty(), HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null);
+    }
+
+    /** One prompt to a conversation started with the brain's own tools as given, the conversation closed after. */
+    private String converse(String prompt, List<String> allowed, AcpBrainSession.OwnTools ownTools) throws Exception {
+        try (AcpBrainSession.Conversation chat = AcpBrainSession.Conversation.start(host, agent, HireSite.in(dir), null, allowed, Optional.empty(),
+                HiredBrain.Ceilings.of(Duration.ofSeconds(60)), ownTools)) {
+            return chat.prompt(prompt, List.of(), HiredBrain.Ceilings.of(Duration.ofSeconds(60)), piece -> { }, null, null).text();
+        }
+    }
+
+    @Test
+    @DisplayName("28h D57 (j): a brain whose own tools are withheld is asked, when its session opens, to disallow its editors and its shell")
+    void aWithheldBrainIsAskedToDisallowItsOwnWriters() throws Exception {
+        String withheld = converse("WITHHELD", List.of(), AcpBrainSession.OwnTools.WITHHELD);
+
+        for (String tool : List.of("Edit", "Write", "MultiEdit", "NotebookEdit", "Bash")) {
+            assertTrue(withheld.contains("\"" + tool + "\""), tool + " was not withheld: " + withheld);
+        }
+        assertEquals("none", converse("WITHHELD", List.of(), AcpBrainSession.OwnTools.KEPT), "CONTROL: a brain keeping its tools was asked to drop them");
+    }
+
+    @Test
+    @DisplayName("28h D57 (j): a brain whose own tools are withheld and that offers a read-only 'ask' mode, as Cursor's agent does, is moved into it")
+    void aWithheldBrainIsMovedIntoItsReadOnlyMode() throws Exception {
+        agent = new AcpBrainSession.Program(agent.command(), Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_MODES", "agent,plan,ask"));
+
+        assertEquals("ask", converse("WHICHMODE", List.of(), AcpBrainSession.OwnTools.WITHHELD));
+        assertEquals("agent", converse("WHICHMODE", List.of(), AcpBrainSession.OwnTools.KEPT), "CONTROL: a brain keeping its tools was moved");
+    }
+
+    @Test
+    @DisplayName("28h D57 (j): a brain whose own tools are withheld is refused its shell even where the allowlist names it")
+    void aWithheldBrainIsRefusedItsShellWhateverTheAllowlist() throws Exception {
+        assertEquals("permission:reject_once", converse("SHELL:ls", List.of("Bash"), AcpBrainSession.OwnTools.WITHHELD));
+        assertEquals("permission:allow_once", converse("SHELL:ls", List.of("Bash"), AcpBrainSession.OwnTools.KEPT),
+            "CONTROL: the allowlist no longer allows the shell of a brain that keeps it");
     }
 
     @Test
@@ -223,7 +259,7 @@ class AcpBrainSessionTest {
                 HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null, update -> {
                     HireRegistry.Progress now = HireRegistry.shared().progress("developer", "SPEND").orElseThrow();
                     seen.add(now.toolSteps() + " calls, context " + now.contextTokens() + ", cost " + now.costUsd());
-                }, update -> { });
+                }, update -> { }, null);
 
             assertEquals(List.of(
                 "1 calls, context OptionalLong.empty, cost OptionalDouble.empty",
@@ -232,8 +268,9 @@ class AcpBrainSessionTest {
                 "4 calls, context OptionalLong[300], cost OptionalDouble[0.75]",
                 "5 calls, context OptionalLong[400], cost OptionalDouble[1.0]"), seen,
                 "the figures a reader sees while the brain works did not follow its stream");
-            assertEquals(new HireRegistry.Progress(5, java.util.OptionalLong.of(500), java.util.OptionalDouble.of(1.25)),
-                HireRegistry.shared().progress("developer", "SPEND").orElseThrow(), "the last usage report was not kept");
+            assertEquals(new HireRegistry.Progress(5, java.util.OptionalLong.of(500), java.util.OptionalDouble.of(1.25),
+                    java.util.Collections.nCopies(5, "mcp__jawata__inspect")),
+                HireRegistry.shared().progress("developer", "SPEND").orElseThrow(), "the last usage report, or the calls' titles, were not kept");
             assertTrue(HireRegistry.shared().progress("developer", "another brief").isEmpty(),
                 "CONTROL: a hire of the same seat for another brief was given this hire's figures");
         }
@@ -257,7 +294,7 @@ class AcpBrainSessionTest {
         HiredBrain.Outcome outcome = AcpBrainSession.run(host, agent, HireSite.in(dir), "THINK", null, List.of(), Optional.empty(),
             HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null, null,
             update -> seen.add(update.path("sessionUpdate").asText() + ":"
-                + update.path("content").path("text").asText(update.path("entries").size() + " entries")));
+                + update.path("content").path("text").asText(update.path("entries").size() + " entries")), null);
 
         assertEquals(List.of("agent_thought_chunk:Checking divisibility ", "plan:2 entries", "agent_thought_chunk:by 7 and 13."), seen);
         assertEquals("thought", outcome.text(), "the thinking was taken for the answer");
@@ -271,6 +308,26 @@ class AcpBrainSessionTest {
         assertEquals(List.of("mcp__jawata__health_check"), outcome.toolNames(), "the placeholder title stayed: " + outcome.toolNames());
         assertEquals(1, outcome.toolSteps());
         assertEquals(0, outcome.unnamedToolSteps());
+    }
+
+    @Test
+    @DisplayName("28h D57 (d): a call Claude's ACP adapter opens with an empty input and streams its input in later updates is kept with the whole input, so it can be compared with an instruction")
+    void aCallsStreamedInputIsKeptWhole() throws Exception {
+        HiredBrain.Outcome outcome = hire("CLAUDECALL");
+
+        assertEquals(List.of("Edit"), outcome.toolNames());
+        assertEquals("{\"file_path\":\"/p/notes.md\",\"old_string\":\"colour: red\",\"new_string\":\"colour: blue\"}",
+            outcome.toolCalls().get(0).arguments().toString(), "the call kept the empty input it was opened with, or lost it to a later update");
+    }
+
+    @Test
+    @DisplayName("28h D57 (d): an edit Cursor's agent reports only as the diff of its completed call is kept as an Edit of that file with the text before and after")
+    void aCursorEditIsReadFromItsDiff() throws Exception {
+        HiredBrain.Outcome outcome = hire("CURSOREDIT");
+
+        assertEquals(List.of("Edit"), outcome.toolNames());
+        assertEquals("{\"file_path\":\"/p/notes.md\",\"oldText\":\"colour: red\\n\",\"newText\":\"colour: blue\\n\"}",
+            outcome.toolCalls().get(0).arguments().toString(), "the edit was kept with the path alone, so no instruction can be compared with it");
     }
 
     @Test
@@ -295,5 +352,22 @@ class AcpBrainSessionTest {
         assertFalse(outcome.saidNothing(), "a crash was reported as the model saying nothing");
         assertEquals(3, outcome.exitCode().orElse(-1));
         assertTrue(outcome.text().contains("ended before it answered"), outcome.text());
+    }
+
+    @Test
+    @DisplayName("28h D57 (c): a hire runs on the model its seat names, by the name its session offers; a model it does not offer is refused")
+    void aHireRunsOnTheModelItsSeatNames() throws Exception {
+        AcpBrainSession.Program withModels = new AcpBrainSession.Program(agent.command(),
+            Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_MODELS", "default=Default,haiku=Haiku 5.5,opus=Opus 5.5"));
+        HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(Duration.ofSeconds(60));
+
+        HiredBrain.Outcome onHaiku = AcpBrainSession.run(host, withModels, HireSite.in(dir), "WHICHMODEL", null, List.of(), Optional.empty(), ceilings,
+            null, null, update -> { }, "Haiku 5.5");
+        assertEquals("haiku", onHaiku.text().strip(), "the session was moved to the value the brain offers Haiku 5.5 under");
+
+        IOException refused = org.junit.jupiter.api.Assertions.assertThrows(IOException.class, () -> AcpBrainSession.run(host, withModels,
+            HireSite.in(dir), "WHICHMODEL", null, List.of(), Optional.empty(), ceilings, null, null, update -> { }, "Sonnet 9"));
+        assertTrue(refused.getMessage().contains("Sonnet 9") && refused.getMessage().contains("Haiku 5.5"),
+            "the refusal names the model asked for and the ones offered: " + refused.getMessage());
     }
 }

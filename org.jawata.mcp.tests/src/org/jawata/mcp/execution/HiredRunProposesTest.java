@@ -444,6 +444,31 @@ class HiredRunProposesTest {
     }
 
     @Test
+    @DisplayName("D57 (l): a run its cost ceiling stopped does not move its plan, though every check would pass over what it left")
+    void aRunStoppedByItsCeilingDoesNotMoveItsPlan() throws Exception {
+        // Seen live 2026-11-16: a pm hire stopped at $3.70 over a $2.00 ceiling, having hired no one and changed nothing, was closed
+        // "3 of 3 passed", because its checks ran over the unchanged tree.
+        HostCommand command = brain("""
+            echo "I read the code and was about to hire the chief engineer."
+            echo "TOOL-STEPS: 47"
+            echo "COST-USD: 3.70"
+            """);
+        HiredRun run = new HiredRun(host, artifacts, plans, events);
+
+        HiredRun.Proposal proposal = run.issue(
+            new ScriptDialect(command.executable(), List.of()), site(command),
+            "Stage 26 step 1.", new HiredBrain.Ceilings(Duration.ofSeconds(20), 0, 2.0),
+            twoSteps(), HiredRunProposesTest::passed);
+
+        assertAll(
+            () -> assertTrue(proposal.outcome().stoppedBy().isPresent(), "the ceiling did not stop the run: " + proposal.outcome()),
+            () -> assertEquals(0, proposal.stepsPassed(), "a stopped run moved its plan"),
+            () -> assertFalse(proposal.complete(), "a stopped run reads as complete"),
+            () -> assertTrue(Files.readString(proposal.record()).contains("stopped before it finished"),
+                "the record does not say the run was stopped before its checks: " + Files.readString(proposal.record())));
+    }
+
+    @Test
     @DisplayName("M5a's gate clause, all four: the brief is issued, the gates run, the run is journalled, and the record is on disk")
     void oneHiredRunEndToEnd() throws Exception {
         HostCommand command = brain("""

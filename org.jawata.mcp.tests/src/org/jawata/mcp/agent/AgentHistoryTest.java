@@ -118,13 +118,35 @@ class AgentHistoryTest {
         JsonNode loaded = later.call(3, "session/load", load);
 
         assertEquals(first.session, loaded.path("result").path("sessionId").asText());
-        assertEquals(List.of("user_message_chunk:Reply with exactly the one word: pong", "agent_message_chunk:pong"), later.updates(),
-            "the earlier turn is replayed in the order it was said, before the load is answered");
+        assertEquals(List.of("user_message_chunk:Reply with exactly the one word: pong", "agent_message_chunk:pong", "available_commands_update:"),
+            later.updates(), "the earlier turn is replayed in the order it was said, before the load is answered, and the session's commands follow (D57 (h))");
 
         later.session = first.session;
         later.prompt("and once more");
         JsonNode again = later.call(4, "session/list", JSON.createObjectNode());
         assertEquals(1, again.path("result").path("sessions").size(), "the reloaded session continues; it is not a second one");
+    }
+
+    @Test
+    @DisplayName("28h D57 (h): a session opened again on a later connection, as the chat does after a restart or from History, is sent the same commands as a new one")
+    void aReloadedSessionIsSentTheCommandsToo() {
+        Connection first = new Connection("pong", AgentRecorder.Depth.ALL);
+        first.open();
+        first.prompt("Reply with exactly the one word: pong");
+        List<JsonNode> said = new ArrayList<>();
+        AcpServer later = new AcpServer((prompt, chunks) -> chunks.accept("x"), () -> List.of(new AdvertisedCommand("refactor", "Reviews a design.", "seat")),
+            m -> said.add(JSON.valueToTree(m)), TurnBoundary.open(), new AgentRecorder(tools(), AgentRecorder.Depth.ALL), null);
+
+        later.receive(JsonRpcMessage.request(3, "session/load", JSON.createObjectNode().put("sessionId", first.session).put("cwd", "/w")));
+
+        List<String> names = new ArrayList<>();
+        for (JsonNode message : said) {
+            JsonNode update = message.path("params").path("update");
+            if ("available_commands_update".equals(update.path("sessionUpdate").asText()) && first.session.equals(message.path("params").path("sessionId").asText())) {
+                update.path("availableCommands").forEach(c -> names.add(c.path("name").asText()));
+            }
+        }
+        assertEquals(List.of("refactor"), names, "the session opened again was sent no command list, so its / list is empty: " + said);
     }
 
     @Test
