@@ -96,6 +96,45 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("28h S19: a model picked while a turn runs does not wait for the turn, Stop still ends the turn, and the pick holds from the next message")
+    void aModelPickedWhileATurnRunsBlocksNeitherThePickNorTheStop() throws Exception {
+        // His report, 2026-11-17: with a long job running he could not stop, switch autocontinue on or change the model; everything was blocked.
+        // The brain answers an option change only when its turn is over, so a pick that waits for the answer waits for the whole turn, and it
+        // held the lock Stop needs. The stand-in agent drops what it is sent during WAITCANCEL, as such a brain would leave it unanswered.
+        PrincipalBrain brain = brain(Optional.of(fakeWithModels()));
+        java.util.concurrent.CountDownLatch begun = new java.util.concurrent.CountDownLatch(1);
+        Thread turn = new Thread(() -> brain.answer("WAITCANCEL", piece -> begun.countDown()));
+        turn.setDaemon(true);
+        turn.start();
+        try {
+            assertTrue(begun.await(60, java.util.concurrent.TimeUnit.SECONDS), "the brain never began its turn");
+
+            boolean[] picked = new boolean[1];
+            Thread pick = new Thread(() -> picked[0] = brain.useModel("b"));
+            pick.setDaemon(true);
+            pick.start();
+            pick.join(5_000);
+            assertFalse(pick.isAlive(), "the pick waited for the running turn");
+            assertTrue(picked[0], "the pick was refused although the brain offers that model");
+            assertEquals(Optional.of("b"), brain.currentModelValue(), "the row does not name the model that was picked");
+
+            Thread stop = new Thread(brain::cancel);
+            stop.setDaemon(true);
+            stop.start();
+            stop.join(5_000);
+            assertFalse(stop.isAlive(), "Stop waited behind the pick");
+            turn.join(15_000);
+            assertFalse(turn.isAlive(), "the turn went on after the person stopped it");
+
+            assertEquals("b", ask(brain, "WHICHMODEL", new ArrayList<>()), "the pick was not applied from the next message");
+        } finally {
+            Thread closing = new Thread(brain::close);
+            closing.setDaemon(true);
+            closing.start();
+        }
+    }
+
+    @Test
     @DisplayName("D53: the conversation runs in the folder the host opened, and without one in the folder the engine started in")
     void theBrainRunsInTheFolderTheHostOpened(@org.junit.jupiter.api.io.TempDir java.nio.file.Path opened) throws Exception {
         PrincipalBrain brain = brain(Optional.of(fake));
