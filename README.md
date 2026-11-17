@@ -26,7 +26,7 @@ tool getting it subtly wrong.
   after every edit.
 - **Reversible** — every mutating tool returns an `undoChangeId`; one call rolls the change back.
 
-**46 MCP tools** cover the whole loop — navigate, analyse, refactor-and-apply, detect code smells
+**50 MCP tools** cover the whole loop — navigate, analyse, refactor-and-apply, detect code smells
 (Fowler / SOLID / Kerievsky), apply pattern-targeted refactorings, modernise, generate, manage
 dependencies (Maven + Gradle), compile the workspace, and detect + remove duplicate code.
 
@@ -243,21 +243,22 @@ ships, fails the build. The prose that follows groups the same names by what the
 | | | |
 |---|---|---|
 | `analyze` | `apply_cleanup` | `apply_null_annotations` |
-| `change_method_signature` | `compile_workspace` | `data` |
-| `debug` | `delete_anonymous_implementation` | `dependency` |
-| `experience` | `extract` | `field` |
-| `find_duplicate_code` | `find_field_writes` | `find_modernization` |
-| `find_pattern_usages` | `find_quality_issue` | `find_references` |
-| `find_string_literals` | `find_tests` | `format` |
-| `generate` | `get_at_position` | `get_call_hierarchy` |
-| `get_diagnostics` | `go_to_definition` | `health_check` |
+| `brains` | `change_method_signature` | `compile_workspace` |
+| `data` | `debug` | `delete_anonymous_implementation` |
+| `dependency` | `experience` | `extract` |
+| `field` | `files` | `find_duplicate_code` |
+| `find_field_writes` | `find_modernization` | `find_pattern_usages` |
+| `find_quality_issue` | `find_references` | `find_string_literals` |
+| `find_tests` | `format` | `generate` |
+| `get_at_position` | `get_call_hierarchy` | `get_diagnostics` |
+| `git` | `go_to_definition` | `health_check` |
 | `hierarchy` | `hire` | `inline` |
-| `inspect` | `load_project` | `move` |
-| `organize_imports` | `plan_board` | `plan_steps` |
-| `profile` | `project` | `quick_fix` |
-| `refactor_to_pattern` | `refactoring` | `refresh_workspace` |
-| `rename_symbol` | `run_tests` | `search_symbols` |
-| `validate_syntax` |  |  |
+| `inspect` | `load_project` | `lookup` |
+| `move` | `organize_imports` | `plan_board` |
+| `plan_steps` | `profile` | `project` |
+| `quick_fix` | `refactor_to_pattern` | `refactoring` |
+| `refresh_workspace` | `rename_symbol` | `run_tests` |
+| `search_symbols` | `validate_syntax` |  |
 <!-- TOOLS:END -->
 
 
@@ -318,6 +319,10 @@ ships, fails the build. The prose that follows groups the same names by what the
 - *Verify* — `compile_workspace`, `get_diagnostics`, `find_tests`, `run_tests`
 - *Health* — `health_check`
 
+**Agents (the jawata agent and its seats)**
+- *Seats* — `hire`, `plan_board`, `plan_steps`, `brains` *(models / status / probe: the agent programs a seat can run on)*
+- *Principal's own tools* — `files` *(read and search any file, write only documents)*, `lookup` *(git status, log and diff, running processes)*, `git` *(commit a passed step; release on the person's word)*
+
 **Learn (knowledge store)**
 - *Experience* — `experience` *(record / recall / primer / load / refresh / wipe / promote)* — the
   local, workspace-scoped knowledge store. Record a lesson / hazard / domain fact; **recall** it
@@ -334,7 +339,7 @@ ships, fails the build. The prose that follows groups the same names by what the
   class and method — which is exactly the key `get_call_hierarchy` and `find_references` take, so
   a runtime fact goes straight back into the compiler-accurate tools with no search in between.
 
-*46 tools total; front doors (`analyze`, `inspect`, `extract`, `inline`, `move`, `generate`,
+*50 tools total; front doors (`analyze`, `inspect`, `extract`, `inline`, `move`, `generate`,
 `find_quality_issue`, `find_pattern_usages`, `find_modernization`, `refactor_to_pattern`,
 `dependency`, `quick_fix`, `refactoring`, `project`, `debug`) each dispatch a `kind`/action, so the
 loaded surface stays small while capability grows by registration.*

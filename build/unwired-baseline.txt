@@ -1,5 +1,7 @@
 org.jawata.catalogue.Catalogue#withOrigin(String)
 org.jawata.catalogue.CatalogueRow#id()
+# Sprint 28h S16a (his stage, C16a): the buffer store has its production callers in the language server (open, change, close) and in the headless writes (isDirty). The holder count waits for the shutdown log of open buffers, the next item of the same stage; it leaves the baseline at C16a.
+org.jawata.core.BufferStore#holders(ICompilationUnit)
 org.jawata.core.search.SearchService#findReadAccesses(IJavaElement,int)
 org.jawata.core.search.SearchService#getProject()
 org.jawata.core.search.SearchService#getScope()
@@ -23,16 +25,27 @@ org.jawata.mcp.embed.EmbedderIdentity#requireComparable(EmbedderIdentity,Embedde
 org.jawata.mcp.embed.MatMuls#scalar()
 org.jawata.mcp.embed.MiniLmEmbedder#identity()
 org.jawata.mcp.embed.WordPieceTokenizer#vocabSize()
-# Sprint 28k E17: the registry of every setting the engine reads through its host. Its consumer is the Eclipse
-# preference page (Stage 17), which is built from this list and checked against it; the standalone engine has no
-# settings screen, so no production caller exists until that stage. EngineEnvironmentTest and ResidentDirectoriesTest
-# are the readers now: the first fails if a key a reader asks is missing from it.
-org.jawata.mcp.engine.SettingKeys#all()
+# Sprint 28k Amendment 3 (D15): read by the Eclipse plug-in's engine (jawata-eclipse, EclipseEngine, as the last answer of its settings), the host without the studio; MachineAgentsTest is the reader in this repository.
+org.jawata.mcp.engine.MachineAgents#setting(String)
+# Sprint 28k C25j: the five ways the person changes one seat. Their production caller is the Eclipse plug-in (jawata-eclipse, access.SeatChanges, which turns a settings page's change into one of them), outside this repository's scan; SeatSettingsServiceTest is the reader here. Recorded at 28h C26, when this gate first ran after them.
+org.jawata.mcp.engine.SeatSettings.Change#brain(String,String)
+org.jawata.mcp.engine.SeatSettings.Change#defaultPlace()
+org.jawata.mcp.engine.SeatSettings.Change#place(String,String,String)
+org.jawata.mcp.engine.SeatSettings.Change#reset()
+org.jawata.mcp.engine.SeatSettings.Change#switched(boolean)
 # Sprint 28h (ledger 28k-A17-1, -A17-2, -A17-3): who a setting is for, and the wording of its meaning per host. Their consumer is the
 # Eclipse preference page (jawata-eclipse), which hides the launcher-set and experiment keys and words each meaning without the
 # environment-variable sentence the engine that runs alone adds; the engine that runs alone has no settings screen, so no production
 # caller exists in this repository. SettingKeyAudienceTest is the reader here and holds the headless wording of every key byte for byte.
 org.jawata.mcp.engine.SettingKey#meaningFor(boolean)
+# Sprint 28k E17: the registry of every setting the engine reads through its host. Its consumer is the Eclipse
+# preference page (Stage 17), which is built from this list and checked against it; the standalone engine has no
+# settings screen, so no production caller exists until that stage. EngineEnvironmentTest and ResidentDirectoriesTest
+# are the readers now: the first fails if a key a reader asks is missing from it.
+org.jawata.mcp.engine.SettingKeys#all()
+# Sprint 28k C25k: the words and the on-or-off kind a host shows for a setting. Their production callers are the Eclipse plug-in's preference pages (jawata-eclipse, JawataPreferencePage and MemoryPreferencePage), outside this repository's scan. Recorded at 28h C26.
+org.jawata.mcp.engine.SettingKeys#isOnOff(SettingKey)
+org.jawata.mcp.engine.SettingKeys#labelOf(SettingKey)
 # Sprint 28g S9a, C9a 2026-10-05 — THE DRIVER'S ENTRY POINTS AND THE LEDGER'S READ SURFACE.
 # These are an ABSENCE this gate is reporting correctly, not a defect: the thing that would
 # call and read them is the /main seat's ledger wiring (plan step M7), which is named and
@@ -117,6 +130,8 @@ org.jawata.mcp.protocol.McpProtocolHandler#getClientName()
 org.jawata.mcp.protocol.McpProtocolHandler#getClientVersion()
 org.jawata.mcp.protocol.McpProtocolHandler#isInitialized()
 org.jawata.mcp.protocol.McpProtocolHandler#processMessage(String)
+# Sprint 28h S16a: the number of open connections of a message route is how AcpRouteTest proves a dropped stream releases its connection (S5, 28h); it was package-private in the agent package and is public now that the route lives in the protocol package. A production reader would be a status line nobody asked for.
+org.jawata.mcp.protocol.MessageRoute#openConnections()
 org.jawata.mcp.refactoring.PurityCheck#check(MethodDeclaration,MethodDeclaration)
 org.jawata.mcp.runtime.RuntimeSessionRegistry#size()
 org.jawata.mcp.tools.AbstractApplyingRefactoringTool.Preparation#of(Change,String)
@@ -161,9 +176,3 @@ org.jawata.resident.workspace.WorkspaceManager#getSessionId()
 org.jawata.resident.workspace.WorkspaceManager#getWorkspace()
 org.jawata.resident.workspace.WorkspaceManager#projectExists(String)
 org.jawata.resident.workspace.WorkspaceManager#refresh()
-# Sprint 28h S16a (his stage, C16a): the buffer store has its production callers in the language server (open, change, close) and in the headless writes (isDirty). The holder count waits for the shutdown log of open buffers, the next item of the same stage; it leaves the baseline at C16a.
-org.jawata.core.BufferStore#holders(ICompilationUnit)
-# Sprint 28h S16a: the number of open connections of a message route is how AcpRouteTest proves a dropped stream releases its connection (S5, 28h); it was package-private in the agent package and is public now that the route lives in the protocol package. A production reader would be a status line nobody asked for.
-org.jawata.mcp.protocol.MessageRoute#openConnections()
-# Sprint 28k Amendment 3 (D15): read by the Eclipse plug-in's engine (jawata-eclipse, EclipseEngine, as the last answer of its settings), the host without the studio; MachineAgentsTest is the reader in this repository.
-org.jawata.mcp.engine.MachineAgents#setting(String)
