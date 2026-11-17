@@ -60,7 +60,7 @@ class PersonsWordsFromTheHostTest {
     @DisplayName("28h C26 (architect finding 21): a message that only mentions a release is not the order to release; the command and the bare word are")
     void aSentenceAboutAReleaseIsNotTheOrder() {
         String key = "principal-sentences-" + System.nanoTime();
-        for (String ordered : List.of("release", "Release it", "RELEASE.", "/release", "/release v4.6.8", "release now", "please release it")) {
+        for (String ordered : List.of("release", "Release it", "RELEASE.", "/release", "/release v4.6.8", "release now", "please release it", "release it now", "please release it now", "release 4.6.8")) {
             PersonsWords.said(key, ordered);
             assertTrue(PersonsWords.gaveTheReleaseWord(key), "'" + ordered + "' is the order and was not taken as it");
         }

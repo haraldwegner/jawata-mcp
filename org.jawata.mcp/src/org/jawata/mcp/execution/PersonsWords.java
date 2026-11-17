@@ -21,7 +21,7 @@ public final class PersonsWords {
      * with at most "please", "it" or "now" about it, in any case. "do not release yet", "release notes look wrong" and "is it ready to release?"
      * mention a release and do not order one, and a release publishes, so a sentence is never read for the word (architect finding 21).
      */
-    private static final Pattern RELEASE = Pattern.compile("^\\s*(?:/release(?:\\s.*)?|(?:please\\s+)?release(?:\\s+(?:it|now))?)\\s*[.!]?\\s*$", Pattern.DOTALL);
+    private static final Pattern RELEASE = Pattern.compile("^\\s*(?:/release(?:\\s.*)?|(?:please\\s+)?release(?:\\s+it)?(?:\\s+now)?(?:\\s+v?\\d[\\w.\\-]*)?)\\s*[.!]?\\s*$", Pattern.DOTALL);
 
     private PersonsWords() {
     }

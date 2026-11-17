@@ -60,7 +60,8 @@ public final class GitTool implements Tool {
 
             commit: only when every check of that hire's plan passed, and only the files the hire reported changed (any other change in the
             tree stays uncommitted); the author is the repository's own configured person.
-            release: only when the person's own last message says "release"; refused while any unpushed commit names an AI agent as author
+            release: only when the person's own last message is the order, "/release" (with a tag or notes after it) or the word "release"
+            alone (at most with "please", "it" or "now"), never a sentence that only mentions a release; refused while any unpushed commit names an AI agent as author
             or co-author. Pushes the branch to its upstream, makes the annotated tag and pushes it, and with publish (default true) publishes
             the GitHub release marked latest through gh.
             Both refuse a message naming an AI agent as co-author.
@@ -154,7 +155,7 @@ public final class GitTool implements Tool {
         }
         String caller = CallerIdentity.serving().map(CallerIdentity::id).orElse("");
         if (!PersonsWords.gaveTheReleaseWord(caller)) {
-            return refused("NO_RELEASE_WORD", "the person's last message does not say \"release\": a release is his decision and is made only on his"
+            return refused("NO_RELEASE_WORD", "the person's last message is not the release order (\"/release\", or the word \"release\" alone, at most with \"please\", \"it\" or \"now\"): a release is his decision and is made only on his"
                 + " word" + PersonsWords.lastSaid(caller).map(text -> " (his last message: \"" + clip(text) + "\")").orElse(" (no message of his is known)"));
         }
         String upstream = git(folder, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}");
