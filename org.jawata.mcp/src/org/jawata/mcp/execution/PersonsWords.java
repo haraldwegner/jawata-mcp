@@ -16,8 +16,12 @@ public final class PersonsWords {
 
     private static final Map<String, String> LAST = new ConcurrentHashMap<>();
 
-    /** The word itself, as a whole word in any case: "release", "Release it", "RELEASE." but not "released" or "prerelease". */
-    private static final Pattern RELEASE = Pattern.compile("(?<![\\p{L}\\p{N}])release(?![\\p{L}\\p{N}])");
+    /**
+     * The order itself, and nothing that only mentions it: his typed command "/release" (with a tag or notes after it), or the bare word alone,
+     * with at most "please", "it" or "now" about it, in any case. "do not release yet", "release notes look wrong" and "is it ready to release?"
+     * mention a release and do not order one, and a release publishes, so a sentence is never read for the word (architect finding 21).
+     */
+    private static final Pattern RELEASE = Pattern.compile("^\\s*(?:/release(?:\\s.*)?|(?:please\\s+)?release(?:\\s+(?:it|now))?)\\s*[.!]?\\s*$", Pattern.DOTALL);
 
     private PersonsWords() {
     }

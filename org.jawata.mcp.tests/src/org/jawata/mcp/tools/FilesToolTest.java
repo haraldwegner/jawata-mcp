@@ -64,6 +64,22 @@ class FilesToolTest {
     }
 
     @Test
+    @DisplayName("28h C26 (architect finding 20): a document that tells an agent what it may do is refused, though it is a .md, and an ordinary one beside it is written")
+    void aDocumentThatConfiguresAnAgentIsRefused(@TempDir Path folder) throws Exception {
+        for (String name : List.of("CLAUDE.md", "AGENTS.md", "SKILL.md", ".claude/skills/x/skill.md", ".cursor/rules/r.md", "seats/main.md",
+            ".github/copilot-instructions.md", "jawata-studio/seats/pm.md", ".config/jawata-studio/seats/pm.md")) {
+            Path target = folder.resolve(name);
+            ToolResponse answer = call("write", Map.of("path", target.toString(), "content", "x"));
+
+            assertFalse(answer.isSuccess(), name + " was written");
+            assertFalse(Files.exists(target), name + " exists after the refusal");
+        }
+        Path plan = folder.resolve("docs").resolve("plan.md");
+        data(call("write", Map.of("path", plan.toString(), "content", "ok")));
+        assertTrue(Files.exists(plan), "an ordinary document was refused with the others");
+    }
+
+    @Test
     @DisplayName("28h D57 (j): a source file can be read, though not written")
     void aSourceFileIsRead(@TempDir Path folder) throws Exception {
         Path source = folder.resolve("Foo.java");

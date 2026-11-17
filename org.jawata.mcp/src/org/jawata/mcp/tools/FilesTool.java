@@ -194,6 +194,10 @@ public final class FilesTool implements Tool {
                 + ": code and every other file are changed by a seat that changes code, through a hire", "NOT_A_DOCUMENT");
         }
         Path path = Path.of(given);
+        if (tellsAnAgentWhatItMayDo(path)) {
+            return ToolResponse.invalidParameter("path", given + " tells an agent what it may do (its instructions, a seat or a skill), and a document"
+                + " writer that could change it could widen what a hire may do: the person changes it, or a seat that changes code does", "NOT_A_DOCUMENT");
+        }
         if (path.getParent() != null) {
             Files.createDirectories(path.getParent());
         }
@@ -203,5 +207,23 @@ public final class FilesTool implements Tool {
         data.put("path", path.toString());
         data.put("bytes", content.getBytes(StandardCharsets.UTF_8).length);
         return ToolResponse.success(data);
+    }
+
+    /** The files an agent is told its rules by, and the folders they live in: a document in any of them changes what a seat or a hire may do. */
+    private static final Set<String> INSTRUCTION_FILES = Set.of("claude.md", "agents.md", "skill.md", "copilot-instructions.md", ".cursorrules", ".windsurfrules");
+
+    private static final Set<String> INSTRUCTION_FOLDERS = Set.of(".claude", ".cursor", ".codex", ".github", "seats");
+
+    /** Whether this path is one an agent takes its instructions from, by its file name or any folder on its way. */
+    private static boolean tellsAnAgentWhatItMayDo(Path path) {
+        if (path.getFileName() != null && INSTRUCTION_FILES.contains(path.getFileName().toString().toLowerCase(Locale.ROOT))) {
+            return true;
+        }
+        for (Path part : path) {
+            if (INSTRUCTION_FOLDERS.contains(part.toString().toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
     }
 }

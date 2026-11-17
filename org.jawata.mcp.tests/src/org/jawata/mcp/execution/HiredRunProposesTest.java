@@ -465,7 +465,9 @@ class HiredRunProposesTest {
             () -> assertEquals(0, proposal.stepsPassed(), "a stopped run moved its plan"),
             () -> assertFalse(proposal.complete(), "a stopped run reads as complete"),
             () -> assertTrue(Files.readString(proposal.record()).contains("stopped before it finished"),
-                "the record does not say the run was stopped before its checks: " + Files.readString(proposal.record())));
+                "the record does not say the run was stopped before its checks: " + Files.readString(proposal.record())),
+            () -> assertTrue(Files.readString(proposal.record()).contains("DID NOT ANSWER"),
+                "a check that never ran is recorded as an answer: " + Files.readString(proposal.record())));
     }
 
     @Test

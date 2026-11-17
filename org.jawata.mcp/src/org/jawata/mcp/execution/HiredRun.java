@@ -524,9 +524,10 @@ public final class HiredRun {
                 // D57 (l): a brain a ceiling stopped did not finish its work, so no check run over what it left proves the step: the first
                 // step still open fails here, and the plan stops. Seen live 2026-11-16: a run stopped at $3.70 over a $2.00 ceiling, having
                 // changed nothing, was closed "3 of 3 passed" because its checks ran over the unchanged tree.
-                answerRefusals.add("the brain was stopped before it finished ("
-                    + outcome.stoppedBy().orElse("its wall-clock ceiling") + "), so no check run afterwards proves this step");
-                gate = new GateOutcome(step.tool(), step.gateArguments(), 1, true);
+                String stopped = "the brain was stopped before it finished ("
+                    + outcome.stoppedBy().orElse("its wall-clock ceiling") + "), so no check run afterwards proves this step";
+                answerRefusals.add(stopped);
+                gate = new GateOutcome(step.tool(), step.gateArguments(), 0, false, stopped);
             } else if (UpwardMessageGate.STEP.equals(step.tool())) {
                 List<String> refusals = UpwardMessageGate.refusals(outcome.text());
                 answerRefusals.addAll(refusals);

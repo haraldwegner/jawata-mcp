@@ -56,6 +56,21 @@ class PersonsWordsFromTheHostTest {
         assertFalse(PersonsWords.gaveTheReleaseWord(key), "an older message still counted after he spoke again");
     }
 
+    @Test
+    @DisplayName("28h C26 (architect finding 21): a message that only mentions a release is not the order to release; the command and the bare word are")
+    void aSentenceAboutAReleaseIsNotTheOrder() {
+        String key = "principal-sentences-" + System.nanoTime();
+        for (String ordered : List.of("release", "Release it", "RELEASE.", "/release", "/release v4.6.8", "release now", "please release it")) {
+            PersonsWords.said(key, ordered);
+            assertTrue(PersonsWords.gaveTheReleaseWord(key), "'" + ordered + "' is the order and was not taken as it");
+        }
+        for (String mentioned : List.of("do not release yet", "don't release", "release notes look wrong, fix them", "is it ready to release?", "fix this, then we can release",
+            "the log says: release failed", "not now, release later")) {
+            PersonsWords.said(key, mentioned);
+            assertFalse(PersonsWords.gaveTheReleaseWord(key), "'" + mentioned + "' only mentions a release and was taken as the order");
+        }
+    }
+
     private static JsonRpcMessage prompt(int id, String session, String text) {
         ObjectNode params = JSON.createObjectNode().put("sessionId", session);
         params.putArray("prompt").addObject().put("type", "text").put("text", text);
