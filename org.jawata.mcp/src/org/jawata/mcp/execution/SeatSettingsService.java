@@ -125,12 +125,8 @@ public final class SeatSettingsService implements SeatSettings {
     public List<ConversationBrain> conversationBrains() {
         String registry = settings.get(Hirer.BRAINS_SETTING).orElse("");
         List<ConversationBrain> brains = new ArrayList<>();
-        try {
-            com.fasterxml.jackson.databind.JsonNode named = new com.fasterxml.jackson.databind.ObjectMapper().readTree(registry.isBlank() ? "{}" : registry);
-            named.fieldNames().forEachRemaining(id -> AcpBrainSession.programFor(registry, id)
-                .ifPresent(program -> brains.add(new ConversationBrain(id, BrainRoster.labelOf(id), true, Optional.empty()))));
-        } catch (java.io.IOException unreadable) {
-            // a registry that is not JSON names no brain; the hire path refuses it in its own words
+        for (String id : AcpBrainSession.brainsWithAProgramIn(registry)) {
+            brains.add(new ConversationBrain(id, BrainRoster.labelOf(id), true, Optional.empty()));
         }
         for (BrainRoster.MissingAdapter missing : BrainRoster.onThisMachine().missingAdapters()) {
             if (brains.stream().noneMatch(brain -> brain.id().equals(missing.brain()))) {
@@ -143,32 +139,8 @@ public final class SeatSettingsService implements SeatSettings {
     @Override
     public List<String> conversationModels(String brain) {
         String registry = settings.get(Hirer.BRAINS_SETTING).orElse("");
-        AcpBrainSession.Program program = AcpBrainSession.programFor(registry, brain)
-            .orElseThrow(() -> new IllegalArgumentException("The brain registry names no program for " + brain + "."));
         // the engine's one catalogue: what the chat's own session of this brain offered, or, when none has opened yet, one opened here
-        List<AcpBrainSession.Model> offered = AcpBrainSession.offeredBy(program).orElseGet(() -> {
-            Path scratch = null;
-            try {
-                scratch = java.nio.file.Files.createTempDirectory("jawata-models-");
-                AcpBrainSession.Conversation session = AcpBrainSession.Conversation.start(org.jawata.core.host.HostProcesses.system(), program,
-                    HireSite.in(scratch), null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)), AcpBrainSession.OwnTools.KEPT);
-                try {
-                    return session.models();
-                } finally {
-                    session.close();
-                }
-            } catch (java.io.IOException failed) {
-                throw new java.io.UncheckedIOException(brain + "'s adapter could not be started: " + failed.getMessage(), failed);
-            } finally {
-                if (scratch != null) {
-                    try (java.util.stream.Stream<Path> files = java.nio.file.Files.walk(scratch)) {
-                        files.sorted(java.util.Comparator.reverseOrder()).forEach(file -> file.toFile().delete());
-                    } catch (java.io.IOException leftBehind) {
-                        // the folder is under the system's temporary folder and holds nothing of the person's
-                    }
-                }
-            }
-        });
+        List<AcpBrainSession.Model> offered = AcpBrainSession.modelsOfferedIn(registry, brain);
         // the brain's own default (Cursor's Auto, Claude's Default) has a value starting "default"; a screen offers it first already
         return offered.stream().filter(model -> !model.value().toLowerCase(java.util.Locale.ROOT).startsWith("default")).map(AcpBrainSession.Model::name).toList();
     }
@@ -196,13 +168,7 @@ public final class SeatSettingsService implements SeatSettings {
      * @return the model for the command line, or null
      */
     static String commandLineModel(String registry, String brain, String model) {
-        if (model == null || model.isBlank()) {
-            return model;
-        }
-        return AcpBrainSession.programFor(registry, brain).flatMap(AcpBrainSession::offeredBy)
-            .flatMap(offered -> offered.stream().filter(one -> one.name().equalsIgnoreCase(model.strip())).findFirst())
-            .map(AcpBrainSession.Model::value)
-            .orElse(model);
+        return AcpBrainSession.commandLineModelIn(registry, brain, model);
     }
 
     @Override

@@ -100,6 +100,80 @@ public final class AcpBrainSession {
     }
 
     /**
+     * The brains a registry setting gives a program, in the order it names them.
+     *
+     * @param registry the brain registry setting
+     * @return the names, empty when the text is not JSON or names none
+     */
+    public static List<String> brainsWithAProgramIn(String registry) {
+        List<String> named = new ArrayList<>();
+        try {
+            JSON.readTree(registry == null || registry.isBlank() ? "{}" : registry).fieldNames()
+                .forEachRemaining(id -> programFor(registry, id).ifPresent(program -> named.add(id)));
+        } catch (IOException unreadable) {
+            // a registry that is not JSON names no brain; the hire path refuses it in its own words
+        }
+        return named;
+    }
+
+    /**
+     * The model a command line is given for a model a seat names: a name the kept catalogue holds becomes its value, any other model, and a
+     * brain the registry names no program for, is passed as it is.
+     *
+     * @param registry the brain registry setting
+     * @param brain    the brain
+     * @param model    the model the seat names, or null for the brain's own
+     * @return the model for the command line, or null
+     */
+    public static String commandLineModelIn(String registry, String brain, String model) {
+        if (model == null || model.isBlank()) {
+            return model;
+        }
+        return programFor(registry, brain).flatMap(AcpBrainSession::offeredBy)
+            .flatMap(offered -> offered.stream().filter(one -> one.name().equalsIgnoreCase(model.strip())).findFirst())
+            .map(Model::value)
+            .orElse(model);
+    }
+
+    /**
+     * The models one brain of a registry offers: what the chat's own session of it offered, or, when none has opened yet, a session opened here
+     * and closed again.
+     *
+     * @param registry the brain registry setting
+     * @param brain    the brain
+     * @return the models in the order the brain listed them
+     * @throws IllegalArgumentException when the registry names no program for the brain
+     * @throws java.io.UncheckedIOException when the brain's adapter cannot be started
+     */
+    public static List<Model> modelsOfferedIn(String registry, String brain) {
+        Program program = programFor(registry, brain)
+            .orElseThrow(() -> new IllegalArgumentException("The brain registry names no program for " + brain + "."));
+        return offeredBy(program).orElseGet(() -> {
+            java.nio.file.Path scratch = null;
+            try {
+                scratch = java.nio.file.Files.createTempDirectory("jawata-models-");
+                Conversation session = Conversation.start(org.jawata.core.host.HostProcesses.system(), program, HireSite.in(scratch), null,
+                    List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)), OwnTools.KEPT);
+                try {
+                    return session.models();
+                } finally {
+                    session.close();
+                }
+            } catch (IOException failed) {
+                throw new java.io.UncheckedIOException(brain + "'s adapter could not be started: " + failed.getMessage(), failed);
+            } finally {
+                if (scratch != null) {
+                    try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.walk(scratch)) {
+                        files.sorted(java.util.Comparator.reverseOrder()).forEach(file -> file.toFile().delete());
+                    } catch (IOException leftBehind) {
+                        // the folder is under the system's temporary folder and holds nothing of the person's
+                    }
+                }
+            }
+        });
+    }
+
+    /**
      * What it takes to start a brain that speaks ACP: the command line the brain's own installation defines, and the variables it needs
      * beyond the resident's. Per brain, never per call.
      */
