@@ -69,9 +69,16 @@ public final class PrincipalBrain implements AgentBrain {
     private volatile Optional<String> resume = Optional.empty();
     /** The principal seat's own instructions, as its file says them now; none outside a seats folder (D53 (h)). */
     private final java.util.function.Supplier<Optional<String>> stance;
-    /** The brain process of this conversation (D53 (g)); guarded by itself being the lock's subject, {@link #starting}. */
-    private AcpBrainSession.Conversation conversation;
+    /**
+     * The brain process of this conversation (D53 (g)); changed only under {@link #starting}, and volatile so that Stop can reach it without
+     * the lock: a person's Stop must never wait behind anything (28h S19, his report 2026-11-17).
+     */
+    private volatile AcpBrainSession.Conversation conversation;
     private final Object starting = new Object();
+    /** Whether the brain is answering a prompt right now; a brain answers a change of its options only when its turn is over. */
+    private volatile boolean turnRunning;
+    /** A model the person picked while a turn ran, for the brain to move to before the next prompt; the row names it meanwhile. */
+    private volatile Optional<String> pendingModel = Optional.empty();
     /** Set when the person has chosen another brain: the process goes at the next prompt, so the prompt running now is not cut off. */
     private boolean brainChanged;
     /**
@@ -230,11 +237,21 @@ public final class PrincipalBrain implements AgentBrain {
         String refusal;
         try {
             AcpBrainSession.Conversation brain = conversation();
-            outcome = brain.prompt(opening(prompt), pictures, ceilings,
-                piece -> {
-                    streamed[0] = true;
-                    chunks.accept(piece);
-                }, toolCalls, thinking);
+            // A model picked while the last turn ran moves the session now, between two turns, when the brain answers at once.
+            pendingModel.ifPresent(model -> {
+                pendingModel = Optional.empty();
+                brain.selectModel(model);
+            });
+            turnRunning = true;
+            try {
+                outcome = brain.prompt(opening(prompt), pictures, ceilings,
+                    piece -> {
+                        streamed[0] = true;
+                        chunks.accept(piece);
+                    }, toolCalls, thinking);
+            } finally {
+                turnRunning = false;
+            }
             refusal = brain.refusal();
         } catch (IOException e) {
             chunks.accept("jawata's agent could not reach its brain: " + e.getMessage());
@@ -316,13 +333,23 @@ public final class PrincipalBrain implements AgentBrain {
      */
     @Override
     public Optional<String> currentModel() {
+        Optional<String> pending = pendingModel;
         synchronized (starting) {
+            if (pending.isPresent()) {
+                // the pick the person made during a turn: the row names it, and the brain moves to it before the next prompt
+                return liveConversation().flatMap(open -> open.models().stream().filter(model -> model.value().equals(pending.get())).findFirst())
+                    .map(AcpBrainSession.Model::name);
+            }
             return liveConversation().flatMap(AcpBrainSession.Conversation::currentModel).map(AcpBrainSession.Model::name);
         }
     }
 
     @Override
     public Optional<String> currentModelValue() {
+        Optional<String> pending = pendingModel;
+        if (pending.isPresent()) {
+            return pending;
+        }
         synchronized (starting) {
             return liveConversation().flatMap(AcpBrainSession.Conversation::currentModel).map(AcpBrainSession.Model::value);
         }
@@ -343,6 +370,19 @@ public final class PrincipalBrain implements AgentBrain {
     public boolean useModel(String model) {
         synchronized (starting) {
             Optional<AcpBrainSession.Conversation> open = liveConversation();
+            if (open.isPresent() && turnRunning) {
+                // The brain answers a change of its options only when its turn is over, so waiting for it here would wait for the whole turn
+                // while holding what Stop needs (28h S19). The pick is kept, the row names it, and the brain moves to it before the next prompt.
+                Optional<AcpBrainSession.Model> offered = model == null ? Optional.empty() : open.get().models().stream()
+                    .filter(candidate -> candidate.value().equalsIgnoreCase(model.strip()) || candidate.name().equalsIgnoreCase(model.strip())).findFirst();
+                if (offered.isEmpty()) {
+                    return false;
+                }
+                pendingModel = Optional.of(offered.get().value());
+                preferredModel = pendingModel;
+                return true;
+            }
+            pendingModel = Optional.empty();
             boolean moved = open.isPresent() && open.get().selectModel(model);
             if (moved || open.isEmpty()) {
                 preferredModel = Optional.ofNullable(model).filter(name -> !name.isBlank());
@@ -369,6 +409,7 @@ public final class PrincipalBrain implements AgentBrain {
         synchronized (starting) {
             program = next;
             brainChanged = true;
+            pendingModel = Optional.empty(); // a pick made during a turn belonged to the brain that is being replaced
             // A model chosen for the brain that was running is not a model of the one that takes over; the registry may name one for it.
             preferredModel = Hirer.brainIn(registry, name).map(Hirer.Brain::model).filter(model -> !model.isBlank());
         }
@@ -382,10 +423,10 @@ public final class PrincipalBrain implements AgentBrain {
 
     @Override
     public void cancel() {
-        synchronized (starting) {
-            if (conversation != null) {
-                conversation.cancel();
-            }
+        // No lock: Stop is the one request that must always get through, and the lock is held by whatever is slow (28h S19).
+        AcpBrainSession.Conversation open = conversation;
+        if (open != null) {
+            open.cancel();
         }
     }
 
