@@ -439,8 +439,8 @@ public final class AcpServer {
         autonomy.put("id", AUTONOMY);
         autonomy.put("name", "Autonomy");
         autonomy.put("description", "on: the agent carries on after each turn while a step still waits for its gate, within the limit "
-            + "on tries per step. off: it stops at the end of each turn. Typing /autocontinue or /autocontinue-off switches it too; any other "
-            + "message you type leaves it as it is.");
+            + "on tries per step. off: it stops at the end of each turn. Typing /autocontinue switches it on, as the button does; any message "
+            + "you type while it is on ends it, so the agent does not move on while you are talking with it.");
         autonomy.put("type", "select");
         autonomy.put("currentValue", session.autonomy() ? "on" : "off");
         ArrayNode values = autonomy.putArray("options");
@@ -734,8 +734,9 @@ public final class AcpServer {
             boundary.personSpoke(session);
             // 28h D57 (j): his message is what a release is checked against; only this path, the host's, writes it.
             brain.toolSessionKey().ifPresent(key -> org.jawata.mcp.execution.PersonsWords.said(key, typed));
-            // D57 (m): the grant is ONE state, switched by the button or by his typed /autocontinue and /autocontinue-off alike; any other
-            // message he types leaves it as it is, so "Fix" typed under a grant runs on (his words 2026-11-17: "The button is not wired").
+            // D57 (m): the grant is ONE state, switched by the button or by his typed /autocontinue and /autocontinue-off alike. Any other
+            // message he types ends it, as it always did (his words 2026-11-17: "I do not want the agent to move on while I am talking with
+            // him"): /autocontinue-off is that same ending, named.
             String command = typed == null ? "" : typed.strip();
             if ("/autocontinue".equals(command) && !session.autonomy()) {
                 session.setAutonomy(Channel.HOST, true);
@@ -743,12 +744,13 @@ public final class AcpServer {
                 update(session.id(), messageChunk("agent_message_chunk", "Autonomy on: you typed /autocontinue.\n\n", messageId));
                 update(session.id(), configOptionUpdate(session));
                 text = "[jawata] autonomy: on (the person typed /autocontinue)\n" + text;
-            } else if ("/autocontinue-off".equals(command) && session.autonomy()) {
+            } else if (session.autonomy() && !"/autocontinue".equals(command)) {
+                boolean named = "/autocontinue-off".equals(command);
                 session.setAutonomy(Channel.HOST, false);
                 brain.autonomyChanged(false);
-                update(session.id(), messageChunk("agent_message_chunk", "Autonomy ended: you typed /autocontinue-off.\n\n", messageId));
+                update(session.id(), messageChunk("agent_message_chunk", named ? "Autonomy ended: you typed /autocontinue-off.\n\n" : "Autonomy ended: you sent a message.\n\n", messageId));
                 update(session.id(), configOptionUpdate(session));
-                text = "[jawata] autonomy: off (the person typed /autocontinue-off)\n" + text;
+                text = "[jawata] autonomy: off (the person typed " + (named ? "/autocontinue-off" : "a message, which ends it") + ")\n" + text;
             }
         }
         java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());

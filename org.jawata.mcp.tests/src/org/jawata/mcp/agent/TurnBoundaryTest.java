@@ -280,20 +280,20 @@ class TurnBoundaryTest {
     }
 
     @Test
-    @DisplayName("D57 (m): an instruction the person types while the grant is on leaves it on, so 'Fix' runs on to the next checkpoint")
-    void aTypedInstructionLeavesTheGrantOn() {
-        // His words, 2026-11-17: "The button is not wired". Typing "Fix" after switching the button on switched it off again.
+    @DisplayName("D57 (m): a message the person types while the grant is on ends it, and the button shows off, so the agent does not move on while he is talking with it")
+    void aTypedMessageEndsTheGrant() {
+        // His words, 2026-11-17: "I do not want the agent to move on while I am talking with him".
         Run run = new Run(new PlanLedger(), false, "ok");
         run.setAutonomy("on", Channel.HOST);
         run.said.clear();
 
         run.prompt("Fix");
 
-        assertFalse(run.answer().contains("Autonomy ended"), "a typed instruction ended the grant: " + run.answer());
-        assertTrue(run.said.stream().noneMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())
+        assertTrue(run.answer().contains("Autonomy ended"), "a typed message did not end the grant: " + run.answer());
+        assertTrue(run.said.stream().anyMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())
             && "off".equals(m.path("params").path("update").path("configOptions").get(0).path("currentValue").asText())),
-            "a typed instruction switched the button off");
-        assertFalse(run.brainSaw.get(0).startsWith("[jawata] autonomy: off"), "the brain was told the grant ended: " + run.brainSaw.get(0));
+            "a typed message did not switch the button off: " + run.said);
+        assertTrue(run.brainSaw.get(0).startsWith("[jawata] autonomy: off"), "the brain was not told the grant ended: " + run.brainSaw.get(0));
     }
 
     @Test
