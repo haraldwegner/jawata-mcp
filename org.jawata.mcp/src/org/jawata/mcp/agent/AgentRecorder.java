@@ -154,8 +154,19 @@ public final class AgentRecorder {
         }
     }
 
-    /** The write itself, on the recorder's thread. */
+    /** From how long a write to the lane counts as slow, in milliseconds. */
+    static final long SLOW_MILLIS = 1_000;
+
+    private final java.util.concurrent.atomic.AtomicInteger slowWrites = new java.util.concurrent.atomic.AtomicInteger();
+
+    /** How many writes to the lane took {@value #SLOW_MILLIS} ms or more: the shared lane is also used by other residents (28h S19-1). */
+    int slowWrites() {
+        return slowWrites.get();
+    }
+
+    /** The write itself, on the recorder's thread; one that takes long is counted and logged with its time, so a stalled lane leaves a trace. */
     private void write(String sessionId, ObjectNode args, CallerIdentity identity) {
+        long started = System.nanoTime();
         try {
             ToolResponse response = tools.callTool("experience", args, identity);
             if (response == null || !response.isSuccess()) {
@@ -163,6 +174,12 @@ public final class AgentRecorder {
             }
         } catch (Exception e) {
             log.warn("a turn of session {} could not be recorded", sessionId, e);
+        } finally {
+            long took = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
+            if (took >= SLOW_MILLIS) {
+                slowWrites.incrementAndGet();
+                log.warn("the transcript lane took {} ms to take a turn of session {}", took, sessionId);
+            }
         }
     }
 

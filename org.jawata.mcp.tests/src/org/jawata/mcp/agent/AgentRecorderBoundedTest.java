@@ -78,5 +78,28 @@ class AgentRecorderBoundedTest {
         recorder.record(AgentRecorder.Level.PRINCIPAL, new PrincipalSession("s19-fast", "", false), "only", "typed", "said", List.of());
 
         assertEquals(List.of("only"), lane.took, "record returned before a lane that was ready had taken the turn");
+        assertEquals(0, recorder.slowWrites(), "a write that took no time was counted as slow");
+    }
+
+    @Test
+    @DisplayName("S19-1: a write the lane takes a second or more to take is counted, so a stalled lane leaves a trace")
+    void aSlowWriteIsCounted() throws Exception {
+        HeldLane lane = new HeldLane();
+        AgentRecorder recorder = new AgentRecorder(lane, AgentRecorder.Depth.ALL, 10_000);
+        Thread letGo = new Thread(() -> {
+            try {
+                Thread.sleep(1_300);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            lane.released.countDown();
+        });
+        letGo.start();
+
+        recorder.record(AgentRecorder.Level.PRINCIPAL, new PrincipalSession("s19-slow", "", false), "slow", "typed", "said", List.of());
+        letGo.join();
+
+        assertEquals(List.of("slow"), lane.took);
+        assertEquals(1, recorder.slowWrites(), "a write that took over a second was not counted");
     }
 }
