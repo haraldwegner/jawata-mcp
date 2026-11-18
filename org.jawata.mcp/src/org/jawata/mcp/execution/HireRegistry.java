@@ -295,6 +295,25 @@ public final class HireRegistry {
             return all;
         }
 
+        /**
+         * The reports that have come, waiting in slices of this length for as long as a hire of this lead is out and {@code running} says one still
+         * runs. A lead's own ceiling is no bound on a hire below it, which has its own, so a single wait of the lead's length ended the lead while
+         * a hire was still working. Empty only when nothing is out, or when the count says one is out and nothing runs, so a count that cannot
+         * fall does not hold the lead.
+         */
+        public List<Event> awaitWhileOut(long sliceMillis, java.util.function.BooleanSupplier running) throws InterruptedException {
+            while (outstanding() > 0 || !isEmpty()) {
+                List<Event> got = await(sliceMillis);
+                if (!got.isEmpty()) {
+                    return got;
+                }
+                if (!running.getAsBoolean()) {
+                    return got;
+                }
+            }
+            return List.of();
+        }
+
         /** Whether no report is waiting to be read. */
         public boolean isEmpty() {
             return reports.isEmpty();

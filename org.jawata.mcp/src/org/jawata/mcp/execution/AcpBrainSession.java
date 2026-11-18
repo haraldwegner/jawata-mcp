@@ -267,8 +267,9 @@ public final class AcpBrainSession {
      * Runs the brain of a hired lead (Stage 24, M12): the first prompt as {@link #run} does, and then, while hires its brain started in the
      * background are still out, one more turn for each set of reports that comes, until nothing is out and nothing is waiting. The brain's
      * process stays alive between turns, so its context carries the reports. The wall-clock ceiling is armed for each turn and not across the
-     * waits, and the tool-step ceiling is counted across the turns, so a lead that keeps going cannot spend without end. A wait is as long as the
-     * longest a hire may run, and a lead whose hires never report is not waited for beyond it.
+     * waits, and the tool-step ceiling is counted across the turns, so a lead that keeps going cannot spend without end. The wait goes on, in slices
+     * of the lead's own wall-clock ceiling, for as long as a hire of the lead is out and running, because each hire is bounded by the ceilings of its
+     * own seat and not by the lead's (Stage 27 (r), (v)); it ends when nothing is out, or when a hire is counted as out and none runs.
      * @param inbox  the reports of this lead's background hires, opened before the first turn so that none is missed
      * @param leadId the id this lead's hires are issued under, to say which of them are still out
      * @param model  the model the seat names, as {@link #run} takes it
@@ -285,7 +286,8 @@ public final class AcpBrainSession {
             List<String> names = new ArrayList<>(last.toolNames());
             List<ToolCall> calls = new ArrayList<>(last.toolCalls());
             while (last.stoppedBy().isEmpty() && conversation.alive() && (inbox.outstanding() > 0 || !inbox.isEmpty())) {
-                List<HireRegistry.Event> reports = inbox.await(ceilings.wallClock().toMillis());
+                List<HireRegistry.Event> reports = inbox.awaitWhileOut(ceilings.wallClock().toMillis(),
+                    () -> !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
                 if (reports.isEmpty()) {
                     break;
                 }
