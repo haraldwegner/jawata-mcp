@@ -28,7 +28,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  */
 public record HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
         long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId,
-        Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles) {
+        Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles, java.util.Optional<com.fasterxml.jackson.databind.JsonNode> toolUse) {
 
     /** An entry at the top of the hierarchy (level 0), whatever else it knows. */
     public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
@@ -117,6 +117,7 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
         enginePlan.ifPresent(p -> meta.put("enginePlan", p));
         name.ifPresent(n -> meta.put("name", n));
         changedFiles.ifPresent(n -> meta.put("changedFileCount", n));
+        toolUse.ifPresent(u -> meta.set("toolUse", u));
         return meta;
     }
 
@@ -142,5 +143,9 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
 
     public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs, long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId, Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name) {
         this(planId, seat, brain, model, state, elapsedMs, tokens, costUsd, task, parentPlanId, brainSessionId, verdict, level, toolSteps, contextTokens, seatCommand, enginePlan, name, java.util.OptionalInt.empty());
+    }
+
+    public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs, long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId, Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles) {
+        this(planId, seat, brain, model, state, elapsedMs, tokens, costUsd, task, parentPlanId, brainSessionId, verdict, level, toolSteps, contextTokens, seatCommand, enginePlan, name, changedFiles, java.util.Optional.empty());
     }
 }

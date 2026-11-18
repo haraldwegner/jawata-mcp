@@ -895,6 +895,9 @@ public class HireTool extends NeutralTool {
                     effects.notOffered(), judge));
         }
         data.put("shellCalls", effects.shell());
+        // Stage 27 (o): how the run used jawata, for the card Agent Control draws. Not observed when calls were counted and none named.
+        data.put("toolUse", org.jawata.mcp.execution.ToolUse.of(
+            proposal.outcome().toolCalls(), proposal.outcome().toolSteps(), bare -> engine.getTool(bare).isPresent()).asMap());
         data.put("unclassifiedCalls", effects.unknown());
         data.put("unnamedToolSteps", effects.unnamed());
         data.put("performedNoCodeChangingOperation", effects.performedNoCodeChangingOperation());

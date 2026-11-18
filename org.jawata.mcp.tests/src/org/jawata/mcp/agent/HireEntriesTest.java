@@ -327,6 +327,24 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("Stage 27 (o): an ended hire's card carries how its run used jawata, as the answer reported it, and none when the answer reported none")
+    void anEndedHiresCardCarriesHowItUsedJawata() {
+        watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "developer", "build the stage"));
+        watch.observe(withInput(hireCall("tool_call", "t2", "pending"), "main", "ux", "look at the screen"));
+
+        HireEntry used = watch.observe(answered(hireCall("tool_call_update", "t1", "completed"),
+            "{\"data\":{\"cleanExit\":true,\"toolUse\":{\"observed\":true,\"jawata\":9,\"other\":2,"
+                + "\"shellOnJava\":[{\"command\":\"grep x A.java\",\"declared\":\"no symbol tool reads a log line\"}]}}}")).orElseThrow();
+        HireEntry bare = watch.observe(answered(hireCall("tool_call_update", "t2", "completed"),
+            "{\"data\":{\"cleanExit\":true}}")).orElseThrow();
+
+        com.fasterxml.jackson.databind.JsonNode use = used.toMeta().path("toolUse");
+        assertEquals(9, use.path("jawata").asInt(-1), "THE CLAIM: the figures were not on the wire: " + used.toMeta());
+        assertEquals("no symbol tool reads a log line", use.path("shellOnJava").get(0).path("declared").asText());
+        assertFalse(bare.toMeta().has("toolUse"), "CONTROL: an answer that reported none was given a figure");
+    }
+
+    @Test
     @DisplayName("28h D57 (i): a running hire's transcript shows the calls its brain has made so far, by their titles, after its brief")
     void aRunningHiresTranscriptShowsItsCallsSoFar() {
         watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "developer", "build the stage"));

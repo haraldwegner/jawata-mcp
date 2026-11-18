@@ -178,6 +178,11 @@ public final class RunEffects {
         return CLI_EDITORS.contains(bare);
     }
 
+    /** Whether a bare name is one of the brain CLIs' own shells, whose command decides what a call did. */
+    static boolean isCliShell(String bare) {
+        return CLI_SHELLS.contains(bare);
+    }
+
     /**
      * {@code mcp__jawata-javata-dev__search_symbols} -> {@code search_symbols}.
      *
