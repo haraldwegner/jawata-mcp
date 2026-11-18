@@ -66,6 +66,18 @@ class HireReportTest {
     }
 
     @Test
+    @DisplayName("28h-C26-11: a worker briefed in prose is reported as not checked, with the reason, so 'not checked' cannot read as 'nothing to report'")
+    void aWorkerBriefedInProseIsReportedAsNotChecked() throws Exception {
+        com.fasterxml.jackson.databind.node.ObjectNode answer = JSON.createObjectNode().put("cleanExit", true).put("answer", "done");
+        answer.set("instructionScore", JSON.valueToTree(HireReport.notChecked()));
+        String report = HireReport.of(new HireRegistry.Event("finished", "plan-1", "Dora", "developer", "brief", "plan-ce", answer), List.of());
+
+        assertAll(
+            () -> assertTrue(report.contains("Instructions: not computable: its brief carries no INSTRUCTION blocks"), report),
+            () -> assertTrue(report.contains("not compared with anything"), report));
+    }
+
+    @Test
     @DisplayName("D57 (d), the control: a hire with no instruction score gets no instruction lines")
     void aHireWithNoScoreGetsNoInstructionLines() throws Exception {
         String report = reportOf("{\"cleanExit\":true,\"answer\":\"PROBE OK\"}");

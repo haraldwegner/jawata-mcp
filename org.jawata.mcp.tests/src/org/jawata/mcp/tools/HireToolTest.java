@@ -1640,6 +1640,24 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h-C26-11: a worker briefed in prose carries a score that says it was not checked and why, so its lead's report does not read as nothing to report")
+    @SuppressWarnings("unchecked")
+    void aWorkerBriefedInProseIsMarkedNotChecked() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aWorkerThenAnObserverWhoHalts("{\"symbol\":\"a.B#c\",\"newName\":\"d\"}").withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "developer");
+        args.put("brief", "Please rename c to d in B, and tell me when it is done.");
+        Map<String, Object> worker = dataOf(hire.execute(args));
+
+        Map<String, Object> score = (Map<String, Object>) worker.get("instructionScore");
+        org.junit.jupiter.api.Assertions.assertNotNull(score, "a worker briefed in prose said nothing about being checked: " + worker.keySet());
+        assertAll(
+            () -> assertEquals(false, score.get("computable"), String.valueOf(score)),
+            () -> assertTrue(String.valueOf(score.get("because")).contains("INSTRUCTION"), String.valueOf(score)));
+    }
+
+    @Test
     @DisplayName("D57 (d): with the observer seat switched off, a deviating step is listed as unjudged and no observer is hired")
     @SuppressWarnings("unchecked")
     void aSwitchedOffObserverLeavesTheStepUnjudged() throws Exception {

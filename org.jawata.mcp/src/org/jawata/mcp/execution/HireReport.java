@@ -40,6 +40,17 @@ public final class HireReport {
     }
 
     /**
+     * What a worker's answer carries in place of an instruction score when its brief has no INSTRUCTION blocks (28h-C26-11): that it was not
+     * checked, and why, so that a lead reads "not checked" and never mistakes the silence for "nothing to report".
+     */
+    public static java.util.Map<String, Object> notChecked() {
+        java.util.Map<String, Object> score = new java.util.LinkedHashMap<>();
+        score.put("computable", false);
+        score.put("because", "its brief carries no INSTRUCTION blocks, so its steps were not compared with anything");
+        return score;
+    }
+
+    /**
      * 28h D57 (d): how a worker's steps compared with the instructions it was given, and the observer's corrections, each with its
      * instruction's number. A hire answers at once, so this report is the only place its lead reads them; a hire with no score adds nothing.
      */

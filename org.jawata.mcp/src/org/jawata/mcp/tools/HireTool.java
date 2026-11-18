@@ -893,6 +893,9 @@ public class HireTool extends NeutralTool {
                 ? instructionScore(landsIn, instructionsFrom.trim(), proposal.outcome(), engine, effects.notOffered(), judge)
                 : briefScore(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""), briefed, proposal.outcome(), engine,
                     effects.notOffered(), judge));
+        } else if (declaredTree.tree().roleOf(hired).filter(SeatTree.Role.WORKER::equals).isPresent()) {
+            // 28h-C26-11: a worker briefed in prose is not scored, and says so, so the lead's report does not read as "nothing to report".
+            data.put("instructionScore", org.jawata.mcp.execution.HireReport.notChecked());
         }
         data.put("shellCalls", effects.shell());
         // Stage 27 (o): how the run used jawata, for the card Agent Control draws. Not observed when calls were counted and none named.
