@@ -24,7 +24,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  * @param other       every call that is neither a jawata call nor a shell call on Java
  * @param shellOnJava the shell calls whose command names a Java file, each with the reason it declared
  */
-public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava> shellOnJava) {
+public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava> shellOnJava, java.util.List<CallOutcomes.Failed> failed) {
 
     /** The longest command kept on a card; the full text is in the run's own stream. */
     private static final int COMMAND_LIMIT = 300;
@@ -47,8 +47,16 @@ public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava>
      * @param isJawataTool whether a bare name is a tool of this engine
      */
     public static ToolUse of(List<ToolCall> calls, int toolSteps, Predicate<String> isJawataTool) {
+        return of(calls, toolSteps, isJawataTool, List.of());
+    }
+
+    /**
+     * As above, with the jawata calls the engine itself answered with an error (see {@link CallOutcomes}), which it knows whatever the run's
+     * stream named: an unobserved run still lists them.
+     */
+    public static ToolUse of(List<ToolCall> calls, int toolSteps, Predicate<String> isJawataTool, List<CallOutcomes.Failed> failed) {
         if (calls.isEmpty() && toolSteps > 0) {
-            return new ToolUse(false, 0, 0, List.of());
+            return new ToolUse(false, 0, 0, List.of(), List.copyOf(failed));
         }
         int jawata = 0;
         int other = 0;
@@ -63,16 +71,28 @@ public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava>
                 other++;
             }
         }
-        return new ToolUse(true, jawata, other, List.copyOf(shell));
+        return new ToolUse(true, jawata, other, List.copyOf(shell), List.copyOf(failed));
     }
 
     /** What the card carries: the three counts and the shell calls, or only {@code observed:false} for a run nobody could read. */
     public Map<String, Object> asMap() {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("observed", observed);
+        List<Map<String, Object>> failedRows = new ArrayList<>();
+        for (CallOutcomes.Failed f : failed) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("tool", f.tool());
+            row.put("code", f.code());
+            failedRows.add(row);
+        }
         if (!observed) {
+            // the engine answered these calls itself, so an unreadable stream does not hide them
+            if (!failedRows.isEmpty()) {
+                map.put("failed", failedRows);
+            }
             return map;
         }
+        map.put("failed", failedRows);
         map.put("jawata", jawata);
         map.put("other", other);
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -109,5 +129,9 @@ public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava>
             return String.join(" ", parts);
         }
         return command.asText("");
+    }
+
+    public ToolUse(boolean observed, int jawata, int other, List<ShellOnJava> shellOnJava) {
+        this(observed, jawata, other, shellOnJava, java.util.List.of());
     }
 }

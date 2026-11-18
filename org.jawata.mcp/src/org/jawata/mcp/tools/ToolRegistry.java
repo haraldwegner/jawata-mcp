@@ -700,6 +700,17 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         // The private helpers below still take the id; which of them carry the
         // whole identity is settled one step later, where the collaborators
         // that would read its origin live.
+        ToolResponse response = dispatch(name, arguments, caller);
+        // Stage 27 (o): a call of a RUNNING hire that failed or was refused is kept under its plan id, for Agent Control. The stream a hire's
+        // brain sends records a call and not its result, and this is the one place every call's answer passes. A caller that is no running hire
+        // is not kept, or the store would grow with every session of every client.
+        if (response != null && !response.isSuccess() && org.jawata.mcp.execution.HireRegistry.shared().isRunningPlan(caller.id())) {
+            org.jawata.mcp.execution.CallOutcomes.shared().record(caller.id(), name, response);
+        }
+        return response;
+    }
+
+    private ToolResponse dispatch(String name, JsonNode arguments, CallerIdentity caller) throws ToolNotFoundException {
         String sessionId = caller.id();
         Tool tool = tools.get(name);
         if (tool == null) {

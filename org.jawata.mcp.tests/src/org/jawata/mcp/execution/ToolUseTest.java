@@ -114,6 +114,22 @@ class ToolUseTest {
     }
 
     @Test
+    @DisplayName("the jawata calls the engine kept as failed or refused ride in the map with the tool and the error code, and an unobserved run still lists them")
+    void theFailedCallsRideInTheMap() {
+        List<CallOutcomes.Failed> failed = List.of(new CallOutcomes.Failed("rename_symbol", "REFACTORING_FAILED"), new CallOutcomes.Failed("files", "ACCESS_DENIED"));
+        JsonNode seen = JSON.valueToTree(ToolUse.of(List.of(call("search_symbols", "{}")), 1, ENGINE::contains, failed).asMap());
+        JsonNode blind = JSON.valueToTree(ToolUse.of(List.of(), 3, ENGINE::contains, failed).asMap());
+        JsonNode clean = JSON.valueToTree(ToolUse.of(List.of(call("search_symbols", "{}")), 1, ENGINE::contains, List.of()).asMap());
+
+        assertAll(
+            () -> assertEquals(2, seen.path("failed").size(), "THE CLAIM: the failed calls were not on the card"),
+            () -> assertEquals("rename_symbol", seen.path("failed").get(0).path("tool").asText()),
+            () -> assertEquals("ACCESS_DENIED", seen.path("failed").get(1).path("code").asText()),
+            () -> assertEquals(2, blind.path("failed").size(), "an unobserved run lost the failures the engine itself saw"),
+            () -> assertEquals(0, clean.path("failed").size(), "CONTROL: a run with no failures was given some"));
+    }
+
+    @Test
     @DisplayName("the map the card carries holds the three counts and each shell call with its reason")
     void theMapCarriesTheFigures() {
         ToolUse use = of(2, call("search_symbols", "{}"), call("Bash", "{\"command\":\"cat A.java # jawata-fallback: no tool reads a log line\"}"));
