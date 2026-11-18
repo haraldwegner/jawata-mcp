@@ -149,10 +149,8 @@ public final class AcpBrainSession {
         Program program = programFor(registry, brain)
             .orElseThrow(() -> new IllegalArgumentException("The brain registry names no program for " + brain + "."));
         return offeredBy(program).orElseGet(() -> {
-            java.nio.file.Path scratch = null;
             try {
-                scratch = java.nio.file.Files.createTempDirectory("jawata-models-");
-                Conversation session = Conversation.start(org.jawata.core.host.HostProcesses.system(), program, HireSite.in(scratch), null,
+                Conversation session = Conversation.start(org.jawata.core.host.HostProcesses.system(), program, HireSite.in(listingFolder()), null,
                     List.of(), Optional.empty(), HiredBrain.Ceilings.of(java.time.Duration.ofSeconds(60)), OwnTools.KEPT);
                 try {
                     return session.models();
@@ -161,16 +159,20 @@ public final class AcpBrainSession {
                 }
             } catch (IOException failed) {
                 throw new java.io.UncheckedIOException(brain + "'s adapter could not be started: " + failed.getMessage(), failed);
-            } finally {
-                if (scratch != null) {
-                    try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.walk(scratch)) {
-                        files.sorted(java.util.Comparator.reverseOrder()).forEach(file -> file.toFile().delete());
-                    } catch (IOException leftBehind) {
-                        // the folder is under the system's temporary folder and holds nothing of the person's
-                    }
-                }
             }
         });
+    }
+
+    /**
+     * The one folder a model listing opens its brain in, kept between listings (28h-C26-7). Claude and Cursor each keep a record per folder a
+     * session was opened in, under the person's home, in a layout this engine does not own and cannot remove for every program, so a fresh folder
+     * for every listing left one record behind for every listing. One named folder is one record, reused; it is named for the user so that
+     * another user's folder of the name is never used, and it is made again when something removed it.
+     */
+    static java.nio.file.Path listingFolder() throws IOException {
+        java.nio.file.Path folder = java.nio.file.Path.of(System.getProperty("java.io.tmpdir"), "jawata-models-" + System.getProperty("user.name"));
+        java.nio.file.Files.createDirectories(folder);
+        return folder;
     }
 
     /**

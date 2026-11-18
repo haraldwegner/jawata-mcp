@@ -102,6 +102,21 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h-C26-7: a model listing opens its brain in the one folder kept between listings, so each brain keeps one record under the home, not one per listing")
+    void aModelListingOpensItsBrainInTheKeptFolder() throws Exception {
+        java.nio.file.Path kept = AcpBrainSession.listingFolder();
+        java.nio.file.Files.delete(kept); // absent now: only a listing that uses it brings it back
+
+        com.fasterxml.jackson.databind.node.ObjectNode registry = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        com.fasterxml.jackson.databind.node.ObjectNode entry = registry.putObject("claude-code");
+        agent.command().forEach(entry.putArray("command")::add);
+        agent.environment().forEach(entry.putObject("env")::put);
+        AcpBrainSession.modelsOfferedIn(registry.toString(), "claude-code");
+
+        assertTrue(java.nio.file.Files.isDirectory(kept), "THE CLAIM: the listing did not open its brain in the kept folder " + kept);
+    }
+
+    @Test
     @DisplayName("a prompt is answered, the brain exits cleanly, and the outcome carries the session id the brain opened")
     void aPromptIsAnsweredAndTheSessionIdComesBack() throws Exception {
         HiredBrain.Outcome outcome = hire("REMEMBER:bluebird");
