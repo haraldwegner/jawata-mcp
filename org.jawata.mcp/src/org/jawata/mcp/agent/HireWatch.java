@@ -66,6 +66,8 @@ final class HireWatch {
         long endedMs = -1;
         long tokens;
         OptionalDouble cost = OptionalDouble.empty();
+        /** How many files the hire's answer says its run changed; absent when the answer carries no count (Stage 27 (u)): a count nobody took is not zero. */
+        java.util.OptionalInt changedCount = java.util.OptionalInt.empty();
         /** Tool calls the hire made, as its answer counted them (D10). */
         int toolSteps;
         /** The names of the tool calls the hire made, in order, as its answer listed them (28h D57 (i)). */
@@ -343,6 +345,7 @@ final class HireWatch {
         List<String> files = new java.util.ArrayList<>();
         answer.path("changedFiles").forEach(file -> files.add(file.asText()));
         hire.changedFiles = List.copyOf(files);
+        hire.changedCount = answer.path("changedFileCount").isInt() ? java.util.OptionalInt.of(answer.get("changedFileCount").asInt()) : java.util.OptionalInt.empty();
         List<TreeAttribution.FileChange> shown = new java.util.ArrayList<>();
         answer.path("changes").forEach(file -> shown.add(new TreeAttribution.FileChange(file.path("path").asText(),
             file.hasNonNull("oldText") ? file.get("oldText").asText() : null, file.hasNonNull("newText") ? file.get("newText").asText() : null,
@@ -466,7 +469,7 @@ final class HireWatch {
             .findFirst().ifPresent(lead -> hire.parent = Optional.of(lead.id)));
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, state, end - hire.startedMs, hire.tokens, cost,
             hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand,
-            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan), hire.name);
+            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan), hire.name, hire.changedCount);
     }
 
     /** How many hires the agent saw above this one, so a root is level 0, the chief engineer it hires 1, and the developer under that 2. */
