@@ -27,7 +27,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  *     that was never finished being written and the first is a step that is
  *     finished
  */
-public record GatedStep(int index, String tool, JsonNode gateArguments) {
+public record GatedStep(int index, String tool, JsonNode gateArguments, JsonNode expect) {
 
     public GatedStep {
         if (index < 0) {
@@ -39,5 +39,9 @@ public record GatedStep(int index, String tool, JsonNode gateArguments) {
         }
         Objects.requireNonNull(gateArguments,
             "gate arguments must be declared; pass an empty object to mean the tool name alone");
+    }
+
+    public GatedStep(int index, String tool, JsonNode gateArguments) {
+        this(index, tool, gateArguments, null);
     }
 }

@@ -10,6 +10,8 @@ import org.jawata.mcp.learn.ResponseFacts;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.step.GateOutcome;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 /**
  * Runs a hired plan's declared gate by calling the real jawata tool it names (Sprint 28g S16).
  *
@@ -114,6 +116,16 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
                 : ": " + response.getError().getCode() + " — " + response.getError().getMessage()));
         }
 
+        // Stage 27 (s): a SEARCH answers with matches, and what a match count means is the step's to say. A step that states `expect.matches`
+        // passes on that count and no other (zero included, for "nothing of this is left"); a step that states nothing needs at least one, because
+        // a search that found nothing proved nothing: both PM hires of 2026-11-18 ran search gates over a plan they never changed. A failed check
+        // is an ANSWERED gate with an error, not an unanswered one: the search ran and told what it found.
+        OptionalLong found = matchCount(response);
+        if (found.isPresent()) {
+            JsonNode stated = step.expect() == null ? null : step.expect().path("matches");
+            boolean met = stated != null && stated.isNumber() ? found.getAsLong() == stated.asLong() : found.getAsLong() >= 1;
+            return new GateOutcome(step.tool(), step.gateArguments(), met ? 0 : 1, true);
+        }
         OptionalLong errors = ResponseFacts.errorCount(response);
         if (errors.isEmpty()) {
             // Case 4. The one that would otherwise pass silently.
@@ -124,6 +136,19 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
         // corrected that. Narrowing a count nothing asked to be narrowed would have invented a
         // ceiling and lost information above it, for no reader's benefit.
         return new GateOutcome(step.tool(), step.gateArguments(), errors.getAsLong(), true);
+    }
+
+    /** How many matches a search answer carries: its {@code matches} list, or its {@code totalMatches}; absent for an answer that is not a search. */
+    private static OptionalLong matchCount(ToolResponse response) {
+        if (response.getData() instanceof java.util.Map<?, ?> data) {
+            if (data.get("matches") instanceof java.util.List<?> listed) {
+                return OptionalLong.of(listed.size());
+            }
+            if (data.get("totalMatches") instanceof Number total) {
+                return OptionalLong.of(total.longValue());
+            }
+        }
+        return OptionalLong.empty();
     }
 
     /**

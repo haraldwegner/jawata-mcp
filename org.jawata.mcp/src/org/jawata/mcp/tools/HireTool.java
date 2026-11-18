@@ -255,11 +255,14 @@ public class HireTool extends NeutralTool {
         properties.put("brief", Map.of("type", "string",
             "description", "The instruction the hired brain is given, verbatim."));
         properties.put("steps", Map.of("type", "array",
-            "description", "The gates, in order. Each is {tool, arguments} — a jawata tool name"
-                + " and the arguments it is called with. They run after the brain answers.",
+            "description", "The gates, in order. Each is {tool, arguments[, expect]} — a jawata tool name"
+                + " and the arguments it is called with. They run after the brain answers. A gate that SEARCHES (it answers with matches) passes only"
+                + " on what it finds: expect {\"matches\": N} states the count it must find (0 for \"none of this is left\"), and a search that states"
+                + " nothing passes only on at least one match, so a search over a document that found nothing is not a pass.",
             "items", Map.of("type", "object", "properties", Map.of(
                 "tool", Map.of("type", "string"),
-                "arguments", Map.of("type", "object")))));
+                "arguments", Map.of("type", "object"),
+                "expect", Map.of("type", "object", "description", "Optional. What a searching gate must find: {\"matches\": N}.")))));
         properties.put("instructionsFrom", Map.of("type", "string",
             "description", "Optional. The plan id of the PM or chief-engineer hire whose INSTRUCTION blocks this"
                 + " hire carries out. The answer then reports how many ran as written (one tool, one call, the"
@@ -1267,7 +1270,7 @@ public class HireTool extends NeutralTool {
             }
             JsonNode args = step.path("arguments");
             steps.add(new GatedStep(i, tool, args.isObject() ? args
-                : com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode()));
+                : com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(), step.path("expect").isObject() ? step.path("expect") : null));
         }
         return steps;
     }
