@@ -198,7 +198,7 @@ public final class AcpBrainSession {
         KEPT,
         /**
          * They are withheld: the session is opened with them disallowed, a brain that offers a read-only mode is moved into it, and every
-         * permission request for an edit or a command is refused, whatever the allowlist says. The principal, which changes no code.
+         * permission request for an edit or a command is refused, whatever the allowlist says. The principal and a hired lead, which change no code.
          */
         WITHHELD
     }
@@ -239,28 +239,12 @@ public final class AcpBrainSession {
             List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate, Consumer<JsonNode> onThinking, String model) throws IOException, InterruptedException {
         Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings, OwnTools.KEPT);
         try {
-            onModel(conversation, model);
+            conversation.onModel(model);
             conversation.turn(prompt, List.of(), ceilings, onText, onToolUpdate, onThinking);
         } finally {
             conversation.end();
         }
         return conversation.outcome();
-    }
-
-    /**
-     * Moves a hire's session to the model its seat names (28h D57 (c)), before the brief is sent. Over ACP the model is a session option, not a
-     * command-line flag (Cursor's agent ignores {@code --model} in this mode), so without this every hire ran on the brain's own default. A brain
-     * that offers models but not this one refuses the hire, naming what it offers, so a hire never runs on another model than the one chosen; a
-     * session that names none (a resumed one) runs as it opened.
-     */
-    private static void onModel(Conversation conversation, String model) throws IOException {
-        if (model == null || model.isBlank() || conversation.models().isEmpty()) {
-            return;
-        }
-        if (!conversation.selectModel(model)) {
-            throw new IOException("The brain could not be moved to the model " + model + "; its session offers "
-                + conversation.models().stream().map(Model::name).toList() + ".");
-        }
     }
 
     /**
@@ -277,9 +261,10 @@ public final class AcpBrainSession {
     public static HiredBrain.Outcome runAsLead(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
             List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate,
             Consumer<JsonNode> onThinking, HireRegistry.Inbox inbox, String leadId, String model) throws IOException, InterruptedException {
-        Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings, OwnTools.KEPT);
+        // A lead plans and hires and changes no code (28h D57 (l)): its brain's own editors and shell are withheld, as the principal's are.
+        Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings, OwnTools.WITHHELD);
         try {
-            onModel(conversation, model);
+            conversation.onModel(model);
             conversation.turn(prompt, List.of(), ceilings, onText, onToolUpdate, onThinking);
             HiredBrain.Outcome last = conversation.outcome();
             int steps = last.toolSteps();
@@ -729,6 +714,22 @@ public final class AcpBrainSession {
             } catch (InterruptedException e) {
                 HostProcesses.reap(child);
                 Thread.currentThread().interrupt();
+            }
+        }
+
+        /**
+         * Moves a hire's session to the model its seat names (28h D57 (c)), before the brief is sent. Over ACP the model is a session option, not a
+         * command-line flag (Cursor's agent ignores {@code --model} in this mode), so without this every hire ran on the brain's own default. A brain
+         * that offers models but not this one refuses the hire, naming what it offers, so a hire never runs on another model than the one chosen; a
+         * session that names none (a resumed one) runs as it opened.
+         */
+        void onModel(String model) throws IOException {
+            if (model == null || model.isBlank() || models().isEmpty()) {
+                return;
+            }
+            if (!selectModel(model)) {
+                throw new IOException("The brain could not be moved to the model " + model + "; its session offers "
+                    + models().stream().map(Model::name).toList() + ".");
             }
         }
     }

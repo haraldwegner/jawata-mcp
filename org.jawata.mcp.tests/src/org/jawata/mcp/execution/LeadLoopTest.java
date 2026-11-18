@@ -115,6 +115,17 @@ class LeadLoopTest {
     }
 
     @Test
+    @DisplayName("28h D57 (l): a hired lead's session is opened with its brain's own editors and shell withheld, as the principal's is, since a lead plans and hires and changes no code")
+    void aLeadRunsWithItsOwnEditorsAndShellWithheld() throws Exception {
+        String lead = "d57l-lead";
+        HiredBrain.Outcome outcome = runAsLead("WITHHELD", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, HireRegistry.shared().inboxFor(lead));
+
+        for (String tool : List.of("Edit", "Write", "MultiEdit", "NotebookEdit", "Bash")) {
+            assertTrue(outcome.text().contains("\"" + tool + "\""), tool + " was not withheld from a lead: " + outcome.text());
+        }
+    }
+
+    @Test
     @DisplayName("T9: a lead's tool-step ceiling is counted across its turns, so a lead that keeps going stops; with no ceiling the same two turns end clean")
     void aLeadOverSeveralTurnsStopsAtItsToolStepCeiling() throws Exception {
         // THE CONTROL: no ceiling, the same two turns of five tool calls each end clean.
