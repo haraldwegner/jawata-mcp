@@ -101,11 +101,11 @@ public final class TreeAttribution {
         changed.sort(String::compareTo);
         Optional<Changes> changes = changesOf(changed, now);
         return new Attribution(Optional.of(List.copyOf(changed)),
-            "git status --porcelain in " + directory + ", before and after the run. TWO BOUNDS, and"
-                + " an EMPTY list means neither was crossed rather than \"the brain wrote nothing\"."
-                + " FIRST: a file ALREADY modified before the hire and modified again by it is"
-                + " NOT in this list — a status letter is not a content hash, so the two cases are"
-                + " indistinguishable. SECOND: this census sees ONLY this directory, so a write to"
+            "git status --porcelain in " + directory + ", before and after the run, with each dirty file's"
+                + " content read both times, so a file ALREADY modified before the hire and modified"
+                + " again by it IS in this list. ONE BOUND, and an EMPTY list means it was not"
+                + " crossed rather than \"the brain wrote nothing\"."
+                + " This census sees ONLY this directory, so a write to"
                 + " any absolute path outside it is invisible here. That is not hypothetical — a"
                 + " brain under a read-only mode was measured writing its own plan file outside the"
                 + " hire's tree on every run, and an instrument scoped like this one reported the"
@@ -145,7 +145,8 @@ public final class TreeAttribution {
         List<String> omitted = new ArrayList<>();
         Path root = repositoryRoot(host, directory);
         for (String path : changed) {
-            String oldText = "??".equals(now.get(path)) ? null : textAtHead(path);
+            String reading = now.get(path);
+            String oldText = reading != null && reading.startsWith("??") ? null : textAtHead(path);
             String newText;
             try {
                 Path file = root.resolve(path);
@@ -230,6 +231,7 @@ public final class TreeAttribution {
                 return null;
             }
             Map<String, String> dirty = new LinkedHashMap<>();
+            Path root = repositoryRoot(host, directory);
             for (String line : outcome.output().split("\\R")) {
                 // Porcelain v1: two status characters, a space, then the path. A rename carries
                 // "old -> new"; the NEW name is what a reader goes and looks at.
@@ -242,7 +244,10 @@ public final class TreeAttribution {
                 if (arrow >= 0) {
                     path = path.substring(arrow + 4);
                 }
-                dirty.put(unquote(path), status);
+                path = unquote(path);
+                // the reading is the status letter AND the file's content, so a file already modified before the run and edited again by it
+                // reads differently after it (Stage 27 (w)); the letter alone is " M" both times
+                dirty.put(path, status + ":" + contentOf(root.resolve(path)));
             }
             return dirty;
         } catch (InterruptedException e) {
@@ -251,6 +256,19 @@ public final class TreeAttribution {
         } catch (RuntimeException e) {
             log.log(Level.WARNING, "could not census " + directory, e);
             return null;
+        }
+    }
+
+    /** The SHA-256 of a file's bytes, {@code gone} for a file that is not there and {@code unreadable} for one that cannot be read. */
+    private static String contentOf(Path file) {
+        try {
+            if (!Files.isRegularFile(file)) {
+                return "gone";
+            }
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(file));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (java.io.IOException | java.security.NoSuchAlgorithmException | RuntimeException e) {
+            return "unreadable";
         }
     }
 

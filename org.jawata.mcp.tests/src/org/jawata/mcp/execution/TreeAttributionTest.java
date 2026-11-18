@@ -225,7 +225,7 @@ class TreeAttributionTest {
                 () -> assertTrue(attribution.basis().contains("outside it is invisible"),
                     "so the basis must name this bound, not only the already-modified one: "
                         + attribution.basis()),
-                () -> assertTrue(attribution.basis().contains("neither was crossed"),
+                () -> assertTrue(attribution.basis().contains("was not crossed"),
                     "and must say what an empty list does and does not mean: "
                         + attribution.basis()));
         } finally {
@@ -235,26 +235,26 @@ class TreeAttributionTest {
     }
 
     @Test
-    @DisplayName("THE BOUND, asserted: a file already modified and modified AGAIN is invisible")
-    void anAlreadyDirtyFileEditedAgainCannotBeSeen() throws Exception {
+    @DisplayName("Stage 27 (w): a file already modified and modified AGAIN is counted, by its content, and one the run left alone is not")
+    void anAlreadyDirtyFileEditedAgainIsCountedByItsContent() throws Exception {
         Path repo = aRepository();
         Files.writeString(repo.resolve("tracked.txt"), "one\nalready edited\n");
+        Files.writeString(repo.resolve("untouched.txt"), "dirty before the run and left alone\n");
         TreeAttribution census = TreeAttribution.before(host, repo);
 
-        // The run edits it a second time. Porcelain reports a status LETTER, not a content hash,
-        // so both readings are " M" and the two cases cannot be told apart.
+        // The run edits the first a second time. Porcelain reports a status LETTER for both readings (" M"), so a census of letters
+        // alone calls a real edit nothing: every developer record of 2026-11-18 said changedFileCount 0 for an Edit it had made.
         Files.writeString(repo.resolve("tracked.txt"), "one\nedited again by the run\n");
 
         TreeAttribution.Attribution attribution = census.after();
 
         assertAll(
-            // This is a LIMITATION pinned, not a behaviour wanted. It is asserted so the basis
-            // string stays true: a reader who took the list for "everything the brain touched"
-            // would be wrong in exactly this case, and the basis is what warns them.
-            () -> assertFalse(attribution.changed().orElseThrow().contains("tracked.txt"),
-                "the limitation is real, and the basis must keep saying so"),
-            () -> assertTrue(attribution.basis().contains("ALREADY modified"),
-                "the basis names the case it cannot see: " + attribution.basis()));
+            () -> assertTrue(attribution.changed().orElseThrow().contains("tracked.txt"),
+                "THE CLAIM: an edit to an already-modified file was counted as nothing: " + attribution.changed()),
+            () -> assertFalse(attribution.changed().orElseThrow().contains("untouched.txt"),
+                "CONTROL: a file dirty before the run and not touched by it was counted: " + attribution.changed()),
+            () -> assertTrue(attribution.basis().contains("content"),
+                "the basis says the census is by content: " + attribution.basis()));
     }
 
     @Test
