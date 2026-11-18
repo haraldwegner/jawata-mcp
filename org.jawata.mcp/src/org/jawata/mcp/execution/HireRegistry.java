@@ -469,7 +469,10 @@ public final class HireRegistry {
                         return Optional.of("package " + asked + " overlaps " + held + ", which is held by " + holder.name + " · " + holder.seat
                             + (holder.planId.isEmpty() ? "" : " (hire " + holder.planId + ")") + " since "
                             + java.time.LocalTime.ofInstant(java.time.Instant.ofEpochMilli(holder.claimedAtMs), java.time.ZoneId.systemDefault())
-                                .truncatedTo(java.time.temporal.ChronoUnit.MINUTES));
+                                .truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
+                            // the two ids the admission compared, so a lead's hire that was not recognised as below its lead shows whether they differ
+                            + "; this claim was issued by " + (claimant.leadId.isEmpty() ? "nobody (no issuer id)" : claimant.leadId)
+                            + ", and the admission needs that to be the holder's plan id");
                     }
                 }
             }

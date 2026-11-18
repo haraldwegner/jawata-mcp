@@ -95,7 +95,11 @@ class HireClaimsTest {
         assertAll(
             () -> assertTrue(lead.claimed.get().isEmpty(), "the lead's own claim was refused: " + lead.claimed.get()),
             () -> assertTrue(child.claimed.get().isEmpty(), "the lead's hire was refused a package under the lead's claim: " + child.claimed.get()),
-            () -> assertTrue(stranger.claimed.get().isPresent(), "an agent that is nobody's hire was admitted under the lead's claim"));
+            () -> assertTrue(stranger.claimed.get().isPresent(), "an agent that is nobody's hire was admitted under the lead's claim"),
+            // Stage 27 (t): a refusal says which issuer the refused hire names and which plan the holder has, so a lead's hire that is not
+            // recognised as below its lead shows at once whether the two ids differ
+            () -> assertTrue(stranger.claimed.get().orElse("").contains("issued by m13-chat") && stranger.claimed.get().orElse("").contains("m13-plan-lead"),
+                "the refusal does not name the two ids it compared: " + stranger.claimed.get()));
     }
 
     @Test
