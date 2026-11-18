@@ -374,6 +374,11 @@ class AgentHistoryTest {
         assertEquals("claude-code", clients.get("claude-1"));
         assertEquals("cursor", clients.get("cursor-1"));
         assertEquals("jawata-agent", clients.get(first.session), "the chat's own sessions are named too");
+        Map<String, String> names = new java.util.HashMap<>();
+        listed.path("result").path("sessions").forEach(s -> names.put(s.path("sessionId").asText(), s.path("_meta").path("jawata/clientName").asText()));
+        assertEquals("Claude Code", names.get("claude-1"), "each row also carries the name a person knows the client by");
+        assertEquals("Cursor", names.get("cursor-1"));
+        assertEquals("jawata", names.get(first.session));
     }
 
     @Test

@@ -927,7 +927,7 @@ public final class AcpServer {
             row.put("cwd", cwd == null ? "" : cwd);
             row.put("title", s.title());
             row.put("updatedAt", s.updatedAt());
-            row.putObject("_meta").put("jawata/client", s.client());
+            row.putObject("_meta").put("jawata/client", s.client()).put("jawata/clientName", AgentRecorder.nameOf(s.client()));
         }
         if (page.nextCursor() != null) {
             result.put("nextCursor", page.nextCursor());

@@ -225,6 +225,16 @@ public final class AgentRecorder {
         }
     }
 
+    /** The name a person knows a client by, for a row of the session list; a client this engine has no name for is named as it wrote itself. */
+    static String nameOf(String client) {
+        return switch (client) {
+            case CLIENT -> "jawata";
+            case "claude-code" -> "Claude Code";
+            case "cursor" -> "Cursor";
+            default -> client;
+        };
+    }
+
     /**
      * Whether a session of the lane is a conversation of the person's. The engine's own mark is the client name: a brain it started has the
      * studio's hook write its session under the client's name with {@code -machine} after it. Sessions written before the mark existed are
