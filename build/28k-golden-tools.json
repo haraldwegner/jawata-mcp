@@ -2866,10 +2866,14 @@
      "type": "string"
     },
     "steps": {
-     "description": "The gates, in order. Each is {tool, arguments} \u2014 a jawata tool name and the arguments it is called with. They run after the brain answers.",
+     "description": "The gates, in order. Each is {tool, arguments[, expect]} \u2014 a jawata tool name and the arguments it is called with. They run after the brain answers. A gate that SEARCHES (it answers with matches) passes only on what it finds: expect {\"matches\": N} states the count it must find (0 for \"none of this is left\"), and a search that states nothing passes only on at least one match, so a search over a document that found nothing is not a pass.",
      "items": {
       "properties": {
        "arguments": {
+        "type": "object"
+       },
+       "expect": {
+        "description": "Optional. What a searching gate must find: {\"matches\": N}.",
         "type": "object"
        },
        "tool": {
@@ -3313,6 +3317,10 @@
      "description": "recall with lane=transcript alone and a session: every turn of that session in full (what was typed, what the agent said, one line per tool call), unclipped, for a host reloading it.",
      "type": "boolean"
     },
+    "gate": {
+     "description": "record, for a seat outcome (operation=seat:<name>) of work no code gate applies to, such as a plan fold: the gate that applies to that work (for a document, the search that found the folded text), or that no code gate applies and why. A seat outcome with neither this nor an answered gate call is refused.",
+     "type": "string"
+    },
     "his": {
      "description": "transcript_append: what he typed in the turn, verbatim.",
      "type": "string"
@@ -3596,7 +3604,8 @@
      "enum": [
       "read",
       "search",
-      "write"
+      "write",
+      "edit"
      ],
      "type": "string"
     },
@@ -3620,9 +3629,17 @@
      "description": "search: how many matching lines at most (default 200).",
      "type": "integer"
     },
+    "newText": {
+     "description": "edit: what replaces it.",
+     "type": "string"
+    },
     "offset": {
      "description": "read: the first line to answer, 0-based (default 0).",
      "type": "integer"
+    },
+    "oldText": {
+     "description": "edit: the exact passage to replace; it must occur exactly once in the document.",
+     "type": "string"
     },
     "path": {
      "description": "read/write: the file, as an absolute path.",
