@@ -616,6 +616,10 @@ public final class ExperienceTool implements Tool {
             "record: operation this entry relates to. promote_rule: WHO the rule binds — seat:<name>"
                 + " for one seat, an activity label such as release, or all for every seat; required"
                 + " on a proposal (status=candidate)."));
+        props.put("gate", Map.of("type", "string", "description",
+            "record, for a seat outcome (operation=seat:<name>) of work no code gate applies to, such as a plan fold: the gate that applies"
+                + " to that work (for a document, the search that found the folded text), or that no code gate applies and why. A seat"
+                + " outcome with neither this nor an answered gate call is refused."));
         props.put("scope_kind", Map.of("type", "string",
             "description", "record: symbol|package|operation|symptom|external_system|..."));
         props.put("symptoms", Map.of("type", "array", "items", Map.of("type", "string"),

@@ -295,4 +295,25 @@ class ServerChecksTest {
         assertNull(seatOutcomeResponse("m3-ok", "seat:cover"),
             "a session that DID run its gate is let through untouched");
     }
+
+    @Test
+    @DisplayName("Stage 27 (x): a record of document-only work is accepted when it names the gate that applies to it, and one that names none is still refused")
+    void aDocumentStepNamesItsGate() throws Exception {
+        call("x-doc", "files", true, 0);
+        call("x-none", "files", true, 0);
+        String named = "{\"kind\":\"record\",\"operation\":\"seat:main\",\"summary\":\"folded the findings into the plan\","
+            + "\"gate\":\"the search of the plan for the folded passage found it once\"}";
+        String unnamed = "{\"kind\":\"record\",\"operation\":\"seat:main\",\"summary\":\"folded the findings into the plan\"}";
+        String blank = "{\"kind\":\"record\",\"operation\":\"seat:main\",\"summary\":\"folded the findings into the plan\",\"gate\":\"  \"}";
+
+        ToolResponse accepted = checks.acceptance(CallerIdentity.supplied("x-doc"), "experience", mapper.readTree(named), ledger);
+        ToolResponse refusedUnnamed = checks.acceptance(CallerIdentity.supplied("x-none"), "experience", mapper.readTree(unnamed), ledger);
+        ToolResponse refusedBlank = checks.acceptance(CallerIdentity.supplied("x-none"), "experience", mapper.readTree(blank), ledger);
+
+        assertAll(
+            () -> assertNull(accepted, "a record that names the gate its document step had was refused"),
+            () -> assertNotNull(refusedUnnamed, "a record with no gate at all was accepted"),
+            () -> assertEquals("SEAT_GATE_NOT_RUN", refusedUnnamed.getError().getCode()),
+            () -> assertNotNull(refusedBlank, "a blank gate was accepted as a name"));
+    }
 }

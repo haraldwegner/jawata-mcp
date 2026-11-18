@@ -38,6 +38,8 @@ public final class ServerChecks {
 
     /** Event kinds this lane journals. */
     public static final String KIND_SEAT_GATE_SKIP = "seat_gate_skip";
+    /** A seat outcome accepted because it named the gate its own work had (Stage 27 (x)), the name kept in the journal. */
+    public static final String KIND_SEAT_GATE_NAMED = "seat_gate_named";
     public static final String KIND_SEAT_UNJOURNALED = "seat_unjournaled";
     public static final String KIND_UNAUDITED_ASK = "unaudited_ask";
     public static final String KIND_RELAX_LABEL = "relax_label";
@@ -218,7 +220,7 @@ public final class ServerChecks {
             if (!operation.startsWith("seat:")) {
                 return null;
             }
-            return seatOutcomeCheck(caller, operation, ledger);
+            return seatOutcomeCheck(caller, operation, ledger, arguments.path("gate").asText("").strip());
         } catch (Exception e) {
             log.error("Acceptance failed before {} — this call went unchecked, deliberately:"
                 + " a bug in a check must not refuse every call", name, e);
@@ -312,7 +314,7 @@ public final class ServerChecks {
      * recorded at all — where before the record was stored and then commented on.
      */
     private ToolResponse seatOutcomeCheck(CallerIdentity caller, String operation,
-            SessionLedger ledger) {
+            SessionLedger ledger, String namedGate) {
         // A GATE CALL THAT ITSELF FAILED IS NOT A GATE THAT RAN. Reading the tool name
         // alone accepted a seat outcome recorded over a gate that had blown up: the tool
         // never answered, so its silence says nothing about the tree. What this still
@@ -322,6 +324,13 @@ public final class ServerChecks {
         boolean gateCalled = ledger.calls(caller).stream()
             .anyMatch(c -> registry.isGate(c.tool()) && c.ok());
         if (gateCalled) {
+            return null;
+        }
+        // Stage 27 (x): work no code gate applies to (a plan fold, a findings list) has the gate its own work has, and the record NAMES it: the
+        // search that found the folded text, or that no code gate applies. Running compile_workspace only to satisfy this refusal proves nothing
+        // about a document. A record naming nothing is still refused below, and the named gate is kept in the journal beside the record.
+        if (!namedGate.isEmpty()) {
+            journal(caller.id(), KIND_SEAT_GATE_NAMED, operation, new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("gate", namedGate).toString());
             return null;
         }
         journal(caller.id(), KIND_SEAT_GATE_SKIP, operation, "{}");
@@ -336,7 +345,8 @@ public final class ServerChecks {
                 + " run — or ran and that failed — has NOT passed, so this outcome is"
                 + " REFUSED rather than recorded and flagged."
                 + sharedHistoryCaveat(caller),
-            "Run the seat's gates" + named + " and re-record the outcome.");
+            "Run the seat's gates" + named + " and re-record the outcome; for work no code gate applies to (a plan fold), record it again with"
+                + " gate=<the check that applies, such as the search that found the folded text, or that no code gate applies and why>.");
     }
 
     private String fallbackAfterError(CallerIdentity caller, String summary,
