@@ -69,8 +69,18 @@ public final class AgentRecorder {
      * @param sessionId the session
      * @param title     the first words typed in it
      * @param updatedAt when it last changed, ISO-8601
+     * @param client    which client wrote it: {@code jawata-agent} for the chat's own, {@code claude-code} or {@code cursor} for the hook's
      */
-    public record SessionInfo(String sessionId, String title, String updatedAt) {
+    public record SessionInfo(String sessionId, String title, String updatedAt, String client) {
+    }
+
+    /**
+     * One page of sessions, newest first.
+     *
+     * @param sessions   the page
+     * @param nextCursor what to send to get the page after it; null when this is the last
+     */
+    public record Page(List<SessionInfo> sessions, String nextCursor) {
     }
 
     /**
@@ -184,30 +194,47 @@ public final class AgentRecorder {
     }
 
     /**
-     * The conversations this agent face opened, most recently active first; empty when none is held or the lane cannot be read (28h D57 (a)).
-     * The lane holds every session any client wrote, among them the hook's captures of a hired brain's or an observer's own conversation; only
-     * the ones written under this face's own client name, which is set when the turn is written and never read from what was said, are the
-     * person's conversations with the chat. Others may be newer, so the read widens, doubling, until enough are found, the lane has no more
-     * rows, or {@value #MOST_ROWS_READ} rows have been read.
+     * One page of the person's conversations, from every client, most recently active first; empty when none is held or the lane cannot be
+     * read (28h D57 (a), widened by his ruling 2026-11-18). The lane holds every session any client wrote, among them the hook's captures of
+     * a brain the engine started; those are left out ({@link #isPersons}). The sessions older than {@code cursor} (the last-activity time a
+     * page ended on) make the next page; null starts at the newest. Machine-made sessions may be newer, so the read widens, doubling, until
+     * a page and one more are found, the lane has no more rows, or {@value #MOST_ROWS_READ} rows have been read.
      */
-    public List<SessionInfo> sessions(int limit) {
-        int asked = Math.max(limit, Math.min(limit * OTHERS_PER_LISTED, MOST_ROWS_READ));
+    public Page sessions(int size, String cursor) {
+        int asked = Math.max(size + 1, Math.min(size * OTHERS_PER_LISTED, MOST_ROWS_READ));
         while (true) {
             JsonNode rows = ask(recall().put("sessions", asked)).path("sessions");
             List<SessionInfo> found = new ArrayList<>();
             for (JsonNode row : rows) {
-                if (found.size() == limit) {
+                if (found.size() > size) {
                     break;
                 }
-                if (CLIENT.equals(row.path("client").asText(""))) {
-                    found.add(new SessionInfo(row.path("sessionId").asText(), row.path("title").asText(""), row.path("updatedAt").asText("")));
+                String title = row.path("title").asText("");
+                String updatedAt = row.path("updatedAt").asText("");
+                if (!isPersons(row.path("client").asText(""), title) || (cursor != null && !cursor.isBlank() && updatedAt.compareTo(cursor) >= 0)) {
+                    continue;
                 }
+                found.add(new SessionInfo(row.path("sessionId").asText(), title, updatedAt, row.path("client").asText("")));
             }
-            if (found.size() == limit || rows.size() < asked || asked >= MOST_ROWS_READ) {
-                return found;
+            boolean more = found.size() > size;
+            if (more || rows.size() < asked || asked >= MOST_ROWS_READ) {
+                List<SessionInfo> page = List.copyOf(more ? found.subList(0, size) : found);
+                return new Page(page, more && !page.isEmpty() ? page.get(page.size() - 1).updatedAt() : null);
             }
             asked = Math.min(asked * 2, MOST_ROWS_READ);
         }
+    }
+
+    /**
+     * Whether a session of the lane is a conversation of the person's. The engine's own mark is the client name: a brain it started has the
+     * studio's hook write its session under the client's name with {@code -machine} after it. Sessions written before the mark existed are
+     * told by their first words, which are the principal's or a seat's own prompt.
+     */
+    static boolean isPersons(String client, String title) {
+        if (client == null || client.isBlank() || client.endsWith("-machine")) {
+            return false;
+        }
+        return !(title.startsWith("You are jawata") || title.matches("(?s)^You are the [A-Za-z-]+ seat.*"));
     }
 
     /** How many rows of other clients are read for each conversation listed, and the most rows one listing reads. */

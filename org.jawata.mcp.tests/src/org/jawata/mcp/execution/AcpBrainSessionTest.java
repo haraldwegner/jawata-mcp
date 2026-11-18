@@ -370,4 +370,13 @@ class AcpBrainSessionTest {
         assertTrue(refused.getMessage().contains("Sonnet 9") && refused.getMessage().contains("Haiku 5.5"),
             "the refusal names the model asked for and the ones offered: " + refused.getMessage());
     }
+
+    @Test
+    @DisplayName("a brain the engine starts is marked machine-made, whatever the program's own environment says, so History leaves its session out")
+    void aBrainTheEngineStartsIsMarkedMachineMade() {
+        AcpBrainSession.Program program = new AcpBrainSession.Program(List.of("brain"), Map.of("KEPT", "yes", "JAWATA_MACHINE_SESSION", "0"));
+        Map<String, String> environment = AcpBrainSession.Conversation.environmentOf(HireSite.in(dir), program);
+        assertEquals("1", environment.get("JAWATA_MACHINE_SESSION"), "the mark is the engine's and nothing overrides it");
+        assertEquals("yes", environment.get("KEPT"), "the program's own variables are kept");
+    }
 }

@@ -19,6 +19,8 @@ public final class DefaultEngineSettings implements EngineSettings {
         Map.entry("jawata.agent.brain", "JAWATA_AGENT_BRAIN"),
         Map.entry("jawata.agent.skillsDir", "JAWATA_AGENT_SKILLS_DIR"),
         Map.entry("jawata.agent.recording", "JAWATA_AGENT_RECORDING"),
+        // how many past sessions History shows at a time (his ruling 2026-11-18), ten until it says another number
+        Map.entry("jawata.agent.historyPage", "JAWATA_AGENT_HISTORY_PAGE"),
         Map.entry("jawata.agent.hireBrains", "JAWATA_AGENT_HIRE_BRAINS"),
         // Sprint 28h S12: the folder of seat files whose schedules the engine fires (ScheduledHires). The studio does NOT write it yet: that
         // is owed to S15 (the plan's Stage 15 carries it), and until then only a person or a test that sets it makes seats run on a schedule.

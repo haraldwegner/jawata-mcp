@@ -370,10 +370,23 @@ public final class AcpBrainSession {
             return conversation;
         }
 
-        private static Conversation open(HostProcesses host, Program program, HireSite base, SelfEndpoint mcp, List<String> allowedTools,
-                Optional<String> resume, HiredBrain.Ceilings ceilings, OwnTools ownTools) throws IOException {
+        /** The variable every brain the engine starts is given; the studio's hook reads it and writes such a session under a machine client name. */
+        static final String MACHINE_SESSION = "JAWATA_MACHINE_SESSION";
+
+        /**
+         * The environment a brain is started with: the site's, then the program's, and the machine-session mark last so nothing overrides it. A
+         * session the engine starts for a brain is machine-made, and History leaves it out (his ruling 2026-11-18).
+         */
+        static Map<String, String> environmentOf(HireSite base, Program program) {
             Map<String, String> environment = new LinkedHashMap<>(base.environment());
             environment.putAll(program.environment());
+            environment.put(MACHINE_SESSION, "1");
+            return environment;
+        }
+
+        private static Conversation open(HostProcesses host, Program program, HireSite base, SelfEndpoint mcp, List<String> allowedTools,
+                Optional<String> resume, HiredBrain.Ceilings ceilings, OwnTools ownTools) throws IOException {
+            Map<String, String> environment = environmentOf(base, program);
             Process child = host.start(new HostCommand(program.command(), base.workingDirectory(), environment,
                 ceilings.wallClock(), false, base.cleanEnvironment()));
             // A stop from the Agent Control panel kills this process: the read of its output is blocked and a thread interrupt cannot end it.

@@ -202,8 +202,21 @@ public final class AgentFace implements RoutedFace {
         AgentRecorder recorder = new AgentRecorder(attached.tools(), AgentRecorder.Depth.of(recording));
         Supplier<List<AdvertisedCommand>> advertised = commands != null ? commands : () -> servedSeats(attached);
         AcpServer server = new AcpServer(brain, advertised, out, boundary, recorder, sideBrains);
+        if (attached.settings() != null) {
+            attached.settings().get("jawata.agent.historyPage").flatMap(AgentFace::positive).ifPresent(server::pageOf);
+        }
         server.offerBrains(() -> attached.settings() == null ? "" : attached.settings().get(Hirer.BRAINS_SETTING).orElse(""));
         server.offerCommandTexts(name -> commandText(attached, name));
         return server;
+    }
+
+    /** A setting's text as a whole number above zero; empty for anything else, which leaves the default. */
+    static java.util.Optional<Integer> positive(String text) {
+        try {
+            int number = Integer.parseInt(text.strip());
+            return number > 0 ? java.util.Optional.of(number) : java.util.Optional.empty();
+        } catch (NumberFormatException notANumber) {
+            return java.util.Optional.empty();
+        }
     }
 }

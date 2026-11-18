@@ -32,12 +32,13 @@ class HistoryListsThePersonsConversationsTest {
     }
 
     @Test
-    @DisplayName("28h D57 (a): History lists the chat's own conversations, titled by his first words, and no hire's or observer's session")
-    void onlyTheChatsOwnConversationsAreListed() {
+    @DisplayName("28h D57 (a), widened by his ruling 2026-11-18: History lists the person's conversations from every client, titled by his first words, and no brain's own session")
+    void everyClientsConversationsAreListedAndNoBrainsOwn() {
         List<Map<String, Object>> lane = List.of(
             row("chat-1", AgentRecorder.CLIENT, "Fix the dogfood bugs"),
             row("observer-run", "claude-code", "You are the observer seat"),
             row("hired-pm", "claude-code", "You are the PM seat"),
+            row("marked", "claude-code-machine", "a brief written by the engine"),
             row("chat-2", AgentRecorder.CLIENT, "Release it"),
             row("cursor-own", "cursor", "something he typed in Cursor"));
         ToolCalls store = new ToolCalls() {
@@ -52,18 +53,18 @@ class HistoryListsThePersonsConversationsTest {
             }
         };
 
-        List<AgentRecorder.SessionInfo> listed = new AgentRecorder(store, AgentRecorder.Depth.ALL).sessions(10);
+        List<AgentRecorder.SessionInfo> listed = new AgentRecorder(store, AgentRecorder.Depth.ALL).sessions(10, null).sessions();
 
-        assertEquals(List.of("chat-1", "chat-2"), listed.stream().map(AgentRecorder.SessionInfo::sessionId).toList());
+        assertEquals(List.of("chat-1", "chat-2", "cursor-own"), listed.stream().map(AgentRecorder.SessionInfo::sessionId).toList());
         assertEquals("Fix the dogfood bugs", listed.get(0).title(), "the title is not his first words");
     }
 
     @Test
-    @DisplayName("28h D57 (a): the list is still as long as asked when other clients' sessions come first in the lane")
-    void otherSessionsDoNotCrowdTheChatsOut() {
+    @DisplayName("28h D57 (a): the list is still as long as asked when machine-made sessions come first in the lane")
+    void machineMadeSessionsDoNotCrowdThePersonsOut() {
         List<Map<String, Object>> lane = new java.util.ArrayList<>();
         for (int i = 0; i < 30; i++) {
-            lane.add(row("hook-" + i, "claude-code", "a hired brain"));
+            lane.add(row("hook-" + i, "claude-code-machine", "a hired brain"));
         }
         for (int i = 0; i < 5; i++) {
             lane.add(row("chat-" + i, AgentRecorder.CLIENT, "his words " + i));
@@ -82,7 +83,7 @@ class HistoryListsThePersonsConversationsTest {
             }
         };
 
-        List<AgentRecorder.SessionInfo> listed = new AgentRecorder(store, AgentRecorder.Depth.ALL).sessions(3);
+        List<AgentRecorder.SessionInfo> listed = new AgentRecorder(store, AgentRecorder.Depth.ALL).sessions(3, null).sessions();
 
         assertEquals(3, listed.size(), "asked " + asked[0] + " rows of the lane: " + listed);
     }

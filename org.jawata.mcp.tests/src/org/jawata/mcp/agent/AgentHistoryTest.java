@@ -336,4 +336,72 @@ class AgentHistoryTest {
         assertTrue(refused.has("error"), refused.toString());
         assertTrue(refused.path("error").path("message").asText().contains("never-recorded"));
     }
+
+    /** One captured turn in the lane under the client's name, as the studio's hook writes it. */
+    private void captured(String client, String session, String his, String agent) throws Exception {
+        ObjectNode args = JSON.createObjectNode().put("kind", "transcript_append").put("session", session).put("key", "t1").put("client", client)
+            .put("capture", "turn").put("his", his).put("agent", agent);
+        tools().callTool("experience", args, CallerIdentity.supplied("test"));
+    }
+
+    private static List<String> idsOf(JsonNode listed) {
+        List<String> ids = new ArrayList<>();
+        listed.path("result").path("sessions").forEach(s -> ids.add(s.path("sessionId").asText()));
+        return ids;
+    }
+
+    @Test
+    @DisplayName("his ruling 2026-11-18: History lists the person's conversations from every client, each with its client, and leaves out the machine-made ones")
+    void theListHoldsEveryClientsSessionsExceptTheMachineMadeOnes() throws Exception {
+        captured("claude-code", "claude-1", "Fix the build", "done");
+        captured("cursor", "cursor-1", "Rename the class", "done");
+        captured("claude-code-machine", "machine-1", "The brief of a hired seat", "done");
+        captured("cursor-machine", "machine-2", "Another brief", "done");
+        // sessions written before the mark existed: the principal's and a hired seat's own prompt as their first words
+        captured("claude-code", "legacy-1", "You are jawata, the principal agent the person is talking to in this conversation.", "ok");
+        captured("claude-code", "legacy-2", "You are the architect seat: the adversarial counterweight.", "ok");
+        Connection first = new Connection("pong", AgentRecorder.Depth.ALL);
+        first.open();
+        first.prompt("Reply with exactly the one word: pong");
+
+        JsonNode listed = new Connection("x", AgentRecorder.Depth.ALL).call(2, "session/list", JSON.createObjectNode());
+
+        List<String> ids = idsOf(listed);
+        assertEquals(3, ids.size(), "the person's three conversations only: " + ids);
+        assertTrue(ids.containsAll(List.of("claude-1", "cursor-1", first.session)), ids.toString());
+        Map<String, String> clients = new java.util.HashMap<>();
+        listed.path("result").path("sessions").forEach(s -> clients.put(s.path("sessionId").asText(), s.path("_meta").path("jawata/client").asText()));
+        assertEquals("claude-code", clients.get("claude-1"));
+        assertEquals("cursor", clients.get("cursor-1"));
+        assertEquals("jawata-agent", clients.get(first.session), "the chat's own sessions are named too");
+    }
+
+    @Test
+    @DisplayName("his ruling 2026-11-18: the list comes in pages of ten, newest first, each with a cursor for the next ten, and the page size is a setting")
+    void theListComesInPagesWithACursor() throws Exception {
+        for (int i = 1; i <= 25; i++) {
+            captured("claude-code", String.format("s%02d", i), "message " + i, "ok");
+            Thread.sleep(2); // each session has its own last-activity time, so the order is the order they were written in
+        }
+        Connection reader = new Connection("x", AgentRecorder.Depth.ALL);
+
+        JsonNode first = reader.call(2, "session/list", JSON.createObjectNode());
+        assertEquals(10, idsOf(first).size());
+        assertEquals("s25", idsOf(first).get(0), "newest first");
+        assertEquals("s16", idsOf(first).get(9));
+        String cursor = first.path("result").path("nextCursor").asText("");
+        assertTrue(!cursor.isEmpty(), "there are more, so there is a cursor: " + first);
+
+        JsonNode second = reader.call(3, "session/list", JSON.createObjectNode().put("cursor", cursor));
+        assertEquals("s15", idsOf(second).get(0));
+        assertEquals("s06", idsOf(second).get(9));
+
+        JsonNode third = reader.call(4, "session/list", JSON.createObjectNode().put("cursor", second.path("result").path("nextCursor").asText()));
+        assertEquals(List.of("s05", "s04", "s03", "s02", "s01"), idsOf(third));
+        assertTrue(third.path("result").path("nextCursor").isMissingNode() || third.path("result").path("nextCursor").isNull(),
+            "the last page has no cursor: " + third);
+
+        reader.server.pageOf(3);
+        assertEquals(3, idsOf(reader.call(5, "session/list", JSON.createObjectNode())).size(), "the page size is the setting's");
+    }
 }

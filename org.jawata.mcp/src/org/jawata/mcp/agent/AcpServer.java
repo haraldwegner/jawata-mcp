@@ -42,8 +42,8 @@ public final class AcpServer {
     private static final int METHOD_NOT_FOUND = -32601;
     private static final int INVALID_PARAMS = -32602;
     private static final int NOT_PERMITTED = -32003;
-    /** How many sessions {@code session/list} returns, the most recently active first. */
-    private static final int SESSIONS_LISTED = 50;
+    /** How many sessions {@code session/list} returns at a time, the most recently active first, until the setting says another number. */
+    private static final int SESSIONS_LISTED = 10;
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private final AgentBrain brain;
@@ -903,17 +903,34 @@ public final class AcpServer {
         return title.isEmpty() ? status : status.isEmpty() ? title : title + " — " + status;
     }
 
-    /** {@code session/list}: the sessions the recording holds, most recently active first. */
+    /** How many sessions a {@code session/list} answers at a time; the engine's setting, ten until it is read. */
+    private volatile int historyPage = SESSIONS_LISTED;
+
+    /** Sets the page size of {@code session/list} (his ruling 2026-11-18: ten at a time, a setting). */
+    void pageOf(int size) {
+        this.historyPage = Math.max(1, size);
+    }
+
+    /**
+     * {@code session/list}: one page of the person's conversations from every client, most recently active first. {@code cursor} asks for the
+     * page after the one that ended on it; the answer carries {@code nextCursor} when there are more. Each row names the client that wrote it
+     * in {@code _meta}, so a host can badge it.
+     */
     private JsonRpcMessage listSessions(Object id, JsonNode params) {
         ObjectNode result = JSON.createObjectNode();
         ArrayNode list = result.putArray("sessions");
         String cwd = textField(params, "cwd");
-        for (AgentRecorder.SessionInfo s : recorder.sessions(SESSIONS_LISTED)) {
+        AgentRecorder.Page page = recorder.sessions(historyPage, textField(params, "cursor"));
+        for (AgentRecorder.SessionInfo s : page.sessions()) {
             ObjectNode row = list.addObject();
             row.put("sessionId", s.sessionId());
             row.put("cwd", cwd == null ? "" : cwd);
             row.put("title", s.title());
             row.put("updatedAt", s.updatedAt());
+            row.putObject("_meta").put("jawata/client", s.client());
+        }
+        if (page.nextCursor() != null) {
+            result.put("nextCursor", page.nextCursor());
         }
         return JsonRpcMessage.successResponse(id, result);
     }
