@@ -244,7 +244,7 @@ public final class AgentRecorder {
         if (client == null || client.isBlank() || client.endsWith("-machine")) {
             return false;
         }
-        return !(title.startsWith("You are jawata") || title.matches("(?s)^You are the [A-Za-z-]+ seat.*"));
+        return !(title.startsWith("You are jawata") || title.matches("(?s)^You are the [A-Za-z][A-Za-z -]{0,40} seat\\b.*"));
     }
 
     /** How many rows of other clients are read for each conversation listed, and the most rows one listing reads. */

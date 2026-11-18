@@ -38,7 +38,8 @@ class HistoryListsThePersonsConversationsTest {
             row("chat-1", AgentRecorder.CLIENT, "Fix the dogfood bugs"),
             row("observer-run", "claude-code", "You are the observer seat"),
             row("hired-pm", "claude-code", "You are the PM seat"),
-            row("marked", "claude-code-machine", "a brief written by the engine"),
+            row("hired-dev", "claude-code", "You are the senior developer seat. You carry out one instruction."),
+            row("marked","claude-code-machine", "a brief written by the engine"),
             row("chat-2", AgentRecorder.CLIENT, "Release it"),
             row("cursor-own", "cursor", "something he typed in Cursor"));
         ToolCalls store = new ToolCalls() {

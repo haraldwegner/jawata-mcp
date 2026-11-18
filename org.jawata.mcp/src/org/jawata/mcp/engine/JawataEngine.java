@@ -547,7 +547,9 @@ public class JawataEngine {
 			}
 			this.getToolRegistry().setAccessCheck(new org.jawata.mcp.access.AccessCheck(policy,
 					session -> this.getToolRegistry().sessionFolders().workspaceOf(session,
-							ports.workspace().get().projects().stream().map(project -> project.root()).toList()),
+							ports.workspace().get().projects().stream().map(project -> project.root()).toList(),
+								// Stage 27 (p): the folders the editor holds that are not Java projects, named by one setting the host supplies
+								org.jawata.mcp.access.SessionFolders.editorFolders(this.host().settings().get("jawata.workspace.folders").orElse(null))),
 					java.nio.file.Path.of(System.getProperty("user.home")), java.nio.file.Path.of(System.getProperty("java.io.tmpdir"))));
 		});
 

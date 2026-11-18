@@ -135,27 +135,31 @@ class ToolRegistryAccessTest {
     }
 
     @Test
-    @DisplayName("ACL4: through the registry's own session folders, a session bound to one project is refused a sibling project before the tool runs, and one nobody bound is not")
-    void aSessionBoundToOneProjectIsRefusedItsSiblingBeforeTheToolRuns() throws Exception {
+    @DisplayName("Stage 27 (p): through the registry's own session folders, a session bound to one project reaches the whole workspace and is refused a place outside it before the tool runs")
+    void aSessionBoundToOneProjectSeesTheWorkspaceAndIsRefusedWhatLiesOutsideIt() throws Exception {
         Path sibling = Files.createDirectories(root.resolve("home").resolve("sibling"));
+        Path outside = Files.createDirectories(root.resolve("home").resolve("outside"));
         ToolRegistry registry = registry(null);
         registry.setAccessCheck(new AccessCheck(policy,
-            session -> registry.sessionFolders().workspaceOf(session, List.of(project, sibling)), root.resolve("home"), root.resolve("scratch")));
+            session -> registry.sessionFolders().workspaceOf(session, List.of(project, sibling), List.of()), root.resolve("home"), root.resolve("scratch")));
 
         ToolResponse unbound = registry.callTool("read_something", file(sibling.resolve("S.java")), CallerIdentity.supplied("a-persons-client"));
+        ToolResponse reachesSibling;
         ToolResponse refused;
         ToolResponse own;
         try (var binding = registry.sessionFolders().bind("hire-1", project)) {
-            refused = registry.callTool("read_something", file(sibling.resolve("S.java")), CallerIdentity.supplied("hire-1"));
+            reachesSibling = registry.callTool("read_something", file(sibling.resolve("S.java")), CallerIdentity.supplied("hire-1"));
+            refused = registry.callTool("read_something", file(outside.resolve("O.java")), CallerIdentity.supplied("hire-1"));
             own = registry.callTool("read_something", file(project.resolve("A.java")), CallerIdentity.supplied("hire-1"));
         }
 
         assertAll(
             () -> assertTrue(unbound.isSuccess(), "CONTROL: a session nobody bound was refused the sibling"),
+            () -> assertTrue(reachesSibling.isSuccess(), "THE CLAIM: a hire bound to one project was refused the workspace's other project"),
             () -> assertFalse(refused.isSuccess()),
             () -> assertEquals("ACCESS_DENIED", refused.getError().getCode()),
             () -> assertTrue(own.isSuccess(), "CONTROL: the bound session was refused its own project"),
-            () -> assertEquals(2, executed.get(), "the refused call must not have run the tool"));
+            () -> assertEquals(3, executed.get(), "the refused call must not have run the tool"));
     }
 
     @Test
