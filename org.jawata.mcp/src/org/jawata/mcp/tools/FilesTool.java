@@ -46,11 +46,16 @@ public final class FilesTool implements Tool {
     @Override
     public String getDescription() {
         return """
-            Read any file, search the files under a folder, and write a document (.md). Writes nothing else.
+            Read any file, search the files under a folder, and write or edit a document (.md). Writes nothing else.
 
             USAGE: files(action="read",   path="/abs/file" [, offset=0] [, limit=2000])
                    files(action="search", folder="/abs/folder", pattern="<Java regex>" [, glob="*.java"] [, maxResults=200])
                    files(action="write",  path="/abs/notes/plan.md", content="...")
+                   files(action="edit",   path="/abs/notes/plan.md", oldText="...", newText="...")
+
+            edit replaces ONE exact passage of an existing document and leaves the rest as it was: oldText must occur exactly once, so a passage
+            found twice or not at all is refused and nothing is written, and an empty one is refused. It answers {path, replaced: 1, bytes}.
+            It is held to the same refusals as write (only .md; never a document that tells an agent what it may do) and does not make a file.
 
             read answers {path, content, totalLines, firstLine, truncated}: lines from offset (0-based), at most limit of them.
             search answers {matches: [{path, line, text}], truncated}: line is 1-based; .git and node_modules are not searched, nor a file
@@ -63,7 +68,9 @@ public final class FilesTool implements Tool {
     @Override
     public Map<String, Object> getInputSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("action", Map.of("type", "string", "enum", List.of("read", "search", "write"), "description", "What to do."));
+        properties.put("action", Map.of("type", "string", "enum", List.of("read", "search", "write", "edit"), "description", "What to do."));
+        properties.put("oldText", Map.of("type", "string", "description", "edit: the exact passage to replace; it must occur exactly once in the document."));
+        properties.put("newText", Map.of("type", "string", "description", "edit: what replaces it."));
         properties.put("path", Map.of("type", "string", "description", "read/write: the file, as an absolute path."));
         properties.put("offset", Map.of("type", "integer", "description", "read: the first line to answer, 0-based (default 0)."));
         properties.put("limit", Map.of("type", "integer", "description", "read: how many lines at most (default 2000)."));
@@ -83,7 +90,8 @@ public final class FilesTool implements Tool {
                 case "read" -> read(arguments);
                 case "search" -> search(arguments);
                 case "write" -> write(arguments);
-                default -> ToolResponse.invalidParameter("action", "action must be read, search or write, not '" + action + "'");
+                case "edit" -> edit(arguments);
+                default -> ToolResponse.invalidParameter("action", "action must be read, search, write or edit, not '" + action + "'");
             };
         } catch (IOException e) {
             return ToolResponse.error("IO_ERROR", e.getMessage(), "Check the path and that the file can be read or written.");
@@ -206,6 +214,47 @@ public final class FilesTool implements Tool {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("path", path.toString());
         data.put("bytes", content.getBytes(StandardCharsets.UTF_8).length);
+        return ToolResponse.success(data);
+    }
+
+    /**
+     * Replaces one exact passage of an existing document (Stage 27 (q)): the document is read, the passage must occur exactly once, and only
+     * then is it written back. Held to the writer's refusals, so a plan too long to retype can still be changed by the seat whose own it is.
+     */
+    private static ToolResponse edit(JsonNode arguments) throws IOException {
+        String given = arguments.path("path").asText("");
+        String oldText = arguments.path("oldText").asText("");
+        if (given.isBlank() || oldText.isEmpty() || !arguments.has("newText")) {
+            return ToolResponse.invalidParameter(given.isBlank() ? "path" : oldText.isEmpty() ? "oldText" : "newText",
+                "edit needs the document's path, the passage to replace (not empty) and what replaces it");
+        }
+        if (!given.toLowerCase(Locale.ROOT).endsWith(".md")) {
+            return ToolResponse.invalidParameter("path", "only a document (.md) is edited here, not " + given
+                + ": code and every other file are changed by a seat that changes code, through a hire", "NOT_A_DOCUMENT");
+        }
+        Path path = Path.of(given);
+        if (tellsAnAgentWhatItMayDo(path)) {
+            return ToolResponse.invalidParameter("path", given + " tells an agent what it may do (its instructions, a seat or a skill), and a document"
+                + " editor that could change it could widen what a hire may do: the person changes it, or a seat that changes code does", "NOT_A_DOCUMENT");
+        }
+        if (!Files.isRegularFile(path)) {
+            return ToolResponse.invalidParameter("path", given + " is not a document that exists: edit changes one, it does not make one (write does)", "FILE_NOT_FOUND");
+        }
+        String text = Files.readString(path, StandardCharsets.UTF_8);
+        int first = text.indexOf(oldText);
+        if (first < 0) {
+            return ToolResponse.invalidParameter("oldText", "the passage occurs nowhere in " + given + ", so nothing was changed", "PASSAGE_NOT_FOUND");
+        }
+        if (text.indexOf(oldText, first + 1) >= 0) {
+            return ToolResponse.invalidParameter("oldText", "the passage occurs more than once in " + given + ", so nothing was changed: name more of the text around it so it occurs once",
+                "PASSAGE_NOT_UNIQUE");
+        }
+        String edited = text.substring(0, first) + arguments.get("newText").asText() + text.substring(first + oldText.length());
+        Files.writeString(path, edited, StandardCharsets.UTF_8);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("path", path.toString());
+        data.put("replaced", 1);
+        data.put("bytes", edited.getBytes(StandardCharsets.UTF_8).length);
         return ToolResponse.success(data);
     }
 

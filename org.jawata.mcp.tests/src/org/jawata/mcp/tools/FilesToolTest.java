@@ -80,6 +80,53 @@ class FilesToolTest {
     }
 
     @Test
+    @DisplayName("Stage 27 (q): one passage of a document is replaced and everything else in it is left exactly as it was, which a whole-document write cannot promise for a long plan")
+    void aPassageOfADocumentIsReplaced(@TempDir Path folder) throws Exception {
+        Path plan = folder.resolve("plan.md");
+        String before = "# Plan\n\n" + "A long stage that must not be retyped.\n".repeat(500) + "\nStage 2: build X.\n\nEnd.\n";
+        Files.writeString(plan, before);
+
+        Map<String, Object> answer = data(call("edit", Map.of("path", plan.toString(), "oldText", "Stage 2: build X.", "newText", "Stage 2: build X and Y.")));
+
+        assertEquals(before.replace("Stage 2: build X.", "Stage 2: build X and Y."), Files.readString(plan), "the passage was not the only thing that changed");
+        assertEquals(1, answer.get("replaced"), "the answer does not say one passage was replaced");
+    }
+
+    @Test
+    @DisplayName("Stage 27 (q): a passage found twice or not at all is refused and the document is not touched, since a replacement that cannot say where is a guess")
+    void aPassageThatIsNotOneIsRefused(@TempDir Path folder) throws Exception {
+        Path plan = folder.resolve("plan.md");
+        Files.writeString(plan, "same\nsame\nonce\n");
+
+        ToolResponse twice = call("edit", Map.of("path", plan.toString(), "oldText", "same", "newText", "x"));
+        ToolResponse never = call("edit", Map.of("path", plan.toString(), "oldText", "absent", "newText", "x"));
+        ToolResponse empty = call("edit", Map.of("path", plan.toString(), "oldText", "", "newText", "x"));
+
+        assertFalse(twice.isSuccess(), "a passage found twice was replaced");
+        assertFalse(never.isSuccess(), "a passage found nowhere was reported as replaced");
+        assertFalse(empty.isSuccess(), "an empty passage was accepted");
+        assertEquals("same\nsame\nonce\n", Files.readString(plan), "a refused edit changed the document");
+        assertTrue(call("edit", Map.of("path", plan.toString(), "oldText", "once", "newText", "twice")).isSuccess(), "CONTROL: a passage that occurs once was refused");
+    }
+
+    @Test
+    @DisplayName("Stage 27 (q): an edit is held to the writer's refusals: any file that is not a .md, a document that tells an agent what it may do, and a file that is not there")
+    void anEditIsHeldToTheWritersRefusals(@TempDir Path folder) throws Exception {
+        for (String name : List.of("Foo.java", "main.rs", "view.tsx", "CLAUDE.md", "seats/main.md", ".claude/skills/x/skill.md")) {
+            Path target = folder.resolve(name);
+            Files.createDirectories(target.getParent());
+            Files.writeString(target, "alpha\n");
+
+            ToolResponse answer = call("edit", Map.of("path", target.toString(), "oldText", "alpha", "newText", "beta"));
+
+            assertFalse(answer.isSuccess(), name + " was edited");
+            assertEquals("alpha\n", Files.readString(target), name + " changed after the refusal");
+        }
+        assertFalse(call("edit", Map.of("path", folder.resolve("missing.md").toString(), "oldText", "a", "newText", "b")).isSuccess(), "an edit made a file");
+        assertFalse(Files.exists(folder.resolve("missing.md")), "the missing document exists after the refusal");
+    }
+
+    @Test
     @DisplayName("28h D57 (j): a source file can be read, though not written")
     void aSourceFileIsRead(@TempDir Path folder) throws Exception {
         Path source = folder.resolve("Foo.java");
