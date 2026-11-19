@@ -39,6 +39,10 @@ public final class Instructions {
     private static final Pattern HEADER = Pattern.compile("(?m)^\\s*INSTRUCTION\\s+(\\d+)\\s*$");
     private static final Pattern TOOL = Pattern.compile("(?m)^\\s*TOOL:\\s*(\\S+)\\s*$");
     private static final Pattern ARGUMENTS = Pattern.compile("(?m)^\\s*ARGUMENTS:\\s*(.*)$");
+    /** The lines of the second kind of instruction, new behaviour (Stage 27 (z5)). */
+    private static final Pattern BUILD_LINE = Pattern.compile("^\\s*BUILD:\\s*(.*)$");
+    private static final Pattern TESTS_LINE = Pattern.compile("^\\s*TESTS:\\s*(.*)$");
+    private static final Pattern BULLET = Pattern.compile("^\\s*[-*]\\s+(.*)$");
 
     /** The argument every tool accepts and none reads as part of its work; ignored when comparing. */
     private static final String META_ARGUMENT = "precedentOverride";
@@ -96,6 +100,63 @@ public final class Instructions {
         return found;
     }
 
+    /**
+     * One instruction for NEW BEHAVIOUR (Stage 27 (z5)): no tool and no code, only what is built and each behaviour the tests must prove.
+     *
+     * @param number the number the issuer gave it
+     * @param build  what is built and where, on its {@code BUILD:} line
+     * @param tests  one sentence per behaviour a test must prove, from its {@code TESTS:} lines
+     */
+    public record Build(int number, String build, List<String> tests) {
+    }
+
+    /** Every instruction block of {@code answer} that asks for new behaviour ({@code BUILD:}), in order; empty when there are none. */
+    public static List<Build> builds(String answer) {
+        List<Build> found = new ArrayList<>();
+        for (Block block : blocks(answer)) {
+            buildOf(block).ifPresent(found::add);
+        }
+        return found;
+    }
+
+    /** The build a block asks for, or empty when it has no {@code BUILD:} line or the line names nothing. */
+    private static Optional<Build> buildOf(Block block) {
+        String[] lines = block.body().split("\n", -1);
+        int at = -1;
+        for (int i = 0; i < lines.length && at < 0; i++) {
+            if (BUILD_LINE.matcher(lines[i]).matches()) {
+                at = i;
+            }
+        }
+        if (at < 0) {
+            return Optional.empty();
+        }
+        StringBuilder what = new StringBuilder(BUILD_LINE.matcher(lines[at]).replaceFirst("$1").trim());
+        int next = at + 1;
+        while (next < lines.length && !lines[next].isBlank() && !TESTS_LINE.matcher(lines[next]).matches()) {
+            what.append(' ').append(lines[next].trim());
+            next++;
+        }
+        List<String> tests = new ArrayList<>();
+        boolean inTests = false;
+        for (int i = next; i < lines.length; i++) {
+            Matcher test = TESTS_LINE.matcher(lines[i]);
+            Matcher bullet = BULLET.matcher(lines[i]);
+            if (test.matches()) {
+                inTests = true;
+                if (!test.group(1).isBlank()) {
+                    tests.add(test.group(1).trim());
+                }
+            } else if (inTests && bullet.matches()) {
+                tests.add(bullet.group(1).trim());
+            } else if (!lines[i].isBlank()) {
+                inTests = false;
+            }
+        }
+        String text = what.toString().replaceAll("\\s+", " ").trim();
+        return text.isEmpty() ? Optional.empty() : Optional.of(new Build(block.number(), text, List.copyOf(tests)));
+    }
+
     /** Every instruction block in {@code answer}, in order; empty when there are none. */
     public static List<Instruction> parse(String answer) {
         List<Instruction> found = new ArrayList<>();
@@ -117,7 +178,14 @@ public final class Instructions {
     public static List<String> faults(String answer) {
         List<String> faults = new ArrayList<>();
         for (Block block : blocks(answer)) {
-            if (block.tool() == null) {
+            Optional<Build> build = buildOf(block);
+            if (block.tool() != null && build.isPresent()) {
+                faults.add("instruction " + block.number() + ": names both a TOOL: and a BUILD:, which are two kinds of instruction and need two blocks");
+            } else if (build.isPresent()) {
+                if (build.get().tests().isEmpty()) {
+                    faults.add("instruction " + block.number() + ": BUILD: without a TESTS: line, so nothing says what the tests must prove");
+                }
+            } else if (block.tool() == null) {
                 faults.add("instruction " + block.number() + ": no TOOL: line, so it names nothing to run and is not counted as issued");
             } else if (argumentsOf(block.body()) == null) {
                 faults.add("instruction " + block.number() + ": ARGUMENTS missing or not one JSON object, so it has no execution");

@@ -495,6 +495,66 @@ class HiredRunProposesTest {
             () -> assertTrue(changed.complete(), "CONTROL: the same brief with a change does not read as complete"));
     }
 
+    /**
+     * A stand-in worker's script: one assistant message carrying these calls in order ({@code Write:rel}, {@code Edit:rel} for the brain's own
+     * editor on a file of the tree, {@code run_tests} for a test run), and the production file edited on disk so the tree shows a change.
+     */
+    private HostCommand workerCalling(Path repo, String... calls) throws Exception {
+        StringBuilder blocks = new StringBuilder();
+        for (String call : calls) {
+            if (blocks.length() > 0) {
+                blocks.append(',');
+            }
+            if (call.equals("run_tests")) {
+                blocks.append("{\"type\":\"tool_use\",\"name\":\"mcp__jawata-x__run_tests\",\"input\":{\"action\":\"run\"}}");
+            } else {
+                String[] editor = call.split(":", 2);
+                blocks.append("{\"type\":\"tool_use\",\"name\":\"").append(editor[0]).append("\",\"input\":{\"file_path\":\"")
+                    .append(repo.resolve(editor[1])).append("\"}}");
+            }
+        }
+        return brain("echo 'edited' >> '" + repo.resolve("org/x/Foo.java") + "'\n"
+            + "echo '{\"type\":\"assistant\",\"message\":{\"content\":[" + blocks + "]}}'\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\"}'").in(repo);
+    }
+
+    @Test
+    @DisplayName("28h Stage 27 (z5): a worker briefed to build new behaviour moves its plan only when it worked test first, and the same order under a structural brief is not judged")
+    void aWorkerBuildingNewBehaviourMovesItsPlanOnlyWhenItWorkedTestFirst() throws Exception {
+        String build = "INSTRUCTION 1\nBUILD: org.x.Foo gets a method that greets\nTESTS: it greets by name\n";
+        String structural = "INSTRUCTION 1\nTOOL: Edit\nARGUMENTS: {\"file_path\": \"/x\", \"old_string\": \"a\", \"new_string\": \"b\"}\n";
+        List<TestFirst.Run> redThenGreen = List.of(TestFirst.Run.RED, TestFirst.Run.GREEN);
+
+        Path wrongRepo = aTreeHolding("org/x/Foo.java", "org/x/FooTest.java");
+        HostCommand productionFirst = workerCalling(wrongRepo, "Edit:org/x/Foo.java", "Write:org/x/FooTest.java", "run_tests", "run_tests");
+        HiredRun.Proposal wrong = new HiredRun(new RecordsTheArgv(host, productionFirst), artifacts, plans, events, null, () -> store).changing(true)
+            .readingTestRunsFrom(plan -> redThenGreen)
+            .issue(SeatHire.read(CODE_SEAT), site(productionFirst), build, twoSteps(), HiredRunProposesTest::passed, List.of());
+
+        Path rightRepo = aTreeHolding("org/x/Foo.java", "org/x/FooTest.java");
+        HostCommand testFirst = workerCalling(rightRepo, "Write:org/x/FooTest.java", "run_tests", "Edit:org/x/Foo.java", "run_tests");
+        HiredRun.Proposal right = new HiredRun(new RecordsTheArgv(host, testFirst), artifacts, plans, events, null, () -> store).changing(true)
+            .readingTestRunsFrom(plan -> redThenGreen)
+            .issue(SeatHire.read(CODE_SEAT), site(testFirst), build, twoSteps(), HiredRunProposesTest::passed, List.of());
+
+        Path otherRepo = aTreeHolding("org/x/Foo.java", "org/x/FooTest.java");
+        HostCommand sameOrder = workerCalling(otherRepo, "Edit:org/x/Foo.java", "Write:org/x/FooTest.java", "run_tests", "run_tests");
+        HiredRun.Proposal notBuilding = new HiredRun(new RecordsTheArgv(host, sameOrder), artifacts, plans, events, null, () -> store).changing(true)
+            .readingTestRunsFrom(plan -> redThenGreen)
+            .issue(SeatHire.read(CODE_SEAT), site(sameOrder), structural, twoSteps(), HiredRunProposesTest::passed, List.of());
+
+        assertAll(
+            () -> assertEquals(0, wrong.stepsPassed(), "production code written before a test was seen failing moved the plan"),
+            () -> assertFalse(wrong.complete(), "a worker that wrote production code first reads as complete"),
+            () -> assertTrue(Files.readString(wrong.record()).contains("before a test was seen failing"),
+                "the record does not say why: " + Files.readString(wrong.record())),
+            () -> assertEquals(1, wrong.notTestFirst().size(), "the proposal does not carry the order the worker broke: " + wrong.notTestFirst()),
+            () -> assertTrue(right.notTestFirst().isEmpty(), "CONTROL: the red, green order carries a violation: " + right.notTestFirst()),
+            () -> assertEquals(2, right.stepsPassed(), "CONTROL: the red, green order did not move the plan"),
+            () -> assertTrue(right.complete(), "CONTROL: the red, green order does not read as complete"),
+            () -> assertEquals(2, notBuilding.stepsPassed(), "CONTROL: a structural brief was judged by the test-first rule"));
+    }
+
     @Test
     @DisplayName("M5a's gate clause, all four: the brief is issued, the gates run, the run is journalled, and the record is on disk")
     void oneHiredRunEndToEnd() throws Exception {

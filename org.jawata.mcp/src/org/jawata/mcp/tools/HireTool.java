@@ -685,6 +685,8 @@ public class HireTool extends NeutralTool {
             .labelled(hired, hirer, running.name())
             .leading(declaredTree.tree().isLead(hired))
             .changing(declaredTree.tree().mayEditCode(hired))
+            // What this worker's test runs showed is read from the store the registry fills as it answers its calls (Stage 27 (z5)).
+            .readingTestRunsFrom(org.jawata.mcp.execution.TestRuns.shared()::take)
             .fixing(getStringParam(call.getArguments(), "fixes"))
             .issuedFrom(getStringParam(call.getArguments(), "instructionsFrom"));
         HiredRun.Proposal proposal;
@@ -887,17 +889,23 @@ public class HireTool extends NeutralTool {
         // did, so no worker was ever checked. The blocks are read from the brief because the lead that wrote them is still running when it hires.
         List<Instructions.Instruction> briefed = named ? List.of()
             : declaredTree.tree().roleOf(hired).filter(SeatTree.Role.WORKER::equals).map(worker -> Instructions.parse(brief)).orElse(List.of());
-        if (named || !briefed.isEmpty()) {
+        // Stage 27 (z5): a worker briefed with BUILD instructions (new behaviour) is held to working test first; what its record broke goes to the
+        // observer beside the flags of the instructions that did not run as written, and the observer is asked about the whole run once (z1).
+        List<Instructions.Build> briefedBuilds = declaredTree.tree().roleOf(hired).filter(SeatTree.Role.WORKER::equals)
+            .map(worker -> Instructions.builds(brief)).orElse(List.of());
+        List<Observer.Flag> notTestFirst = briefedBuilds.isEmpty() ? List.<Observer.Flag>of()
+            : proposal.notTestFirst().stream().map(why -> new Observer.Flag(briefedBuilds.get(0).number(), why)).toList();
+        if (named || !briefed.isEmpty() || !briefedBuilds.isEmpty()) {
             String observerSeatFile = Optional.ofNullable(getStringParam(call.getArguments(), "observerSeatFile")).filter(file -> !file.isBlank())
                 .or(() -> observerBeside(getStringParam(call.getArguments(), "seatFile")))
                 .orElse(null);
-            Observer.Judge judge = observerSeatFile == null
+            Observer.BatchJudge judge = observerSeatFile == null
                 ? null
                 : hiredJudge(observerSeatFile.trim(), landsIn, endpoint, base, call.getServing().map(org.jawata.mcp.models.CallerIdentity::id));
             data.put("instructionScore", named
-                ? instructionScore(landsIn, instructionsFrom.trim(), proposal.outcome(), engine, effects.notOffered(), judge)
+                ? instructionScore(landsIn, instructionsFrom.trim(), proposal.outcome(), engine, effects.notOffered(), judge, notTestFirst)
                 : briefScore(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""), briefed, proposal.outcome(), engine,
-                    effects.notOffered(), judge));
+                    effects.notOffered(), judge, notTestFirst));
         } else if (declaredTree.tree().roleOf(hired).filter(SeatTree.Role.WORKER::equals).isPresent()) {
             // 28h-C26-11: a worker briefed in prose is not scored, and says so, so the lead's report does not read as "nothing to report".
             data.put("instructionScore", org.jawata.mcp.execution.HireReport.notChecked());
@@ -1042,7 +1050,7 @@ public class HireTool extends NeutralTool {
      *     error and did nothing: neither the instruction nor rework nor a code change, the same
      *     reading the worker's share-through-tools figure takes
      */
-    static Map<String,Object> instructionScore(LearnerEventStore journal, String issuerPlan, HiredBrain.Outcome worker, ToolRegistry engine, List<String> refusedAttempts, Observer.Judge judge) {
+    static Map<String,Object> instructionScore(LearnerEventStore journal, String issuerPlan, HiredBrain.Outcome worker, ToolRegistry engine, List<String> refusedAttempts, Observer.BatchJudge judge, List<Observer.Flag> more) {
         Map<String, Object> score = new LinkedHashMap<>();
         score.put("issuerPlan", issuerPlan);
         Optional<List<LearnerEvent>> read = journal.eventsOfSession(issuerPlan);
@@ -1075,7 +1083,7 @@ public class HireTool extends NeutralTool {
                 + " whether any ran as written cannot be read");
             return score;
         }
-        Instructions.Score s = scoreAndObserve(worker, engine, refusedAttempts, judge, score, issued);
+        Instructions.Score s = scoreAndObserve(worker, engine, refusedAttempts, judge, score, issued, more);
         JsonNode spent = detail.path("tokensSpent");
         if (!spent.isNumber()) {
             score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: the issuer's brain reported no tokens");
@@ -1096,7 +1104,7 @@ public class HireTool extends NeutralTool {
      * @param issuer the id of the caller that issued the worker: the plan of the lead's own hire, or a conversation's id
      */
     static Map<String,Object> briefScore(String issuer, List<Instructions.Instruction> issued, HiredBrain.Outcome worker, ToolRegistry engine,
-            List<String> refusedAttempts, Observer.Judge judge) {
+            List<String> refusedAttempts, Observer.BatchJudge judge, List<Observer.Flag> more) {
         Map<String, Object> score = new LinkedHashMap<>();
         score.put("issuerPlan", issuer);
         score.put("instructionsFrom", "the brief of this hire");
@@ -1106,7 +1114,7 @@ public class HireTool extends NeutralTool {
                 + " whether any ran as written cannot be read");
             return score;
         }
-        scoreAndObserve(worker, engine, refusedAttempts, judge, score, issued);
+        scoreAndObserve(worker, engine, refusedAttempts, judge, score, issued, more);
         score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: the instructions came in this hire's brief while their issuer was still"
             + " running, so its tokens are not recorded yet");
         return score;
@@ -1132,8 +1140,8 @@ public class HireTool extends NeutralTool {
     }
 
     private static Instructions.Score scoreAndObserve(HiredBrain.Outcome worker, ToolRegistry engine,
-            List<String> refusedAttempts, Observer.Judge judge, Map<String, Object> score,
-            List<Instructions.Instruction> issued) {
+            List<String> refusedAttempts, Observer.BatchJudge judge, Map<String, Object> score,
+            List<Instructions.Instruction> issued, List<Observer.Flag> more) {
         var made = worker.toolCalls().stream()
             .filter(call -> !refusedAttempts.contains(call.name()))
             .toList();
@@ -1147,7 +1155,8 @@ public class HireTool extends NeutralTool {
         // THE OBSERVER (S11, D13): the rule tier always runs; the judging tier runs when a judge is given. A correction names the number
         // of the instruction it came from, and it goes to the issuer by being in the answer the issuer reads. A flag nobody judged is
         // listed as unjudged, never dropped.
-        Observer.Observation seen = Observer.observe(issued, made, bare -> engine.getTool(bare).map(Tool::changesCode), judge);
+        // Stage 27 (z1): the judge is asked ONCE about this whole run, over every flag the rules raised, and not once per flag.
+        Observer.Observation seen = Observer.observe(issued, made, bare -> engine.getTool(bare).map(Tool::changesCode), more, judge);
         Map<String, Object> observed = new LinkedHashMap<>();
         observed.put("flagged", seen.flagged().stream().map(f -> Map.of("instruction", f.instruction(), "why", f.why())).toList());
         observed.put("corrections", seen.corrections().stream().map(c -> Map.of("instruction", c.instruction(), "text", c.text())).toList());
@@ -1157,17 +1166,18 @@ public class HireTool extends NeutralTool {
     }
 
     /**
-     * The observer's judging tier: the observer seat, hired through the same path as any seat, shown one flagged step. A hire that cannot
-     * be made or answers with no verdict line gives no verdict, so the flag is reported as unjudged and not as clear.
+     * The observer's judging tier: the observer seat, hired through the same path as any seat, shown every flagged step of one worker's run
+     * in ONE hire (Stage 27 (z1)). A hire that cannot be made or answers with no verdict line gives no verdict, so the flags are reported as
+     * unjudged and not as clear.
      *
      * @param judgeIssuer the id of the caller that issued the worker the judge judges, captured when the hire was requested
      */
-    private Observer.Judge hiredJudge(String seatFile, LearnerEventStore landsIn, SelfEndpoint endpoint, HireSite base, Optional<String> judgeIssuer) {
+    private Observer.BatchJudge hiredJudge(String seatFile, LearnerEventStore landsIn, SelfEndpoint endpoint, HireSite base, Optional<String> judgeIssuer) {
         // The judge's plan belongs to the session that issued the worker it judges: a plan nobody owns is listed to every caller and would hold
         // their turns while the judge runs (S10, F7). It is handed in by the call, which read it from the thread that made the call, because this
         // method may run on an engine thread that has no caller of its own.
         Optional<String> issuer = judgeIssuer;
-        return (flag, instruction, window) -> {
+        return (flags, issued, window) -> {
             try {
                 SeatHire observerSeat = SeatHire.read(readSeatFile(seatFile));
                 ToolRegistry engineTools = registry.get();
@@ -1182,11 +1192,12 @@ public class HireTool extends NeutralTool {
                 Optional<String> earlier = issuer.flatMap(key -> SeatBrainSessions.shared().recall(key, OBSERVER_SESSION_SEAT));
                 HiredRun judging = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, engineTools.sessionFolders()).ownedBy(issuer)
                     .resuming(earlier);
-                HiredRun.Proposal verdict = judging.issue(observerSeat, base, Observer.briefFor(flag, instruction, window),
+                HiredRun.Proposal verdict = judging.issue(observerSeat, base, Observer.briefFor(flags, issued, window),
                     List.of(new GatedStep(0, "health_check", JSON.createObjectNode())), new ToolGateRunner(engineTools), hidden, acp);
                 issuer.ifPresent(key -> verdict.outcome().brainSessionId()
                     .ifPresent(session -> SeatBrainSessions.shared().remember(key, OBSERVER_SESSION_SEAT, session)));
-                return Observer.verdictOf(verdict.outcome().text());
+                List<Observer.Point> points = Observer.pointsOf(verdict.outcome().text());
+                return points.isEmpty() ? Optional.empty() : Optional.of(points);
             } catch (IOException | RuntimeException e) {
                 return Optional.empty();
             } catch (InterruptedException e) {

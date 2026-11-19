@@ -11,6 +11,8 @@ import java.util.concurrent.TimeUnit;
 
 import org.jawata.mcp.execution.CallOutcomes;
 import org.jawata.mcp.execution.HireRegistry;
+import org.jawata.mcp.execution.TestFirst;
+import org.jawata.mcp.execution.TestRuns;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
 import org.junit.jupiter.api.AfterEach;
@@ -89,5 +91,29 @@ class ToolRegistryRecordsHireFailuresTest {
             () -> assertEquals(List.of(new CallOutcomes.Failed("rename_symbol", "REFACTORING_FAILED")), CallOutcomes.shared().take("plan-records-1"),
                 "THE CLAIM: the hire's failed call was not kept, or its success was"),
             () -> assertTrue(CallOutcomes.shared().take("not-a-hire-session").isEmpty(), "CONTROL: a session that is no running hire was kept"));
+    }
+
+    private static ToolResponse ran(int total, int failed) {
+        return ToolResponse.success(Map.of("summary", Map.of("total", total, "passed", total - failed, "failed", failed)));
+    }
+
+    @Test
+    @DisplayName("Stage 27 (z5): the test runs of a running hire are kept under its plan id in order, whatever they showed; another tool's answers and a caller that is no hire are not")
+    void aRunningHiresTestRunsAreKept() throws Exception {
+        aHireIsRunning("plan-testruns-1");
+        JsonNode none = OM.readTree("{}");
+        ToolRegistry red = registryWith("run_tests", ran(3, 1));
+        ToolRegistry green = registryWith("run_tests", ran(3, 0));
+        ToolRegistry other = registryWith("search_symbols", ToolResponse.success("fine"));
+
+        red.callTool("run_tests", none, CallerIdentity.supplied("plan-testruns-1"));
+        other.callTool("search_symbols", none, CallerIdentity.supplied("plan-testruns-1"));
+        green.callTool("run_tests", none, CallerIdentity.supplied("plan-testruns-1"));
+        red.callTool("run_tests", none, CallerIdentity.supplied("not-a-hire-session"));
+
+        assertAll(
+            () -> assertEquals(List.of(TestFirst.Run.RED, TestFirst.Run.GREEN), TestRuns.shared().take("plan-testruns-1"),
+                "THE CLAIM: the hire's test runs were not kept, or another tool's answer was"),
+            () -> assertTrue(TestRuns.shared().take("not-a-hire-session").isEmpty(), "CONTROL: a session that is no running hire was kept"));
     }
 }

@@ -707,6 +707,11 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         if (response != null && !response.isSuccess() && org.jawata.mcp.execution.HireRegistry.shared().isRunningPlan(caller.id())) {
             org.jawata.mcp.execution.CallOutcomes.shared().record(caller.id(), name, response);
         }
+        // Stage 27 (z5): what a running hire's test runs showed, kept in order whatever they showed, so the engine can read whether its worker
+        // saw a test fail before it wrote production code.
+        if ("run_tests".equals(name) && org.jawata.mcp.execution.HireRegistry.shared().isRunningPlan(caller.id())) {
+            org.jawata.mcp.execution.TestRuns.shared().record(caller.id(), name, response);
+        }
         return response;
     }
 

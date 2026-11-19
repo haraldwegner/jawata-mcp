@@ -17,7 +17,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /**
  * Sprint 28h, S11 (D13, D50a): the observer. The rule tier flags what a worker did against the instructions it was given; the judging
  * tier is asked about flags only; a halted flag becomes a correction that carries the instruction's number; a flag nobody judged is
- * reported as unjudged and never as clear.
+ * reported as unjudged and never as clear. (Stage 27 (z1): the judge is asked once per run; ObserverOncePerRunTest holds that rule.)
  */
 class ObserverTest {
 
@@ -47,9 +47,9 @@ class ObserverTest {
             new ToolCall("compile_workspace", args("{}")));
         List<String> asked = new ArrayList<>();
 
-        Observer.Observation seen = Observer.observe(ISSUED, made, ObserverTest::changes, (flag, instruction, window) -> {
-            asked.add(flag.why());
-            return Optional.of(new Observer.Verdict(true, "should not be asked"));
+        Observer.Observation seen = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(), (flags, issued, window) -> {
+            asked.add(flags.toString());
+            return Optional.of(List.of(new Observer.Point(1, true, "should not be asked")));
         });
 
         assertTrue(seen.flagged().isEmpty(), seen.flagged().toString());
@@ -65,9 +65,9 @@ class ObserverTest {
             new ToolCall("compile_workspace", args("{}")));
         List<Observer.Flag> asked = new ArrayList<>();
 
-        Observer.Observation seen = Observer.observe(ISSUED, made, ObserverTest::changes, (flag, instruction, window) -> {
-            asked.add(flag);
-            return Optional.of(new Observer.Verdict(true, "you renamed to the wrong name"));
+        Observer.Observation seen = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(), (flags, issued, window) -> {
+            asked.addAll(flags);
+            return Optional.of(List.of(new Observer.Point(1, true, "you renamed to the wrong name")));
         });
 
         assertEquals(1, asked.size(), asked.toString());
@@ -81,8 +81,8 @@ class ObserverTest {
     void aClearVerdictGivesNoCorrection() {
         List<ToolCall> made = List.of(new ToolCall("compile_workspace", args("{}")));
 
-        Observer.Observation seen = Observer.observe(ISSUED, made, ObserverTest::changes,
-            (flag, instruction, window) -> Optional.of(new Observer.Verdict(false, "")));
+        Observer.Observation seen = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(),
+            (flags, issued, window) -> Optional.of(List.of(new Observer.Point(1, false, ""))));
 
         assertFalse(seen.flagged().isEmpty(), "instruction 1 never ran, which is a flag");
         assertTrue(seen.corrections().isEmpty());
@@ -94,8 +94,8 @@ class ObserverTest {
     void aFlagNobodyJudgedIsReportedAsUnjudged() {
         List<ToolCall> made = List.of(new ToolCall("compile_workspace", args("{}")));
 
-        Observer.Observation noJudge = Observer.observe(ISSUED, made, ObserverTest::changes, null);
-        Observer.Observation silent = Observer.observe(ISSUED, made, ObserverTest::changes, (flag, instruction, window) -> Optional.empty());
+        Observer.Observation noJudge = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(), null);
+        Observer.Observation silent = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(), (flags, issued, window) -> Optional.empty());
 
         assertEquals(noJudge.flagged(), noJudge.unjudged());
         assertEquals(silent.flagged(), silent.unjudged());
@@ -118,13 +118,13 @@ class ObserverTest {
     }
 
     @Test
-    @DisplayName("the observer seat's answer is read as a verdict: clear, a halt with its correction, and an answer with no verdict line is no verdict")
-    void theSeatsAnswerIsReadAsAVerdict() {
-        assertEquals(Optional.of(new Observer.Verdict(false, "")), Observer.verdictOf("VERDICT: CLEAR"));
-        assertEquals(Optional.of(new Observer.Verdict(true, "you went around it at call #4")),
-            Observer.verdictOf("VERDICT: HALT 4: you went around it at call #4"));
-        assertEquals(Optional.of(new Observer.Verdict(true, "no number given")), Observer.verdictOf("some words\nVERDICT: HALT no number given\n"));
-        assertEquals(Optional.empty(), Observer.verdictOf("I think it is probably fine"));
-        assertEquals(Optional.empty(), Observer.verdictOf(null));
+    @DisplayName("the observer seat's answer is read as points: clear, a halt with its correction, and an answer with no verdict line is none")
+    void theSeatsAnswerIsReadAsPoints() {
+        assertEquals(List.of(new Observer.Point(0, false, "")), Observer.pointsOf("VERDICT: CLEAR"));
+        assertEquals(List.of(new Observer.Point(4, true, "you went around it at call #4")),
+            Observer.pointsOf("VERDICT: HALT 4: you went around it at call #4"));
+        assertEquals(List.of(new Observer.Point(0, true, "no number given")), Observer.pointsOf("some words\nVERDICT: HALT no number given\n"));
+        assertEquals(List.of(), Observer.pointsOf("I think it is probably fine"));
+        assertEquals(List.of(), Observer.pointsOf(null));
     }
 }

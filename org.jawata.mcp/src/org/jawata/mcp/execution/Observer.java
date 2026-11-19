@@ -15,9 +15,10 @@ import java.util.regex.Pattern;
  * instruction asked for, is a {@link Flag}. It reads {@link Instructions#score}, so "as written" means one thing in the PM's measure and
  * here. A worker that ran every instruction as written produces no flag, and no judge is asked.</p>
  *
- * <p><b>The judging tier</b> is a hired seat (the observer seat), reached through a {@link Judge}. It is asked about flagged steps only.
- * A step it says to halt becomes a {@link Correction} that names the number of the instruction it came from, and the correction goes to
- * the issuer, the pm, because the pm owns the instruction and not the developer who ran it (D13).</p>
+ * <p><b>The judging tier</b> is a hired seat (the observer seat), reached through a {@link BatchJudge}. It is asked about flagged steps only,
+ * and ONCE for a whole run over every flag the rules raised, never once per flag (Stage 27 (z1)). A point it says to halt becomes a
+ * {@link Correction} that names the number of the instruction it came from, and the corrections go to the issuer, the pm, because the pm
+ * owns the instruction and not the developer who ran it (D13).</p>
  *
  * <p>An absent or unanswering judge is not a clear verdict: a flag nobody judged is reported as <em>unjudged</em> beside the corrections,
  * so "nothing was found" is never told for a step that was not looked at.</p>
@@ -27,8 +28,8 @@ public final class Observer {
     /** "instruction 3: ..." as {@link Instructions#score} words a deviation: the number and the reason. */
     private static final Pattern NUMBERED = Pattern.compile("^instruction (\\d+): (.*)$");
 
-    /** The observer seat's one-line answer: {@code VERDICT: CLEAR} or {@code VERDICT: HALT <n>: <correction>}. */
-    private static final Pattern VERDICT = Pattern.compile("(?m)^\\s*VERDICT:\\s*(CLEAR|HALT)\\b[ \\t]*(?:\\d+[ \\t]*:)?[ \\t]*(.*)$");
+    /** One point of the judge's answer about a whole run: {@code VERDICT: CLEAR 5} or {@code VERDICT: HALT 3: <correction>}, the number optional. */
+    private static final Pattern POINT = Pattern.compile("(?m)^\\s*VERDICT:\\s*(CLEAR|HALT)\\b[ \\t]*(?:(\\d+)[ \\t]*:?)?[ \\t]*(.*)$");
 
     private Observer() {
     }
@@ -41,15 +42,6 @@ public final class Observer {
      * @param why         the deviation, in words
      */
     public record Flag(int instruction, String why) {
-    }
-
-    /**
-     * What the judging tier said about one flag.
-     *
-     * @param halt       whether the step shows the worker going around its instruction
-     * @param correction what to tell the issuer, or empty when nothing is to be said
-     */
-    public record Verdict(boolean halt, String correction) {
     }
 
     /** A correction for the issuer, carrying the number of the instruction it came from (0 for none). */
@@ -66,11 +58,87 @@ public final class Observer {
     public record Observation(List<Flag> flagged, List<Correction> corrections, List<Flag> unjudged) {
     }
 
-    /** The judging tier: asked about one flag, with the instruction it deviates from (null for none) and the worker's calls. */
+    /**
+     * One point of the judge's one answer about a run (Stage 27 (z1)).
+     *
+     * @param instruction the number of the instruction it is about, or 0 for none
+     * @param halt        whether the step shows the worker going around its instruction
+     * @param correction  what to tell the issuer, or empty when nothing is to be said
+     */
+    public record Point(int instruction, boolean halt, String correction) {
+    }
+
+    /** The judging tier asked once about everything a run was flagged for: the flags, the instructions and the worker's calls. */
     @FunctionalInterface
-    public interface Judge {
-        /** The verdict on this flag, or empty when the judge could not answer. */
-        Optional<Verdict> judge(Flag flag, Instructions.Instruction instruction, List<ToolCall> window);
+    public interface BatchJudge {
+        /** One point per flag it can judge, or empty when the judge could not answer at all. */
+        Optional<List<Point>> judge(List<Flag> flags, List<Instructions.Instruction> issued, List<ToolCall> window);
+    }
+
+    /**
+     * Observes one run (Stage 27 (z1)): the rule tier's flags and {@code more} flags from other rules are collected, and the judge is asked ONCE
+     * about all of them when there is at least one, never once per flag.
+     *
+     * @param more  flags other rules raised over the same run, such as production code written before its test was seen failing
+     * @param judge the judging tier, or null when none is configured
+     */
+    public static Observation observe(List<Instructions.Instruction> issued, List<ToolCall> made,
+            Function<String, Optional<Boolean>> jawataChanges, List<Flag> more, BatchJudge judge) {
+        // With no tool instruction nothing was asked for, so a code-changing call is not one no instruction asked for: a worker briefed only with
+        // BUILD instructions writes code as its work (Stage 27 (z5)), and the flags of other rules are all that is left to judge.
+        List<Flag> flagged = new ArrayList<>(issued.isEmpty() ? List.of() : flags(Instructions.score(issued, made, jawataChanges)));
+        flagged.addAll(more);
+        if (flagged.isEmpty()) {
+            return new Observation(List.of(), List.of(), List.of());
+        }
+        Optional<List<Point>> answered = judge == null ? Optional.empty() : judge.judge(List.copyOf(flagged), issued, made);
+        if (answered.isEmpty()) {
+            return new Observation(List.copyOf(flagged), List.of(), List.copyOf(flagged));
+        }
+        List<Correction> corrections = answered.get().stream().filter(Point::halt).map(p -> new Correction(p.instruction(), p.correction())).toList();
+        List<Integer> judged = answered.get().stream().map(Point::instruction).toList();
+        List<Flag> unjudged = flagged.stream().filter(flag -> !judged.contains(flag.instruction())).toList();
+        return new Observation(List.copyOf(flagged), corrections, unjudged);
+    }
+
+    /** What the judge is shown about a whole run: every flag by its instruction number, the instructions and the worker's calls. */
+    public static String briefFor(List<Flag> flags, List<Instructions.Instruction> issued, List<ToolCall> window) {
+        StringBuilder brief = new StringBuilder("An issuer gave a worker numbered instructions, and the worker may have gone around some of them. "
+            + "Judge each point below and nothing else.\n\nTHE INSTRUCTIONS THE POINTS ARE ABOUT:\n");
+        List<Integer> numbers = flags.stream().map(Flag::instruction).distinct().toList();
+        for (Instructions.Instruction instruction : issued) {
+            if (numbers.contains(instruction.number())) {
+                brief.append("INSTRUCTION ").append(instruction.number()).append("\nTOOL: ").append(instruction.tool())
+                    .append("\nARGUMENTS: ").append(instruction.arguments()).append("\n\n");
+            }
+        }
+        brief.append("THE POINTS THE RULES FOUND, each by its instruction number (0 is no instruction):\n");
+        for (Flag flag : flags) {
+            brief.append("- INSTRUCTION ").append(flag.instruction()).append(": ").append(flag.why()).append('\n');
+        }
+        brief.append("\nTHE WORKER'S CALLS, in order:\n");
+        for (int i = 0; i < window.size(); i++) {
+            String arguments = String.valueOf(window.get(i).arguments());
+            brief.append('#').append(i + 1).append(' ').append(window.get(i).name()).append(' ')
+                .append(arguments.length() > 300 ? arguments.substring(0, 300) + "..." : arguments).append('\n');
+        }
+        brief.append("\nAnswer with one line per point: VERDICT: CLEAR <instruction number>, or VERDICT: HALT <instruction number>: "
+            + "<the correction, addressed to the issuer, naming the call number>.");
+        return brief.toString();
+    }
+
+    /** The points the judge's answer holds, one per {@code VERDICT:} line; empty when it holds none. */
+    public static List<Point> pointsOf(String answer) {
+        List<Point> points = new ArrayList<>();
+        if (answer == null) {
+            return points;
+        }
+        Matcher found = POINT.matcher(answer);
+        while (found.find()) {
+            boolean halt = "HALT".equals(found.group(1));
+            points.add(new Point(found.group(2) == null ? 0 : Integer.parseInt(found.group(2)), halt, halt ? found.group(3).trim() : ""));
+        }
+        return points;
     }
 
     /** The rule tier: the deviations {@link Instructions#score} found, as flags. */
@@ -86,63 +154,5 @@ public final class Observer {
             flags.add(new Flag(0, "a code-changing call that no instruction asked for: " + call));
         }
         return List.copyOf(flags);
-    }
-
-    /**
-     * What the judging tier is shown for one flagged step: the instruction, the deviation the rule tier found, and the worker's calls,
-     * one line each. The answer it is asked for is the one line {@link #verdictOf} reads.
-     */
-    public static String briefFor(Flag flag, Instructions.Instruction instruction, List<ToolCall> window) {
-        StringBuilder brief = new StringBuilder("An issuer gave a worker numbered instructions, and the worker may have gone around one of them. "
-            + "Judge that and nothing else.\n\n");
-        if (instruction == null) {
-            brief.append("THE INSTRUCTION: none. The deviation is a call that no instruction asked for.\n");
-        } else {
-            brief.append("THE INSTRUCTION:\nINSTRUCTION ").append(instruction.number()).append("\nTOOL: ").append(instruction.tool())
-                .append("\nARGUMENTS: ").append(instruction.arguments()).append('\n');
-        }
-        brief.append("THE DEVIATION THE RULES FOUND: ").append(flag.why()).append("\n\nTHE WORKER'S CALLS, in order:\n");
-        for (int i = 0; i < window.size(); i++) {
-            String arguments = String.valueOf(window.get(i).arguments());
-            brief.append('#').append(i + 1).append(' ').append(window.get(i).name()).append(' ')
-                .append(arguments.length() > 300 ? arguments.substring(0, 300) + "..." : arguments).append('\n');
-        }
-        brief.append("\nAnswer with exactly one line: VERDICT: CLEAR, or VERDICT: HALT <instruction number>: <the correction, addressed to the issuer, naming the call number>.");
-        return brief.toString();
-    }
-
-    /** The judge's answer read as a verdict, or empty when it holds no verdict line. */
-    public static Optional<Verdict> verdictOf(String answer) {
-        if (answer == null) {
-            return Optional.empty();
-        }
-        Matcher found = VERDICT.matcher(answer);
-        if (!found.find()) {
-            return Optional.empty();
-        }
-        boolean halt = "HALT".equals(found.group(1));
-        return Optional.of(new Verdict(halt, halt ? found.group(2).trim() : ""));
-    }
-
-    /**
-     * Observes one worker: flags by the rules, asks the judge about each flag, and returns what was found.
-     *
-     * @param judge the judging tier, or null when none is configured
-     */
-    public static Observation observe(List<Instructions.Instruction> issued, List<ToolCall> made,
-            Function<String, Optional<Boolean>> jawataChanges, Judge judge) {
-        List<Flag> flagged = flags(Instructions.score(issued, made, jawataChanges));
-        List<Correction> corrections = new ArrayList<>();
-        List<Flag> unjudged = new ArrayList<>();
-        for (Flag flag : flagged) {
-            Instructions.Instruction instruction = issued.stream().filter(i -> i.number() == flag.instruction()).findFirst().orElse(null);
-            Optional<Verdict> verdict = judge == null ? Optional.empty() : judge.judge(flag, instruction, made);
-            if (verdict.isEmpty()) {
-                unjudged.add(flag);
-            } else if (verdict.get().halt()) {
-                corrections.add(new Correction(flag.instruction(), verdict.get().correction()));
-            }
-        }
-        return new Observation(flagged, List.copyOf(corrections), List.copyOf(unjudged));
     }
 }

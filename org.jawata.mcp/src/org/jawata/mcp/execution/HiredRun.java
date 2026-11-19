@@ -91,7 +91,7 @@ public final class HiredRun {
      */
     public record Proposal(PlanId plan, String artifactId, Path record,
                            HiredBrain.Outcome outcome, List<GateOutcome> gates,
-                           int stepsPassed, TreeAttribution.Attribution changed, List<String> answerGateRefusals) {
+                           int stepsPassed, TreeAttribution.Attribution changed, List<String> answerGateRefusals, List<String> notTestFirst) {
 
         /** Did every declared step get past its own gate? */
         public boolean complete() {
@@ -100,6 +100,10 @@ public final class HiredRun {
 
         public Proposal(PlanId plan, String artifactId, Path record, HiredBrain.Outcome outcome, List<GateOutcome> gates, int stepsPassed, TreeAttribution.Attribution changed) {
             this(plan, artifactId, record, outcome, gates, stepsPassed, changed, List.of());
+        }
+
+        public Proposal(PlanId plan, String artifactId, Path record, HiredBrain.Outcome outcome, List<GateOutcome> gates, int stepsPassed, TreeAttribution.Attribution changed, List<String> answerGateRefusals) {
+            this(plan, artifactId, record, outcome, gates, stepsPassed, changed, answerGateRefusals, List.of());
         }
     }
 
@@ -418,6 +422,18 @@ public final class HiredRun {
         return this;
     }
 
+    private java.util.function.Function<String, List<TestFirst.Run>> testRunsOf = TestRuns.shared()::take;
+
+    /**
+     * Says where this run takes what its worker's {@code run_tests} calls showed (28h Stage 27 (z5)): by default the engine's own store, which
+     * the registry fills as it answers. A worker whose brief carries a {@code BUILD:} instruction passes its step only when those runs and its
+     * own editor writes are in the order {@link TestFirst} asks for.
+     */
+    public HiredRun readingTestRunsFrom(java.util.function.Function<String, List<TestFirst.Run>> runsOfPlan) {
+        this.testRunsOf = runsOfPlan;
+        return this;
+    }
+
     /**
      * Names the seat that runs, the seat that hired it and the first name the hire carries; a run is built for one hire, so the names belong to
      * that hire alone.
@@ -524,6 +540,10 @@ public final class HiredRun {
         // the loop resumes after that step, so none runs twice. On any other start path nothing ran live and the loop starts at the first.
         List<GateOutcome> ran = new ArrayList<>(live == null ? List.of() : live.passed());
         List<String> answerRefusals = new ArrayList<>();
+        // 28h Stage 27 (z5): what the worker's test runs showed is taken whatever the brief, so the store never keeps a hire's runs; a worker
+        // briefed with a BUILD instruction is held to writing the test first and seeing it fail.
+        List<TestFirst.Run> testRuns = testRunsOf.apply(plan.value());
+        List<String> notTestFirst = worker && !Instructions.builds(brief).isEmpty() ? TestFirst.violations(outcome.toolCalls(), testRuns) : List.of();
         int alreadyPassed = plans.currentStep(plan).orElse(-1);
         PlanLedger.Advance last = alreadyPassed >= 0 ? new PlanLedger.Advance(true, alreadyPassed, null) : null;
         for (GatedStep step : planned) {
@@ -547,6 +567,14 @@ public final class HiredRun {
                     + Instructions.parse(brief).size() + " instruction(s), so no check run afterwards proves this step";
                 answerRefusals.add(nothing);
                 gate = new GateOutcome(step.tool(), step.gateArguments(), 0, false, nothing);
+            } else if (!notTestFirst.isEmpty()) {
+                // 28h Stage 27 (z5): new behaviour is built test first. A worker whose own record shows production code before a test was seen
+                // failing, or no passing run after it, has not built what its BUILD instruction asked for the way it asked, so no check run
+                // afterwards proves this step: the first step still open fails here, and the plan stops.
+                String order = "the worker did not build the new behaviour test first (" + String.join("; ", notTestFirst)
+                    + "), so no check run afterwards proves this step";
+                answerRefusals.add(order);
+                gate = new GateOutcome(step.tool(), step.gateArguments(), 0, false, order);
             } else if (UpwardMessageGate.STEP.equals(step.tool())) {
                 List<String> refusals = UpwardMessageGate.refusals(outcome.text());
                 answerRefusals.addAll(refusals);
@@ -642,7 +670,7 @@ public final class HiredRun {
             }
         }
         return new Proposal(plan, artifactId, record, outcome, List.copyOf(ran), passed, changed,
-            List.copyOf(answerRefusals));
+            List.copyOf(answerRefusals), notTestFirst);
     }
 
     private Double costForRow(HiredBrain.Outcome outcome) {
