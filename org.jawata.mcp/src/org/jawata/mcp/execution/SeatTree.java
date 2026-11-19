@@ -275,10 +275,17 @@ public final class SeatTree {
         }
     }
 
-    /** Whether {@code hirer} is the seat that hires {@code seat}. */
+    /**
+     * Whether {@code hirer} may hire {@code seat}: it is the seat's parent, or the seat is a worker whose parent is a lead and {@code hirer} is
+     * that lead's own parent (his ruling 2026-11-19: an easy task needs no chief engineer, so the pm may hire the developer too).
+     */
     public boolean mayHire(String hirer, String seat) {
         Declaration d = seats.get(seat);
-        return hirer != null && d != null && hirer.equals(d.parent());
+        if (hirer == null || d == null) {
+            return false;
+        }
+        return hirer.equals(d.parent())
+            || d.role() == Role.WORKER && isLead(d.parent()) && parentOf(d.parent()).filter(hirer::equals).isPresent();
     }
 
     /** The seat that hires {@code seat}, or none for main and for a seat the tree does not know. */

@@ -77,6 +77,20 @@ class SeatTreeFromSeatFilesTest {
     }
 
     @Test
+    @DisplayName("his ruling 2026-11-19 (1 C): the lead above a lead may also hire that lead's workers, so an easy task needs no chief engineer; nothing else widens")
+    void shouldTheLeadAboveAlsoHireTheWorkersOfItsSubLead() {
+        SeatTree tree = SeatTree.standard();
+
+        assertTrue(tree.mayHire("pm", "developer"), "the pm may hire the chief engineer's worker for an easy task");
+        assertTrue(tree.mayHire("chief-engineer", "developer"), "the chief engineer still hires it");
+        assertTrue(tree.mayHire("pm", "test-writer"), "the same rule for the test manager's worker");
+        assertFalse(tree.mayHire("main", "developer"), "main is two leads above the developer, not one");
+        assertFalse(tree.mayHire("test-manager", "developer"), "a lead beside the chief engineer does not hire its worker");
+        assertFalse(tree.mayHire("chief-engineer", "test-writer"), "nor the other way round");
+        assertFalse(tree.mayHire("pm", "cataloguer"), "only workers: a reviewer under a lead is still the lead's alone");
+    }
+
+    @Test
     @DisplayName("the role decides who may change code, and a new seat joins with a parent and a role")
     void theRoleDecidesWhoMayChangeCode() throws IOException {
         seat("cataloguer", "role: worker\n");
