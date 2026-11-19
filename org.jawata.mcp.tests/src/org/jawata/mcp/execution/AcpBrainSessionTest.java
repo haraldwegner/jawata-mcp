@@ -183,6 +183,9 @@ class AcpBrainSessionTest {
 
         assertTrue(with.contains("Mcp-Session-Id") && with.contains("plan-7"), with);
         assertFalse(without.contains("Mcp-Session-Id"), "CONTROL: an unbound endpoint sent a session header: " + without);
+        assertTrue(with.contains("http://127.0.0.1:41234/mcp?session=plan-7"),
+            "the session id was handed over only as a header, which a brain's tool server was seen to drop: " + with);
+        assertFalse(without.contains("?session="), "CONTROL: an unbound endpoint put a session id in the URL: " + without);
     }
 
     @Test

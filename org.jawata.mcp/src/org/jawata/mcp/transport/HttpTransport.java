@@ -432,7 +432,13 @@ public class HttpTransport implements Transport {
                 // never echoes the header had its whole history scattered one
                 // call per identity, and no per-session check could ever see
                 // two of its calls together.
+                // 28h Stage 27, finding 28h-C27-3: a hired brain's tool server was seen to keep its URL and drop the session header it was
+                // given, so the engine took every hire such a brain made for the anonymous caller's and could not tell whose they were. The URL's
+                // query carries the same id; the header, when it does arrive, wins.
                 String supplied = exchange.getRequestHeaders().getFirst("Mcp-Session-Id");
+                if (supplied == null || supplied.isBlank()) {
+                    supplied = sessionInQuery(exchange.getRequestURI().getRawQuery());
+                }
                 org.jawata.mcp.models.CallerIdentity caller =
                     supplied == null || supplied.isBlank()
                         ? this.anonymous
@@ -614,5 +620,23 @@ public class HttpTransport implements Transport {
 
     private static void sendEmpty(HttpExchange exchange, int status) throws IOException {
         exchange.sendResponseHeaders(status, -1);
+    }
+
+    /**
+     * The session id a request carries in its URL's query, as {@code ?session=<id>}, decoded; none when the query is absent or has no such parameter.
+     *
+     * @param rawQuery the request URI's raw query, or null
+     * @return the id, or null
+     */
+    static String sessionInQuery(String rawQuery) {
+        if (rawQuery == null) {
+            return null;
+        }
+        for (String pair : rawQuery.split("&")) {
+            if (pair.startsWith("session=")) {
+                return java.net.URLDecoder.decode(pair.substring("session=".length()), java.nio.charset.StandardCharsets.UTF_8);
+            }
+        }
+        return null;
     }
 }

@@ -101,6 +101,38 @@ class HttpTransportTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27, finding 28h-C27-3: a session id sent only in the URL's query is the caller's id, since a hired brain's tool server was seen to keep the URL and drop the header; a header, when sent, wins")
+    void aSessionIdInTheQueryIsHonouredWhenTheHeaderIsAbsent() throws Exception {
+        java.util.List<org.jawata.mcp.models.CallerIdentity> seen =
+            java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        try (TestServer server = new TestServer((msg, caller) -> {
+            seen.add(caller);
+            return "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}";
+        })) {
+            HttpRequest inQuery = HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:" + server.port() + "/mcp?session=plan-in-the-query"))
+                .header("Authorization", "Bearer " + TOKEN)
+                .POST(HttpRequest.BodyPublishers.ofString("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"x\"}"))
+                .build();
+            HttpClient.newHttpClient().send(inQuery, HttpResponse.BodyHandlers.ofString());
+            org.jawata.mcp.models.CallerIdentity theirs = seen.get(seen.size() - 1);
+
+            HttpRequest both = HttpRequest.newBuilder()
+                .uri(URI.create("http://127.0.0.1:" + server.port() + "/mcp?session=plan-in-the-query"))
+                .header("Authorization", "Bearer " + TOKEN)
+                .header("Mcp-Session-Id", "plan-in-the-header")
+                .POST(HttpRequest.BodyPublishers.ofString("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"x\"}"))
+                .build();
+            HttpClient.newHttpClient().send(both, HttpResponse.BodyHandlers.ofString());
+            org.jawata.mcp.models.CallerIdentity winner = seen.get(seen.size() - 1);
+
+            assertEquals("plan-in-the-query", theirs.id(), "a session id in the query was ignored and the caller became the anonymous one");
+            assertEquals(org.jawata.mcp.models.CallerIdentity.Origin.CLIENT_SUPPLIED, theirs.origin());
+            assertEquals("plan-in-the-header", winner.id(), "CONTROL: a header, when sent, must win over the query");
+        }
+    }
+
+    @Test
     @DisplayName("Sprint 28b D7: every response echoes the store's contract version")
     void contractVersionEchoedOnEveryResponse() throws Exception {
         try (TestServer server = new TestServer((msg, session) ->
