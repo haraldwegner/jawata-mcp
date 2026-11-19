@@ -57,7 +57,8 @@ public final class TestFirst {
                 Run run = runIndex < runs.size() ? runs.get(runIndex) : Run.NOT_RUN;
                 runIndex++;
                 if (heldWrite != null && run != Run.RED) {
-                    violations.add(heldWrite);
+                    // A run that ran no test (the tool failed, as it does on Maven and Eclipse plug-in projects) is not a passing run, and is said so.
+                    violations.add(run == Run.NOT_RUN ? heldWrite + ", and the test run after it showed no result (it ran no test)" : heldWrite);
                     beforeRedNamed = true;
                 }
                 heldWrite = null;

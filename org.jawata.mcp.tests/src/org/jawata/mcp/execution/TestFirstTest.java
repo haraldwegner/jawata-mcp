@@ -127,6 +127,14 @@ class TestFirstTest {
     }
 
     @Test
+    @DisplayName("C27 audit: when the test run after the code showed no result at all (the tool failed, as it does on Maven and Eclipse plug-in projects), the breach says so and does not claim the test passed")
+    void aRunThatShowedNoResultIsSaidSo() {
+        List<String> violations = TestFirst.violations(List.of(write(TEST), edit(PRODUCTION), runTests()), List.of(Run.NOT_RUN), null);
+
+        assertTrue(violations.stream().anyMatch(v -> v.contains("before a test was seen failing") && v.contains("showed no result")), violations.toString());
+    }
+
+    @Test
     @DisplayName("production code that no passing run follows is named")
     void noGreenAfterTheLastProductionChangeIsNamed() {
         List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION)), List.of(Run.RED), null);
