@@ -22,6 +22,7 @@ import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatPrompts;
 import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
+import org.jawata.mcp.execution.TreeAttribution;
 import org.jawata.spi.host.McpEndpoint;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -238,6 +239,7 @@ public final class PrincipalBrain implements AgentBrain {
         HiredBrain.Outcome outcome;
         List<JsonNode> pictures = images;
         images = List.of();
+        TreeAttribution census = null;
         String refusal;
         try {
             AcpBrainSession.Conversation brain = conversation();
@@ -246,6 +248,7 @@ public final class PrincipalBrain implements AgentBrain {
                 pendingModel = Optional.empty();
                 brain.selectModel(model);
             });
+            census = censusBeforeTurn();
             turnRunning = true;
             try {
                 String owed = owedCorrection;
@@ -275,7 +278,10 @@ public final class PrincipalBrain implements AgentBrain {
         // 28h Stage 27 (z2): the main seat edits no code. Its brain keeps an editor of its own (Cursor's agent runs in its normal mode, which keeps
         // `hire` for it), so what it wrote outside the documents is read from its stream: the person sees the correction in the chat, and the
         // brain is told it at its next turn. Nothing is put back, because a revert cannot tell the brain's edit from the person's own.
-        String correction = OwnWrites.correction(OwnWrites.flags(outcome.toolCalls()));
+        // C27, his word that it must not be possible: what the brain wrote to the folder, by any means, is read from the folder itself, and code that
+        // was clean before the turn is put back.
+        String correction = String.join("\n\n", java.util.stream.Stream.of(OwnWrites.correction(OwnWrites.flags(outcome.toolCalls())),
+            putBackCode(census)).filter(text -> !text.isEmpty()).toList());
         if (!correction.isEmpty()) {
             chunks.accept("\n\n" + correction);
             owedCorrection = correction;
@@ -284,6 +290,38 @@ public final class PrincipalBrain implements AgentBrain {
             records.add(new HireRecord("main", program.get().command(), outcome.brainSessionId(), outcome.toolSteps(), outcome.clean(),
                 outcome.stoppedBy(), Duration.ofNanos(System.nanoTime() - started), vendorOf(program.get().command())));
         }
+    }
+
+    /** The state of the working folder before a turn, to read afterwards what the brain wrote there by any means; null when there is no folder. */
+    private TreeAttribution censusBeforeTurn() {
+        HireSite where = site;
+        return where == null || where.workingDirectory() == null ? null : TreeAttribution.before(host, where.workingDirectory());
+    }
+
+    /**
+     * Puts back the code the brain wrote this turn that was clean before it, and says what was put back and what was kept; empty when the brain
+     * wrote no code. The main seat edits no code, so this is what makes it impossible for a brain that keeps an editor of its own (C27, his
+     * word). A document, a data file or a picture is left; a file that already had changes of the person's is kept and named, not touched.
+     */
+    private String putBackCode(TreeAttribution census) {
+        if (census == null) {
+            return "";
+        }
+        TreeAttribution.Attribution seen = census.after();
+        List<TreeAttribution.FileChange> code = seen.changes()
+            .map(changes -> changes.shown().stream().filter(change -> !OwnWrites.isDocument(change.path())).toList()).orElse(List.of());
+        if (code.isEmpty()) {
+            return "";
+        }
+        String folder = site.workingDirectory().toString();
+        TakeBack.Result result = TakeBack.of(host, folder, new HireWatch.Proposal(code.stream().map(TreeAttribution.FileChange::path).toList(), code,
+            List.of(), folder));
+        StringBuilder said = new StringBuilder("[jawata] You wrote code, and you edit none. ");
+        said.append(result.putBack().isEmpty() ? "Nothing could be put back." : "Put back: " + String.join(", ", result.putBack()) + ".");
+        if (!result.kept().isEmpty()) {
+            said.append(" Left as it was: ").append(String.join("; ", result.kept())).append('.');
+        }
+        return said.append(" Hire a developer for code.").toString();
     }
 
     /** The brain process of this conversation, started if there is none, it has died, or the person has chosen another brain. */

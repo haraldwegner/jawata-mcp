@@ -113,6 +113,45 @@ class PrincipalBrainTest {
         }
     }
 
+    private static void git(Path in, String... args) throws Exception {
+        List<String> command = new ArrayList<>(List.of("git", "-c", "user.name=probe", "-c", "user.email=probe@invalid"));
+        command.addAll(List.of(args));
+        Process process = new ProcessBuilder(command).directory(in.toFile()).redirectErrorStream(true).start();
+        process.getInputStream().readAllBytes();
+        assertEquals(0, process.waitFor(), "git " + String.join(" ", args));
+    }
+
+    @Test
+    @DisplayName("C27, his word that it must not be possible: code the main seat wrote with its own editor is put back when the file was clean before the turn, and the person and the brain are told; a document or a data file is left")
+    void codeTheMainSeatWroteIsPutBack() throws Exception {
+        Path foo = Files.createDirectories(dir.resolve("src")).resolve("Foo.java");
+        Files.writeString(foo, "class Foo {}\n");
+        Path notes = dir.resolve("notes.md");
+        Files.writeString(notes, "# notes\n");
+        Path table = dir.resolve("table.csv");
+        Files.writeString(table, "a,b\n");
+        git(dir, "init", "-q");
+        git(dir, "add", "src/Foo.java", "notes.md", "table.csv");
+        git(dir, "commit", "-q", "-m", "base");
+        PrincipalBrain brain = brain(Optional.of(fake));
+        try {
+            String code = ask(brain, "OWNWRITE:" + foo, new ArrayList<>());
+            String told = ask(brain, "ASKCORRECTION", new ArrayList<>());
+            String document = ask(brain, "OWNWRITE:" + notes, new ArrayList<>());
+            String data = ask(brain, "OWNWRITE:" + table, new ArrayList<>());
+
+            assertAll(
+                () -> assertEquals("class Foo {}\n", Files.readString(foo), "the code the main seat wrote was left on disk"),
+                () -> assertTrue(code.contains("Put back") && code.contains("Foo.java"), "the person was not told what was put back: " + code),
+                () -> assertEquals("told", told, "the brain was not told at its next turn"),
+                () -> assertEquals("changed by the brain\n", Files.readString(notes), "a document was put back"),
+                () -> assertEquals("changed by the brain\n", Files.readString(table), "a data file was put back"),
+                () -> assertFalse(document.contains("Put back") || data.contains("Put back"), "a document or data write was reported as put back"));
+        } finally {
+            brain.close();
+        }
+    }
+
     @Test
     @DisplayName("the person's stop reaches the brain, whose reply ends the turn that an interrupt cannot end (D53 (f))")
     void aStopEndsTheTurnThroughTheBrain() throws Exception {

@@ -40,7 +40,7 @@ class OwnWritesTest {
             () -> assertEquals(0, flags.get(0).instruction(), "an own write is flagged against no instruction"),
             () -> assertTrue(flags.get(0).why().contains("Edit") && flags.get(0).why().contains("/w/org/x/Foo.java"), flags.get(0).why()),
             () -> assertTrue(flags.get(1).why().contains("Write") && flags.get(1).why().contains("/w/crate/src/lib.rs"), flags.get(1).why()),
-            () -> assertTrue(flags.get(0).why().contains("only .md"), "the flag does not say what a lead may write: " + flags.get(0).why()));
+            () -> assertTrue(flags.get(0).why().contains("only documents, data and pictures"), "the flag does not say what a lead may write: " + flags.get(0).why()));
     }
 
     @Test
@@ -59,7 +59,7 @@ class OwnWritesTest {
         assertAll(
             () -> assertTrue(correction.contains("/w/org/x/Foo.java") && correction.contains("/w/a.rs"), correction),
             () -> assertTrue(correction.contains("Do not edit code, but hire"), correction),
-            () -> assertTrue(correction.contains("only .md file edits are allowed"), correction),
+            () -> assertTrue(correction.contains("only documents, data and pictures (.md, .csv, .png and the like) may be written"), correction),
             () -> assertEquals("", OwnWrites.correction(List.of())));
     }
 }

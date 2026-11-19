@@ -264,6 +264,26 @@ public class FakeAcpAgent {
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"g1\",\"status\":\"completed\"}}}");
             chunk(session, "edited");
+        } else if (text.startsWith("OWNWRITE:")) {
+            // a write that really lands on disk, as Cursor's agent does in its normal mode, reported as an edit of that file (C27: the engine
+            // puts back what the main seat wrote when it was clean before the turn)
+            String file = text.substring("OWNWRITE:".length()).trim();
+            try {
+                java.nio.file.Path target = java.nio.file.Path.of(file);
+                if (target.getParent() != null) {
+                    java.nio.file.Files.createDirectories(target.getParent());
+                }
+                java.nio.file.Files.writeString(target, "changed by the brain\n");
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException(e);
+            }
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"h1\",\"title\":\"Edit\",\"kind\":\"edit\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"h1\",\"rawInput\":{\"file_path\":\"" + file + "\"}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"h1\",\"status\":\"completed\"}}}");
+            chunk(session, "written");
         } else if (text.startsWith("CLAUDEWRITE:")) {
             // As Claude's ACP adapter sends the write of a NEW file (recorded in 28i phase A, met live in 28h Stage 27 (z5)): opened as
             // "Preparing file…" with the editor named only in _meta, the path in a later update, and no old text in the diff.

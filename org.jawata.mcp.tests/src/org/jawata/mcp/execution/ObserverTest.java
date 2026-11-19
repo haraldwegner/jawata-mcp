@@ -50,7 +50,7 @@ class ObserverTest {
         Observer.Observation seen = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(), (flags, issued, window) -> {
             asked.add(flags.toString());
             return Optional.of(List.of(new Observer.Point(1, true, "should not be asked")));
-        });
+        }, false);
 
         assertTrue(seen.flagged().isEmpty(), seen.flagged().toString());
         assertTrue(seen.corrections().isEmpty());
@@ -68,7 +68,7 @@ class ObserverTest {
         Observer.Observation seen = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(), (flags, issued, window) -> {
             asked.addAll(flags);
             return Optional.of(List.of(new Observer.Point(1, true, "you renamed to the wrong name")));
-        });
+        }, false);
 
         assertEquals(1, asked.size(), asked.toString());
         assertEquals(1, asked.get(0).instruction());
@@ -82,7 +82,7 @@ class ObserverTest {
         List<ToolCall> made = List.of(new ToolCall("compile_workspace", args("{}")));
 
         Observer.Observation seen = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(),
-            (flags, issued, window) -> Optional.of(List.of(new Observer.Point(1, false, ""))));
+            (flags, issued, window) -> Optional.of(List.of(new Observer.Point(1, false, ""))), false);
 
         assertFalse(seen.flagged().isEmpty(), "instruction 1 never ran, which is a flag");
         assertTrue(seen.corrections().isEmpty());
@@ -94,8 +94,8 @@ class ObserverTest {
     void aFlagNobodyJudgedIsReportedAsUnjudged() {
         List<ToolCall> made = List.of(new ToolCall("compile_workspace", args("{}")));
 
-        Observer.Observation noJudge = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(), null);
-        Observer.Observation silent = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(), (flags, issued, window) -> Optional.empty());
+        Observer.Observation noJudge = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(), null, false);
+        Observer.Observation silent = Observer.observe(ISSUED, made, ObserverTest::changes, List.of(), (flags, issued, window) -> Optional.empty(), false);
 
         assertEquals(noJudge.flagged(), noJudge.unjudged());
         assertEquals(silent.flagged(), silent.unjudged());

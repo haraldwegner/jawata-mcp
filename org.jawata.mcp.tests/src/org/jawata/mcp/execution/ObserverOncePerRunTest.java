@@ -50,7 +50,7 @@ class ObserverOncePerRunTest {
         List<Integer> flagsSeen = new ArrayList<>();
 
         Observer.Observation seen = Observer.observe(instructions(15), List.of(), ObserverOncePerRunTest::changes, List.of(),
-            haltingEveryPoint(asked, flagsSeen));
+            haltingEveryPoint(asked, flagsSeen), false);
 
         assertAll(
             () -> assertEquals(1, asked.get(), "the judge was asked once per flag, or not at all"),
@@ -71,7 +71,7 @@ class ObserverOncePerRunTest {
             new Instructions.Instruction(2, "extract", MAPPER.createObjectNode().put("kind", "method")));
         List<ToolCall> made = issued.stream().map(i -> new ToolCall(i.tool(), i.arguments())).toList();
 
-        Observer.Observation seen = Observer.observe(issued, made, ObserverOncePerRunTest::changes, List.of(), haltingEveryPoint(asked, new ArrayList<>()));
+        Observer.Observation seen = Observer.observe(issued, made, ObserverOncePerRunTest::changes, List.of(), haltingEveryPoint(asked, new ArrayList<>()), false);
 
         assertAll(
             () -> assertEquals(0, asked.get(), "a judge was asked about a run nobody flagged"),
@@ -88,7 +88,7 @@ class ObserverOncePerRunTest {
         List<ToolCall> made = List.of(new ToolCall("rename_symbol", issued.get(0).arguments()));
 
         Observer.Observation seen = Observer.observe(issued, made, ObserverOncePerRunTest::changes,
-            List.of(new Observer.Flag(0, "production code was written before a test was seen failing")), haltingEveryPoint(asked, flagsSeen));
+            List.of(new Observer.Flag(0, "production code was written before a test was seen failing")), haltingEveryPoint(asked, flagsSeen), false);
 
         assertAll(
             () -> assertEquals(1, asked.get()),
@@ -102,9 +102,9 @@ class ObserverOncePerRunTest {
         AtomicInteger asked = new AtomicInteger();
         List<ToolCall> made = List.of(new ToolCall("Edit", MAPPER.createObjectNode().put("file_path", "/x/Foo.java")));
 
-        Observer.Observation quiet = Observer.observe(List.of(), made, ObserverOncePerRunTest::changes, List.of(), haltingEveryPoint(asked, new ArrayList<>()));
+        Observer.Observation quiet = Observer.observe(List.of(), made, ObserverOncePerRunTest::changes, List.of(), haltingEveryPoint(asked, new ArrayList<>()), false);
         Observer.Observation flagged = Observer.observe(List.of(), made, ObserverOncePerRunTest::changes,
-            List.of(new Observer.Flag(1, "production code was written before a test was seen failing")), haltingEveryPoint(asked, new ArrayList<>()));
+            List.of(new Observer.Flag(1, "production code was written before a test was seen failing")), haltingEveryPoint(asked, new ArrayList<>()), false);
 
         assertAll(
             () -> assertTrue(quiet.flagged().isEmpty(), "an editor write was flagged as one no instruction asked for: " + quiet.flagged()),
@@ -119,10 +119,10 @@ class ObserverOncePerRunTest {
         Observer.BatchJudge three = (flags, issued, window) -> Optional.of(List.of(
             new Observer.Point(1, true, "one"), new Observer.Point(2, false, ""), new Observer.Point(3, true, "three")));
 
-        Observer.Observation partial = Observer.observe(instructions(5), List.of(), ObserverOncePerRunTest::changes, List.of(), three);
-        Observer.Observation noJudge = Observer.observe(instructions(5), List.of(), ObserverOncePerRunTest::changes, List.of(), null);
+        Observer.Observation partial = Observer.observe(instructions(5), List.of(), ObserverOncePerRunTest::changes, List.of(), three, false);
+        Observer.Observation noJudge = Observer.observe(instructions(5), List.of(), ObserverOncePerRunTest::changes, List.of(), null, false);
         Observer.Observation silent = Observer.observe(instructions(5), List.of(), ObserverOncePerRunTest::changes, List.of(),
-            (flags, issued, window) -> Optional.empty());
+            (flags, issued, window) -> Optional.empty(), false);
 
         assertAll(
             () -> assertEquals(List.of(new Observer.Correction(1, "one"), new Observer.Correction(3, "three")), partial.corrections()),
@@ -140,7 +140,7 @@ class ObserverOncePerRunTest {
             new Observer.Flag(0, "production code was written before a test was seen failing"));
 
         Observer.Observation seen = Observer.observe(List.of(), List.of(), ObserverOncePerRunTest::changes, both,
-            (flags, issued, window) -> Optional.of(List.of(new Observer.Point(1, true, "undo the edit of A"))));
+            (flags, issued, window) -> Optional.of(List.of(new Observer.Point(1, true, "undo the edit of A"))), false);
 
         assertAll(
             () -> assertEquals(List.of(new Observer.Correction(0, "undo the edit of A")), seen.corrections()),
@@ -153,7 +153,7 @@ class ObserverOncePerRunTest {
         List<Observer.Flag> both = List.of(new Observer.Flag(0, "one"), new Observer.Flag(0, "two"));
 
         Observer.Observation seen = Observer.observe(List.of(), List.of(), ObserverOncePerRunTest::changes, both,
-            (flags, issued, window) -> Optional.of(Observer.pointsOf("VERDICT: CLEAR")));
+            (flags, issued, window) -> Optional.of(Observer.pointsOf("VERDICT: CLEAR")), false);
 
         assertAll(
             () -> assertTrue(seen.corrections().isEmpty(), seen.corrections().toString()),

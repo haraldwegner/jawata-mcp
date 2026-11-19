@@ -912,7 +912,7 @@ public class HireTool extends NeutralTool {
             List<Observer.Flag> ownWrites = org.jawata.mcp.execution.OwnWrites.flags(proposal.outcome().toolCalls());
             if (!ownWrites.isEmpty()) {
                 data.put("ownWrites", observedOf(Observer.observe(List.of(), proposal.outcome().toolCalls(),
-                    bare -> engine.getTool(bare).map(Tool::changesCode), ownWrites, observerJudgeOf(call, landsIn, endpoint, base))));
+                    bare -> engine.getTool(bare).map(Tool::changesCode), ownWrites, observerJudgeOf(call, landsIn, endpoint, base), false)));
             }
         }
         data.put("shellCalls", effects.shell());
@@ -1163,7 +1163,7 @@ public class HireTool extends NeutralTool {
         // of the instruction it came from, and it goes to the issuer by being in the answer the issuer reads. A flag nobody judged is
         // listed as unjudged, never dropped.
         // Stage 27 (z1): the judge is asked ONCE about this whole run, over every flag the rules raised, and not once per flag.
-        Observer.Observation seen = Observer.observe(issued, made, bare -> engine.getTool(bare).map(Tool::changesCode), more, judge);
+        Observer.Observation seen = Observer.observe(issued, made, bare -> engine.getTool(bare).map(Tool::changesCode), more, judge, false);
         score.put("observer", observedOf(seen));
         return s;
     }

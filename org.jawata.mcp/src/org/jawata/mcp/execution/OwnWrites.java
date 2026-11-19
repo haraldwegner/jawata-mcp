@@ -12,9 +12,24 @@ import java.util.List;
 public final class OwnWrites {
 
     /** The sentence a lead is told and corrected with; the lead's seat file carries the same words with the seat it hires named. */
-    static final String RULE = "Do not edit code, but hire; only .md file edits are allowed.";
+    static final String RULE = "Do not edit code, but hire; only documents, data and pictures (.md, .csv, .png and the like) may be written.";
+
+    /**
+     * What the main seat and a lead may write with their own hands: documents, data and pictures. A file is read as one by its ending, since the
+     * engine sees only paths here; everything else (source, build and configuration files) is code, and code is made by hiring (his word,
+     * 2026-11-19: "there could be other changes, pictures, csv, websites").
+     */
+    private static final java.util.Set<String> DOCUMENT_ENDINGS = java.util.Set.of("md", "markdown", "txt", "rst", "adoc", "csv", "tsv",
+        "png", "jpg", "jpeg", "gif", "webp", "svg", "pdf", "html", "htm", "css");
 
     private OwnWrites() {
+    }
+
+    /** Whether a path is a document, a data file or a picture, which the main seat and a lead may write, and not code. */
+    public static boolean isDocument(String path) {
+        int dot = path.lastIndexOf('.');
+        int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        return dot > slash + 1 && DOCUMENT_ENDINGS.contains(path.substring(dot + 1).toLowerCase(java.util.Locale.ROOT));
     }
 
     /** One flag, against no instruction, for each write the brain's own editor made to a file that is not a document. */
@@ -22,9 +37,9 @@ public final class OwnWrites {
         List<Observer.Flag> flags = new ArrayList<>();
         for (int i = 0; i < made.size(); i++) {
             ToolCall call = made.get(i);
-            TestFirst.writtenFile(call).filter(path -> !path.endsWith(".md")).ifPresent(path -> flags.add(new Observer.Flag(0,
+            TestFirst.writtenFile(call).filter(path -> !isDocument(path)).ifPresent(path -> flags.add(new Observer.Flag(0,
                 "a code-changing call of the brain's own editor on a file that is not a document: " + call.bareName() + " on " + path
-                    + ". A lead edits only .md files and hires the rest.")));
+                    + ". A lead writes only documents, data and pictures and hires the rest.")));
         }
         return List.copyOf(flags);
     }
