@@ -248,7 +248,9 @@ public class ToolResponse {
 
     private static boolean existsOnDisk(String path) {
         try {
-            return java.nio.file.Files.exists(java.nio.file.Path.of(path));
+            // only a path in full has a place of its own; a relative one would be judged against the engine's working folder, which is no folder of the workspace (C27-27)
+            java.nio.file.Path named = java.nio.file.Path.of(path);
+            return named.isAbsolute() && java.nio.file.Files.exists(named);
         } catch (RuntimeException invalidPath) {
             return false;
         }

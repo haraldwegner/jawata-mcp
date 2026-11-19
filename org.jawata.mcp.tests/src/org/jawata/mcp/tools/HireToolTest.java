@@ -1614,13 +1614,21 @@ class HireToolTest {
         return aBrainWritingThenCallingThenAnObserverWhoHalts("", tool, argumentsJson);
     }
 
-    /** The same, its first life running the shell lines first: files written where its stream shows nothing (a shell, a patch). */
-    private HostCommand aBrainWritingThenCallingThenAnObserverWhoHalts(String shellFirst, String tool, String argumentsJson) throws Exception {
+    /**
+     * The same, its first life running the shell lines first: files written where its stream shows nothing (a shell, a patch). More calls follow
+     * the first as pairs of a tool and its arguments, made in the same turn.
+     */
+    private HostCommand aBrainWritingThenCallingThenAnObserverWhoHalts(String shellFirst, String tool, String argumentsJson, String... moreCalls) throws Exception {
         Path file = Files.createTempFile(dir, "brain-", ".sh");
         Path phase = dir.resolve("phase-" + file.getFileName());
-        String init = "{\"type\":\"system\",\"subtype\":\"init\",\"tools\":[\"" + tool + "\"]}";
-        String call = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":["
-            + "{\"type\":\"tool_use\",\"name\":\"" + tool + "\",\"input\":" + argumentsJson + "}]}}";
+        StringBuilder tools = new StringBuilder("\"" + tool + "\"");
+        StringBuilder uses = new StringBuilder("{\"type\":\"tool_use\",\"name\":\"" + tool + "\",\"input\":" + argumentsJson + "}");
+        for (int i = 0; i + 1 < moreCalls.length; i += 2) {
+            tools.append(",\"").append(moreCalls[i]).append('"');
+            uses.append(",{\"type\":\"tool_use\",\"name\":\"").append(moreCalls[i]).append("\",\"input\":").append(moreCalls[i + 1]).append('}');
+        }
+        String init = "{\"type\":\"system\",\"subtype\":\"init\",\"tools\":[" + tools + "]}";
+        String call = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":[" + uses + "]}}";
         String usage = "\"total_cost_usd\":0.01,\"usage\":{\"input_tokens\":50,\"output_tokens\":10}";
         Files.writeString(file, "#!/bin/sh\nif [ ! -f '" + phase + "' ]; then\n  touch '" + phase + "'\n" + shellFirst
             + "  cat <<'JAWATA_EVENT'\n" + init + "\n" + call + "\nJAWATA_EVENT\n"
@@ -1800,6 +1808,32 @@ class HireToolTest {
         Map<String, Object> observed = (Map<String, Object>) score.get("observer");
         org.junit.jupiter.api.Assertions.assertNotNull(observed, "an issuer with only BUILD instructions dropped the test-first breach: " + score);
         assertEquals(1, ((List<?>) observed.get("corrections")).size(), String.valueOf(observed));
+    }
+
+    @Test
+    @DisplayName("C27 audit (row 23), at the hire: a worker briefed with a tool instruction and a BUILD instruction that ran the tool as written and edited a test file is flagged for nothing, and the same worker without the BUILD instruction is flagged for the edit")
+    @SuppressWarnings("unchecked")
+    void aMixedBriefsEditorWriteIsTheBuildsWorkAtTheHire() throws Exception {
+        Files.writeString(dir.resolve("observer.md"), CATALOGUER_SEAT);
+        String tool = "INSTRUCTION 1\nTOOL: rename_symbol\nARGUMENTS: {\"symbol\":\"a.B#c\",\"newName\":\"d\"}\n\n";
+        String build = "INSTRUCTION 2\nBUILD: Foo gets a method bar\nTESTS: bar returns one\n";
+        String rename = "{\"symbol\":\"a.B#c\",\"newName\":\"d\"}";
+        String editOfATest = "{\"file_path\":\"/w/src/FooTest.java\",\"old_string\":\"a\",\"new_string\":\"b\"}";
+        List<List<?>> flagged = new java.util.ArrayList<>();
+        for (String brief : List.of(tool + build, tool)) {
+            HireTool hire = toolWith(new StandsIn(host, aBrainWritingThenCallingThenAnObserverWhoHalts("", "mcp__jawata__rename_symbol", rename,
+                "Edit", editOfATest).withSeparateStderr()), events, aRegistryWithACleanGate());
+            com.fasterxml.jackson.databind.node.ObjectNode args =
+                (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "developer");
+            args.put("brief", brief);
+            Map<String, Object> score = (Map<String, Object>) dataOf(hire.execute(args)).get("instructionScore");
+            org.junit.jupiter.api.Assertions.assertNotNull(score, "the worker was not scored for the brief: " + brief);
+            flagged.add((List<?>) ((Map<String, Object>) score.get("observer")).get("flagged"));
+        }
+
+        assertAll(
+            () -> assertTrue(flagged.get(0).isEmpty(), "the editor write was flagged although the brief has a BUILD instruction: " + flagged.get(0)),
+            () -> assertEquals(1, flagged.get(1).size(), "CONTROL: with no BUILD instruction the edit was not flagged: " + flagged.get(1)));
     }
 
     @Test
