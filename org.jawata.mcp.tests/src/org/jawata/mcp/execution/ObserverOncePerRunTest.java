@@ -38,7 +38,8 @@ class ObserverOncePerRunTest {
         return (flags, issued, window) -> {
             asked.incrementAndGet();
             flagsSeen.add(flags.size());
-            return Optional.of(flags.stream().map(f -> new Observer.Point(f.instruction(), true, "point " + f.instruction())).toList());
+            return Optional.of(java.util.stream.IntStream.rangeClosed(1, flags.size())
+                .mapToObj(n -> new Observer.Point(n, true, "point " + flags.get(n - 1).instruction())).toList());
         };
     }
 
@@ -130,6 +131,33 @@ class ObserverOncePerRunTest {
             () -> assertTrue(noJudge.corrections().isEmpty()),
             () -> assertEquals(5, silent.unjudged().size()),
             () -> assertTrue(silent.corrections().isEmpty()));
+    }
+
+    @Test
+    @DisplayName("C27 audit: two flags about no instruction are told apart by their point numbers, so a verdict on one leaves the other unjudged")
+    void twoFlagsAboutNoInstructionAreToldApart() {
+        List<Observer.Flag> both = List.of(new Observer.Flag(0, "a code-changing call that no instruction asked for: Edit on A"),
+            new Observer.Flag(0, "production code was written before a test was seen failing"));
+
+        Observer.Observation seen = Observer.observe(List.of(), List.of(), ObserverOncePerRunTest::changes, both,
+            (flags, issued, window) -> Optional.of(List.of(new Observer.Point(1, true, "undo the edit of A"))));
+
+        assertAll(
+            () -> assertEquals(List.of(new Observer.Correction(0, "undo the edit of A")), seen.corrections()),
+            () -> assertEquals(List.of(both.get(1)), seen.unjudged(), "a verdict on the first point marked the second judged: " + seen.unjudged()));
+    }
+
+    @Test
+    @DisplayName("C27 audit: a verdict that names no point judges no flag, so every flag is listed as unjudged and nothing is called clear by default")
+    void aVerdictWithNoNumberJudgesNothing() {
+        List<Observer.Flag> both = List.of(new Observer.Flag(0, "one"), new Observer.Flag(0, "two"));
+
+        Observer.Observation seen = Observer.observe(List.of(), List.of(), ObserverOncePerRunTest::changes, both,
+            (flags, issued, window) -> Optional.of(Observer.pointsOf("VERDICT: CLEAR")));
+
+        assertAll(
+            () -> assertTrue(seen.corrections().isEmpty(), seen.corrections().toString()),
+            () -> assertEquals(2, seen.unjudged().size(), "a verdict with no number was taken to judge a flag: " + seen.unjudged()));
     }
 
     @Test

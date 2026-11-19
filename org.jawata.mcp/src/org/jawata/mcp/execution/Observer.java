@@ -61,11 +61,12 @@ public final class Observer {
     /**
      * One point of the judge's one answer about a run (Stage 27 (z1)).
      *
-     * @param instruction the number of the instruction it is about, or 0 for none
+     * @param pointNumber the number of the point it answers: the place of a flag in the list the judge was shown, counted from 1, so that two
+     *                    flags about the same instruction, or about none, are told apart; 0 when the answer gave no number
      * @param halt        whether the step shows the worker going around its instruction
      * @param correction  what to tell the issuer, or empty when nothing is to be said
      */
-    public record Point(int instruction, boolean halt, String correction) {
+    public record Point(int pointNumber, boolean halt, String correction) {
     }
 
     /** The judging tier asked once about everything a run was flagged for: the flags, the instructions and the worker's calls. */
@@ -95,10 +96,19 @@ public final class Observer {
         if (answered.isEmpty()) {
             return new Observation(List.copyOf(flagged), List.of(), List.copyOf(flagged));
         }
-        List<Correction> corrections = answered.get().stream().filter(Point::halt).map(p -> new Correction(p.instruction(), p.correction())).toList();
-        List<Integer> judged = answered.get().stream().map(Point::instruction).toList();
-        List<Flag> unjudged = flagged.stream().filter(flag -> !judged.contains(flag.instruction())).toList();
-        return new Observation(List.copyOf(flagged), corrections, unjudged);
+        // A point answers one flag, by its place in the list the judge was shown (C27 audit): two flags about the same instruction, or about none,
+        // are told apart, and a verdict that names no point judges no flag.
+        List<Correction> corrections = answered.get().stream().filter(Point::halt)
+            .map(p -> new Correction(p.pointNumber() >= 1 && p.pointNumber() <= flagged.size() ? flagged.get(p.pointNumber() - 1).instruction() : 0,
+                p.correction())).toList();
+        List<Integer> judged = answered.get().stream().map(Point::pointNumber).toList();
+        List<Flag> unjudged = new ArrayList<>();
+        for (int n = 1; n <= flagged.size(); n++) {
+            if (!judged.contains(n)) {
+                unjudged.add(flagged.get(n - 1));
+            }
+        }
+        return new Observation(List.copyOf(flagged), corrections, List.copyOf(unjudged));
     }
 
     /** What the judge is shown about a whole run: every flag by its instruction number, the instructions and the worker's calls. */
@@ -112,9 +122,10 @@ public final class Observer {
                     .append("\nARGUMENTS: ").append(instruction.arguments()).append("\n\n");
             }
         }
-        brief.append("THE POINTS THE RULES FOUND, each by its instruction number (0 is no instruction):\n");
-        for (Flag flag : flags) {
-            brief.append("- INSTRUCTION ").append(flag.instruction()).append(": ").append(flag.why()).append('\n');
+        brief.append("THE POINTS THE RULES FOUND, each by its point number and the instruction it is about (0 is no instruction):\n");
+        for (int n = 1; n <= flags.size(); n++) {
+            brief.append("- POINT ").append(n).append(" (INSTRUCTION ").append(flags.get(n - 1).instruction()).append("): ")
+                .append(flags.get(n - 1).why()).append('\n');
         }
         brief.append("\nTHE WORKER'S CALLS, in order:\n");
         for (int i = 0; i < window.size(); i++) {
@@ -122,7 +133,7 @@ public final class Observer {
             brief.append('#').append(i + 1).append(' ').append(window.get(i).name()).append(' ')
                 .append(arguments.length() > 300 ? arguments.substring(0, 300) + "..." : arguments).append('\n');
         }
-        brief.append("\nAnswer with one line per point: VERDICT: CLEAR <instruction number>, or VERDICT: HALT <instruction number>: "
+        brief.append("\nAnswer with one line per point: VERDICT: CLEAR <point number>, or VERDICT: HALT <point number>: "
             + "<the correction, addressed to the issuer, naming the call number>.");
         return brief.toString();
     }

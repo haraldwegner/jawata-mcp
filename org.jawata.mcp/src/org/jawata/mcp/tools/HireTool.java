@@ -894,7 +894,7 @@ public class HireTool extends NeutralTool {
         List<Instructions.Build> briefedBuilds = declaredTree.tree().roleOf(hired).filter(SeatTree.Role.WORKER::equals)
             .map(worker -> Instructions.builds(brief)).orElse(List.of());
         List<Observer.Flag> notTestFirst = briefedBuilds.isEmpty() ? List.<Observer.Flag>of()
-            : proposal.notTestFirst().stream().map(why -> new Observer.Flag(briefedBuilds.get(0).number(), why)).toList();
+            : proposal.notTestFirst().stream().map(why -> new Observer.Flag(briefedBuilds.size() == 1 ? briefedBuilds.get(0).number() : 0, why)).toList();
         if (named || !briefed.isEmpty() || !briefedBuilds.isEmpty()) {
             Observer.BatchJudge judge = observerJudgeOf(call, landsIn, endpoint, base);
             data.put("instructionScore", named
