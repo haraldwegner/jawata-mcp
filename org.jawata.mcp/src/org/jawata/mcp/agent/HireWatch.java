@@ -131,9 +131,16 @@ final class HireWatch {
         readInput(hire, rawInput.has("toolName") && rawInput.path("args").isObject() ? rawInput.get("args") : rawInput);
         String status = update.path("status").asText("");
         if ("failed".equals(status)) {
-            finish(hire, HireEntry.FAILED);
-        } else if ("completed".equals(status)) {
+            // A hire call that came back failed was refused or went out empty: no hire exists for it, so it leaves no card (28h D57 (i)). A hire
+            // that did start and whose call the brain gave up on is shown by the engine's own events, as a card of its own.
+            hires.remove(id);
+            return Optional.empty();
+        }
+        if ("completed".equals(status)) {
             readAnswer(hire, update);
+        } else if (hire.seat.isEmpty()) {
+            // The call as the brain first streams it names nothing yet: a card with no agent in it would stay if the arguments never come.
+            return Optional.empty();
         }
         return Optional.of(entryOf(hire));
     }

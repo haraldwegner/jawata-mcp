@@ -600,7 +600,17 @@ public final class AcpServer {
         if (session == null) {
             return;
         }
-        hires.engineEvent(event).ifPresent(seen -> showHire(session, seen));
+        hires.engineEvent(event).ifPresent(seen -> {
+            showHire(session, seen);
+            // A hire the engine ends after the turn that started it has ended is kept in the session's record in the state it ended in: the
+            // turn's own line holds the card as that turn last saw it, which a session loaded later replays as failed (28h-C27-7).
+            HireEntry ended = seen.entry();
+            if (!HireEntry.RUNNING.equals(ended.state()) && !HireEntry.COMPACTING.equals(ended.state())) {
+                recorder.record(AgentRecorder.Level.HIRED, session, "ended_" + ended.planId(),
+                    "The hire of " + ended.seat() + " (" + ended.planId() + ") ended: " + ended.state(),
+                    "Recorded how the hire of " + ended.seat() + " ended: " + ended.state(), List.of(ended.cardLine()));
+            }
+        });
         // A hire the session's own brain started in the background reports back to that brain as a new turn. A hire of a lead that is still running
         // is that lead's to receive; a hire of a lead that has ended has nobody above it to read its report but the chat, so it comes to the
         // principal, with a line saying whose hire it was (Stage 24, M14).
@@ -687,10 +697,11 @@ public final class AcpServer {
         ObjectNode shown = JSON.createObjectNode();
         shown.put("sessionUpdate", seen.created() ? "tool_call" : "tool_call_update");
         shown.put("toolCallId", entry.planId());
+        // A client with no jawata view still shows each running agent as one tool-call line with its status (contract E3); the title is
+        // told with every change of the card, so the line reads the state the hire is in and not the one it began in (28h-C27-6).
+        shown.put("title", entry.title());
         if (seen.created()) {
-            // A client with no jawata view still shows each running agent as one tool-call line with its status (contract E3).
             shown.put("kind", "execute");
-            shown.put("title", entry.title());
         }
         boolean working = HireEntry.RUNNING.equals(entry.state()) || HireEntry.COMPACTING.equals(entry.state());
         shown.put("status", working ? "in_progress" : HireEntry.FAILED.equals(entry.state()) ? "failed" : "completed");

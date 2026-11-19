@@ -277,6 +277,45 @@ class AgentHistoryTest {
         assertTrue(cards.get(0).path("_meta").path("jawata/hire").has("elapsedMs"), "the time it ran is kept");
     }
 
+    @Test
+    @DisplayName("28h-C27-7: a hire that the engine ended after its turn had ended is replayed in the state it ended in, not as failed with the time the turn saw")
+    void aHireThatEndedAfterItsTurnReplaysAsDone() {
+        // a brief of its own: the engine keeps the answer it is given by seat and brief, and another test reads the one of "Reply with the one word ok."
+        String brief = "28h C27-7: a hire that ends after the turn that started it";
+        AgentBrain hiring = new AgentBrain() {
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks) {
+                answer(prompt, chunks, call -> { });
+            }
+
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks, java.util.function.Consumer<JsonNode> toolCalls) {
+                ObjectNode start = JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "h1")
+                    .put("title", "mcp__jawata-javata-dev__hire").put("status", "pending");
+                start.putObject("rawInput").put("hirer", "main").put("seat", "pm").put("brief", brief);
+                toolCalls.accept(start);
+                chunks.accept("done");
+            }
+        };
+        Connection first = new Connection(hiring, AgentRecorder.Depth.ALL);
+        first.open();
+        first.prompt("hire a pm");
+        // the turn is over and the hire is out; the engine ends it later, as it does a hire that answered at once and went on in the background
+        try (org.jawata.mcp.execution.HireRegistry.Registration running =
+                 org.jawata.mcp.execution.HireRegistry.shared().begin("pm", brief, first.session)) {
+            org.jawata.mcp.execution.HireRegistry.shared().planOpened("history-ended-plan");
+            org.jawata.mcp.execution.HireRegistry.shared().record("pm", brief,
+                JSON.createObjectNode().put("plan", "history-ended-plan").put("name", "Ada").put("cleanExit", true).put("answer", "ok"));
+        }
+
+        Connection later = new Connection("unused", AgentRecorder.Depth.ALL);
+        later.call(3, "session/load", JSON.createObjectNode().put("sessionId", first.session).put("cwd", "/w"));
+        List<JsonNode> cards = cardsReplayed(later);
+
+        assertEquals("done", cards.get(cards.size() - 1).path("_meta").path("jawata/hire").path("state").asText(),
+            "the reloaded card does not say how the hire ended: " + cards);
+    }
+
     /** A brain that hires once in its first turn and, in its second, hires again naming the first hire's plan in {@code fixes}. */
     private static AgentBrain fixingBrain() {
         java.util.concurrent.atomic.AtomicInteger turns = new java.util.concurrent.atomic.AtomicInteger();

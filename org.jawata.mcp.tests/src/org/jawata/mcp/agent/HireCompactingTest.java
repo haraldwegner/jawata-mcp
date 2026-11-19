@@ -44,7 +44,9 @@ class HireCompactingTest {
             assertEquals(HireEntry.RUNNING, watch.entry("c1").orElseThrow().state());
 
             HireRegistry.shared().noteCompaction(true);
-            watch.observe(call("tool_call_update", "c1", "failed")).orElseThrow();
+            ObjectNode ended = call("tool_call_update", "c1", "completed");
+            ended.put("rawOutput", "{\"data\":{\"cleanExit\":false,\"timedOut\":true}}");
+            watch.observe(ended).orElseThrow();
             assertEquals(HireEntry.FAILED, watch.entry("c1").orElseThrow().state(), "an ended hire is never shown as compacting");
         }
     }

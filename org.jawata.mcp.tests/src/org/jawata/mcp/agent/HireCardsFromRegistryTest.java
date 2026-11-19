@@ -143,6 +143,8 @@ class HireCardsFromRegistryTest {
             () -> assertEquals("Joe", afterEcho.path("name").asText()),
             () -> assertEquals("done", last.path("_meta").path("jawata/hire").path("state").asText(), "the engine's word did not end the card"),
             () -> assertEquals("completed", last.path("status").asText()),
+            // 28h-C27-6: the call's line in the principal's calls reads its state, so it is told again each time the card changes
+            () -> assertTrue(last.path("title").asText().endsWith("done"), "the call's title still says what it said when the hire began: " + last),
             () -> assertTrue(toldAbout("m8-plan-dev").isEmpty(), "a second card was made for a hire the brain's own call already shows"));
     }
 }

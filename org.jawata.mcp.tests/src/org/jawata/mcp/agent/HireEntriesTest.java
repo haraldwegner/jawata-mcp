@@ -262,8 +262,8 @@ class HireEntriesTest {
     @Test
     @DisplayName("a hire is read from its call: running with the seat and the brief, then done with the time it ran, the tokens it spent and the cost it sent")
     void aHireIsReadFromItsCallAndItsAnswer() {
-        HireEntry started = watch.observe(hireCall("tool_call", "t1", "pending")).orElseThrow();
-        assertEquals(HireEntry.RUNNING, started.state());
+        // 28h-C27-5: the call as first streamed names nobody, so there is no card yet; the card comes with the update that names the seat
+        assertTrue(watch.observe(hireCall("tool_call", "t1", "pending")).isEmpty(), "a call naming nobody was shown as a card");
         HireEntry named = watch.observe(withInput(hireCall("tool_call_update", "t1", "in_progress"), "pm", "chief-engineer", "build the stage")).orElseThrow();
         assertEquals("chief-engineer", named.seat());
         assertEquals("build the stage", named.task());
@@ -376,8 +376,14 @@ class HireEntriesTest {
             "{\"data\":{\"cleanExit\":false,\"timedOut\":true}}")).orElseThrow();
         assertEquals(HireEntry.FAILED, timedOut.state());
 
+        // 28h D57 (i): a call that came back failed was refused, no hire exists for it, so it leaves no card
         watch.observe(withInput(hireCall("tool_call", "t3", "pending"), "main", "profiler", "measure"));
-        assertEquals(HireEntry.FAILED, watch.observe(hireCall("tool_call_update", "t3", "failed")).orElseThrow().state());
+        assertTrue(watch.observe(hireCall("tool_call_update", "t3", "failed")).isEmpty(), "a refused call kept a card");
+        assertTrue(watch.entry("t3").isEmpty(), "a refused call's card is still listed");
+        // 28h-C27-5: a call that names no seat, as a brain streams it before its arguments come (or when they never do), has no agent to show
+        assertTrue(watch.observe(hireCall("tool_call", "t4", "pending")).isEmpty(), "a call naming nobody was shown as a card");
+        assertTrue(watch.observe(hireCall("tool_call_update", "t4", "failed")).isEmpty());
+        assertTrue(watch.entries().stream().noneMatch(entry -> entry.seat().isEmpty()), "a card with no seat is listed: " + watch.entries());
     }
 
     @Test
@@ -478,10 +484,10 @@ class HireEntriesTest {
     }
 
     @Test
-    @DisplayName("C24 audit: a call the engine refused leaves a failed card, and the same call asked again and accepted gets its own card, which the engine's events then follow")
+    @DisplayName("C24 audit, as D57 (i) changed it: a call the engine refused leaves no card, and the same call asked again and accepted gets its own card, which the engine's events then follow")
     void theEventsOfAnAcceptedRetryDoNotLandOnTheRefusedCallsCard() {
         watch.observe(withInput(hireCall("tool_call", "refused1", "pending"), "main", "retry-seat", "retry brief for the audit"));
-        HireEntry refused = watch.observe(hireCall("tool_call_update", "refused1", "failed")).orElseThrow();
+        assertTrue(watch.observe(hireCall("tool_call_update", "refused1", "failed")).isEmpty());
         watch.observe(withInput(hireCall("tool_call", "retry2", "pending"), "main", "retry-seat", "retry brief for the audit"));
 
         java.util.List<org.jawata.mcp.execution.HireRegistry.Event> events = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -497,9 +503,8 @@ class HireEntriesTest {
         // The engine's two events, started and finished, in the order it told them.
         events.forEach(watch::engineEvent);
 
-        assertEquals(HireEntry.FAILED, watch.entry("refused1").orElseThrow().state(), "the refused call's card was taken by the retry's events");
+        assertTrue(watch.entry("refused1").isEmpty(), "the refused call has a card, or the retry's events made one for it");
         assertEquals(HireEntry.DONE, watch.entry("retry2").orElseThrow().state(), "the retry's card did not follow the engine to its end");
-        assertEquals(HireEntry.FAILED, refused.state());
     }
 
     @Test
