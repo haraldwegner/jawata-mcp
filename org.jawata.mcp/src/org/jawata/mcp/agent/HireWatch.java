@@ -138,8 +138,14 @@ final class HireWatch {
         }
         if ("completed".equals(status)) {
             readAnswer(hire, update);
-        } else if (hire.seat.isEmpty()) {
-            // The call as the brain first streams it names nothing yet: a card with no agent in it would stay if the arguments never come.
+        }
+        if (hire.seat.isEmpty()) {
+            // A call that names nobody, as the brain first streams it or as it ended (a completed call whose answer is the engine's refusal of
+            // empty arguments), has no agent to show: a card with none in it would stay for the rest of the conversation. A hire that did start
+            // is shown by the engine's own events, which carry its seat.
+            if ("completed".equals(status)) {
+                hires.remove(id);
+            }
             return Optional.empty();
         }
         return Optional.of(entryOf(hire));

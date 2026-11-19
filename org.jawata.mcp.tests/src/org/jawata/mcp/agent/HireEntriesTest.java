@@ -383,6 +383,10 @@ class HireEntriesTest {
         // 28h-C27-5: a call that names no seat, as a brain streams it before its arguments come (or when they never do), has no agent to show
         assertTrue(watch.observe(hireCall("tool_call", "t4", "pending")).isEmpty(), "a call naming nobody was shown as a card");
         assertTrue(watch.observe(hireCall("tool_call_update", "t4", "failed")).isEmpty());
+        // seen live 2026-11-19: the same call that names nobody, ended as a completed call whose answer is the engine's refusal
+        watch.observe(hireCall("tool_call", "t5", "pending"));
+        assertTrue(watch.observe(answered(hireCall("tool_call_update", "t5", "completed"), "{\"success\":false,\"error\":\"steps cannot be empty\"}")).isEmpty(),
+            "a refused call naming nobody left a failed card");
         assertTrue(watch.entries().stream().noneMatch(entry -> entry.seat().isEmpty()), "a card with no seat is listed: " + watch.entries());
     }
 
