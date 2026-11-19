@@ -1611,13 +1611,18 @@ class HireToolTest {
 
     /** The same two lives, the first being one call of the named tool, which may be an editor of the brain's own. */
     private HostCommand aBrainCallingThenAnObserverWhoHalts(String tool, String argumentsJson) throws Exception {
+        return aBrainWritingThenCallingThenAnObserverWhoHalts("", tool, argumentsJson);
+    }
+
+    /** The same, its first life running the shell lines first: files written where its stream shows nothing (a shell, a patch). */
+    private HostCommand aBrainWritingThenCallingThenAnObserverWhoHalts(String shellFirst, String tool, String argumentsJson) throws Exception {
         Path file = Files.createTempFile(dir, "brain-", ".sh");
         Path phase = dir.resolve("phase-" + file.getFileName());
         String init = "{\"type\":\"system\",\"subtype\":\"init\",\"tools\":[\"" + tool + "\"]}";
         String call = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":["
             + "{\"type\":\"tool_use\",\"name\":\"" + tool + "\",\"input\":" + argumentsJson + "}]}}";
         String usage = "\"total_cost_usd\":0.01,\"usage\":{\"input_tokens\":50,\"output_tokens\":10}";
-        Files.writeString(file, "#!/bin/sh\nif [ ! -f '" + phase + "' ]; then\n  touch '" + phase + "'\n"
+        Files.writeString(file, "#!/bin/sh\nif [ ! -f '" + phase + "' ]; then\n  touch '" + phase + "'\n" + shellFirst
             + "  cat <<'JAWATA_EVENT'\n" + init + "\n" + call + "\nJAWATA_EVENT\n"
             + "  echo '{\"type\":\"result\",\"result\":\"done\"," + usage + "}'\nelse\n"
             + "  echo '{\"type\":\"result\",\"result\":\"VERDICT: HALT 1: you renamed to the wrong name at call #1\"," + usage + "}'\nfi\n");
@@ -1818,6 +1823,46 @@ class HireToolTest {
             "{\"file_path\":\"/w/docs/plan.md\",\"old_string\":\"a\",\"new_string\":\"b\"}").withSeparateStderr()), events, aRegistryWithACleanGate())
             .execute(args));
         org.junit.jupiter.api.Assertions.assertFalse(clean.containsKey("ownWrites"), "CONTROL: an edit of a document was reported as an own write: " + clean.get("ownWrites"));
+    }
+
+    private static void gitIn(Path folder, String... args) throws Exception {
+        List<String> command = new java.util.ArrayList<>(List.of("git", "-c", "user.name=probe", "-c", "user.email=probe@invalid"));
+        command.addAll(List.of(args));
+        Process process = new ProcessBuilder(command).directory(folder.toFile()).redirectErrorStream(true).start();
+        process.getInputStream().readAllBytes();
+        assertEquals(0, process.waitFor(), "git " + String.join(" ", args));
+    }
+
+    @Test
+    @DisplayName("C27-22: code a lead wrote to disk by a way its stream does not show is put back, a file that was clean before the run only, the document it wrote is left, and its answer says so")
+    @SuppressWarnings("unchecked")
+    void aLeadsCodeIsPutBackWhateverWayItWroteIt() throws Exception {
+        Files.writeString(dir.resolve("observer.md"), CATALOGUER_SEAT);
+        Path work = Files.createDirectories(dir.resolve("work"));
+        Path tracked = work.resolve("Foo.java");
+        Files.writeString(tracked, "class Foo {}\n");
+        gitIn(work, "init", "-q");
+        gitIn(work, "add", "Foo.java");
+        gitIn(work, "commit", "-q", "-m", "base");
+        Path made = work.resolve("Made.java");
+        Path plan = work.resolve("plan.md");
+        String byShell = "  echo 'class Foo { int x; }' > '" + tracked + "'\n  echo 'class Made {}' > '" + made + "'\n  echo '# plan' > '" + plan + "'\n";
+        HireTool hire = toolWith(new StandsIn(host, aBrainWritingThenCallingThenAnObserverWhoHalts(byShell, "Edit",
+            "{\"file_path\":\"/w/docs/plan.md\",\"old_string\":\"a\",\"new_string\":\"b\"}").withSeparateStderr()), events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "chief-engineer");
+        args.put("hirer", "pm");
+        args.put("brief", "Plan the change and hire a developer.");
+        args.put("workingDirectory", work.toString());
+
+        Map<String, Object> lead = dataOf(hire.execute(args));
+
+        String said = String.valueOf(lead.get("ownCodePutBack"));
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertEquals("class Foo {}\n", Files.readString(tracked), "the lead's change of a tracked code file was left on disk"),
+            () -> org.junit.jupiter.api.Assertions.assertFalse(Files.exists(made), "the code file the lead made was left on disk"),
+            () -> assertTrue(Files.exists(plan), "the document the lead wrote was taken away"),
+            () -> assertTrue(said.contains("Foo.java") && said.contains("Made.java") && !said.contains("plan.md"), "the answer does not say what was put back: " + said));
     }
 
     @Test

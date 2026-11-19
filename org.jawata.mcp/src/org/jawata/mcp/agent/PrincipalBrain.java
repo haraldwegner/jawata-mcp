@@ -307,21 +307,7 @@ public final class PrincipalBrain implements AgentBrain {
         if (census == null) {
             return "";
         }
-        TreeAttribution.Attribution seen = census.after();
-        List<TreeAttribution.FileChange> code = seen.changes()
-            .map(changes -> changes.shown().stream().filter(change -> !OwnWrites.isDocument(change.path())).toList()).orElse(List.of());
-        if (code.isEmpty()) {
-            return "";
-        }
-        String folder = site.workingDirectory().toString();
-        TakeBack.Result result = TakeBack.of(host, folder, new HireWatch.Proposal(code.stream().map(TreeAttribution.FileChange::path).toList(), code,
-            List.of(), folder));
-        StringBuilder said = new StringBuilder("[jawata] You wrote code, and you edit none. ");
-        said.append(result.putBack().isEmpty() ? "Nothing could be put back." : "Put back: " + String.join(", ", result.putBack()) + ".");
-        if (!result.kept().isEmpty()) {
-            said.append(" Left as it was: ").append(String.join("; ", result.kept())).append('.');
-        }
-        return said.append(" Hire a developer for code.").toString();
+        return OwnCodeTakeBack.of(host, site.workingDirectory().toString(), census.after());
     }
 
     /** The brain process of this conversation, started if there is none, it has died, or the person has chosen another brain. */

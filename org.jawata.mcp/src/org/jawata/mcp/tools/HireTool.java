@@ -907,12 +907,19 @@ public class HireTool extends NeutralTool {
         }
         // Stage 27 (z2): a lead edits no code. Its brain may keep an editor of its own (Cursor's agent runs in its normal mode, which is what
         // keeps `hire` for it), so what it wrote outside the documents is read from its own stream and goes to the observer, once, and to the
-        // hirer in this answer. Nothing is put back: a revert could not tell the brain's edit from the person's own.
+        // hirer in this answer.
         if (declaredTree.tree().isLead(hired)) {
             List<Observer.Flag> ownWrites = org.jawata.mcp.execution.OwnWrites.flags(proposal.outcome().toolCalls());
             if (!ownWrites.isEmpty()) {
                 data.put("ownWrites", observedOf(Observer.observe(List.of(), proposal.outcome().toolCalls(),
                     bare -> engine.getTool(bare).map(Tool::changesCode), ownWrites, observerJudgeOf(call, landsIn, endpoint, base), false)));
+            }
+            // C27-22, his word that it must not be possible: the code it wrote is put back, whatever way it wrote it (the folder is read, not the
+            // stream, so a shell or a patch is seen too), and a file that held the person's own changes before the run is kept and named.
+            String putBack = base.workingDirectory() == null ? ""
+                : org.jawata.mcp.agent.OwnCodeTakeBack.of(host, base.workingDirectory().toString(), proposal.changed());
+            if (!putBack.isEmpty()) {
+                data.put("ownCodePutBack", putBack);
             }
         }
         data.put("shellCalls", effects.shell());
