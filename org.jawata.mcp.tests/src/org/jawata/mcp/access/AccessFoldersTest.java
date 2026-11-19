@@ -128,6 +128,23 @@ class AccessFoldersTest {
     }
 
     @Test
+    @DisplayName("C27: a workspace file inside a repository, which may have come with a clone, is not read for its folders, while the one in the folder above the repositories is")
+    void aWorkspaceFileInsideARepositoryIsNotRead(@TempDir Path root) throws Exception {
+        Path repo = folder(root, "engine");
+        Path core = projectIn(repo, "core");
+        folder(root, "chat");
+        folder(root, "planted");
+        workspaceFile(repo.resolve("shipped.code-workspace"), "{\"path\": \"../engine\"}, {\"path\": \"../planted\"}");
+        workspaceFile(root.resolve("mine.code-workspace"), "{\"path\": \"engine\"}, {\"path\": \"chat\"}");
+
+        List<Path> covered = new AccessFolders().of(List.of(core));
+
+        assertAll(
+            () -> assertFalse(covers(covered, root.resolve("planted")), "a folder listed by a workspace file inside the repository was covered: " + covered),
+            () -> assertTrue(covers(covered, root.resolve("chat")), "CONTROL: the workspace file in the folder above was not read: " + covered));
+    }
+
+    @Test
     @DisplayName("an absolute path and a file uri in the workspace file are read as the folders they name, and a file that is not json is skipped, not fatal")
     void absolutePathsAndUrisAreReadAndAnUnreadableFileIsSkipped(@TempDir Path root) throws Exception {
         Path core = projectIn(folder(root, "engine"), "core");

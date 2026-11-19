@@ -50,7 +50,7 @@ public final class AccessFolders {
         }
         LinkedHashSet<Path> beside = new LinkedHashSet<>();
         for (Path repository : repositories) {
-            beside.add(repository);
+            // Only the folder above a repository: a workspace file inside one may have come with a clone and list any folder it likes.
             if (repository.getParent() != null) {
                 beside.add(repository.getParent());
             }
