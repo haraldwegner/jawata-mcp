@@ -1,5 +1,14 @@
 package org.jawata.mcp.tools.shared;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+
 import org.eclipse.jdt.core.IClassFile;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IPackageFragmentRoot;
@@ -8,14 +17,6 @@ import org.eclipse.jdt.core.ToolFactory;
 import org.eclipse.jdt.core.util.ClassFileBytesDisassembler;
 import org.jawata.core.IJdtService;
 import org.jawata.core.LoadedProject;
-
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
 
 /**
  * Sprint 23 (D8) — readable source for ANY type by FQN: workspace source,
@@ -71,10 +72,30 @@ public final class LibrarySource {
             Math.min(Math.max(maxChars, 1), MAX_SOURCE_CHARS), Math.max(offset, 0));
     }
 
+    /**
+     * The projects in the order they are asked about a type name: those that hold its source before those that hold only a class file of it
+     * (28h Stage 27, finding 28h-C27-16). Projects were asked in load order and the first to find the name answered, so the Eclipse project's
+     * bundled jar of the engine answered its disassembled stub for a type whose source another loaded project owns.
+     */
+    static <P> List<P> sourceFirst(List<P> projects, java.util.function.Predicate<P> holdsSource) {
+        List<P> ordered = new java.util.ArrayList<>(projects.stream().filter(holdsSource).toList());
+        projects.stream().filter(holdsSource.negate()).forEach(ordered::add);
+        return List.copyOf(ordered);
+    }
+
     private static Map<String, Object> sourceOfPaged(IJdtService service, String typeName,
                                                      int maxChars, int offset)
             throws Exception {
-        for (LoadedProject project : service.allProjects()) {
+        // Stage 27, finding 28h-C27-16: the projects that hold the type's SOURCE are asked before the ones that hold only a class file of it.
+        List<LoadedProject> asked = sourceFirst(List.copyOf(service.allProjects()), project -> {
+            try {
+                IType found = project.javaProject().findType(typeName);
+                return found != null && found.getCompilationUnit() != null;
+            } catch (Exception e) {
+                return false;
+            }
+        });
+        for (LoadedProject project : asked) {
             IType type = project.javaProject().findType(typeName);
             if (type == null) continue;
 

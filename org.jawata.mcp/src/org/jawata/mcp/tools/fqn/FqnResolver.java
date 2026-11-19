@@ -215,19 +215,40 @@ public final class FqnResolver {
         return projects;
     }
 
+    /**
+     * Of the types several projects hold under one name, the one with source (28h Stage 27, finding 28h-C27-16): a project whose classpath carries
+     * a jar of the same type (the Eclipse bundle ships the engine's own jar) answers the jar's disassembled stub first when projects are asked in
+     * order, and a stub has no bodies and cannot be a refactoring target. Binary only when no project has the source.
+     */
+    static Optional<IType> preferringSource(List<IType> found) {
+        for (IType type : found) {
+            if (!type.isBinary()) {
+                return Optional.of(type);
+            }
+        }
+        return found.stream().findFirst();
+    }
+
     private static Optional<IType> resolveType(String typeFqn, List<IJavaProject> projects) {
+        List<IType> found = new ArrayList<>();
         for (IJavaProject jp : projects) {
             try {
                 IType t = jp.findType(typeFqn);
                 if (t != null && t.exists()) {
-                    return Optional.of(t);
+                    found.add(t);
                 }
             } catch (Exception e) {
                 log.debug("findType('{}') in project '{}' failed: {}",
                     typeFqn, jp.getElementName(), e.getMessage());
             }
         }
-        return secondaryType(typeFqn, projects);
+        Optional<IType> chosen = preferringSource(found);
+        if (chosen.isPresent() && !chosen.get().isBinary()) {
+            return chosen;
+        }
+        // a source type that does not own its file is looked for before a stub of the jar is accepted
+        Optional<IType> secondary = secondaryType(typeFqn, projects);
+        return secondary.isPresent() ? secondary : chosen;
     }
 
     /**
