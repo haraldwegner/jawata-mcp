@@ -61,6 +61,9 @@ org.jawata.mcp.engine.SettingKeys#labelOf(SettingKey)
 # WHEN M7 LANDS, this gate reports these FIXED and asks for a re-baseline. That is the
 # ratchet working — do not carry these entries past it.
 org.jawata.mcp.execution.HiredRun#issue(BrainDialect,HireSite,String,Ceilings,List<GatedStep>,GateRunner)
+# Sprint 28h Stage 27, found at C27 2026-11-19 by this gate's first run since the stage began: the SHORT forms of two calls whose production caller uses the longer one. HiredRun#issue(SeatHire,...,List<String>) is the seat form without the ACP program, which its own javadoc names the form a caller should use; HireTool calls the one that takes the program, and 16 hunks of HiredRunProposesTest call the short one. ToolUse#of(List,int,Predicate) is the form with no failed-call list; HireTool calls the four-argument one and ToolUseTest calls the short one. Deleting either means rewriting those test calls, which the inline tool refused for ToolUse#of (binary references to the built jar) and produced a broken lambda for HiredRun#issue; the cleanup is the architect's to schedule, not a change to make inside a checkpoint.
+org.jawata.mcp.execution.HiredRun#issue(SeatHire,HireSite,String,List<GatedStep>,GateRunner,List<String>)
+org.jawata.mcp.execution.ToolUse#of(List<ToolCall>,int,Predicate<String>)
 org.jawata.mcp.field.FieldPile#countErrorShapes()
 org.jawata.mcp.knowledge.AnalogyPolicy#nominate(Map<String,Double>)
 org.jawata.mcp.knowledge.CatalogueAddresses#resolves(String)
