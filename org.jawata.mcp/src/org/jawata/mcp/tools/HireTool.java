@@ -680,6 +680,7 @@ public class HireTool extends NeutralTool {
             .ownedBy(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id))
             .labelled(hired, hirer, running.name())
             .leading(declaredTree.tree().isLead(hired))
+            .changing(declaredTree.tree().mayEditCode(hired))
             .fixing(getStringParam(call.getArguments(), "fixes"))
             .issuedFrom(getStringParam(call.getArguments(), "instructionsFrom"));
         HiredRun.Proposal proposal;

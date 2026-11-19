@@ -471,6 +471,31 @@ class HiredRunProposesTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27 (l): a worker that finishes with its tree unchanged although its brief carries an instruction does not move its plan, and the same brief with a brain that edits does")
+    void aWorkerThatChangedNothingDespiteItsInstructionsDoesNotMoveItsPlan() throws Exception {
+        String brief = "Change the colour.\n\nINSTRUCTION 1\nTOOL: Edit\nARGUMENTS: {\"file_path\": \"/x\", \"old_string\": \"a\", \"new_string\": \"b\"}\n";
+
+        Path idleRepo = aTreeHolding("org/x/Foo.java");
+        HostCommand idle = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'").in(idleRepo);
+        HiredRun.Proposal nothing = new HiredRun(new RecordsTheArgv(host, idle), artifacts, plans, events, null, () -> store).changing(true)
+            .issue(SeatHire.read(CODE_SEAT), site(idle), brief, twoSteps(), HiredRunProposesTest::passed, List.of());
+
+        Path editedRepo = aTreeHolding("org/x/Foo.java");
+        HostCommand edits = brain("echo 'edited' >> '" + editedRepo.resolve("org/x/Foo.java") + "'\n"
+            + "echo '{\"type\":\"result\",\"result\":\"done\"}'").in(editedRepo);
+        HiredRun.Proposal changed = new HiredRun(new RecordsTheArgv(host, edits), artifacts, plans, events, null, () -> store).changing(true)
+            .issue(SeatHire.read(CODE_SEAT), site(edits), brief, twoSteps(), HiredRunProposesTest::passed, List.of());
+
+        assertAll(
+            () -> assertEquals(0, nothing.stepsPassed(), "a worker that changed nothing moved its plan"),
+            () -> assertFalse(nothing.complete(), "a worker that changed nothing reads as complete"),
+            () -> assertTrue(Files.readString(nothing.record()).contains("changed nothing"),
+                "the record does not say the worker changed nothing: " + Files.readString(nothing.record())),
+            () -> assertEquals(2, changed.stepsPassed(), "CONTROL: the same brief with a change did not move its plan"),
+            () -> assertTrue(changed.complete(), "CONTROL: the same brief with a change does not read as complete"));
+    }
+
+    @Test
     @DisplayName("M5a's gate clause, all four: the brief is issued, the gates run, the run is journalled, and the record is on disk")
     void oneHiredRunEndToEnd() throws Exception {
         HostCommand command = brain("""

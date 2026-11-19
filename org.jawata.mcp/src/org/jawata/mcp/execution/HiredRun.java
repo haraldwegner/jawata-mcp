@@ -407,6 +407,17 @@ public final class HiredRun {
         return this;
     }
 
+    private boolean worker;
+
+    /**
+     * Says whether the seat of this run is a worker, which changes code (28h Stage 27 (l)): a worker whose brief carries instructions and that
+     * finishes with its tree unchanged has not done its work, and its first open step fails.
+     */
+    public HiredRun changing(boolean mayChangeCode) {
+        this.worker = mayChangeCode;
+        return this;
+    }
+
     /**
      * Names the seat that runs, the seat that hired it and the first name the hire carries; a run is built for one hire, so the names belong to
      * that hire alone.
@@ -528,6 +539,14 @@ public final class HiredRun {
                     + outcome.stoppedBy().orElse("its wall-clock ceiling") + "), so no check run afterwards proves this step";
                 answerRefusals.add(stopped);
                 gate = new GateOutcome(step.tool(), step.gateArguments(), 0, false, stopped);
+            } else if (worker && changed.changed().map(List::isEmpty).orElse(false) && !Instructions.parse(brief).isEmpty()) {
+                // 28h Stage 27 (l): a worker whose brief carries instructions and whose tree is unchanged when it ends has not done its work, so
+                // no check run over that tree proves the step: the first step still open fails here, and the plan stops. A tree the census could
+                // not see (no repository) is not this case.
+                String nothing = "the worker finished and changed nothing in its tree although its brief carries "
+                    + Instructions.parse(brief).size() + " instruction(s), so no check run afterwards proves this step";
+                answerRefusals.add(nothing);
+                gate = new GateOutcome(step.tool(), step.gateArguments(), 0, false, nothing);
             } else if (UpwardMessageGate.STEP.equals(step.tool())) {
                 List<String> refusals = UpwardMessageGate.refusals(outcome.text());
                 answerRefusals.addAll(refusals);
