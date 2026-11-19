@@ -134,6 +134,24 @@ class ObserverOncePerRunTest {
     }
 
     @Test
+    @DisplayName("C27 audit: in a brief that holds a tool instruction and a build instruction, the worker's own editor writes are its work and are not flagged, while a tool instruction that did not run as written still is")
+    void aMixedBriefDoesNotFlagTheEditorWritesOfItsBuildInstruction() {
+        List<Instructions.Instruction> issued = instructions(1);
+        List<ToolCall> ranAsWritten = List.of(new ToolCall("rename_symbol", issued.get(0).arguments()),
+            new ToolCall("Edit", MAPPER.createObjectNode().put("file_path", "/x/Foo.java")));
+        List<ToolCall> didNotRun = List.of(new ToolCall("Edit", MAPPER.createObjectNode().put("file_path", "/x/Foo.java")));
+
+        Observer.Observation build = Observer.observe(issued, ranAsWritten, ObserverOncePerRunTest::changes, List.of(), null, true);
+        Observer.Observation unasked = Observer.observe(issued, ranAsWritten, ObserverOncePerRunTest::changes, List.of(), null, false);
+        Observer.Observation missed = Observer.observe(issued, didNotRun, ObserverOncePerRunTest::changes, List.of(), null, true);
+
+        assertAll(
+            () -> assertTrue(build.flagged().isEmpty(), "an editor write under a build instruction was flagged: " + build.flagged()),
+            () -> assertEquals(1, unasked.flagged().size(), "CONTROL: with no build instruction the extra write was not flagged: " + unasked.flagged()),
+            () -> assertEquals(1, missed.flagged().size(), "the tool instruction that never ran was not flagged: " + missed.flagged()));
+    }
+
+    @Test
     @DisplayName("C27 audit: two flags about no instruction are told apart by their point numbers, so a verdict on one leaves the other unjudged")
     void twoFlagsAboutNoInstructionAreToldApart() {
         List<Observer.Flag> both = List.of(new Observer.Flag(0, "a code-changing call that no instruction asked for: Edit on A"),

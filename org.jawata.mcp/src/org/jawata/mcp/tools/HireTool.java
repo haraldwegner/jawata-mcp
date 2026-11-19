@@ -898,9 +898,9 @@ public class HireTool extends NeutralTool {
         if (named || !briefed.isEmpty() || !briefedBuilds.isEmpty()) {
             Observer.BatchJudge judge = observerJudgeOf(call, landsIn, endpoint, base);
             data.put("instructionScore", named
-                ? instructionScore(landsIn, instructionsFrom.trim(), proposal.outcome(), engine, effects.notOffered(), judge, notTestFirst)
+                ? instructionScore(landsIn, instructionsFrom.trim(), proposal.outcome(), engine, effects.notOffered(), judge, notTestFirst, !briefedBuilds.isEmpty())
                 : briefScore(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""), briefed, proposal.outcome(), engine,
-                    effects.notOffered(), judge, notTestFirst));
+                    effects.notOffered(), judge, notTestFirst, !briefedBuilds.isEmpty()));
         } else if (declaredTree.tree().roleOf(hired).filter(SeatTree.Role.WORKER::equals).isPresent()) {
             // 28h-C26-11: a worker briefed in prose is not scored, and says so, so the lead's report does not read as "nothing to report".
             data.put("instructionScore", org.jawata.mcp.execution.HireReport.notChecked());
@@ -1054,8 +1054,9 @@ public class HireTool extends NeutralTool {
      * @param refusedAttempts the names of calls the brain's CLI never offered, which it answered with an
      *     error and did nothing: neither the instruction nor rework nor a code change, the same
      *     reading the worker's share-through-tools figure takes
+     * @param buildInstructed whether the worker's brief also holds a BUILD instruction, whose work is its own editor writes
      */
-    static Map<String,Object> instructionScore(LearnerEventStore journal, String issuerPlan, HiredBrain.Outcome worker, ToolRegistry engine, List<String> refusedAttempts, Observer.BatchJudge judge, List<Observer.Flag> more) {
+    static Map<String,Object> instructionScore(LearnerEventStore journal, String issuerPlan, HiredBrain.Outcome worker, ToolRegistry engine, List<String> refusedAttempts, Observer.BatchJudge judge, List<Observer.Flag> more, boolean buildInstructed) {
         Map<String, Object> score = new LinkedHashMap<>();
         score.put("issuerPlan", issuerPlan);
         Optional<List<LearnerEvent>> read = journal.eventsOfSession(issuerPlan);
@@ -1090,7 +1091,7 @@ public class HireTool extends NeutralTool {
                 + " whether any ran as written cannot be read");
             return score;
         }
-        Instructions.Score s = scoreAndObserve(worker, engine, refusedAttempts, judge, score, issued, more);
+        Instructions.Score s = scoreAndObserve(worker, engine, refusedAttempts, judge, score, issued, more, buildInstructed);
         JsonNode spent = detail.path("tokensSpent");
         if (!spent.isNumber()) {
             score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: the issuer's brain reported no tokens");
@@ -1109,9 +1110,10 @@ public class HireTool extends NeutralTool {
      * is still running. The same reading as {@link #instructionScore}, except that the issuer's tokens are not recorded yet, which is said.
      *
      * @param issuer the id of the caller that issued the worker: the plan of the lead's own hire, or a conversation's id
+     * @param buildInstructed whether the brief also holds a BUILD instruction, whose work is the worker's own editor writes
      */
     static Map<String,Object> briefScore(String issuer, List<Instructions.Instruction> issued, HiredBrain.Outcome worker, ToolRegistry engine,
-            List<String> refusedAttempts, Observer.BatchJudge judge, List<Observer.Flag> more) {
+            List<String> refusedAttempts, Observer.BatchJudge judge, List<Observer.Flag> more, boolean buildInstructed) {
         Map<String, Object> score = new LinkedHashMap<>();
         score.put("issuerPlan", issuer);
         score.put("instructionsFrom", "the brief of this hire");
@@ -1121,7 +1123,7 @@ public class HireTool extends NeutralTool {
                 + " whether any ran as written cannot be read");
             return score;
         }
-        scoreAndObserve(worker, engine, refusedAttempts, judge, score, issued, more);
+        scoreAndObserve(worker, engine, refusedAttempts, judge, score, issued, more, buildInstructed);
         score.put("issuerTokensPerInstruction", "NOT COMPUTABLE: the instructions came in this hire's brief while their issuer was still"
             + " running, so its tokens are not recorded yet");
         return score;
@@ -1148,7 +1150,7 @@ public class HireTool extends NeutralTool {
 
     private static Instructions.Score scoreAndObserve(HiredBrain.Outcome worker, ToolRegistry engine,
             List<String> refusedAttempts, Observer.BatchJudge judge, Map<String, Object> score,
-            List<Instructions.Instruction> issued, List<Observer.Flag> more) {
+            List<Instructions.Instruction> issued, List<Observer.Flag> more, boolean buildInstructed) {
         var made = worker.toolCalls().stream()
             .filter(call -> !refusedAttempts.contains(call.name()))
             .toList();
@@ -1163,7 +1165,7 @@ public class HireTool extends NeutralTool {
         // of the instruction it came from, and it goes to the issuer by being in the answer the issuer reads. A flag nobody judged is
         // listed as unjudged, never dropped.
         // Stage 27 (z1): the judge is asked ONCE about this whole run, over every flag the rules raised, and not once per flag.
-        Observer.Observation seen = Observer.observe(issued, made, bare -> engine.getTool(bare).map(Tool::changesCode), more, judge, false);
+        Observer.Observation seen = Observer.observe(issued, made, bare -> engine.getTool(bare).map(Tool::changesCode), more, judge, buildInstructed);
         score.put("observer", observedOf(seen));
         return s;
     }

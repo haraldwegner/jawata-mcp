@@ -81,13 +81,21 @@ public final class Observer {
      * about all of them when there is at least one, never once per flag.
      * @param more  flags other rules raised over the same run, such as production code written before its test was seen failing
      * @param judge the judging tier, or null when none is configured
-     * @param editorWritesAreWork TODO
+     * @param editorWritesAreWork true when the brief also holds a BUILD instruction: the worker's own editor writes are then its work, and are
+     *                            not code-changing calls that no instruction asked for
      */
     public static Observation observe(List<Instructions.Instruction> issued, List<ToolCall> made,
             Function<String, Optional<Boolean>> jawataChanges, List<Flag> more, BatchJudge judge, boolean editorWritesAreWork) {
         // With no tool instruction nothing was asked for, so a code-changing call is not one no instruction asked for: a worker briefed only with
         // BUILD instructions writes code as its work (Stage 27 (z5)), and the flags of other rules are all that is left to judge.
-        List<Flag> flagged = new ArrayList<>(issued.isEmpty() ? List.of() : flags(Instructions.score(issued, made, jawataChanges)));
+        Instructions.Score score = issued.isEmpty() ? null : Instructions.score(issued, made, jawataChanges);
+        if (score != null && editorWritesAreWork) {
+            // A brief with a tool instruction and a BUILD instruction (the shape the seats ask for): the editor writes are the BUILD's work, so they
+            // are not calls no instruction asked for; a tool instruction that did not run as written is still flagged (C27 audit).
+            score = new Instructions.Score(score.issued(), score.ranAsWritten(), score.notAsWritten(),
+                score.extraCodeChangingCalls().stream().filter(name -> !RunEffects.isCliEditor(name)).toList());
+        }
+        List<Flag> flagged = new ArrayList<>(score == null ? List.of() : flags(score));
         flagged.addAll(more);
         if (flagged.isEmpty()) {
             return new Observation(List.of(), List.of(), List.of());
