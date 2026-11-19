@@ -627,6 +627,12 @@ public final class AcpBrainSession {
                         String name = update.path("title").asText(update.path("kind").asText("tool"));
                         if ("edit".equals(update.path("kind").asText())) {
                             edits.add(toolNames.size());
+                            // 28h Stage 27 (z5), live: Claude's adapter opens the write of a new file as "Preparing file…" and names the editor
+                            // only in _meta; the title is never renamed, so no rule that reads editor writes saw the file a brain created.
+                            String editor = update.path("_meta").path("claudeCode").path("toolName").asText("");
+                            if (RunEffects.isCliEditor(editor)) {
+                                name = editor;
+                            }
                         }
                         callAt.put(update.path("toolCallId").asText(""), toolNames.size());
                         toolNames.add(name);

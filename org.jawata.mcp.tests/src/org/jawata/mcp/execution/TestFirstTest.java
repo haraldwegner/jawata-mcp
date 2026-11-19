@@ -79,6 +79,26 @@ class TestFirstTest {
     }
 
     @Test
+    @DisplayName("live (z5): a stub written after the test that makes the next run fail for the behaviour is the way to a red where no tool adds the empty method, and is not named")
+    void aStubAfterTheTestThatTheNextRunFailsOnIsNotNamed() {
+        List<String> violations = TestFirst.violations(
+            List.of(write(TEST), edit(PRODUCTION), runTests(), edit(PRODUCTION), runTests()), List.of(Run.RED, Run.GREEN));
+
+        assertTrue(violations.isEmpty(), "the stub the live developer needed was refused: " + violations);
+    }
+
+    @Test
+    @DisplayName("production code written after the test but followed by a passing run, or by no run, was never seen failing and is named")
+    void productionAfterTheTestIsNamedWhenNoRedFollowsIt() {
+        List<String> passing = TestFirst.violations(List.of(write(TEST), edit(PRODUCTION), runTests()), List.of(Run.GREEN));
+        List<String> unrun = TestFirst.violations(List.of(write(TEST), edit(PRODUCTION)), List.of());
+
+        assertAll(
+            () -> assertTrue(passing.stream().anyMatch(v -> v.contains("before a test was seen failing") && v.contains("call 2")), passing.toString()),
+            () -> assertTrue(unrun.stream().anyMatch(v -> v.contains("before a test was seen failing") && v.contains("call 2")), unrun.toString()));
+    }
+
+    @Test
     @DisplayName("production code that no passing run follows is named")
     void noGreenAfterTheLastProductionChangeIsNamed() {
         List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION)), List.of(Run.RED));

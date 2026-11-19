@@ -39,6 +39,8 @@ public final class TestFirst {
         int runIndex = 0;
         boolean redSeen = false;
         boolean beforeRedNamed = false;
+        boolean testWritten = false;
+        String heldWrite = null;
         int lastProduction = -1;
         String lastProductionFile = null;
         boolean greenSinceLastProduction = false;
@@ -47,22 +49,39 @@ public final class TestFirst {
             if ("run_tests".equals(call.bareName())) {
                 Run run = runIndex < runs.size() ? runs.get(runIndex) : Run.NOT_RUN;
                 runIndex++;
+                if (heldWrite != null && run != Run.RED) {
+                    violations.add(heldWrite);
+                    beforeRedNamed = true;
+                }
+                heldWrite = null;
                 redSeen |= run == Run.RED;
                 greenSinceLastProduction |= run == Run.GREEN && lastProduction >= 0;
                 continue;
             }
-            Optional<String> file = writtenFile(call).filter(path -> !isTestPath(path) && !path.endsWith(".md"));
+            Optional<String> written = writtenFile(call);
+            testWritten |= written.filter(TestFirst::isTestPath).isPresent();
+            Optional<String> file = written.filter(path -> !isTestPath(path) && !path.endsWith(".md"));
             if (file.isEmpty()) {
                 continue;
             }
             if (!redSeen && !beforeRedNamed) {
-                violations.add("call " + (i + 1) + " (" + call.bareName() + " on " + file.get()
-                    + "): production code was written before a test was seen failing");
-                beforeRedNamed = true;
+                String beforeRed = "call " + (i + 1) + " (" + call.bareName() + " on " + file.get()
+                    + "): production code was written before a test was seen failing";
+                if (!testWritten) {
+                    violations.add(beforeRed);
+                    beforeRedNamed = true;
+                } else if (heldWrite == null) {
+                    // After its test, a first write is the stub a test needs to fail for its behaviour and not for a missing method, since no
+                    // tool adds an empty method (met live, 28h Stage 27 (z5)): it stands only if the next run is red.
+                    heldWrite = beforeRed;
+                }
             }
             lastProduction = i;
             lastProductionFile = file.get();
             greenSinceLastProduction = false;
+        }
+        if (heldWrite != null) {
+            violations.add(heldWrite);
         }
         if (lastProduction >= 0 && !greenSinceLastProduction) {
             violations.add("no passing run of the tests came after the last production change (call " + (lastProduction + 1) + " on "

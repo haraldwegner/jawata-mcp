@@ -346,6 +346,18 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27 (z5), live: the write of a new file Claude's ACP adapter opens as 'Preparing file…' is kept as a Write of that file, so the test-first rule and the own-write rule can see it")
+    void aNewFileClaudeWritesIsKeptAsAWriteOfThatFile() throws Exception {
+        HiredBrain.Outcome outcome = hire("CLAUDEWRITE:/p/src/main/java/demo/Extra.java");
+
+        assertEquals(List.of("Write"), outcome.toolNames(), "the write kept the title the adapter opened it with");
+        assertEquals("/p/src/main/java/demo/Extra.java", outcome.toolCalls().get(0).arguments().path("file_path").asText(),
+            "the write was kept without the file it wrote");
+        assertTrue(TestFirst.violations(outcome.toolCalls(), List.of()).stream().anyMatch(v -> v.contains("production code was written before")),
+            "a production file written with no test seen failing was not read as such");
+    }
+
+    @Test
     @DisplayName("28h Stage 19, the hire-time split: the time between a tool call opening and completing on the wire is kept as the time in tools, and a run with no call keeps none")
     void aToolsTimeIsReadFromWhenItsCallOpensAndCloses() throws Exception {
         HiredBrain.Outcome timed = hire("TIMEDCALL");
