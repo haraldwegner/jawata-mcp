@@ -1908,6 +1908,28 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27 (d): the observer seat the engine hires for a flagged step is started over the agent protocol and continues one session for one issuer across its workers' flagged steps")
+    void theObserverContinuesOneSessionForOneIssuer() throws Exception {
+        Map<String, Object> program = theStandInAcpProgram();
+        HireTool hire = toolWithBrainsSetting(host, JSON.writeValueAsString(Map.of("claude-code", program)));
+        String issuer = "principal-c27-observer";
+        org.jawata.mcp.models.CallerIdentity principal = org.jawata.mcp.models.CallerIdentity.supplied(issuer);
+        com.fasterxml.jackson.databind.node.ObjectNode worker =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "developer");
+        worker.put("brief", PM_ANSWER);
+        worker.put("observerSeatFile", seatFile(CATALOGUER_SEAT).toString());
+
+        principal.speaking(() -> hire.execute(worker));
+        java.util.Optional<String> afterTheFirst = org.jawata.mcp.execution.SeatBrainSessions.shared().recall(issuer, "observer");
+        principal.speaking(() -> hire.execute(worker));
+        java.util.Optional<String> afterTheSecond = org.jawata.mcp.execution.SeatBrainSessions.shared().recall(issuer, "observer");
+
+        assertAll(
+            () -> assertTrue(afterTheFirst.isPresent(), "no observer session was kept for the issuer after its worker's flagged step"),
+            () -> assertEquals(afterTheFirst, afterTheSecond, "the second flagged step was judged in a new observer session, not the first's"));
+    }
+
+    @Test
     @DisplayName("D4, control: a hire of the same seat from ANOTHER principal session starts a session of its own and recalls nothing")
     void aHireFromAnotherPrincipalSessionContinuesNothing() throws Exception {
         Map<String, Object> program = theStandInAcpProgram();

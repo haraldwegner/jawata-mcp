@@ -26,6 +26,7 @@ import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.Instructions;
 import org.jawata.mcp.execution.Observer;
 import org.jawata.mcp.execution.RunEffects;
+import org.jawata.mcp.execution.SeatBrainSessions;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatSettingsService;
 import org.jawata.mcp.execution.SeatTree;
@@ -323,6 +324,9 @@ public class HireTool extends NeutralTool {
     public static final String MAX_RUNNING_SETTING = "jawata.hire.maxRunning";
 
     private static final int DEFAULT_MAX_RUNNING = 8;
+
+    /** The seat name under which one issuer's observer conversation is kept between its flagged steps (28h Stage 27 (d)). */
+    private static final String OBSERVER_SESSION_SEAT = "observer";
 
     /** How long a call waits for a hire to open its plan before it gives up: opening a plan is quick, and nothing in it waits for a brain. */
     private static final long OPENS_WITHIN_SECONDS = 30;
@@ -1164,9 +1168,18 @@ public class HireTool extends NeutralTool {
                 List<String> hidden = observerSeat.toolsToHide(engineTools.getToolNames().stream()
                     .filter(name -> engineTools.getTool(name).map(Tool::changesCode).orElse(false))
                     .toList());
-                HiredRun judging = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, engineTools.sessionFolders()).ownedBy(issuer);
+                // One observer conversation for everything one issuer's workers are watched for (28h Stage 27 (d)): each flagged step is still its
+                // own hire and record, but the observer's brain is started over the agent protocol, like any hire, and continues the session it
+                // had, so it has read what it judged before and is not started anew for every flag.
+                String observerBrain = observerSeat.brain().label();
+                Optional<AcpBrainSession.Program> acp = settings.get().get(BRAINS_SETTING).flatMap(text -> AcpBrainSession.programFor(text, observerBrain));
+                Optional<String> earlier = issuer.flatMap(key -> SeatBrainSessions.shared().recall(key, OBSERVER_SESSION_SEAT));
+                HiredRun judging = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, engineTools.sessionFolders()).ownedBy(issuer)
+                    .resuming(earlier);
                 HiredRun.Proposal verdict = judging.issue(observerSeat, base, Observer.briefFor(flag, instruction, window),
-                    List.of(new GatedStep(0, "health_check", JSON.createObjectNode())), new ToolGateRunner(engineTools), hidden);
+                    List.of(new GatedStep(0, "health_check", JSON.createObjectNode())), new ToolGateRunner(engineTools), hidden, acp);
+                issuer.ifPresent(key -> verdict.outcome().brainSessionId()
+                    .ifPresent(session -> SeatBrainSessions.shared().remember(key, OBSERVER_SESSION_SEAT, session)));
                 return Observer.verdictOf(verdict.outcome().text());
             } catch (IOException | RuntimeException e) {
                 return Optional.empty();
