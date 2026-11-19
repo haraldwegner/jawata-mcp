@@ -1,0 +1,130 @@
+package org.jawata.mcp.access;
+
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.util.List;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * Stage 27 (z4): access is the workspace as it stands on disk, whoever started first. Its folders are the repository each loaded Java project lies
+ * in and the folders of the VS Code workspace file those repositories belong to; nothing is read from a launch event, and a change to the file
+ * is seen by the next question without a restart. A folder in neither is not covered.
+ */
+class AccessFoldersTest {
+
+    private static Path folder(Path under, String name) throws IOException {
+        return Files.createDirectories(under.resolve(name));
+    }
+
+    private static Path projectIn(Path repo, String name) throws IOException {
+        Files.createDirectories(repo.resolve(".git"));
+        return Files.createDirectories(repo.resolve(name));
+    }
+
+    private static void workspaceFile(Path file, String folders) throws IOException {
+        Files.writeString(file, "{\n  // the folders of this window\n  \"folders\": [" + folders + "],\n  \"settings\": {}\n}\n");
+    }
+
+    private static boolean covers(List<Path> covered, Path place) {
+        return covered.stream().anyMatch(folder -> place.toAbsolutePath().normalize().startsWith(folder));
+    }
+
+    @Test
+    @DisplayName("the repository that encloses a loaded Java project is covered, and the project's own folder when it lies in no repository")
+    void theEnclosingRepositoryIsCovered(@TempDir Path root) throws Exception {
+        Path inRepo = projectIn(folder(root, "engine"), "core");
+        Path loose = folder(root, "loose-project");
+
+        List<Path> covered = new AccessFolders().of(List.of(inRepo, loose));
+
+        assertAll(
+            () -> assertTrue(covers(covered, root.resolve("engine")), "the repository of the project is not covered: " + covered),
+            () -> assertTrue(covers(covered, root.resolve("engine").resolve("docs")), "a folder beside the project in its repository is not covered"),
+            () -> assertTrue(covers(covered, loose), "a project in no repository is not covered by its own folder"),
+            () -> assertFalse(covers(covered, root.resolve("elsewhere")), "a folder in neither was covered: " + covered));
+    }
+
+    @Test
+    @DisplayName("the folders of the workspace file beside the repositories are covered when it lists one of them, and a workspace file that lists none of them is not read")
+    void theWorkspaceFilesFoldersAreCovered(@TempDir Path root) throws Exception {
+        Path core = projectIn(folder(root, "engine"), "core");
+        folder(root, "chat");
+        folder(root, "studio");
+        folder(root, "strangers");
+        workspaceFile(root.resolve("dev.code-workspace"), "{\"path\": \"engine\"}, {\"path\": \"chat\"}, {\"path\": \"studio\"}");
+        workspaceFile(root.resolve("other.code-workspace"), "{\"path\": \"strangers\"}");
+
+        List<Path> covered = new AccessFolders().of(List.of(core));
+
+        assertAll(
+            () -> assertTrue(covers(covered, root.resolve("chat")), "a folder of the workspace file is not covered: " + covered),
+            () -> assertTrue(covers(covered, root.resolve("studio")), covered.toString()),
+            () -> assertFalse(covers(covered, root.resolve("strangers")), "the folder of a workspace file that does not hold the project was covered: " + covered));
+    }
+
+    @Test
+    @DisplayName("a folder added to the workspace file is covered by the next question without a restart, and a folder taken out stops being covered")
+    void aChangeToTheWorkspaceFileIsSeenWithoutARestart(@TempDir Path root) throws Exception {
+        Path core = projectIn(folder(root, "engine"), "core");
+        folder(root, "chat");
+        folder(root, "notes");
+        Path file = root.resolve("dev.code-workspace");
+        workspaceFile(file, "{\"path\": \"engine\"}, {\"path\": \"chat\"}");
+        AccessFolders access = new AccessFolders();
+
+        List<Path> before = access.of(List.of(core));
+        workspaceFile(file, "{\"path\": \"engine\"}, {\"path\": \"notes\"}");
+        Files.setLastModifiedTime(file, FileTime.fromMillis(System.currentTimeMillis() + 60_000));
+        List<Path> after = access.of(List.of(core));
+
+        assertAll(
+            () -> assertTrue(covers(before, root.resolve("chat")) && !covers(before, root.resolve("notes")), "before: " + before),
+            () -> assertTrue(covers(after, root.resolve("notes")), "a folder added to the file was not seen: " + after),
+            () -> assertFalse(covers(after, root.resolve("chat")), "a folder taken out of the file is still covered: " + after));
+    }
+
+    @Test
+    @DisplayName("a hire bound to a folder of the workspace file that is no Java project has the workspace, whoever started first, and one bound to a folder in neither has none")
+    void aHireBoundInAFolderOfTheWorkspaceFileIsInItsWorkspace(@TempDir Path root) throws Exception {
+        Path core = projectIn(folder(root, "engine"), "core");
+        Path enterprise = folder(root, "enterprise");
+        Path stranger = folder(root, "stranger");
+        workspaceFile(root.resolve("dev.code-workspace"), "{\"path\": \"engine\"}, {\"path\": \"enterprise\"}");
+        SessionFolders sessions = new SessionFolders();
+        List<Path> beside = new AccessFolders().of(List.of(core));
+
+        try (SessionFolders.Binding inside = sessions.bind("plan-in", enterprise); SessionFolders.Binding outside = sessions.bind("plan-out", stranger)) {
+            assertAll(
+                () -> assertFalse(sessions.workspaceOf("plan-in", List.of(core), beside).isEmpty(), "a hire in a folder of the workspace file has no workspace"),
+                () -> assertTrue(sessions.workspaceOf("plan-out", List.of(core), beside).isEmpty(), "a hire in a folder of no source has a workspace"));
+        }
+    }
+
+    @Test
+    @DisplayName("an absolute path and a file uri in the workspace file are read as the folders they name, and a file that is not json is skipped, not fatal")
+    void absolutePathsAndUrisAreReadAndAnUnreadableFileIsSkipped(@TempDir Path root) throws Exception {
+        Path core = projectIn(folder(root, "engine"), "core");
+        Path far = folder(root, "far");
+        Path near = folder(root, "near");
+        workspaceFile(root.resolve("dev.code-workspace"),
+            "{\"path\": \"engine\"}, {\"path\": \"" + far.toString().replace("\\", "\\\\") + "\"}, {\"uri\": \"" + near.toUri() + "\"}");
+        Files.writeString(root.resolve("broken.code-workspace"), "this is not json at all {");
+
+        List<Path> covered = new AccessFolders().of(List.of(core));
+
+        assertAll(
+            () -> assertTrue(covers(covered, far), "an absolute path of the file was not read: " + covered),
+            () -> assertTrue(covers(covered, near), "a file uri of the file was not read: " + covered),
+            () -> assertEquals(true, covers(covered, root.resolve("engine")), "the unreadable file cost the repository its cover"));
+    }
+}

@@ -234,10 +234,24 @@ public class ToolResponse {
     }
 
     /**
-     * Create a file not found error.
+     * Create a file not found error. A path that exists on disk but is no file of a loaded Java project is not "not found": access to a folder is
+     * not reach of the Java tools, and the answer says that the place is not a Java project (Stage 27 (z4)).
      */
     public static ToolResponse fileNotFound(String path) {
+        if (path != null && existsOnDisk(path)) {
+            return error("NOT_A_JAVA_PROJECT",
+                "'" + path + "' exists but is not a Java project: it is in no project this engine loaded, and the Java tools read only the loaded Java projects.",
+                "Read or change it with the document and file tools; a Java tool answers for a file of a loaded Java project.");
+        }
         return error(ErrorInfo.fileNotFound(path));
+    }
+
+    private static boolean existsOnDisk(String path) {
+        try {
+            return java.nio.file.Files.exists(java.nio.file.Path.of(path));
+        } catch (RuntimeException invalidPath) {
+            return false;
+        }
     }
 
     /**
