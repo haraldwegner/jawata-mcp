@@ -713,7 +713,9 @@ public final class HiredRun {
         }
         int shift = planned.size();
         for (GatedStep step : steps) {
-            planned.add(new GatedStep(step.index() + shift, step.tool(), step.gateArguments()));
+            // The step is carried over whole: the count it states it must find (Stage 27 (s)) goes with it, or a search that must find nothing
+            // would be held only to the default of at least one the moment a seat adds its own gate ahead of it.
+            planned.add(new GatedStep(step.index() + shift, step.tool(), step.gateArguments(), step.expect()));
         }
         return List.copyOf(planned);
     }

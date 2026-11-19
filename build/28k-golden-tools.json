@@ -2873,7 +2873,7 @@
         "type": "object"
        },
        "expect": {
-        "description": "Optional. What a searching gate must find: {\"matches\": N}.",
+        "description": "Optional. What a gate must find: {\"matches\": N} for a search, or {\"changed\": true} (false) for a lookup of kind git_diff that must show a change (none).",
         "type": "object"
        },
        "tool": {

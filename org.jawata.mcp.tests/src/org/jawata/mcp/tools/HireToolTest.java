@@ -339,6 +339,45 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("Stage 27 (s): a hirer's step keeps the count it states when the seat adds its own answer gate ahead of it, so a search that must find nothing is held to it")
+    @SuppressWarnings("unchecked")
+    void aStepKeepsItsStatedCountBesideTheSeatsAnswerGate() throws Exception {
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new Tool() {
+            @Override
+            public String getName() {
+                return "files";
+            }
+
+            @Override
+            public String getDescription() {
+                return "a search fixture that always finds one match";
+            }
+
+            @Override
+            public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+
+            @Override
+            public ToolResponse execute(JsonNode arguments) {
+                return ToolResponse.success(Map.of("matches", List.of(Map.of("path", "plan.md", "line", 1, "text", "x"))));
+            }
+        });
+        com.fasterxml.jackson.databind.node.ObjectNode args = (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(SEAT_WITH_UPWARD_GATE));
+        args.set("steps", JSON.createArrayNode().add(JSON.createObjectNode().put("tool", "files")
+            .set("arguments", JSON.createObjectNode().put("action", "search"))));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) args.get("steps").get(0)).set("expect", JSON.createObjectNode().put("matches", 0));
+        HireTool hire = toolWith(new StandsIn(host, aBrainSaying(WHOLE_UPWARD_MESSAGE).withSeparateStderr()), events, registry);
+        Map<String, Object> data = dataOf(hire.execute(args));
+
+        List<Map<String, Object>> gates = (List<Map<String, Object>>) data.get("gates");
+        assertAll(
+            () -> assertEquals(Boolean.FALSE, data.get("complete"), "THE CLAIM: a step that stated it must find nothing passed over a match: " + data),
+            () -> assertEquals(List.of("answer_gate:upward_message", "files"), gates.stream().map(g -> g.get("tool")).toList(), String.valueOf(data)));
+    }
+
+    @Test
     @DisplayName("a seat that declares no answer gate is hired exactly as before: no extra step, no extra field")
     void aSeatWithNoAnswerGateIsUnchanged() throws Exception {
         HireTool hire = toolWith(new StandsIn(host, aBrainSaying(WHOLE_UPWARD_MESSAGE)),

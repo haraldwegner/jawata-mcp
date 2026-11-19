@@ -126,6 +126,17 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
             boolean met = stated != null && stated.isNumber() ? found.getAsLong() == stated.asLong() : found.getAsLong() >= 1;
             return new GateOutcome(step.tool(), step.gateArguments(), met ? 0 : 1, true);
         }
+        // Stage 27 (s), "that the file changed": a step that states `expect.changed` is a look at a change (the lookup tool's git_diff), and it
+        // passes when the answer's text is non-blank exactly as often as the step said. A step that states it and gets an answer with no text to
+        // read is unanswered, never a pass: what it asked about was not told.
+        JsonNode changedStated = step.expect() == null ? null : step.expect().path("changed");
+        if (changedStated != null && changedStated.isBoolean()) {
+            if (response.getData() instanceof java.util.Map<?, ?> data && data.get("output") instanceof String text) {
+                boolean changed = !text.isBlank();
+                return new GateOutcome(step.tool(), step.gateArguments(), changed == changedStated.asBoolean() ? 0 : 1, true);
+            }
+            return didNotAnswer(step, "the step states whether something changed, and the answer carries no text to read that from");
+        }
         OptionalLong errors = ResponseFacts.errorCount(response);
         if (errors.isEmpty()) {
             // Case 4. The one that would otherwise pass silently.

@@ -76,6 +76,25 @@ class ToolGateRunnerExpectsTest {
     }
 
     @Test
+    @DisplayName("Stage 27 (s): a step that states the tree must have changed passes on a diff with text and fails on an empty one, and the reverse for a step that states it must not")
+    void aStatedChangeIsReadFromTheDiffText() throws Exception {
+        Map<String, Object> diff = Map.of("output", "diff --git a/plan.md b/plan.md\n+a line\n", "truncated", false);
+        Map<String, Object> nothing = Map.of("output", "", "truncated", false);
+        JsonNode changed = JSON.createObjectNode().put("changed", true);
+        JsonNode unchanged = JSON.createObjectNode().put("changed", false);
+        JsonNode lookup = JSON.createObjectNode().put("kind", "git_diff");
+
+        assertAll(
+            () -> assertEquals(0, new ToolGateRunner(answering(diff)).run(new GatedStep(0, "lookup", lookup, changed)).errorCount(), "a changed tree was refused for a step that said it must change"),
+            () -> assertTrue(new ToolGateRunner(answering(nothing)).run(new GatedStep(0, "lookup", lookup, changed)).errorCount() > 0,
+                "THE CLAIM: an unchanged tree passed a step that said the file must change"),
+            () -> assertEquals(0, new ToolGateRunner(answering(nothing)).run(new GatedStep(0, "lookup", lookup, unchanged)).errorCount(), "an unchanged tree was refused for a step that said nothing may change"),
+            () -> assertTrue(new ToolGateRunner(answering(diff)).run(new GatedStep(0, "lookup", lookup, unchanged)).errorCount() > 0, "a changed tree passed a step that said nothing may change"),
+            () -> assertFalse(new ToolGateRunner(answering(Map.of("errorCount", 0))).run(new GatedStep(0, "lookup", lookup, changed)).succeeded(),
+                "an answer with no text to read a change from was taken as an answer to whether the tree changed"));
+    }
+
+    @Test
     @DisplayName("Stage 27 (s): a gate that publishes an error count is judged by it as before, whether or not it states an expectation")
     void anErrorCountGateIsUnchanged() throws Exception {
         GateOutcome clean = new ToolGateRunner(answering(Map.of("errorCount", 0))).run(new GatedStep(0, "compile_workspace", JSON.createObjectNode()));

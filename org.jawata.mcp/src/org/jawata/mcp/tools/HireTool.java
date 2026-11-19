@@ -263,7 +263,7 @@ public class HireTool extends NeutralTool {
             "items", Map.of("type", "object", "properties", Map.of(
                 "tool", Map.of("type", "string"),
                 "arguments", Map.of("type", "object"),
-                "expect", Map.of("type", "object", "description", "Optional. What a searching gate must find: {\"matches\": N}.")))));
+                "expect", Map.of("type", "object", "description", "Optional. What a gate must find: {\"matches\": N} for a search, or {\"changed\": true} (false) for a lookup of kind git_diff that must show a change (none).")))));
         properties.put("instructionsFrom", Map.of("type", "string",
             "description", "Optional. The plan id of the PM or chief-engineer hire whose INSTRUCTION blocks this"
                 + " hire carries out. The answer then reports how many ran as written (one tool, one call, the"
