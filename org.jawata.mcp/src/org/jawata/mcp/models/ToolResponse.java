@@ -240,7 +240,7 @@ public class ToolResponse {
     public static ToolResponse fileNotFound(String path) {
         if (path != null && existsOnDisk(path)) {
             return error("NOT_A_JAVA_PROJECT",
-                "'" + path + "' exists on disk, but the Java tools found no file of a loaded Java project there: it lies outside every loaded project, or it is not a Java source of one.",
+                "'" + path + "' exists on disk but is not a Java project file here: the Java tools found no file of a loaded Java project at it; it lies outside every loaded project, or it is not a Java source of one.",
                 "Read or change it with the document and file tools; a Java tool answers for a file of a loaded Java project.");
         }
         return error(ErrorInfo.fileNotFound(path));
