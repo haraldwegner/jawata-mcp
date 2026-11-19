@@ -436,7 +436,7 @@ public final class AcpBrainSession {
                     params.put("sessionId", earlier);
                     params.put("cwd", cwd);
                     params.set("mcpServers", servers);
-                    withholdOwnTools(params);
+                    sessionOptions(params);
                 });
                 if (opened != null) {
                     sessionId = earlier;
@@ -446,7 +446,7 @@ public final class AcpBrainSession {
                 Consumer<ObjectNode> newSession = params -> {
                     params.put("cwd", cwd);
                     params.set("mcpServers", servers);
-                    withholdOwnTools(params);
+                    sessionOptions(params);
                 };
                 JsonNode created = wire.call(2, "session/new", newSession);
                 if (created == null && wire.refusedForWantOfLogin() && init.path("authMethods").size() > 0) {
@@ -466,15 +466,21 @@ public final class AcpBrainSession {
         }
 
         /**
-         * Asks the brain, in the session's own options, to leave out its editors and its shell, when they are withheld (28h D57 (j)). Measured: the
+         * Sets the session's own options: the brain loads only the MCP servers this session names, and, when its own tools are withheld, leaves out
+         * its editors and its shell (28h D57 (j)). Measured: the
          * Claude adapter honours {@code _meta.claudeCode.options.disallowedTools} on session/new and session/load and then refuses both; a brain
          * that does not know the option ignores it.
          */
-        private void withholdOwnTools(ObjectNode params) {
+        private void sessionOptions(ObjectNode params) {
+            ObjectNode options = params.putObject("_meta").putObject("claudeCode").putObject("options");
+            // A hired brain loads no MCP server but the ones this session names (28h Stage 27, finding 28h-C27-2): the Claude adapter otherwise
+            // reads the user's own servers too, and a hired chief engineer was seen hiring through the user's own jawata server, not this
+            // engine. A brain that does not know the option ignores it.
+            options.put("strictMcpConfig", true);
             if (ownTools != OwnTools.WITHHELD) {
                 return;
             }
-            ArrayNode disallowed = params.putObject("_meta").putObject("claudeCode").putObject("options").putArray("disallowedTools");
+            ArrayNode disallowed = options.putArray("disallowedTools");
             OWN_WRITERS.forEach(disallowed::add);
         }
 

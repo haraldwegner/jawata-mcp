@@ -85,6 +85,13 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27 (j), finding 28h-C27-2: a brain is asked, in its session's own options, to load no MCP server but the ones the session names, so a hired brain cannot hire or change files through the user's own jawata server")
+    void aBrainIsAskedToLoadOnlyTheServersItIsGiven() throws Exception {
+        assertEquals("only the named servers", converse("ONLYOURSERVERS", List.of(), AcpBrainSession.OwnTools.KEPT), "a worker was left to load every server it can find");
+        assertEquals("only the named servers", converse("ONLYOURSERVERS", List.of(), AcpBrainSession.OwnTools.WITHHELD), "a lead was left to load every server it can find");
+    }
+
+    @Test
     @DisplayName("28h D57 (j): a brain whose own tools are withheld and that offers a read-only 'ask' mode, as Cursor's agent does, is moved into it")
     void aWithheldBrainIsMovedIntoItsReadOnlyMode() throws Exception {
         agent = new AcpBrainSession.Program(agent.command(), Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_MODES", "agent,plan,ask"));

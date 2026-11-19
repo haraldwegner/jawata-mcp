@@ -39,6 +39,8 @@ public class FakeAcpAgent {
         : System.getenv("FAKE_ACP_MODES").split(",");
     static String modeNow = offeredModes.length == 0 ? "" : offeredModes[0];
     static final Map<String, String> withheld = new HashMap<>();
+    /** Whether the client asked the brain, in the session's own options, to load no MCP server but the ones the session names (28h Stage 27); a prompt ONLYOURSERVERS answers it. */
+    static final Map<String, String> only = new HashMap<>();
 
     static String modes() {
         StringBuilder available = new StringBuilder();
@@ -86,6 +88,7 @@ public class FakeAcpAgent {
                     String session = "fake-" + (++counter) + "-" + Long.toHexString(System.nanoTime());
                     servers.put(session, between(line, "\"mcpServers\":"));
                     withheld.put(session, between(line, "\"disallowedTools\":"));
+                    only.put(session, line.contains("\"strictMcpConfig\":true") ? "only the named servers" : "every server it can find");
                     reply(id, "{\"sessionId\":\"" + session + "\""
                         + (offeredModels.length == 0 ? "" : ",\"configOptions\":[" + modelOption() + "]")
                         + (offeredModes.length == 0 ? "" : ",\"modes\":" + modes()) + "}");
@@ -113,6 +116,7 @@ public class FakeAcpAgent {
                     String session = field(line, "sessionId");
                     servers.put(session, between(line, "\"mcpServers\":"));
                     withheld.put(session, between(line, "\"disallowedTools\":"));
+                    only.put(session, line.contains("\"strictMcpConfig\":true") ? "only the named servers" : "every server it can find");
                     chunk(session, "HISTORY of the earlier session");
                     reply(id, offeredModes.length == 0 ? "{}" : "{\"modes\":" + modes() + "}");
                 }
@@ -159,6 +163,8 @@ public class FakeAcpAgent {
             chunk(session, text.contains("EARLIERWORD") ? "knows" : "does not know");
         } else if (text.contains("WHICHMODE") && !text.contains("WHICHMODEL")) {
             chunk(session, modeNow.isEmpty() ? "no modes" : modeNow);
+        } else if (text.contains("ONLYOURSERVERS")) {
+            chunk(session, only.getOrDefault(session, "unknown"));
         } else if (text.contains("WITHHELD")) {
             chunk(session, withheld.getOrDefault(session, "none"));
         } else if (text.contains("WHICHMODEL")) {
