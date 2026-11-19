@@ -252,6 +252,16 @@ public class FakeAcpAgent {
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"e1\",\"status\":\"completed\"}}}");
             chunk(session, "edited");
+        } else if (text.startsWith("OWNEDIT:")) {
+            // an edit of the brain's own editor on the file named after the colon (28h Stage 27 (z2)): opened with no input, then the path
+            String file = text.substring("OWNEDIT:".length()).trim();
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"g1\",\"title\":\"Edit\",\"kind\":\"edit\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"g1\",\"rawInput\":{\"file_path\":\"" + file + "\"}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"g1\",\"status\":\"completed\"}}}");
+            chunk(session, "edited");
         } else if (text.startsWith("CURSOREDIT")) {
             // As Cursor's agent sends an edit of its own (measured 2026-11-17, 28h D57 (d)): opened with no input, then only the path,
             // and the replacement itself only as the diff of the completed call.

@@ -34,9 +34,19 @@ public final class HireReport {
                 .append("State: ").append(clean ? "done" : "failed").append("\n")
                 .append("Answer: ").append(answer.path("answer").asText(answer.path("error").asText("(none)"))).append("\n");
             appendInstructionScore(text, answer.path("instructionScore"));
+            appendOwnWrites(text, answer.path("ownWrites"));
         }
         text.append("Still out for you: ").append(stillOut.isEmpty() ? "nothing" : String.join(", ", stillOut));
         return text.toString();
+    }
+
+    /**
+     * 28h Stage 27 (z2): what a lead wrote with its own editor outside the documents, with the observer's correction for it, and the writes
+     * nobody judged. A lead that wrote none adds nothing.
+     */
+    private static void appendOwnWrites(StringBuilder text, JsonNode own) {
+        own.path("corrections").forEach(correction -> text.append("Own write, correction: ").append(correction.path("text").asText()).append("\n"));
+        own.path("unjudged").forEach(flag -> text.append("Own write, not judged: ").append(flag.path("why").asText()).append("\n"));
     }
 
     /**

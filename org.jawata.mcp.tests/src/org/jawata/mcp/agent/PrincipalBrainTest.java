@@ -1,5 +1,6 @@
 package org.jawata.mcp.agent;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -74,6 +75,22 @@ class PrincipalBrainTest {
     private static String ask(PrincipalBrain brain, String prompt, List<String> pieces) {
         brain.answer(prompt, pieces::add);
         return String.join("", pieces);
+    }
+
+    @Test
+    @DisplayName("28h Stage 27 (z2): an edit of the main seat's own editor on a file that is not a document is corrected in the chat, and an edit of a document is not")
+    void anOwnEditOutsideTheDocumentsIsCorrectedInTheChat() throws Exception {
+        PrincipalBrain brain = brain(Optional.of(fake));
+        try {
+            String code = ask(brain, "OWNEDIT:/p/Foo.java", new ArrayList<>());
+            String document = ask(brain, "OWNEDIT:/p/notes.md", new ArrayList<>());
+
+            assertAll(
+                () -> assertTrue(code.contains("Do not edit code, but hire") && code.contains("/p/Foo.java"), "no correction in the chat: " + code),
+                () -> assertFalse(document.contains("Do not edit code"), "a document edit was corrected: " + document));
+        } finally {
+            brain.close();
+        }
     }
 
     @Test

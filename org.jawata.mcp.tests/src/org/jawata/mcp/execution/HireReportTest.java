@@ -78,6 +78,29 @@ class HireReportTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27 (z2): the report of a lead says what it wrote with its own editor outside the documents, with the observer's correction, and names a write nobody judged")
+    void aLeadsOwnWritesAreInItsReport() throws Exception {
+        String report = reportOf("""
+            {"cleanExit":true,"answer":"done","ownWrites":{
+             "flagged":[{"instruction":0,"why":"Edit on /w/Foo.java"},{"instruction":0,"why":"Write on /w/a.rs"}],
+             "corrections":[{"instruction":0,"text":"you edited Foo.java yourself; hire the chief engineer"}],
+             "unjudged":[{"instruction":0,"why":"Write on /w/a.rs"}]}}
+            """);
+
+        assertAll(
+            () -> assertTrue(report.contains("Own write, correction: you edited Foo.java yourself; hire the chief engineer"), report),
+            () -> assertTrue(report.contains("Own write, not judged: Write on /w/a.rs"), report));
+    }
+
+    @Test
+    @DisplayName("28h Stage 27 (z2), the control: a lead that wrote no file of its own gets no own-write lines")
+    void aLeadWithNoOwnWritesGetsNoOwnWriteLines() throws Exception {
+        String report = reportOf("{\"cleanExit\":true,\"answer\":\"planned\"}");
+
+        assertFalse(report.contains("Own write"), report);
+    }
+
+    @Test
     @DisplayName("D57 (d), the control: a hire with no instruction score gets no instruction lines")
     void aHireWithNoScoreGetsNoInstructionLines() throws Exception {
         String report = reportOf("{\"cleanExit\":true,\"answer\":\"PROBE OK\"}");

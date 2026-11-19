@@ -193,14 +193,17 @@ public final class AcpBrainSession {
      * Whether a brain keeps its own tools that write files or run commands (28h D57 (j)). Measured 2026-11-17 on this machine
      * ({@code 28h-S22-evidence/s26-j-probe}): Claude's ACP adapter ran its shell and wrote a file without asking the client, and Cursor's agent
      * asked before its shell but wrote a file without asking, even with the client's own file writing offered. So a permission answer alone
-     * bounds neither; what does is the Claude adapter's session option {@code disallowedTools} and Cursor's read-only "ask" mode.
+     * bounds neither; what does is the Claude adapter's session option {@code disallowedTools}. Cursor's read-only "ask" mode bounds it too, and
+     * hides every jawata tool with it (finding 28h-C26-18), so Cursor's agent is left in its normal mode and what a lead or the main seat writes
+     * with its own editor outside the documents is read from its stream and flagged afterwards ({@link OwnWrites}, Stage 27 (z2)).
      */
     public enum OwnTools {
         /** The brain keeps its own editors and shell: a worker that changes code with them. */
         KEPT,
         /**
-         * They are withheld: the session is opened with them disallowed, a brain that offers a read-only mode is moved into it, and every
-         * permission request for an edit or a command is refused, whatever the allowlist says. The principal and a hired lead, which change no code.
+         * They are withheld: the session is opened with them disallowed, and every permission request for an edit or a command is refused,
+         * whatever the allowlist says. A brain that offers no way to withhold them is not moved into a read-only mode, which would hide hire
+         * with the rest; its own writes are flagged afterwards. The principal and a hired lead, which change no code.
          */
         WITHHELD
     }
@@ -211,9 +214,6 @@ public final class AcpBrainSession {
      * hand the edit to one).
      */
     static final List<String> OWN_WRITERS = List.of("Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "BashOutput", "KillShell", "Task", "Agent");
-
-    /** The session modes a brain names for working without edits or commands: Cursor's agent calls it "ask" (measured 2026-11-17). */
-    static final List<String> READ_ONLY_MODES = List.of("ask");
 
     /** The kinds of tool call ACP gives an edit or a command; a permission request for one is refused when the brain's own tools are withheld. */
     static final Set<String> WRITING_KINDS = Set.of("edit", "delete", "move", "execute");
@@ -472,7 +472,9 @@ public final class AcpBrainSession {
                 readModels(created);
                 opened = created;
             }
-            enterReadOnlyMode(opened);
+            // 28h Stage 27 (z2): a brain with its own editors withheld is NOT moved into a read-only mode. Cursor's "ask" mode hides every jawata
+            // tool with `hire` among them (measured live, finding 28h-C26-18), and a lead that cannot hire cannot hand work on. It stays in its
+            // normal mode; what it writes with its own editor outside the documents is read from its stream and flagged afterwards.
         }
 
         /**
@@ -492,24 +494,6 @@ public final class AcpBrainSession {
             }
             ArrayNode disallowed = options.putArray("disallowedTools");
             OWN_WRITERS.forEach(disallowed::add);
-        }
-
-        /**
-         * Moves a session whose brain's own tools are withheld into the brain's read-only mode, when the brain offers one (Cursor's agent: "ask",
-         * measured to refuse its own edits and write commands, which it otherwise makes without asking). A brain that offers none stays as it is.
-         */
-        private void enterReadOnlyMode(JsonNode opened) throws IOException {
-            if (ownTools != OwnTools.WITHHELD || opened == null || sessionId == null) {
-                return;
-            }
-            for (JsonNode mode : opened.path("modes").path("availableModes")) {
-                String id = mode.path("id").asText("");
-                if (READ_ONLY_MODES.contains(id)) {
-                    String session = sessionId;
-                    wire.call(6, "session/set_mode", params -> params.put("sessionId", session).put("modeId", id));
-                    return;
-                }
-            }
         }
 
         /** The brain's own model option, from the answer that opened the session: its values, and the one it is on. Nothing when it has none. */

@@ -896,12 +896,7 @@ public class HireTool extends NeutralTool {
         List<Observer.Flag> notTestFirst = briefedBuilds.isEmpty() ? List.<Observer.Flag>of()
             : proposal.notTestFirst().stream().map(why -> new Observer.Flag(briefedBuilds.get(0).number(), why)).toList();
         if (named || !briefed.isEmpty() || !briefedBuilds.isEmpty()) {
-            String observerSeatFile = Optional.ofNullable(getStringParam(call.getArguments(), "observerSeatFile")).filter(file -> !file.isBlank())
-                .or(() -> observerBeside(getStringParam(call.getArguments(), "seatFile")))
-                .orElse(null);
-            Observer.BatchJudge judge = observerSeatFile == null
-                ? null
-                : hiredJudge(observerSeatFile.trim(), landsIn, endpoint, base, call.getServing().map(org.jawata.mcp.models.CallerIdentity::id));
+            Observer.BatchJudge judge = observerJudgeOf(call, landsIn, endpoint, base);
             data.put("instructionScore", named
                 ? instructionScore(landsIn, instructionsFrom.trim(), proposal.outcome(), engine, effects.notOffered(), judge, notTestFirst)
                 : briefScore(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""), briefed, proposal.outcome(), engine,
@@ -909,6 +904,16 @@ public class HireTool extends NeutralTool {
         } else if (declaredTree.tree().roleOf(hired).filter(SeatTree.Role.WORKER::equals).isPresent()) {
             // 28h-C26-11: a worker briefed in prose is not scored, and says so, so the lead's report does not read as "nothing to report".
             data.put("instructionScore", org.jawata.mcp.execution.HireReport.notChecked());
+        }
+        // Stage 27 (z2): a lead edits no code. Its brain may keep an editor of its own (Cursor's agent runs in its normal mode, which is what
+        // keeps `hire` for it), so what it wrote outside the documents is read from its own stream and goes to the observer, once, and to the
+        // hirer in this answer. Nothing is put back: a revert could not tell the brain's edit from the person's own.
+        if (declaredTree.tree().isLead(hired)) {
+            List<Observer.Flag> ownWrites = org.jawata.mcp.execution.OwnWrites.flags(proposal.outcome().toolCalls());
+            if (!ownWrites.isEmpty()) {
+                data.put("ownWrites", observedOf(Observer.observe(List.of(), proposal.outcome().toolCalls(),
+                    bare -> engine.getTool(bare).map(Tool::changesCode), ownWrites, observerJudgeOf(call, landsIn, endpoint, base))));
+            }
         }
         data.put("shellCalls", effects.shell());
         // Stage 27 (o): how the run used jawata, for the card Agent Control draws. Not observed when calls were counted and none named.
@@ -1157,12 +1162,30 @@ public class HireTool extends NeutralTool {
         // listed as unjudged, never dropped.
         // Stage 27 (z1): the judge is asked ONCE about this whole run, over every flag the rules raised, and not once per flag.
         Observer.Observation seen = Observer.observe(issued, made, bare -> engine.getTool(bare).map(Tool::changesCode), more, judge);
+        score.put("observer", observedOf(seen));
+        return s;
+    }
+
+    /** What one observation found, as the answer carries it: the flags, the corrections by instruction number and the flags nobody judged. */
+    private static Map<String, Object> observedOf(Observer.Observation seen) {
         Map<String, Object> observed = new LinkedHashMap<>();
         observed.put("flagged", seen.flagged().stream().map(f -> Map.of("instruction", f.instruction(), "why", f.why())).toList());
         observed.put("corrections", seen.corrections().stream().map(c -> Map.of("instruction", c.instruction(), "text", c.text())).toList());
         observed.put("unjudged", seen.unjudged().stream().map(f -> Map.of("instruction", f.instruction(), "why", f.why())).toList());
-        score.put("observer", observed);
-        return s;
+        return observed;
+    }
+
+    /**
+     * The judge of the observer seat that sits beside the hired seat's own file, or null when there is none or it is switched off: the flags
+     * of a run are then listed as unjudged and not as clear.
+     */
+    private Observer.BatchJudge observerJudgeOf(HireCall call, LearnerEventStore landsIn, SelfEndpoint endpoint, HireSite base) {
+        String observerSeatFile = Optional.ofNullable(getStringParam(call.getArguments(), "observerSeatFile")).filter(file -> !file.isBlank())
+            .or(() -> observerBeside(getStringParam(call.getArguments(), "seatFile")))
+            .orElse(null);
+        return observerSeatFile == null
+            ? null
+            : hiredJudge(observerSeatFile.trim(), landsIn, endpoint, base, call.getServing().map(org.jawata.mcp.models.CallerIdentity::id));
     }
 
     /**

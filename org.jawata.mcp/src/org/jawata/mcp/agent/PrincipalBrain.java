@@ -16,6 +16,7 @@ import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.Hirer;
+import org.jawata.mcp.execution.OwnWrites;
 import org.jawata.mcp.execution.ScheduledHires;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatPrompts;
@@ -88,6 +89,9 @@ public final class PrincipalBrain implements AgentBrain {
     private Optional<String> preferredModel = Optional.empty();
     /** Pictures that go with the next prompt. */
     private volatile List<JsonNode> images = List.of();
+
+    /** The correction for an own write of the main seat, owed to its brain at its next prompt (28h Stage 27 (z2)); empty when none is owed. */
+    private volatile String owedCorrection = "";
     /** What has been said, so a brain the person moves the principal onto knows the conversation (D53 (i)). */
     private final StringBuilder transcript = new StringBuilder();
     private static final int TRANSCRIPT_LIMIT = 60_000;
@@ -244,7 +248,9 @@ public final class PrincipalBrain implements AgentBrain {
             });
             turnRunning = true;
             try {
-                outcome = brain.prompt(opening(prompt), pictures, ceilings,
+                String owed = owedCorrection;
+                owedCorrection = "";
+                outcome = brain.prompt(opening(owed.isEmpty() ? prompt : owed + "\n\n" + prompt), pictures, ceilings,
                     piece -> {
                         streamed[0] = true;
                         chunks.accept(piece);
@@ -266,6 +272,14 @@ public final class PrincipalBrain implements AgentBrain {
             chunks.accept("The brain did not open a session" + (refusal.isBlank() ? ". Is it installed and signed in?" : ": " + refusal));
         }
         remember(prompt, outcome.text());
+        // 28h Stage 27 (z2): the main seat edits no code. Its brain keeps an editor of its own (Cursor's agent runs in its normal mode, which keeps
+        // `hire` for it), so what it wrote outside the documents is read from its stream: the person sees the correction in the chat, and the
+        // brain is told it at its next turn. Nothing is put back, because a revert cannot tell the brain's edit from the person's own.
+        String correction = OwnWrites.correction(OwnWrites.flags(outcome.toolCalls()));
+        if (!correction.isEmpty()) {
+            chunks.accept("\n\n" + correction);
+            owedCorrection = correction;
+        }
         synchronized (records) {
             records.add(new HireRecord("main", program.get().command(), outcome.brainSessionId(), outcome.toolSteps(), outcome.clean(),
                 outcome.stoppedBy(), Duration.ofNanos(System.nanoTime() - started), vendorOf(program.get().command())));

@@ -92,11 +92,11 @@ class AcpBrainSessionTest {
     }
 
     @Test
-    @DisplayName("28h D57 (j): a brain whose own tools are withheld and that offers a read-only 'ask' mode, as Cursor's agent does, is moved into it")
-    void aWithheldBrainIsMovedIntoItsReadOnlyMode() throws Exception {
+    @DisplayName("28h Stage 27 (z2): a brain whose own tools are withheld stays in its normal mode although it offers a read-only 'ask' mode, as Cursor's agent does, because 'ask' hides the jawata tools and with them hire")
+    void aWithheldBrainStaysInItsNormalMode() throws Exception {
         agent = new AcpBrainSession.Program(agent.command(), Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_MODES", "agent,plan,ask"));
 
-        assertEquals("ask", converse("WHICHMODE", List.of(), AcpBrainSession.OwnTools.WITHHELD));
+        assertEquals("agent", converse("WHICHMODE", List.of(), AcpBrainSession.OwnTools.WITHHELD), "a lead was moved into a mode that hides hire");
         assertEquals("agent", converse("WHICHMODE", List.of(), AcpBrainSession.OwnTools.KEPT), "CONTROL: a brain keeping its tools was moved");
     }
 
