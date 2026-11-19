@@ -545,7 +545,10 @@ public class JawataEngine {
 			} catch (java.io.IOException e) {
 				log.error("The default access policy could not be written to {}: calls naming a place are refused until it exists", policy, e);
 			}
-			org.jawata.mcp.access.AccessFolders onDisk = new org.jawata.mcp.access.AccessFolders();
+			// His word 2026-11-20: the editor window's folders are covered whichever started first. The studio writes them into the workspace's
+			// folder (beside workspace.json) every time the editor starts or its folders change, and they are read from there on every call.
+			org.jawata.mcp.access.AccessFolders onDisk = new org.jawata.mcp.access.AccessFolders(
+					this.host().directories().workspaceRoot().map(root -> root.resolve("editor-folders.txt")).orElse(null));
 			this.getToolRegistry().setAccessCheck(new org.jawata.mcp.access.AccessCheck(policy,
 					session -> {
 						java.util.List<java.nio.file.Path> loaded = ports.workspace().get().projects().stream().map(project -> project.root()).toList();

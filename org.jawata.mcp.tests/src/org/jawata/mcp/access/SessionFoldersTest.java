@@ -109,14 +109,14 @@ class SessionFoldersTest {
     }
 
     @Test
-    @DisplayName("(p): naming a folder never widens: a hire told to work outside both workspaces is refused everything the workspace entry allows")
-    void aFolderOutsideBothWorkspacesAllowsNothing() throws IOException {
+    @DisplayName("(p), his ruling \"always the union of the VSCode workspace and the jawata workspace\": naming a folder never widens, so a hire told to work outside both is refused that folder, and it still has the whole workspace (audit 2026-11-20: it had none)")
+    void aFolderOutsideBothWorkspacesIsRefusedAndTheWorkspaceStays() throws IOException {
         Path elsewhere = Files.createDirectories(root.resolve("elsewhere"));
         try (SessionFolders.Binding ignored = folders.bind("hire-1", elsewhere)) {
             assertAll(
                 () -> assertFalse(refusalFor("hire-1", elsewhere.resolve("E.java")).isEmpty(), "the unlisted folder itself was let through"),
-                () -> assertFalse(refusalFor("hire-1", alpha.resolve("A.java")).isEmpty(), "a bound session with no workspace was given a project"),
-                () -> assertFalse(refusalFor("hire-1", docs.resolve("plan.md")).isEmpty(), "a bound session with no workspace was given the editor's folder"));
+                () -> assertEquals("", refusalFor("hire-1", alpha.resolve("A.java")), "a hire bound outside lost the workspace's project"),
+                () -> assertEquals("", refusalFor("hire-1", docs.resolve("plan.md")), "a hire bound outside lost the editor's folder"));
         }
     }
 
