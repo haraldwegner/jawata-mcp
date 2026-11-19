@@ -2873,7 +2873,7 @@
         "type": "object"
        },
        "expect": {
-        "description": "Optional. What a gate must find: {\"matches\": N} for a search, or {\"changed\": true} (false) for a lookup of kind git_diff that must show a change (none).",
+        "description": "Optional. What a gate must find: {\"matches\": N} for a search, or {\"changed\": true} (false) for a lookup of kind git_diff, nothing else, that must show a change (none): a diff shows the unstaged changes of tracked files, so a new file or a staged change reads as no change.",
         "type": "object"
        },
        "tool": {

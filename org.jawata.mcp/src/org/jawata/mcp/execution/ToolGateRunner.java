@@ -131,6 +131,11 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
         // read is unanswered, never a pass: what it asked about was not told.
         JsonNode changedStated = step.expect() == null ? null : step.expect().path("changed");
         if (changedStated != null && changedStated.isBoolean()) {
+            // Only a git_diff is a look at a change: a git_status always carries its branch line, so it would read as changed whatever the tree
+            // held, and a gate that checks nothing passes silently. A diff shows the unstaged changes of tracked files and nothing else.
+            if (!"lookup".equals(step.tool()) || !"git_diff".equals(step.gateArguments().path("kind").asText(""))) {
+                return didNotAnswer(step, "a step that states whether something changed is a lookup of kind git_diff and nothing else");
+            }
             if (response.getData() instanceof java.util.Map<?, ?> data && data.get("output") instanceof String text) {
                 boolean changed = !text.isBlank();
                 return new GateOutcome(step.tool(), step.gateArguments(), changed == changedStated.asBoolean() ? 0 : 1, true);

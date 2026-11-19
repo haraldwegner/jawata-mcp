@@ -91,7 +91,12 @@ class ToolGateRunnerExpectsTest {
             () -> assertEquals(0, new ToolGateRunner(answering(nothing)).run(new GatedStep(0, "lookup", lookup, unchanged)).errorCount(), "an unchanged tree was refused for a step that said nothing may change"),
             () -> assertTrue(new ToolGateRunner(answering(diff)).run(new GatedStep(0, "lookup", lookup, unchanged)).errorCount() > 0, "a changed tree passed a step that said nothing may change"),
             () -> assertFalse(new ToolGateRunner(answering(Map.of("errorCount", 0))).run(new GatedStep(0, "lookup", lookup, changed)).succeeded(),
-                "an answer with no text to read a change from was taken as an answer to whether the tree changed"));
+                "an answer with no text to read a change from was taken as an answer to whether the tree changed"),
+            () -> assertFalse(new ToolGateRunner(answering(Map.of("output", "## main...origin/main\n", "truncated", false)))
+                    .run(new GatedStep(0, "lookup", JSON.createObjectNode().put("kind", "git_status"), changed)).succeeded(),
+                "THE CLAIM: a git_status, whose text always has its branch line, was read as a change"),
+            () -> assertFalse(new ToolGateRunner(answering(diff)).run(new GatedStep(0, "files", lookup, changed)).succeeded(),
+                "a tool that is not the lookup tool was read as telling whether the tree changed"));
     }
 
     @Test
