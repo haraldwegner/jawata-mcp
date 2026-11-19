@@ -314,6 +314,11 @@ class AgentHistoryTest {
 
         assertEquals("done", cards.get(cards.size() - 1).path("_meta").path("jawata/hire").path("state").asText(),
             "the reloaded card does not say how the hire ended: " + cards);
+        // the record of how it ended is the card and nothing said by anyone: no line of it comes back as the person's words or the agent's
+        assertTrue(later.said.stream().map(m -> m.path("params").path("update"))
+                .filter(u -> u.path("sessionUpdate").asText().endsWith("_message_chunk"))
+                .noneMatch(u -> u.path("content").path("text").asText().contains("ended")),
+            "the reloaded session shows the engine's record line as something said: " + later.said);
     }
 
     /** A brain that hires once in its first turn and, in its second, hires again naming the first hire's plan in {@code fixes}. */

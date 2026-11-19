@@ -606,9 +606,8 @@ public final class AcpServer {
             // turn's own line holds the card as that turn last saw it, which a session loaded later replays as failed (28h-C27-7).
             HireEntry ended = seen.entry();
             if (!HireEntry.RUNNING.equals(ended.state()) && !HireEntry.COMPACTING.equals(ended.state())) {
-                recorder.record(AgentRecorder.Level.HIRED, session, "ended_" + ended.planId(),
-                    "The hire of " + ended.seat() + " (" + ended.planId() + ") ended: " + ended.state(),
-                    "Recorded how the hire of " + ended.seat() + " ended: " + ended.state(), List.of(ended.cardLine()));
+                // Nobody said anything: the line is the card alone, so a session loaded later shows no words as the person's or the agent's.
+                recorder.record(AgentRecorder.Level.HIRED, session, "ended_" + ended.planId(), "", "", List.of(ended.cardLine()));
             }
         });
         // A hire the session's own brain started in the background reports back to that brain as a new turn. A hire of a lead that is still running
