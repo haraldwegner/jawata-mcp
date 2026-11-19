@@ -28,9 +28,33 @@ public final class OwnWrites {
     /** The kinds among them that are no text: a picture or a binary document, which the files tool, whose content is a text, cannot write. */
     private static final java.util.Set<String> BINARY_ENDINGS = java.util.Set.of("png", "jpg", "jpeg", "gif", "webp", "pdf");
 
+    /** The files an agent is told its rules by, and the folders they live in: a document in any of them changes what a seat or a hire may do. */
+    private static final java.util.Set<String> INSTRUCTION_FILES = java.util.Set.of("claude.md", "agents.md", "skill.md", "copilot-instructions.md",
+        ".cursorrules", ".windsurfrules");
+
+    private static final java.util.Set<String> INSTRUCTION_FOLDERS = java.util.Set.of(".claude", ".cursor", ".codex", ".github", "seats");
+
+    /**
+     * Whether this path is one an agent takes its instructions from, by its file name or any folder on its way. Such a file is not a document a
+     * lead may write whatever its ending: a lead that could change it could widen what a hire may do (C27-24: a lead's own editor could write
+     * CLAUDE.md, because it ends in .md).
+     */
+    public static boolean tellsAnAgentWhatItMayDo(String path) {
+        String[] parts = path.replace('\\', '/').split("/");
+        if (parts.length > 0 && INSTRUCTION_FILES.contains(parts[parts.length - 1].toLowerCase(java.util.Locale.ROOT))) {
+            return true;
+        }
+        for (String part : parts) {
+            if (INSTRUCTION_FOLDERS.contains(part.toLowerCase(java.util.Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Whether a path is a document, a data file or a picture, which the main seat and a lead may write, and not code. */
     public static boolean isDocument(String path) {
-        return DOCUMENT_ENDINGS.contains(endingOf(path));
+        return DOCUMENT_ENDINGS.contains(endingOf(path)) && !tellsAnAgentWhatItMayDo(path);
     }
 
     /** Whether a path is a document of the kinds above that is a text: the ones the files tool writes and edits. */

@@ -186,6 +186,11 @@ class TestFirstTest {
             () -> assertTrue(TestFirst.isTestPath("/w/crate/tests/foo.rs")),
             () -> assertTrue(TestFirst.isTestPath("/w/crate/src/foo_test.rs")),
             () -> assertTrue(TestFirst.isTestPath("/w/py/test_foo.py")),
+            // C27-24: a fixture a test reads is test material, though it carries no test name (the fake agent of the engine's own tests)
+            () -> assertTrue(TestFirst.isTestPath("/w/org.jawata.mcp.tests/test-resources/acp/FakeAcpAgent.java.txt")),
+            () -> assertTrue(TestFirst.isTestPath("/w/app/src/test-fixtures/Sample.java")),
+            () -> assertTrue(TestFirst.isTestPath("/w/app/testdata/input.json")),
+            () -> assertFalse(TestFirst.isTestPath("/w/app/src/testing/Foo.java")),
             () -> assertFalse(TestFirst.isTestPath("/w/a/Foo.java")),
             () -> assertFalse(TestFirst.isTestPath("/w/a/Latest.java")),
             () -> assertFalse(TestFirst.isTestPath("/w/a/Contest.java")),

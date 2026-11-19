@@ -52,6 +52,19 @@ class OwnWritesTest {
     }
 
     @Test
+    @DisplayName("C27-24: a document that tells an agent what it may do (its instructions, a seat, a skill) is not one a lead may write, though it ends in .md, and a text document beside it is")
+    void aDocumentThatConfiguresAnAgentIsCode() {
+        List<String> instructions = List.of("/w/CLAUDE.md", "/w/AGENTS.md", "/w/x/SKILL.md", "/w/.claude/skills/x/notes.md", "/w/.cursor/rules/r.md",
+            "/w/seats/main.md", "/w/.github/copilot-instructions.md", "/w/jawata-studio/seats/pm.md");
+        assertAll(
+            () -> instructions.forEach(path -> assertTrue(!OwnWrites.isDocument(path), path + " was taken for a document")),
+            () -> assertEquals(instructions.size(), OwnWrites.flags(instructions.stream().map(path -> write("Edit", path)).toList()).size(),
+                "an edit of an instruction file by a lead's own editor was not flagged"),
+            () -> assertTrue(OwnWrites.isDocument("/w/docs/plan.md") && OwnWrites.isTextDocument("/w/docs/table.csv")),
+            () -> assertTrue(OwnWrites.isDocument("/w/shot.png") && !OwnWrites.isTextDocument("/w/shot.png")));
+    }
+
+    @Test
     @DisplayName("the correction names each file and carries the rule in the words the seats carry, and is empty when nothing was flagged")
     void theCorrectionNamesTheFilesAndTheRule() {
         String correction = OwnWrites.correction(OwnWrites.flags(List.of(write("Edit", "/w/org/x/Foo.java"), write("Write", "/w/a.rs"))));

@@ -121,8 +121,10 @@ public final class TestFirst {
         String[] segments = path.replace('\\', '/').split("/");
         for (int i = 0; i < segments.length - 1; i++) {
             String folder = segments[i];
+            // a folder of fixtures is test material too (C27-24): a file there is read by a test, and is no production code
             if (folder.equals("test") || folder.equals("tests") || folder.equals("__tests__")
-                    || folder.endsWith(".tests") || folder.endsWith(".test")) {
+                    || folder.endsWith(".tests") || folder.endsWith(".test")
+                    || folder.startsWith("test-") || folder.equals("testdata") || folder.equals("fixtures") || folder.equals("__fixtures__")) {
                 return true;
             }
         }
