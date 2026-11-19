@@ -64,6 +64,20 @@ class FilesToolTest {
     }
 
     @Test
+    @DisplayName("C27-24, his word 2026-11-19 (\"pictures, csv, websites\"): a text document of the kinds the main seat and a lead may write is written here as well as a .md, the same kinds OwnWrites names, while a picture, which a text cannot be, and code are refused")
+    void dataAndWebDocumentsAreWrittenAndCodeAndPicturesAreNot(@TempDir Path folder) throws Exception {
+        for (String name : List.of("table.csv", "notes.txt", "page.html", "style.css", "figure.svg")) {
+            data(call("write", Map.of("path", folder.resolve(name).toString(), "content", "x")));
+            assertTrue(Files.exists(folder.resolve(name)), name + " was refused though a lead may write it");
+            assertTrue(call("edit", Map.of("path", folder.resolve(name).toString(), "oldText", "x", "newText", "y")).isSuccess(), name + " was written but not edited");
+        }
+        for (String name : List.of("shot.png", "paper.pdf", "Foo.java", "build.gradle", "run.sh")) {
+            assertFalse(call("write", Map.of("path", folder.resolve(name).toString(), "content", "x")).isSuccess(), name + " was written");
+            assertFalse(Files.exists(folder.resolve(name)), name + " exists after the refusal");
+        }
+    }
+
+    @Test
     @DisplayName("28h C26 (architect finding 20): a document that tells an agent what it may do is refused, though it is a .md, and an ordinary one beside it is written")
     void aDocumentThatConfiguresAnAgentIsRefused(@TempDir Path folder) throws Exception {
         for (String name : List.of("CLAUDE.md", "AGENTS.md", "SKILL.md", ".claude/skills/x/skill.md", ".cursor/rules/r.md", "seats/main.md",

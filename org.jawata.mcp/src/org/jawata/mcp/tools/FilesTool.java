@@ -46,7 +46,7 @@ public final class FilesTool implements Tool {
     @Override
     public String getDescription() {
         return """
-            Read any file, search the files under a folder, and write or edit a document (.md). Writes nothing else.
+            Read any file, search the files under a folder, and write or edit a text document (.md, .csv, .txt, .html and the like). Writes nothing else.
 
             USAGE: files(action="read",   path="/abs/file" [, offset=0] [, limit=2000])
                    files(action="search", folder="/abs/folder", pattern="<Java regex>" [, glob="*.java"] [, maxResults=200])
@@ -55,13 +55,14 @@ public final class FilesTool implements Tool {
 
             edit replaces ONE exact passage of an existing document and leaves the rest as it was: oldText must occur exactly once, so a passage
             found twice or not at all is refused and nothing is written, and an empty one is refused. It answers {path, replaced: 1, bytes}.
-            It is held to the same refusals as write (only .md; never a document that tells an agent what it may do) and does not make a file.
+            It is held to the same refusals as write (only a text document; never one that tells an agent what it may do) and does not make a file.
 
             read answers {path, content, totalLines, firstLine, truncated}: lines from offset (0-based), at most limit of them.
             search answers {matches: [{path, line, text}], truncated}: line is 1-based; .git and node_modules are not searched, nor a file
             over 2 MB or one that is not text.
-            write creates the folders it needs and replaces the file; a path that does not end in .md is REFUSED and nothing is written,
-            because a seat that carries this tool and no editor changes documents and never code.
+            write creates the folders it needs and replaces the file; a path that is not a text document (a picture, code, a build or
+            configuration file) is REFUSED and nothing is written, because a seat that carries this tool and no editor changes documents and
+            never code. The kinds are the ones the main seat and a lead may write, named once in the engine.
             """;
     }
 
@@ -197,8 +198,8 @@ public final class FilesTool implements Tool {
         if (given.isBlank() || !arguments.has("content")) {
             return ToolResponse.invalidParameter(given.isBlank() ? "path" : "content", "write needs the document's path and its content");
         }
-        if (!given.toLowerCase(Locale.ROOT).endsWith(".md")) {
-            return ToolResponse.invalidParameter("path", "only a document (.md) is written here, not " + given
+        if (!org.jawata.mcp.execution.OwnWrites.isTextDocument(given)) {
+            return ToolResponse.invalidParameter("path", "only a text document (.md, .csv, .txt, .html and the like) is written here, not " + given
                 + ": code and every other file are changed by a seat that changes code, through a hire", "NOT_A_DOCUMENT");
         }
         Path path = Path.of(given);
@@ -228,8 +229,8 @@ public final class FilesTool implements Tool {
             return ToolResponse.invalidParameter(given.isBlank() ? "path" : oldText.isEmpty() ? "oldText" : "newText",
                 "edit needs the document's path, the passage to replace (not empty) and what replaces it");
         }
-        if (!given.toLowerCase(Locale.ROOT).endsWith(".md")) {
-            return ToolResponse.invalidParameter("path", "only a document (.md) is edited here, not " + given
+        if (!org.jawata.mcp.execution.OwnWrites.isTextDocument(given)) {
+            return ToolResponse.invalidParameter("path", "only a text document (.md, .csv, .txt, .html and the like) is edited here, not " + given
                 + ": code and every other file are changed by a seat that changes code, through a hire", "NOT_A_DOCUMENT");
         }
         Path path = Path.of(given);

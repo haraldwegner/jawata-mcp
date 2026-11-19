@@ -25,11 +25,24 @@ public final class OwnWrites {
     private OwnWrites() {
     }
 
+    /** The kinds among them that are no text: a picture or a binary document, which the files tool, whose content is a text, cannot write. */
+    private static final java.util.Set<String> BINARY_ENDINGS = java.util.Set.of("png", "jpg", "jpeg", "gif", "webp", "pdf");
+
     /** Whether a path is a document, a data file or a picture, which the main seat and a lead may write, and not code. */
     public static boolean isDocument(String path) {
+        return DOCUMENT_ENDINGS.contains(endingOf(path));
+    }
+
+    /** Whether a path is a document of the kinds above that is a text: the ones the files tool writes and edits. */
+    public static boolean isTextDocument(String path) {
+        return isDocument(path) && !BINARY_ENDINGS.contains(endingOf(path));
+    }
+
+    /** The ending of a file's name in lower case, or empty when it has none (a dot that starts the name is no ending). */
+    private static String endingOf(String path) {
         int dot = path.lastIndexOf('.');
         int slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
-        return dot > slash + 1 && DOCUMENT_ENDINGS.contains(path.substring(dot + 1).toLowerCase(java.util.Locale.ROOT));
+        return dot > slash + 1 ? path.substring(dot + 1).toLowerCase(java.util.Locale.ROOT) : "";
     }
 
     /** One flag, against no instruction, for each write the brain's own editor made to a file that is not a document. */
