@@ -229,7 +229,7 @@ public final class FqnResolver {
         return found.stream().findFirst();
     }
 
-    private static Optional<IType> resolveType(String typeFqn, List<IJavaProject> projects) {
+    static Optional<IType> resolveType(String typeFqn, List<IJavaProject> projects) {
         List<IType> found = new ArrayList<>();
         for (IJavaProject jp : projects) {
             try {

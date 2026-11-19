@@ -173,6 +173,8 @@ public class FakeAcpAgent {
             chunk(session, java.nio.file.Path.of("").toAbsolutePath().toString());
         } else if (text.contains("ASKGREETING")) {
             chunk(session, text.contains("answered at once") ? "told" : "not told");
+        } else if (text.contains("ASKCORRECTION")) {
+            chunk(session, text.contains("Do not edit code, but hire") ? "told" : "not told");
         } else if (text.contains("WHICHPROCESS")) {
             chunk(session, String.valueOf(ProcessHandle.current().pid()));
         } else if (text.contains("ASKSTANCE")) {
@@ -279,6 +281,14 @@ public class FakeAcpAgent {
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"w1\",\"status\":\"completed\"}}}");
             chunk(session, "written");
+        } else if (text.startsWith("CURSORNEWFILE")) {
+            // Cursor's agent creating a file: as CURSOREDIT, but the diff of the completed call has no old text (architect watch of C27).
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"n1\",\"title\":\"Edit File\",\"kind\":\"edit\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"n1\",\"status\":\"completed\",\"content\":[{\"type\":\"diff\","
+                + "\"path\":\"/p/src/New.java\",\"oldText\":null,\"newText\":\"class New {}\\n\"}]}}}");
+            chunk(session, "created");
         } else if (text.startsWith("CURSOREDIT")) {
             // As Cursor's agent sends an edit of its own (measured 2026-11-17, 28h D57 (d)): opened with no input, then only the path,
             // and the replacement itself only as the diff of the completed call.

@@ -1077,7 +1077,9 @@ public class HireTool extends NeutralTool {
             return score;
         }
         List<Instructions.Instruction> issued = Instructions.fromRows(detail.path("instructions"));
-        if (issued.isEmpty()) {
+        // C27 audit: an issuer that only asked for behaviour to be built has nothing the worker could have run as written, and what the worker
+        // did against its BUILD instruction is still read and judged, so only a run with neither has nothing to say.
+        if (issued.isEmpty() && more.isEmpty()) {
             score.put("computable", false);
             score.put("because", "the issuer's answer carried no INSTRUCTION block, so there is nothing to have run as written");
             return score;

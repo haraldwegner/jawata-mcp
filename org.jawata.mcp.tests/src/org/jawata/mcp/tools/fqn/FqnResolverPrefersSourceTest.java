@@ -42,4 +42,24 @@ class FqnResolverPrefersSourceTest {
             () -> assertSame(stub, FqnResolver.preferringSource(List.of(stub)).orElseThrow(), "a type only a jar holds is still found"),
             () -> assertTrue(FqnResolver.preferringSource(List.of()).isEmpty(), "a name nobody holds was found"));
     }
+
+    private static org.eclipse.jdt.core.IJavaProject holding(IType held) {
+        return (org.eclipse.jdt.core.IJavaProject) Proxy.newProxyInstance(IType.class.getClassLoader(),
+            new Class<?>[] {org.eclipse.jdt.core.IJavaProject.class}, (proxy, method, args) -> switch (method.getName()) {
+                case "findType" -> held;
+                case "hashCode" -> System.identityHashCode(proxy);
+                case "equals" -> proxy == args[0];
+                default -> null;
+            });
+    }
+
+    @Test
+    @DisplayName("C27 audit: the resolver's own entry point, not only its helper, takes the source of a type two projects hold when the project with the jar's stub is listed first")
+    void theResolverTakesTheSourceWhenTheStubsProjectIsFirst() {
+        IType stub = type(true);
+        IType source = type(false);
+
+        assertSame(source, FqnResolver.resolveType("org.demo.Observer", List.of(holding(stub), holding(source))).orElseThrow(),
+            "the project that holds only the jar's stub was asked first and answered");
+    }
 }

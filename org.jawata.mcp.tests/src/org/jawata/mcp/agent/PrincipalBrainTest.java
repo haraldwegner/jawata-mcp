@@ -94,6 +94,26 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("C27 audit (z2): the correction of an own code edit is also told to the brain at its next turn, once, and a document edit leaves nothing to tell")
+    void theOwedCorrectionIsToldToTheBrainAtItsNextTurn() throws Exception {
+        PrincipalBrain brain = brain(Optional.of(fake));
+        try {
+            ask(brain, "OWNEDIT:/p/Foo.java", new ArrayList<>());
+            String next = ask(brain, "ASKCORRECTION", new ArrayList<>());
+            String after = ask(brain, "ASKCORRECTION", new ArrayList<>());
+            ask(brain, "OWNEDIT:/p/notes.md", new ArrayList<>());
+            String document = ask(brain, "ASKCORRECTION", new ArrayList<>());
+
+            assertAll(
+                () -> assertEquals("told", next, "the brain was not told at its next turn: " + next),
+                () -> assertEquals("not told", after, "the correction was told twice: " + after),
+                () -> assertEquals("not told", document, "a document edit left a correction owed: " + document));
+        } finally {
+            brain.close();
+        }
+    }
+
+    @Test
     @DisplayName("the person's stop reaches the brain, whose reply ends the turn that an interrupt cannot end (D53 (f))")
     void aStopEndsTheTurnThroughTheBrain() throws Exception {
         PrincipalBrain brain = brain(Optional.of(fake));

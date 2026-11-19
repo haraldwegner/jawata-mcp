@@ -1,5 +1,6 @@
 package org.jawata.mcp.execution;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -28,13 +29,19 @@ public final class TestFirst {
     }
 
     /** The argument names the brains' editors give the file they write. */
-    private static final List<String> FILE_ARGUMENTS = List.of("file_path", "filePath", "path");
+    private static final List<String> FILE_ARGUMENTS = List.of("file_path", "filePath", "path", "notebook_path");
 
     private TestFirst() {
     }
 
-    /** What is wrong with the order in which a worker wrote tests, ran them and wrote production code; empty when it is right. */
-    public static List<String> violations(List<ToolCall> made, List<Run> runs) {
+    /**
+     * What is wrong with the order in which a worker wrote tests, ran them and wrote production code; empty when it is right. Each new test the
+     * worker writes asks for its own red, so a second behaviour is held to the order the first was.
+     *
+     * @param root the folder the worker ran in, or null when it is not known: the folders that mark a test are read below it, so a project
+     *             that lives under a folder named {@code test} still has production code
+     */
+    public static List<String> violations(List<ToolCall> made, List<Run> runs, Path root) {
         List<String> violations = new ArrayList<>();
         int runIndex = 0;
         boolean redSeen = false;
@@ -59,8 +66,12 @@ public final class TestFirst {
                 continue;
             }
             Optional<String> written = writtenFile(call);
-            testWritten |= written.filter(TestFirst::isTestPath).isPresent();
-            Optional<String> file = written.filter(path -> !isTestPath(path) && !path.endsWith(".md"));
+            if (written.filter(path -> isTestPath(below(path, root))).isPresent()) {
+                testWritten = true;
+                redSeen = false;
+                continue;
+            }
+            Optional<String> file = written.filter(path -> !path.endsWith(".md"));
             if (file.isEmpty()) {
                 continue;
             }
@@ -88,6 +99,20 @@ public final class TestFirst {
                 + lastProductionFile + ")");
         }
         return List.copyOf(violations);
+    }
+
+    /** The path below the worker's folder when it lies in it, else as it was named. */
+    private static String below(String path, Path root) {
+        if (root == null) {
+            return path;
+        }
+        try {
+            Path named = Path.of(path);
+            Path base = root.toAbsolutePath().normalize();
+            return named.isAbsolute() && named.normalize().startsWith(base) ? base.relativize(named.normalize()).toString() : path;
+        } catch (java.nio.file.InvalidPathException unusual) {
+            return path;
+        }
     }
 
     /** Whether the path is a test file: by the folder or the name the languages of this project give test code. */

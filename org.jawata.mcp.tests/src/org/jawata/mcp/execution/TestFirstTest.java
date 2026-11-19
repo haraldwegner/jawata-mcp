@@ -45,7 +45,7 @@ class TestFirstTest {
     @Test
     @DisplayName("a test written, seen failing, then the production code, then a passing run, has nothing to say")
     void redThenGreenIsRight() {
-        List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION), runTests()), List.of(Run.RED, Run.GREEN));
+        List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION), runTests()), List.of(Run.RED, Run.GREEN), null);
 
         assertTrue(violations.isEmpty(), "the right order was refused: " + violations);
     }
@@ -53,7 +53,7 @@ class TestFirstTest {
     @Test
     @DisplayName("production code written before any test was seen failing is named, with the file and the call")
     void productionBeforeRedIsNamed() {
-        List<String> violations = TestFirst.violations(List.of(edit(PRODUCTION), write(TEST), runTests(), runTests()), List.of(Run.RED, Run.GREEN));
+        List<String> violations = TestFirst.violations(List.of(edit(PRODUCTION), write(TEST), runTests(), runTests()), List.of(Run.RED, Run.GREEN), null);
 
         assertAll(
             () -> assertEquals(1, violations.size(), violations.toString()),
@@ -65,7 +65,7 @@ class TestFirstTest {
     @Test
     @DisplayName("a run that ran no test (a compile error) is not a red, so the production code after it is named")
     void aCompileErrorIsNotARed() {
-        List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION), runTests()), List.of(Run.NOT_RUN, Run.GREEN));
+        List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION), runTests()), List.of(Run.NOT_RUN, Run.GREEN), null);
 
         assertTrue(violations.stream().anyMatch(v -> v.contains("before a test was seen failing")), violations.toString());
     }
@@ -73,7 +73,7 @@ class TestFirstTest {
     @Test
     @DisplayName("a test that passed before the production code was written was never seen failing, so the production code is named")
     void aTestThatPassedFirstIsNotARed() {
-        List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION), runTests()), List.of(Run.GREEN, Run.GREEN));
+        List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION), runTests()), List.of(Run.GREEN, Run.GREEN), null);
 
         assertTrue(violations.stream().anyMatch(v -> v.contains("before a test was seen failing")), violations.toString());
     }
@@ -82,7 +82,7 @@ class TestFirstTest {
     @DisplayName("live (z5): a stub written after the test that makes the next run fail for the behaviour is the way to a red where no tool adds the empty method, and is not named")
     void aStubAfterTheTestThatTheNextRunFailsOnIsNotNamed() {
         List<String> violations = TestFirst.violations(
-            List.of(write(TEST), edit(PRODUCTION), runTests(), edit(PRODUCTION), runTests()), List.of(Run.RED, Run.GREEN));
+            List.of(write(TEST), edit(PRODUCTION), runTests(), edit(PRODUCTION), runTests()), List.of(Run.RED, Run.GREEN), null);
 
         assertTrue(violations.isEmpty(), "the stub the live developer needed was refused: " + violations);
     }
@@ -90,8 +90,8 @@ class TestFirstTest {
     @Test
     @DisplayName("production code written after the test but followed by a passing run, or by no run, was never seen failing and is named")
     void productionAfterTheTestIsNamedWhenNoRedFollowsIt() {
-        List<String> passing = TestFirst.violations(List.of(write(TEST), edit(PRODUCTION), runTests()), List.of(Run.GREEN));
-        List<String> unrun = TestFirst.violations(List.of(write(TEST), edit(PRODUCTION)), List.of());
+        List<String> passing = TestFirst.violations(List.of(write(TEST), edit(PRODUCTION), runTests()), List.of(Run.GREEN), null);
+        List<String> unrun = TestFirst.violations(List.of(write(TEST), edit(PRODUCTION)), List.of(), null);
 
         assertAll(
             () -> assertTrue(passing.stream().anyMatch(v -> v.contains("before a test was seen failing") && v.contains("call 2")), passing.toString()),
@@ -99,9 +99,37 @@ class TestFirstTest {
     }
 
     @Test
+    @DisplayName("C27 audit: a project that lives under a folder named test still has production code, because the folders are read below the worker's own folder")
+    void aProjectUnderATestFolderStillHasProductionCode() {
+        java.nio.file.Path root = java.nio.file.Path.of("/w/test/proj");
+
+        List<String> production = TestFirst.violations(List.of(edit("/w/test/proj/src/Foo.java"), runTests()), List.of(Run.RED), root);
+        List<String> tests = TestFirst.violations(List.of(write("/w/test/proj/src/test/FooTest.java"), runTests()), List.of(Run.RED), root);
+
+        assertAll(
+            () -> assertTrue(production.stream().anyMatch(v -> v.contains("before a test was seen failing")), production.toString()),
+            () -> assertTrue(tests.isEmpty(), "CONTROL: a test file below the worker's folder was read as production: " + tests));
+    }
+
+    @Test
+    @DisplayName("C27 audit: each new behaviour needs its own red, so production code after a second test that no new red preceded is named, and with its red it is not")
+    void aSecondBehaviourNeedsItsOwnRed() {
+        List<String> noSecondRed = TestFirst.violations(
+            List.of(write(TEST), runTests(), edit(PRODUCTION), runTests(), edit(TEST), edit(PRODUCTION), runTests()),
+            List.of(Run.RED, Run.GREEN, Run.GREEN), null);
+        List<String> withSecondRed = TestFirst.violations(
+            List.of(write(TEST), runTests(), edit(PRODUCTION), runTests(), edit(TEST), runTests(), edit(PRODUCTION), runTests()),
+            List.of(Run.RED, Run.GREEN, Run.RED, Run.GREEN), null);
+
+        assertAll(
+            () -> assertTrue(noSecondRed.stream().anyMatch(v -> v.contains("before a test was seen failing")), noSecondRed.toString()),
+            () -> assertTrue(withSecondRed.isEmpty(), "CONTROL: a second behaviour built red then green was refused: " + withSecondRed));
+    }
+
+    @Test
     @DisplayName("production code that no passing run follows is named")
     void noGreenAfterTheLastProductionChangeIsNamed() {
-        List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION)), List.of(Run.RED));
+        List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION)), List.of(Run.RED), null);
 
         assertAll(
             () -> assertEquals(1, violations.size(), violations.toString()),
@@ -112,7 +140,7 @@ class TestFirstTest {
     @DisplayName("a passing run that came before the last production change does not count for it")
     void aGreenBeforeTheLastChangeDoesNotCount() {
         List<String> violations = TestFirst.violations(
-            List.of(write(TEST), runTests(), edit(PRODUCTION), runTests(), edit(PRODUCTION)), List.of(Run.RED, Run.GREEN));
+            List.of(write(TEST), runTests(), edit(PRODUCTION), runTests(), edit(PRODUCTION)), List.of(Run.RED, Run.GREEN), null);
 
         assertTrue(violations.stream().anyMatch(v -> v.contains("no passing run")), violations.toString());
     }
@@ -120,8 +148,8 @@ class TestFirstTest {
     @Test
     @DisplayName("a document and a test file are never production code, and a run with no production change has nothing to order")
     void documentsAndTestsAreNotProduction() {
-        List<String> notes = TestFirst.violations(List.of(write("/w/docs/plan.md"), write(TEST), runTests()), List.of(Run.RED));
-        List<String> reading = TestFirst.violations(List.of(read(), runTests()), List.of(Run.GREEN));
+        List<String> notes = TestFirst.violations(List.of(write("/w/docs/plan.md"), write(TEST), runTests()), List.of(Run.RED), null);
+        List<String> reading = TestFirst.violations(List.of(read(), runTests()), List.of(Run.GREEN), null);
 
         assertAll(
             () -> assertTrue(notes.isEmpty(), notes.toString()),
@@ -131,7 +159,7 @@ class TestFirstTest {
     @Test
     @DisplayName("a run_tests call whose result was not recorded counts as no run, never as a red")
     void anUnrecordedRunIsNotARed() {
-        List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION), runTests()), List.of());
+        List<String> violations = TestFirst.violations(List.of(write(TEST), runTests(), edit(PRODUCTION), runTests()), List.of(), null);
 
         assertTrue(violations.stream().anyMatch(v -> v.contains("before a test was seen failing")), violations.toString());
     }
@@ -161,11 +189,13 @@ class TestFirstTest {
     void theWrittenFileIsRead() {
         ToolCall byPath = new ToolCall("edit", MAPPER.createObjectNode().put("path", PRODUCTION));
         ToolCall byFilePath = new ToolCall("Edit", MAPPER.createObjectNode().put("filePath", PRODUCTION));
+        ToolCall byNotebookPath = new ToolCall("NotebookEdit", MAPPER.createObjectNode().put("notebook_path", "/w/analysis.ipynb"));
 
         assertAll(
             () -> assertEquals(Optional.of(PRODUCTION), TestFirst.writtenFile(edit(PRODUCTION))),
             () -> assertEquals(Optional.of(PRODUCTION), TestFirst.writtenFile(byPath)),
             () -> assertEquals(Optional.of(PRODUCTION), TestFirst.writtenFile(byFilePath)),
+            () -> assertEquals(Optional.of("/w/analysis.ipynb"), TestFirst.writtenFile(byNotebookPath), "a notebook edit names its file notebook_path"),
             () -> assertEquals(Optional.empty(), TestFirst.writtenFile(read())),
             () -> assertEquals(Optional.empty(), TestFirst.writtenFile(runTests())));
     }

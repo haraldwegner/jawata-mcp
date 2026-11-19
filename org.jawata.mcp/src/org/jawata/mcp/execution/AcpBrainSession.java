@@ -659,11 +659,15 @@ public final class AcpBrainSession {
                         // before and after, which an Edit instruction can be compared with; an input that names the replaced text is kept.
                         if (index != null && edits.contains(index) && !toolCalls.get(index).arguments().has("old_string")) {
                             for (JsonNode shown : update.path("content")) {
-                                if ("diff".equals(shown.path("type").asText()) && shown.hasNonNull("oldText") && shown.hasNonNull("newText")) {
+                                // A file the agent CREATES has a diff with no old text (architect watch of C27): it is an edit of that file all the same.
+                                if ("diff".equals(shown.path("type").asText()) && shown.hasNonNull("newText")) {
                                     String name = java.util.Set.of("Edit", "Write", "MultiEdit").contains(toolNames.get(index)) ? toolNames.get(index) : "Edit";
                                     toolNames.set(index, name);
-                                    toolCalls.set(index, new ToolCall(name, JSON.createObjectNode().put("file_path", shown.path("path").asText(""))
-                                        .put("oldText", shown.get("oldText").asText()).put("newText", shown.get("newText").asText())));
+                                    com.fasterxml.jackson.databind.node.ObjectNode edit = JSON.createObjectNode().put("file_path", shown.path("path").asText(""));
+                                    if (shown.hasNonNull("oldText")) {
+                                        edit.put("oldText", shown.get("oldText").asText());
+                                    }
+                                    toolCalls.set(index, new ToolCall(name, edit.put("newText", shown.get("newText").asText())));
                                     break;
                                 }
                             }

@@ -1606,11 +1606,16 @@ class HireToolTest {
      * jawata rename with the given arguments; every later start is the observer seat answering with a halt that names the instruction.
      */
     private HostCommand aWorkerThenAnObserverWhoHalts(String argumentsJson) throws Exception {
+        return aBrainCallingThenAnObserverWhoHalts("mcp__jawata__rename_symbol", argumentsJson);
+    }
+
+    /** The same two lives, the first being one call of the named tool, which may be an editor of the brain's own. */
+    private HostCommand aBrainCallingThenAnObserverWhoHalts(String tool, String argumentsJson) throws Exception {
         Path file = Files.createTempFile(dir, "brain-", ".sh");
         Path phase = dir.resolve("phase-" + file.getFileName());
-        String init = "{\"type\":\"system\",\"subtype\":\"init\",\"tools\":[\"mcp__jawata__rename_symbol\"]}";
+        String init = "{\"type\":\"system\",\"subtype\":\"init\",\"tools\":[\"" + tool + "\"]}";
         String call = "{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":["
-            + "{\"type\":\"tool_use\",\"name\":\"mcp__jawata__rename_symbol\",\"input\":" + argumentsJson + "}]}}";
+            + "{\"type\":\"tool_use\",\"name\":\"" + tool + "\",\"input\":" + argumentsJson + "}]}}";
         String usage = "\"total_cost_usd\":0.01,\"usage\":{\"input_tokens\":50,\"output_tokens\":10}";
         Files.writeString(file, "#!/bin/sh\nif [ ! -f '" + phase + "' ]; then\n  touch '" + phase + "'\n"
             + "  cat <<'JAWATA_EVENT'\n" + init + "\n" + call + "\nJAWATA_EVENT\n"
@@ -1743,6 +1748,76 @@ class HireToolTest {
         assertAll(
             () -> assertTrue(((List<?>) observed.get("corrections")).isEmpty(), "an observer switched off was hired: " + observed),
             () -> assertEquals(1, ((List<?>) observed.get("unjudged")).size(), "the deviating step was dropped instead of listed as unjudged: " + observed));
+    }
+
+    private static final String BUILD_BRIEF = "INSTRUCTION 1\nBUILD: Foo gets a method bar\nTESTS: bar returns one\n";
+    private static final String EDIT_OF_PRODUCTION = "{\"file_path\":\"/w/src/Foo.java\",\"old_string\":\"a\",\"new_string\":\"b\"}";
+
+    @Test
+    @DisplayName("C27 audit (z5): a worker briefed with a BUILD instruction that wrote production code before any test is handed to the observer seat, with the instruction's number")
+    @SuppressWarnings("unchecked")
+    void aBuildWorkerThatWroteProductionFirstIsHandedToTheObserver() throws Exception {
+        Files.writeString(dir.resolve("observer.md"), CATALOGUER_SEAT);
+        HireTool hire = toolWith(new StandsIn(host, aBrainCallingThenAnObserverWhoHalts("Edit", EDIT_OF_PRODUCTION).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "developer");
+        args.put("brief", BUILD_BRIEF);
+
+        Map<String, Object> worker = dataOf(hire.execute(args));
+
+        Map<String, Object> score = (Map<String, Object>) worker.get("instructionScore");
+        org.junit.jupiter.api.Assertions.assertNotNull(score, "a BUILD worker was not scored: " + worker.keySet());
+        Map<String, Object> observed = (Map<String, Object>) score.get("observer");
+        org.junit.jupiter.api.Assertions.assertNotNull(observed, "the test-first breach was not shown to the observer: " + score);
+        List<Map<String, Object>> corrections = (List<Map<String, Object>>) observed.get("corrections");
+        assertEquals(1, corrections.size(), "the breach did not reach the observer's correction: " + observed);
+        assertEquals(1, corrections.get(0).get("instruction"), String.valueOf(corrections));
+    }
+
+    @Test
+    @DisplayName("C27 audit (z5): the same breach is handed to the observer when the worker is hired against an issuer whose answer carried only BUILD instructions")
+    @SuppressWarnings("unchecked")
+    void aBuildWorkerHiredAgainstABuildOnlyIssuerIsStillObserved() throws Exception {
+        HireTool pm = toolWith(new StandsIn(host, aBrainSayingWithTokens(BUILD_BRIEF, 1000, 500).withSeparateStderr()), events, aRegistryWithACleanGate());
+        String issuerPlan = (String) dataOf(pm.execute(hireArgs(seatFile(CATALOGUER_SEAT)))).get("plan");
+        HireTool hire = toolWith(new StandsIn(host, aBrainCallingThenAnObserverWhoHalts("Edit", EDIT_OF_PRODUCTION).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "developer");
+        args.put("brief", BUILD_BRIEF);
+        args.put("instructionsFrom", issuerPlan);
+        args.put("observerSeatFile", seatFile(CATALOGUER_SEAT).toString());
+
+        Map<String, Object> score = (Map<String, Object>) dataOf(hire.execute(args)).get("instructionScore");
+
+        org.junit.jupiter.api.Assertions.assertNotNull(score, "the worker was not scored");
+        Map<String, Object> observed = (Map<String, Object>) score.get("observer");
+        org.junit.jupiter.api.Assertions.assertNotNull(observed, "an issuer with only BUILD instructions dropped the test-first breach: " + score);
+        assertEquals(1, ((List<?>) observed.get("corrections")).size(), String.valueOf(observed));
+    }
+
+    @Test
+    @DisplayName("C27 audit (z2): a lead that edits a code file with its own editor has it in the answer's ownWrites, and one that edits no file has none")
+    @SuppressWarnings("unchecked")
+    void aLeadsOwnCodeEditIsInItsAnswer() throws Exception {
+        Files.writeString(dir.resolve("observer.md"), CATALOGUER_SEAT);
+        HireTool hire = toolWith(new StandsIn(host, aBrainCallingThenAnObserverWhoHalts("Edit", EDIT_OF_PRODUCTION).withSeparateStderr()),
+            events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "chief-engineer");
+        args.put("hirer", "pm");
+        args.put("brief", "Plan the change and hire a developer.");
+
+        Map<String, Object> lead = dataOf(hire.execute(args));
+
+        Map<String, Object> own = (Map<String, Object>) lead.get("ownWrites");
+        org.junit.jupiter.api.Assertions.assertNotNull(own, "a lead's edit of a code file was not in its answer: " + lead.keySet());
+        assertEquals(1, ((List<?>) own.get("flagged")).size(), String.valueOf(own));
+        Map<String, Object> clean = dataOf(toolWith(new StandsIn(host, aBrainCallingThenAnObserverWhoHalts("Edit",
+            "{\"file_path\":\"/w/docs/plan.md\",\"old_string\":\"a\",\"new_string\":\"b\"}").withSeparateStderr()), events, aRegistryWithACleanGate())
+            .execute(args));
+        org.junit.jupiter.api.Assertions.assertFalse(clean.containsKey("ownWrites"), "CONTROL: an edit of a document was reported as an own write: " + clean.get("ownWrites"));
     }
 
     @Test

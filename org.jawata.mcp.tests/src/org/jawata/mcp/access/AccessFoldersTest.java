@@ -111,6 +111,23 @@ class AccessFoldersTest {
     }
 
     @Test
+    @DisplayName("C27 audit: a workspace file that lists the filesystem root or the person's home folder does not make them writable, and its other folders still are")
+    void aWorkspaceFileCannotWidenAccessToTheRootOrTheHome(@TempDir Path root) throws Exception {
+        Path core = projectIn(folder(root, "engine"), "core");
+        folder(root, "chat");
+        Path home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize();
+        String listed = "{\"path\": \"engine\"}, {\"path\": \"chat\"}, {\"path\": \"/\"}, {\"path\": \"" + home.toString().replace("\\", "\\\\") + "\"}";
+        workspaceFile(root.resolve("cloned.code-workspace"), listed);
+
+        List<Path> covered = new AccessFolders().of(List.of(core));
+
+        assertAll(
+            () -> assertFalse(covers(covered, home.resolve("somewhere-private")), "the home folder was made covered by a workspace file: " + covered),
+            () -> assertFalse(covers(covered, home.getRoot().resolve("etc")), "the filesystem root was made covered by a workspace file: " + covered),
+            () -> assertTrue(covers(covered, root.resolve("chat")), "CONTROL: the folders of the file that are not the root or the home were refused: " + covered));
+    }
+
+    @Test
     @DisplayName("an absolute path and a file uri in the workspace file are read as the folders they name, and a file that is not json is skipped, not fatal")
     void absolutePathsAndUrisAreReadAndAnUnreadableFileIsSkipped(@TempDir Path root) throws Exception {
         Path core = projectIn(folder(root, "engine"), "core");

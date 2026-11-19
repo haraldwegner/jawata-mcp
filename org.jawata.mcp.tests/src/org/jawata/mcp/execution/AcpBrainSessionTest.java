@@ -353,7 +353,7 @@ class AcpBrainSessionTest {
         assertEquals(List.of("Write"), outcome.toolNames(), "the write kept the title the adapter opened it with");
         assertEquals("/p/src/main/java/demo/Extra.java", outcome.toolCalls().get(0).arguments().path("file_path").asText(),
             "the write was kept without the file it wrote");
-        assertTrue(TestFirst.violations(outcome.toolCalls(), List.of()).stream().anyMatch(v -> v.contains("production code was written before")),
+        assertTrue(TestFirst.violations(outcome.toolCalls(), List.of(), null).stream().anyMatch(v -> v.contains("production code was written before")),
             "a production file written with no test seen failing was not read as such");
     }
 
@@ -375,6 +375,16 @@ class AcpBrainSessionTest {
         assertEquals(List.of("Edit"), outcome.toolNames());
         assertEquals("{\"file_path\":\"/p/notes.md\",\"oldText\":\"colour: red\\n\",\"newText\":\"colour: blue\\n\"}",
             outcome.toolCalls().get(0).arguments().toString(), "the edit was kept with the path alone, so no instruction can be compared with it");
+    }
+
+    @Test
+    @DisplayName("C27 architect watch: a file Cursor's agent creates, whose diff has no old text, is kept as an Edit of that file like one it changed, so the rules that read editor writes see it")
+    void aCursorNewFileIsReadFromItsDiff() throws Exception {
+        HiredBrain.Outcome outcome = hire("CURSORNEWFILE");
+
+        assertEquals(List.of("Edit"), outcome.toolNames());
+        assertEquals("/p/src/New.java", outcome.toolCalls().get(0).arguments().path("file_path").asText(),
+            "the created file was kept without its path, so no rule that reads editor writes can see it");
     }
 
     @Test

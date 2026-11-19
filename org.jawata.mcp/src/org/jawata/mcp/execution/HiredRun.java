@@ -543,7 +543,7 @@ public final class HiredRun {
         // 28h Stage 27 (z5): what the worker's test runs showed is taken whatever the brief, so the store never keeps a hire's runs; a worker
         // briefed with a BUILD instruction is held to writing the test first and seeing it fail.
         List<TestFirst.Run> testRuns = testRunsOf.apply(plan.value());
-        List<String> notTestFirst = worker && !Instructions.builds(brief).isEmpty() ? TestFirst.violations(outcome.toolCalls(), testRuns) : List.of();
+        List<String> notTestFirst = worker && !Instructions.builds(brief).isEmpty() ? TestFirst.violations(outcome.toolCalls(), testRuns, base.workingDirectory()) : List.of();
         int alreadyPassed = plans.currentStep(plan).orElse(-1);
         PlanLedger.Advance last = alreadyPassed >= 0 ? new PlanLedger.Advance(true, alreadyPassed, null) : null;
         for (GatedStep step : planned) {

@@ -59,7 +59,9 @@ public final class AccessFolders {
             for (Path file : workspaceFilesIn(folder)) {
                 List<Path> listed = foldersOf(file);
                 if (repositories.stream().anyMatch(repository -> listed.stream().anyMatch(repository::startsWith))) {
-                    covered.addAll(listed);
+                    // A file that came with a cloned repository may list anything: the person's home and everything above it is never taken from it.
+                    Path home = PlaceNames.normalise(Path.of(System.getProperty("user.home")));
+                    listed.stream().filter(place -> !home.startsWith(place)).forEach(covered::add);
                 }
             }
         }
