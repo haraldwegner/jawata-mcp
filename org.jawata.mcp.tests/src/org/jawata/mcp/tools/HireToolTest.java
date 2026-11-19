@@ -378,6 +378,42 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("Stage 27 (o): a run's toolUse says how many of its declared steps ended with no passed gate, and says nothing when every gate passed")
+    @SuppressWarnings("unchecked")
+    void theToolUseCountsTheStepsWhoseGateDidNotPass() throws Exception {
+        ToolRegistry failing = new ToolRegistry();
+        failing.register(new Tool() {
+            @Override
+            public String getName() {
+                return "compile_workspace";
+            }
+
+            @Override
+            public String getDescription() {
+                return "a gate fixture that answers two errors";
+            }
+
+            @Override
+            public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+
+            @Override
+            public ToolResponse execute(JsonNode arguments) {
+                return ToolResponse.success(Map.of("errorCount", 2));
+            }
+        });
+        Map<String, Object> open = dataOf(toolWith(new StandsIn(host, aBrainSaying(WHOLE_UPWARD_MESSAGE)), events, failing)
+            .execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        Map<String, Object> clean = dataOf(toolWith(new StandsIn(host, aBrainSaying(WHOLE_UPWARD_MESSAGE)), events, aRegistryWithACleanGate())
+            .execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(1, ((Map<String, Object>) open.get("toolUse")).get("stepsOpen"), "THE CLAIM: a step whose gate found errors was not counted as open: " + open.get("toolUse")),
+            () -> assertFalse(((Map<String, Object>) clean.get("toolUse")).containsKey("stepsOpen"), "CONTROL: a run whose gate passed was shown a step with no passed gate: " + clean.get("toolUse")));
+    }
+
+    @Test
     @DisplayName("a seat that declares no answer gate is hired exactly as before: no extra step, no extra field")
     void aSeatWithNoAnswerGateIsUnchanged() throws Exception {
         HireTool hire = toolWith(new StandsIn(host, aBrainSaying(WHOLE_UPWARD_MESSAGE)),

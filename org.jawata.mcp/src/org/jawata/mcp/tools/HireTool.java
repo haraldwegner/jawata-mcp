@@ -904,9 +904,15 @@ public class HireTool extends NeutralTool {
         }
         data.put("shellCalls", effects.shell());
         // Stage 27 (o): how the run used jawata, for the card Agent Control draws. Not observed when calls were counted and none named.
-        data.put("toolUse", org.jawata.mcp.execution.ToolUse.of(
+        Map<String, Object> toolUse = new LinkedHashMap<>(org.jawata.mcp.execution.ToolUse.of(
             proposal.outcome().toolCalls(), proposal.outcome().toolSteps(), bare -> engine.getTool(bare).isPresent(),
             org.jawata.mcp.execution.CallOutcomes.shared().take(proposal.plan().value())).asMap());
+        // The steps the run declared whose gate did not pass: a run that ended with such a step is not one whose steps were checked.
+        int stepsOpen = steps.size() + seat.answerGates().size() - proposal.stepsPassed();
+        if (stepsOpen > 0) {
+            toolUse.put("stepsOpen", stepsOpen);
+        }
+        data.put("toolUse", toolUse);
         data.put("unclassifiedCalls", effects.unknown());
         data.put("unnamedToolSteps", effects.unnamed());
         data.put("performedNoCodeChangingOperation", effects.performedNoCodeChangingOperation());
