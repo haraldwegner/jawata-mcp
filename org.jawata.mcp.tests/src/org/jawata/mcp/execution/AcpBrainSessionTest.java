@@ -346,6 +346,16 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h Stage 19, the hire-time split: the time between a tool call opening and completing on the wire is kept as the time in tools, and a run with no call keeps none")
+    void aToolsTimeIsReadFromWhenItsCallOpensAndCloses() throws Exception {
+        HiredBrain.Outcome timed = hire("TIMEDCALL");
+
+        assertTrue(timed.toolMillis() >= 250 && timed.toolMillis() < 1_000,
+            "the 300 ms the call took was not read as time in a tool: " + timed.toolMillis());
+        assertEquals(0L, hire("SERVERS").toolMillis(), "a run that called no tool spent no time in tools, and measured it");
+    }
+
+    @Test
     @DisplayName("28h D57 (d): an edit Cursor's agent reports only as the diff of its completed call is kept as an Edit of that file with the text before and after")
     void aCursorEditIsReadFromItsDiff() throws Exception {
         HiredBrain.Outcome outcome = hire("CURSOREDIT");

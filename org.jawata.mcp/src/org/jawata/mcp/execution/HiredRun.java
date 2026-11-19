@@ -620,6 +620,9 @@ public final class HiredRun {
                     detail.put("parent", parentPlan);
                 }
                 detail.put("elapsedMs", brainRanMs);
+                // THE HIRE-TIME SPLIT (28h Stage 19): the milliseconds in which a tool call of the brain was open; null when the brain's
+                // wire did not measure it. Its share of elapsedMs says whether the hire waited on tools or on the model.
+                detail.put("toolMillis", outcome.toolMillis() >= 0 ? outcome.toolMillis() : null);
                 detail.put("costUsd", costForRow(outcome));
                 detail.put("tokensSpent", outcome.tokens().isPresent() ? outcome.tokens().get().spent() : null);
                 detail.put("instructions", Instructions.rows(Instructions.parse(outcome.text())));

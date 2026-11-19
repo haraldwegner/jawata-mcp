@@ -102,7 +102,19 @@ public final class HiredBrain {
     public record Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,
                           boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode,
                           String stderrTail, Optional<String> stoppedBy,
-                          List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, java.util.Optional<TokenUsage> tokens, java.util.List<ToolCall> toolCalls, java.util.Optional<String> brainSessionId) {
+                          List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, java.util.Optional<TokenUsage> tokens, java.util.List<ToolCall> toolCalls, java.util.Optional<String> brainSessionId,
+                          long toolMillis) {
+
+        /**
+         * The shape before the time spent in tools was measured: {@code toolMillis} is -1, which says "not measured" and is never a time
+         * (28h Stage 19, the hire-time split).
+         */
+        public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,
+                       boolean sawTerminalCost, boolean timedOut, OptionalInt exitCode,
+                       String stderrTail, Optional<String> stoppedBy,
+                       List<String> toolNames, java.util.Optional<java.util.List<String>> toolsOffered, java.util.Optional<TokenUsage> tokens, java.util.List<ToolCall> toolCalls, java.util.Optional<String> brainSessionId) {
+            this(text, costUsd, toolSteps, unreadableLines, sawTerminalCost, timedOut, exitCode, stderrTail, stoppedBy, toolNames, toolsOffered, tokens, toolCalls, brainSessionId, -1L);
+        }
 
         /** The shape every caller used before names were recorded. */
         public Outcome(String text, OptionalDouble costUsd, int toolSteps, int unreadableLines,

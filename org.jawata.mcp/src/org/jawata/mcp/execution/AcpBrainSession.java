@@ -280,6 +280,7 @@ public final class AcpBrainSession {
             int steps = last.toolSteps();
             List<String> names = new ArrayList<>(last.toolNames());
             List<ToolCall> calls = new ArrayList<>(last.toolCalls());
+            long toolMillis = last.toolMillis();
             while (last.stoppedBy().isEmpty() && conversation.alive() && (inbox.outstanding() > 0 || !inbox.isEmpty())) {
                 List<HireRegistry.Event> reports = inbox.awaitWhileOut(ceilings.wallClock().toMillis(),
                     () -> !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
@@ -298,6 +299,7 @@ public final class AcpBrainSession {
                 steps += last.toolSteps();
                 names.addAll(last.toolNames());
                 calls.addAll(last.toolCalls());
+                toolMillis += last.toolMillis();
             }
             Optional<String> stoppedBy = last.stoppedBy();
             if (stoppedBy.isEmpty() && ceilings.maxToolSteps() > 0 && steps >= ceilings.maxToolSteps()
@@ -308,7 +310,7 @@ public final class AcpBrainSession {
             }
             return new HiredBrain.Outcome(last.text(), last.costUsd(), steps, last.unreadableLines(), last.sawTerminalCost(), last.timedOut(),
                 last.exitCode(), last.stderrTail(), stoppedBy, List.copyOf(names), Optional.empty(), Optional.empty(), List.copyOf(calls),
-                last.brainSessionId());
+                last.brainSessionId(), toolMillis);
         } finally {
             conversation.end();
             inbox.close();
@@ -686,6 +688,7 @@ public final class AcpBrainSession {
                     default -> { }
                 }
             }
+            wire.closeToolTime();
             stoppedBy = wire.stoppedBy;
             answered = stop != null;
             if (stop == null && !reaped && stoppedBy == null) {
@@ -719,7 +722,7 @@ public final class AcpBrainSession {
             }
             return new HiredBrain.Outcome(said.toString(), cost, toolNames.size(), wire.unreadable, cost.isPresent(), reaped, exit,
                 stderrTail.toString(), Optional.ofNullable(stoppedBy), List.copyOf(toolNames), Optional.empty(), Optional.empty(),
-                List.copyOf(toolCalls), Optional.ofNullable(sessionId));
+                List.copyOf(toolCalls), Optional.ofNullable(sessionId), wire.toolMillis);
         }
 
         /** Ends the brain's process. */
@@ -844,6 +847,12 @@ public final class AcpBrainSession {
         int unreadable;
         boolean collect;
         String stoppedBy;
+        /** The tool calls open right now, by their id; the time any of them is open is time in a tool. */
+        private final java.util.Set<String> openCalls = new java.util.HashSet<>();
+        /** When the first of the calls now open was opened, in nanoseconds; 0 when none is open. */
+        private long openedAt;
+        /** Milliseconds this turn in which at least one tool call was open, summed from the moments the updates were read. */
+        long toolMillis;
         /** Called with each piece of the answer the moment it is read, so a host sees it stream; null when nobody is listening. */
         Consumer<String> onText;
         /** Called with each tool call update the moment it is read; null when nobody is listening. */
@@ -875,6 +884,9 @@ public final class AcpBrainSession {
             onToolUpdate = toolUpdate;
             onThinking = thinking;
             events.clear();
+            openCalls.clear();
+            openedAt = 0;
+            toolMillis = 0;
             steps = 0;
             spent = 0;
             stoppedBy = null;
@@ -937,6 +949,7 @@ public final class AcpBrainSession {
                 } else if (collect && "session/update".equals(message.path("method").asText())) {
                     JsonNode update = message.path("params").path("update");
                     events.add(update);
+                    noteToolTime(update);
                     noteProgress(update);
                     if (onText != null && "agent_message_chunk".equals(update.path("sessionUpdate").asText())) {
                         onText.accept(update.path("content").path("text").asText(""));
@@ -955,6 +968,34 @@ public final class AcpBrainSession {
                 }
             }
             return null;
+        }
+
+        /**
+         * Adds to {@link #toolMillis} the time between a tool call opening and its last open call closing, read at the moments the updates
+         * arrive: a call is open from its {@code tool_call} until an update of it says completed or failed, and two calls open together
+         * count once. A call still open when the turn ends is closed by {@link #closeToolTime()}.
+         */
+        private void noteToolTime(JsonNode update) {
+            String kind = update.path("sessionUpdate").asText();
+            String id = update.path("toolCallId").asText("");
+            String status = update.path("status").asText("");
+            if ("tool_call".equals(kind) && !"completed".equals(status) && !"failed".equals(status)) {
+                if (openCalls.isEmpty()) {
+                    openedAt = System.nanoTime();
+                }
+                openCalls.add(id);
+            } else if (("tool_call".equals(kind) || "tool_call_update".equals(kind)) && ("completed".equals(status) || "failed".equals(status))
+                && openCalls.remove(id) && openCalls.isEmpty()) {
+                toolMillis += (System.nanoTime() - openedAt) / 1_000_000L;
+            }
+        }
+
+        /** Closes the time of any call still open at the end of the turn, so a brain stopped in a tool counts the time it spent there. */
+        void closeToolTime() {
+            if (!openCalls.isEmpty()) {
+                toolMillis += (System.nanoTime() - openedAt) / 1_000_000L;
+                openCalls.clear();
+            }
         }
 
         /**

@@ -78,6 +78,8 @@ final class HireWatch {
         int editsByHand;
         /** Whether an issuer gave the hire instructions that name tools, so an edit it made by hand was made where a tool was named (D10). */
         boolean instructed;
+        /** The engine answered the call with a refusal that opened no plan: no hire exists for it. */
+        boolean refused;
 
         Live(String id, long startedMs) {
             this.id = id;
@@ -94,6 +96,8 @@ final class HireWatch {
     private final LongSupplier clock;
     private final java.util.function.Supplier<String> registry;
     private final Map<String, Live> hires = new LinkedHashMap<>();
+    /** The ids of hire calls the engine refused and whose refusal has not been taken yet. */
+    private final java.util.Set<String> refusedCalls = new java.util.HashSet<>();
     /** The id of the hire an observed update has just marked accepted-with-fix, until {@link #takeFixed()} hands it on. */
     private String justFixed;
 
@@ -138,6 +142,14 @@ final class HireWatch {
         }
         if ("completed".equals(status)) {
             readAnswer(hire, update);
+            if (hire.refused) {
+                // 28h-C27-9: a refused call that named a seat had drawn a card from its input; the call opened no plan, so it ends with no
+                // card, and the refusal is told once to whoever forwards the update, which then says the call failed so the chat takes the
+                // card back.
+                hires.remove(id);
+                refusedCalls.add(id);
+                return Optional.empty();
+            }
         }
         if (hire.seat.isEmpty()) {
             // A call that names nobody, as the brain first streams it or as it ended (a completed call whose answer is the engine's refusal of
@@ -161,6 +173,11 @@ final class HireWatch {
         return RoleFigures.of(hires.values().stream()
             .map(h -> new RoleFigures.HireFacts(h.seat, h.tokens, h.toolSteps, h.instructed ? h.editsByHand : 0, 0))
             .toList());
+    }
+
+    /** Whether the engine refused the hire call with this id, true once: a refused call has no card, and the chat is told it failed. */
+    synchronized boolean takeRefused(String callId) {
+        return refusedCalls.remove(callId);
     }
 
     /** Every hire seen, in the order they began. */
@@ -321,7 +338,7 @@ final class HireWatch {
         if (answer.path("success").isBoolean() && !answer.get("success").asBoolean() && !answer.hasNonNull("hireId")) {
             // 28h D57 (i): a hire call the engine refused (the access policy, a refused seat, a bad argument) opened no plan, so no engine
             // event will ever end its card; it ends here, and Agent Control, which shows only working hires, shows nothing for a hire that never ran.
-            finish(hire, HireEntry.FAILED);
+            hire.refused = true;
             return;
         }
         if (!answer.has("cleanExit")) {

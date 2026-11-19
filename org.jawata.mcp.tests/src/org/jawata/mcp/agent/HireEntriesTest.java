@@ -79,17 +79,23 @@ class HireEntriesTest {
     }
 
     @Test
-    @DisplayName("28h D57 (i): a hire call the engine refused (no plan opened) ends its card, so Agent Control shows no hire that did not run; a running hire's card stays")
+    @DisplayName("28h D57 (i), 28h-C27-9: a hire call the engine refused (no plan opened) leaves no card at all and is reported as refused, so the chat takes back the card it drew from the call's input; a running hire's card stays")
     void aRefusedHireCallLeavesNoWorkingCard() {
         watch.observe(withInput(hireCall("tool_call", "r1", "pending"), "main", "pm", "plan it"));
-        HireEntry refused = watch.observe(answered(hireCall("tool_call_update", "r1", "completed"),
-            "{\"success\":false,\"error\":{\"code\":\"ACCESS_DENIED\",\"message\":\"the working directory is outside the workspace\"}}")).orElseThrow();
+        java.util.Optional<HireEntry> refused = watch.observe(answered(hireCall("tool_call_update", "r1", "completed"),
+            "{\"success\":false,\"error\":{\"code\":\"ACCESS_DENIED\",\"message\":\"the working directory is outside the workspace\"}}"));
+        boolean toldRefused = watch.takeRefused("r1");
+        boolean toldTwice = watch.takeRefused("r1");
         watch.observe(withInput(hireCall("tool_call", "r2", "pending"), "main", "pm", "plan it"));
         HireEntry running = watch.observe(answered(hireCall("tool_call_update", "r2", "completed"),
             "{\"success\":true,\"data\":{\"hireId\":\"plan-1\",\"name\":\"Rafael\",\"state\":\"running\",\"hirer\":\"main\",\"hired\":\"pm\"}}")).orElseThrow();
 
         org.junit.jupiter.api.Assertions.assertAll(
-            () -> assertEquals(HireEntry.FAILED, refused.state(), "a refused hire call stays a running card: " + refused),
+            () -> assertTrue(refused.isEmpty(), "a refused hire call named a seat and was still shown as a card: " + refused),
+            () -> assertTrue(toldRefused, "the refusal was not reported, so the chat keeps the card it drew from the call's input"),
+            () -> assertTrue(!toldTwice, "a refusal is reported once"),
+            () -> assertTrue(watch.entry("r1").isEmpty(), "a refused call's card is still listed"),
+            () -> assertTrue(!watch.takeRefused("r2"), "THE CONTROL: a hire that opened its plan was reported as refused"),
             () -> assertEquals(HireEntry.RUNNING, running.state(), "THE CONTROL: a hire that opened its plan runs until the engine says it ended"));
     }
 
@@ -466,6 +472,40 @@ class HireEntriesTest {
         assertEquals("architect — running", calls.get(0).path("title").asText());
         assertEquals("Read a.txt", calls.get(1).path("title").asText());
         assertFalse(calls.get(1).has("kind"), "a call that is not a hire was given a kind: " + calls.get(1));
+    }
+
+    @Test
+    @DisplayName("28h-C27-9: on the running server a hire call the engine refused reaches the host as a failed call with no hire in it, so the chat takes back the card it drew from the call's input")
+    void theServerSaysARefusedHireCallFailedAndStampsNoCard() {
+        List<JsonNode> said = new ArrayList<>();
+        AgentBrain brain = new AgentBrain() {
+            @Override
+            public void answer(String prompt, Consumer<String> chunks) {
+                answer(prompt, chunks, call -> { });
+            }
+
+            @Override
+            public void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls) {
+                toolCalls.accept(withInput(hireCall("tool_call", "n1", "pending"), "main", "architect", "review the design"));
+                toolCalls.accept(answered(hireCall("tool_call_update", "n1", "completed"),
+                    "{\"success\":false,\"error\":{\"code\":\"INVALID_PARAMETER\",\"message\":\"a hire with no gates proves nothing was checked\"}}"));
+                chunks.accept("ok");
+            }
+        };
+        AcpServer server = new AcpServer(brain, List::of, m -> said.add(JSON.valueToTree(m)), TurnBoundary.open(), AgentRecorder.off(), null);
+        server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+        String session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
+        ObjectNode params = JSON.createObjectNode().put("sessionId", session);
+        params.putArray("prompt").addObject().put("type", "text").put("text", "go");
+        said.clear();
+
+        server.receive(JsonRpcMessage.request(2, "session/prompt", params));
+
+        JsonNode last = said.stream().map(m -> m.path("params").path("update"))
+            .filter(u -> "n1".equals(u.path("toolCallId").asText()) && "tool_call_update".equals(u.path("sessionUpdate").asText()))
+            .reduce((first, second) -> second).orElseThrow();
+        assertEquals("failed", last.path("status").asText(), "the refused call was forwarded as it came: " + last);
+        assertFalse(last.path("_meta").has("jawata/hire"), "the refused call was stamped with a hire card: " + last);
     }
 
     @Test

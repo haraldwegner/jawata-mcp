@@ -212,6 +212,16 @@ public class FakeAcpAgent {
             String answer = in.readLine();
             String chosen = answer == null ? "none" : field(answer, "optionId");
             chunk(session, "permission:" + (chosen == null ? "cancelled" : chosen));
+        } else if (text.startsWith("TIMEDCALL")) {
+            // One tool call that takes 300 ms between its opening and its completion, then 100 ms of the brain's own work before it answers
+            // (28h Stage 19, the hire-time split): the client must read the 300 ms as time in a tool.
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"m1\",\"title\":\"mcp__jawata__inspect\",\"kind\":\"read\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            Thread.sleep(300);
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"m1\",\"status\":\"completed\"}}}");
+            Thread.sleep(100);
+            chunk(session, "timed");
         } else if (text.startsWith("CURSORCALL")) {
             // As Cursor's agent opens a tool call of an MCP server: a placeholder title and no input, named in a later update.
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
