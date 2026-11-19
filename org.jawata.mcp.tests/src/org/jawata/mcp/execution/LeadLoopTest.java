@@ -115,6 +115,25 @@ class LeadLoopTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27, finding 28h-C27-1: a hire the lead's brain started but the engine saw under another caller id is the lead's once its call's answer names the plan, so the lead waits for its report and is prompted with it")
+    void aHireSeenUnderAnotherCallerIdIsTheLeadsOnceItsAnswerNamesIt() throws Exception {
+        String lead = "c27-lead";
+        // THE CONTROL: the hire is out under the engine's own session id and the lead's brain never says it started one, so nothing is the lead's.
+        HireRegistry.Inbox unaware = HireRegistry.shared().inboxFor("c27-lead-unaware");
+        aHireIsOut("c27-server-session-a", "c27-child-a", "the code is written");
+        HiredBrain.Outcome ignored = runAsLead("REMEMBER:bluebird", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), "c27-lead-unaware", unaware);
+
+        HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead);
+        aHireIsOut("c27-server-session-b", "c27-child-b", "the code is written");
+        HiredBrain.Outcome reported = runAsLead("STARTHIRE:c27-child-b", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, watching);
+
+        assertAll(
+            () -> assertEquals("noted", ignored.text(), "the control was prompted with a report of a hire that was not its own"),
+            () -> assertTrue(reported.text().contains("report read: Hire: Joe · developer (c27-child-b)"),
+                "the lead never waited for the hire its brain started, or was never prompted with its report: " + reported.text()));
+    }
+
+    @Test
     @DisplayName("28h D57 (l): a hired lead's session is opened with its brain's own editors and shell withheld, as the principal's is, since a lead plans and hires and changes no code")
     void aLeadRunsWithItsOwnEditorsAndShellWithheld() throws Exception {
         String lead = "d57l-lead";

@@ -38,7 +38,7 @@ public final class HireRegistry {
         /** The first name this hire carries, given when it was registered (Stage 24, D55). */
         final String name;
         /** The id of the caller that issued this hire: when that caller is a hired lead, the plan id of the lead's own hire (Stage 24, D55). */
-        final String leadId;
+        volatile String leadId;
         /** This hire's own plan id, known once its plan is open; empty before. */
         volatile String planId = "";
         /** Whether this hire runs on an engine thread started for it, so its result comes back as a new turn and not as the call's answer. */
@@ -401,6 +401,43 @@ public final class HireRegistry {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Records that the hire with this plan id was started by the brain of the hired lead whose plan this is, because the lead saw its own brain's
+     * hire call come back with that plan id (28h Stage 27, finding 28h-C27-1). A hired lead's brain does not reliably present the lead's plan id
+     * as its caller, so the engine saw its hire calls under another id and the lead's inbox, which counts the hires issued under the lead's own
+     * id, never knew a hire was out: the lead ended with it running. The hire is then told to the registry's subscribers as started under the
+     * lead, or, when it had already ended, its held report is told as ended under the lead.
+     *
+     * @param planId the plan id the lead's brain's hire call answered with
+     * @param leadId the plan id of the hired lead whose brain made the call
+     */
+    public void startedBy(String planId, String leadId) {
+        if (planId == null || planId.isEmpty() || leadId == null || leadId.isEmpty()) {
+            return;
+        }
+        String before = issuedBy.put(planId, leadId);
+        if (leadId.equals(before)) {
+            return;
+        }
+        for (Running hire : running) {
+            if (planId.equals(hire.planId)) {
+                hire.leadId = leadId;
+                tell(new Event("started", planId, hire.name, hire.seat, hire.brief, leadId, null, hire.background));
+                return;
+            }
+        }
+        List<Event> held = before == null ? null : waiting.get(rootOf(before));
+        if (held == null) {
+            return;
+        }
+        for (Event kept : held) {
+            if (kept.planId().equals(planId) && held.remove(kept)) {
+                tell(new Event(kept.kind(), kept.planId(), kept.name(), kept.seat(), kept.brief(), leadId, kept.answer(), kept.background()));
+                return;
+            }
+        }
     }
 
     /** Whether this caller is a principal brain's own key, so a hire it issued has no lead above it but the chat. */

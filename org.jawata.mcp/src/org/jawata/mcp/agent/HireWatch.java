@@ -295,7 +295,7 @@ final class HireWatch {
 
     /** The finished hire's own answer: whether it ended clean, what it spent, what it cost. */
     private void readAnswer(Live hire, JsonNode update) {
-        JsonNode answer = answerOf(update);
+        JsonNode answer = org.jawata.mcp.execution.StartedHires.answerOf(update);
         if ("running".equals(answer.path("state").asText("")) && answer.hasNonNull("hireId")) {
             // The background answer (Stage 24, M7): the hire is out and no result is in yet. The card stays running until the engine says it
             // ended; this answer only names the hire.
@@ -413,34 +413,6 @@ final class HireWatch {
             applyAnswer(hire, event.answer());
         }
         return Optional.of(new Seen(entryOf(hire), created));
-    }
-
-    /** The hire tool's answer as JSON: the call's raw output, or the text of its content, with the tool's {@code data} wrapper removed. */
-    private static JsonNode answerOf(JsonNode update) {
-        String text = null;
-        JsonNode raw = update.path("rawOutput");
-        if (raw.isTextual()) {
-            text = raw.asText();
-        } else if (raw.isObject()) {
-            return raw.has("data") ? raw.get("data") : raw;
-        } else {
-            for (JsonNode block : update.path("content")) {
-                String piece = block.path("content").path("text").asText("");
-                if (!piece.isEmpty()) {
-                    text = piece;
-                    break;
-                }
-            }
-        }
-        if (text == null) {
-            return JSON.missingNode();
-        }
-        try {
-            JsonNode parsed = JSON.readTree(text);
-            return parsed.has("data") ? parsed.get("data") : parsed;
-        } catch (IOException e) {
-            return JSON.missingNode();
-        }
     }
 
     private void finish(Live hire, String state) {

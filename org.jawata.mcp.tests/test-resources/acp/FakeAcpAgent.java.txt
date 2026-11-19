@@ -220,6 +220,13 @@ public class FakeAcpAgent {
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"c1\",\"title\":\"jawata: health_check\","
                 + "\"rawInput\":{\"providerIdentifier\":\"jawata\",\"toolName\":\"health_check\",\"args\":{}}}}}");
             chunk(session, "called");
+        } else if (text.startsWith("STARTHIRE:")) {
+            // A brain's hire call that has just answered: the hire is running, under the plan id given (28h Stage 27, finding 28h-C27-1).
+            String plan = text.substring("STARTHIRE:".length()).strip();
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"h1\",\"status\":\"completed\",\"rawOutput\":"
+                + "{\"success\":true,\"data\":{\"hireId\":\"" + plan + "\",\"name\":\"Zoe\",\"state\":\"running\"}}}}}");
+            chunk(session, "started");
         } else if (text.startsWith("CLAUDECALL")) {
             // As Claude's ACP adapter sends a call (recorded 2026-11-17, 28h D57 (d)): opened with an empty input, the input streamed in later
             // updates, partial and then whole, then updates with no input at all as the call runs and completes.

@@ -267,7 +267,15 @@ public final class AcpBrainSession {
         Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings, OwnTools.WITHHELD);
         try {
             conversation.onModel(model);
-            conversation.turn(prompt, List.of(), ceilings, onText, onToolUpdate, onThinking);
+            // A hire this lead's brain starts is the lead's whatever caller id the engine saw its call under: the call's answer names the plan,
+            // and the inbox counts the hires issued under the lead's own id (28h Stage 27, finding 28h-C27-1).
+            Consumer<JsonNode> toolUpdates = update -> {
+                if (onToolUpdate != null) {
+                    onToolUpdate.accept(update);
+                }
+                StartedHires.planOf(update).ifPresent(started -> HireRegistry.shared().startedBy(started, leadId));
+            };
+            conversation.turn(prompt, List.of(), ceilings, onText, toolUpdates, onThinking);
             HiredBrain.Outcome last = conversation.outcome();
             int steps = last.toolSteps();
             List<String> names = new ArrayList<>(last.toolNames());
@@ -284,7 +292,7 @@ public final class AcpBrainSession {
                 if (ceilings.maxToolSteps() > 0 && steps >= ceilings.maxToolSteps()) {
                     break;
                 }
-                conversation.turn(HireReport.ofAll(reports, HireRegistry.shared().runningNamesFor(leadId)), List.of(), left, onText, onToolUpdate,
+                conversation.turn(HireReport.ofAll(reports, HireRegistry.shared().runningNamesFor(leadId)), List.of(), left, onText, toolUpdates,
                     onThinking);
                 last = conversation.outcome();
                 steps += last.toolSteps();
