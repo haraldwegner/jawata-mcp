@@ -131,6 +131,8 @@ class PrincipalBrainTest {
         Path table = dir.resolve("table.csv");
         Files.writeString(table, "a,b\n");
         git(dir, "init", "-q");
+        // no line-ending conversion: a Windows runner's default turns a restored file's LF into CRLF, and the text is what is compared (CI, 2026-11-20)
+        git(dir, "config", "core.autocrlf", "false");
         git(dir, "add", "src/Foo.java", "notes.md", "table.csv");
         git(dir, "commit", "-q", "-m", "base");
         PrincipalBrain brain = brain(Optional.of(fake));

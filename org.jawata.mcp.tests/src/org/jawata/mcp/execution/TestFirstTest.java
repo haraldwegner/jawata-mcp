@@ -101,10 +101,11 @@ class TestFirstTest {
     @Test
     @DisplayName("C27 audit: a project that lives under a folder named test still has production code, because the folders are read below the worker's own folder")
     void aProjectUnderATestFolderStillHasProductionCode() {
-        java.nio.file.Path root = java.nio.file.Path.of("/w/test/proj");
+        // absolute on every platform: "/w/..." has no drive letter on Windows, so it is no absolute path there and was read as given (CI, 2026-11-20)
+        java.nio.file.Path root = java.nio.file.Path.of("/w/test/proj").toAbsolutePath();
 
-        List<String> production = TestFirst.violations(List.of(edit("/w/test/proj/src/Foo.java"), runTests()), List.of(Run.RED), root, path -> java.util.Optional.empty());
-        List<String> tests = TestFirst.violations(List.of(write("/w/test/proj/src/test/FooTest.java"), runTests()), List.of(Run.RED), root, path -> java.util.Optional.empty());
+        List<String> production = TestFirst.violations(List.of(edit(root.resolve("src").resolve("Foo.java").toString()), runTests()), List.of(Run.RED), root, path -> java.util.Optional.empty());
+        List<String> tests = TestFirst.violations(List.of(write(root.resolve("src").resolve("test").resolve("FooTest.java").toString()), runTests()), List.of(Run.RED), root, path -> java.util.Optional.empty());
 
         assertAll(
             () -> assertTrue(production.stream().anyMatch(v -> v.contains("before a test was seen failing")), production.toString()),
