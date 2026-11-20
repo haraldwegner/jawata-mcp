@@ -38,6 +38,28 @@ class SourceRootResolutionTest {
     TestProjectHelper helper = new TestProjectHelper();
 
     /**
+     * What the project's model held when a lookup answered nothing, so a failure under load says WHY (the C27 whole-suite run failed this
+     * class twice in two runs with a bare "not null" and passed alone): whether the project was open, its source roots and where each lies,
+     * and whether the file is on disk. The lookup itself swallows every exception into a null.
+     */
+    private static String modelState(JdtServiceImpl service, Path file) {
+        StringBuilder state = new StringBuilder("model state: ");
+        try {
+            org.eclipse.jdt.core.IJavaProject project = service.getJavaProject();
+            state.append("open=").append(project.isOpen()).append(", file on disk=").append(java.nio.file.Files.exists(file));
+            for (org.eclipse.jdt.core.IPackageFragmentRoot root : project.getPackageFragmentRoots()) {
+                if (root.getKind() == org.eclipse.jdt.core.IPackageFragmentRoot.K_SOURCE) {
+                    state.append("; source root ").append(root.getPath()).append(" at ")
+                        .append(root.getResource() == null ? "no resource" : root.getResource().getLocation());
+                }
+            }
+        } catch (Exception unreadable) {
+            state.append("could not be read: ").append(unreadable);
+        }
+        return state.toString();
+    }
+
+    /**
      * The regression: a file under a source folder named {@code test/} — the
      * Eclipse plug-in layout — must resolve.
      */
@@ -51,9 +73,9 @@ class SourceRootResolutionTest {
         ICompilationUnit cu = service.getCompilationUnit(testFile);
 
         assertNotNull(cu,
-            "a file under a source folder named 'test' must resolve — before v3.6.1 the "
+            () -> "a file under a source folder named 'test' must resolve — before v3.6.1 the "
                 + "path matched no Maven/Gradle prefix and the lookup returned null, which "
-                + "made every file in the folder invisible to find_tests and the quality scans");
+                + "made every file in the folder invisible to find_tests and the quality scans. " + modelState(service, testFile));
         assertEquals("GreeterTest.java", cu.getElementName());
         assertTrue(cu.exists(), "the resolved compilation unit must actually exist");
     }
@@ -72,7 +94,7 @@ class SourceRootResolutionTest {
 
         ICompilationUnit cu = service.getCompilationUnit(mainFile);
 
-        assertNotNull(cu, "the conventional src/ layout must not regress");
+        assertNotNull(cu, () -> "the conventional src/ layout must not regress. " + modelState(service, mainFile));
         assertEquals("Greeter.java", cu.getElementName());
     }
 
@@ -92,8 +114,8 @@ class SourceRootResolutionTest {
         ICompilationUnit test = service.getCompilationUnit(
             projectRoot.resolve("test/com/example/ns/GreeterTest.java"));
 
-        assertNotNull(main, "src/ file");
-        assertNotNull(test, "test/ file");
+        assertNotNull(main, () -> "src/ file. " + modelState(service, projectRoot.resolve("src/com/example/ns/Greeter.java")));
+        assertNotNull(test, () -> "test/ file. " + modelState(service, projectRoot.resolve("test/com/example/ns/GreeterTest.java")));
         assertEquals(main.getJavaProject(), test.getJavaProject(),
             "both must resolve within the same project");
     }
