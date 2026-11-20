@@ -33,13 +33,14 @@ class UnresolvedFileThroughTheToolsTest {
     @RegisterExtension
     TestProjectHelper helper = new TestProjectHelper();
 
+    private JdtServiceImpl service;
     private GenerateTool generate;
     private AnalyzeFileTool analyze;
     private final ObjectMapper json = new ObjectMapper();
 
     @BeforeEach
     void setUp() throws Exception {
-        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
+        service = helper.loadProjectCopy("simple-maven");
         generate = new GenerateTool(() -> service, new RefactoringChangeCache());
         analyze = new AnalyzeFileTool(() -> service);
     }
@@ -72,6 +73,35 @@ class UnresolvedFileThroughTheToolsTest {
                 () -> assertEquals("NOT_A_JAVA_PROJECT", beside.getError().getCode(), kind + " on a file outside every loaded project: " + beside.getError().getMessage()),
                 () -> assertEquals("FILE_NOT_FOUND", missing.getError().getCode(), "CONTROL: " + kind + " on a path that is not there"));
         }
+    }
+
+    @Test
+    @DisplayName("the analyze door answers the same three ways for every kind that takes a file: file, method, control_flow, data_flow, javadocs and nullness")
+    void theAnalyzeDoorAnswersAnUnresolvedFileTheSameWayForEveryKindThatTakesOne(@TempDir Path elsewhere) throws Exception {
+        org.jawata.mcp.tools.AnalyzeTool door = new org.jawata.mcp.tools.AnalyzeTool(() -> service);
+        Path pom = helper.getFixturePath("simple-maven").resolve("pom.xml");
+        Path outside = Files.writeString(elsewhere.resolve("notes.txt"), "x");
+        Path missing = elsewhere.resolve("Missing.java");
+        java.util.List<String> differing = new java.util.ArrayList<>();
+
+        for (String kind : new String[] {"file", "method", "control_flow", "data_flow", "javadocs", "nullness"}) {
+            java.util.Map<String, String> expected = java.util.Map.of(
+                pom.toString(), "NOT_A_JAVA_SOURCE", outside.toString(), "NOT_A_JAVA_PROJECT", missing.toString(), "FILE_NOT_FOUND");
+            for (java.util.Map.Entry<String, String> place : expected.entrySet()) {
+                ObjectNode arguments = json.createObjectNode().put("kind", kind).put("filePath", place.getKey()).put("line", 0).put("column", 0);
+                if (kind.equals("javadocs") || kind.equals("nullness")) {
+                    arguments.put("subkind", kind.equals("javadocs") ? "validate" : "check");
+                }
+                ToolResponse answer = door.execute(arguments);
+                String code = answer.getError() == null ? "(no error: " + answer.getData() + ")" : answer.getError().getCode();
+                if (!place.getValue().equals(code)) {
+                    differing.add(kind + " on " + place.getValue() + "-place answered " + code
+                        + (answer.getError() == null ? "" : ": " + answer.getError().getMessage()));
+                }
+            }
+        }
+
+        assertEquals(java.util.List.of(), differing, "kinds of the analyze door that do not answer an unresolved file as the others do");
     }
 
     @Test
