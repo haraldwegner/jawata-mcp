@@ -550,7 +550,9 @@ public class JawataEngine {
 			// and removes it when it closes; the lists are read on every call. Without the setting, the workspace's own folder holds them.
 			java.nio.file.Path editorLists = this.host().settings().get("jawata.editor.foldersDir").map(java.nio.file.Path::of)
 					.or(() -> this.host().directories().workspaceRoot().map(root -> root.resolve("editor-folders"))).orElse(null);
-			org.jawata.mcp.access.AccessFolders onDisk = new org.jawata.mcp.access.AccessFolders(editorLists);
+			// each reading's projects' folders are handed to the brains' file as well, so a brain's guard follows a project loaded or unloaded
+			// while it runs (second audit 2026-11-20, finding 1)
+			org.jawata.mcp.access.AccessFolders onDisk = new org.jawata.mcp.access.AccessFolders(editorLists, org.jawata.mcp.access.BrainAccess::refresh);
 			java.util.function.Function<String, java.util.List<java.nio.file.Path>> workspaceOf = session -> {
 						java.util.List<java.nio.file.Path> loaded = ports.workspace().get().projects().stream().map(project -> project.root()).toList();
 						// Stage 27 (z4): access is the workspace as it stands now, whoever started first: the repositories that enclose the loaded Java
@@ -560,8 +562,10 @@ public class JawataEngine {
 					};
 			this.getToolRegistry().setAccessCheck(new org.jawata.mcp.access.AccessCheck(policy, workspaceOf,
 					java.nio.file.Path.of(System.getProperty("user.home")), java.nio.file.Path.of(System.getProperty("java.io.tmpdir"))));
-			// 28h-C27-31: every brain the engine starts is told the same folders, so the guard in its own client allows what this check allows
-			org.jawata.mcp.access.BrainAccess.publish(workspaceOf, editorLists);
+			// 28h-C27-31: every brain the engine starts is told where to read what this check allows, so the guard in its own client allows the
+			// same; it reads the windows' folders from their lists, never from a picture taken at its start (second audit 2026-11-20, finding 1)
+			org.jawata.mcp.access.BrainAccess.publish(
+					() -> onDisk.withoutEditorWindows(ports.workspace().get().projects().stream().map(project -> project.root()).toList()), editorLists);
 		});
 
 		// A host that serves Java is loading until the Java provider binds; the neutral set is published now, and each language's tools

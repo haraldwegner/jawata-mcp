@@ -155,6 +155,25 @@ class AccessFoldersTest {
     }
 
     @Test
+    @DisplayName("second audit 2026-11-20 (finding 1): each reading hands on the projects' folders without the windows' folders, which is what a brain's file holds, so a folder a window closes is never kept in a brain's picture")
+    void eachReadingHandsOnTheProjectsFoldersWithoutTheWindowsFolders(@TempDir Path root) throws Exception {
+        Path core = projectIn(folder(root, "engine"), "core");
+        Path docs = folder(root, "notes");
+        Path lists = root.resolve("editor-folders");
+        editorList(lists, "window-a", docs);
+        List<List<Path>> handed = new java.util.ArrayList<>();
+        AccessFolders access = new AccessFolders(lists, handed::add);
+
+        List<Path> covered = access.of(List.of(core));
+
+        assertAll(
+            () -> assertTrue(covers(covered, docs), "CONTROL: the window's folder is not covered: " + covered),
+            () -> assertEquals(1, handed.size(), "a reading did not hand on its projects' folders"),
+            () -> assertTrue(covers(handed.get(0), core), "the projects' folders handed on miss the loaded project: " + handed),
+            () -> assertFalse(covers(handed.get(0), docs), "a window's folder was handed on with the projects' folders: " + handed));
+    }
+
+    @Test
     @DisplayName("his word 2026-11-20 and audit bugs B and G: a folder a window opens later is covered at the next question without a restart, also when its list is rewritten within the same second, and a closed window's folders stop being covered")
     void aChangeOfAWindowsFoldersIsSeenWithoutARestart(@TempDir Path root) throws Exception {
         Path first = folder(root, "first");

@@ -10,6 +10,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -53,11 +54,39 @@ public final class AccessFolders {
      * removes when a window closes.
      */
     public AccessFolders(Path editorLists) {
-        this.editorLists = editorLists;
+        this(editorLists, null);
     }
+
+    /**
+     * As {@link #AccessFolders(Path)}, and each reading's projects' folders (the part without the windows' folders) are handed to
+     * {@code projectFoldersRead}, which keeps the brains the engine starts told what this reading allows (second audit 2026-11-20).
+     */
+    public AccessFolders(Path editorLists, Consumer<List<Path>> projectFoldersRead) {
+        this.editorLists = editorLists;
+        this.projectFoldersRead = projectFoldersRead;
+    }
+
+    /** Told each reading's projects' folders; null when nobody listens. */
+    private final Consumer<List<Path>> projectFoldersRead;
 
     /** The folders access covers for these loaded Java projects, each under its one name; the projects' own folders are always among them. */
     public List<Path> of(List<Path> loadedProjectRoots) {
+        List<Path> projects = withoutEditorWindows(loadedProjectRoots);
+        if (projectFoldersRead != null) {
+            projectFoldersRead.accept(projects);
+        }
+        LinkedHashSet<Path> covered = new LinkedHashSet<>(projects);
+        // The folders the editor windows have open, whichever of the editor and the engine started first (his word 2026-11-20): what a window
+        // has open is the person's own choice, so nothing of it is filtered out.
+        covered.addAll(editorFolders());
+        return List.copyOf(covered);
+    }
+
+    /**
+     * The part of {@link #of} that does not change with the editor windows: the loaded projects, the repositories around them and the folders
+     * of a VS Code workspace file kept beside those repositories.
+     */
+    public List<Path> withoutEditorWindows(List<Path> loadedProjectRoots) {
         LinkedHashSet<Path> covered = new LinkedHashSet<>();
         LinkedHashSet<Path> repositories = new LinkedHashSet<>();
         for (Path root : loadedProjectRoots) {
@@ -74,9 +103,6 @@ public final class AccessFolders {
                 beside.add(repository.getParent());
             }
         }
-        // The folders the editor window has open, whichever of the editor and the engine started first (his word 2026-11-20): what the window
-        // has open is the person's own choice, so nothing of it is filtered out.
-        covered.addAll(editorFolders());
         for (Path folder : beside) {
             for (Path file : workspaceFilesIn(folder)) {
                 List<Path> listed = foldersOf(file);

@@ -380,21 +380,10 @@ public final class AcpBrainSession {
             Map<String, String> environment = new LinkedHashMap<>(base.environment());
             environment.putAll(program.environment());
             environment.put(MACHINE_SESSION, "1");
-            // 28h-C27-31: the folders the engine lets the brain work in, so the guard in the brain's own client allows what the engine allows
-            java.util.List<java.nio.file.Path> access = org.jawata.mcp.access.BrainAccess.folders(null);
-            if (!access.isEmpty()) {
-                environment.put(ACCESS_FOLDERS, String.join(java.io.File.pathSeparator, access.stream().map(java.nio.file.Path::toString).toList()));
-            }
-            // and where the editor windows' lists are, which that guard reads on every call, so a folder a window opens later is reached too
-            org.jawata.mcp.access.BrainAccess.editorLists().ifPresent(lists -> environment.put(EDITOR_FOLDERS_DIR, lists.toString()));
+            // 28h-C27-31: where the guard in the brain's own client reads what the engine allows, on every call
+            environment.putAll(org.jawata.mcp.access.BrainAccess.environment());
             return environment;
         }
-
-        /** The variable naming the folder of the editor windows' lists (jawata-studio {@code EDITOR_FOLDERS_DIR_ENV}, jawata-hook {@code local.rs}). */
-        static final String EDITOR_FOLDERS_DIR = "JAWATA_EDITOR_FOLDERS_DIR";
-
-        /** The variable naming those folders, a path list of the platform; the studio's guard (jawata-hook {@code local.rs}) reads it. */
-        static final String ACCESS_FOLDERS = "JAWATA_ACCESS_FOLDERS";
 
         private static Conversation open(HostProcesses host, Program program, HireSite base, SelfEndpoint mcp, List<String> allowedTools,
                 Optional<String> resume, HiredBrain.Ceilings ceilings, OwnTools ownTools) throws IOException {

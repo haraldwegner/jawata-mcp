@@ -438,22 +438,31 @@ class AcpBrainSessionTest {
     }
 
     @Test
-    @DisplayName("28h-C27-31: a brain the engine starts is told the folders the engine lets it work in, so the guard in the brain's own client allows what the engine allows; with no access published it is told none")
-    void aBrainTheEngineStartsIsToldTheFoldersItMayWorkIn() {
+    @DisplayName("28h-C27-31 and second audit 2026-11-20 (finding 1): a brain the engine starts is told where its guard reads what the engine allows, a file of the projects' folders rewritten when they change and the windows' own lists, never a picture of its start; a host with no lists folder tells the projects' folders alone, and one with no access published tells nothing")
+    void aBrainTheEngineStartsIsToldWhereToReadTheFoldersItMayWorkIn() throws IOException {
         AcpBrainSession.Program program = new AcpBrainSession.Program(List.of("brain"), Map.of());
         java.nio.file.Path trading = dir.resolve("Projects");
         java.nio.file.Path notes = dir.resolve("notes");
+        java.util.concurrent.atomic.AtomicReference<List<java.nio.file.Path>> projects = new java.util.concurrent.atomic.AtomicReference<>(List.of(trading));
         try {
             java.nio.file.Path lists = dir.resolve("editor-folders");
-            org.jawata.mcp.access.BrainAccess.publish(session -> List.of(trading, notes), lists);
+            org.jawata.mcp.access.BrainAccess.publish(projects::get, lists);
             Map<String, String> told = AcpBrainSession.Conversation.environmentOf(HireSite.in(dir), program);
+            java.nio.file.Path file = java.nio.file.Path.of(told.get("JAWATA_ACCESS_FOLDERS_FILE"));
+            String atStart = Files.readString(file);
+            org.jawata.mcp.access.BrainAccess.refresh(List.of(trading, notes));
+            String afterALoad = Files.readString(file);
+            org.jawata.mcp.access.BrainAccess.publish(projects::get, null);
+            Map<String, String> noLists = AcpBrainSession.Conversation.environmentOf(HireSite.in(dir), program);
             org.jawata.mcp.access.BrainAccess.publish(null, null);
             Map<String, String> untold = AcpBrainSession.Conversation.environmentOf(HireSite.in(dir), program);
 
-            assertEquals(trading + java.io.File.pathSeparator + notes, told.get("JAWATA_ACCESS_FOLDERS"), "the brain was not told the engine's access folders");
-            // audit bug E: the folders above are a picture of the brain's start; the windows' lists are where its guard reads what they hold now
+            assertEquals(trading.toString(), atStart, "the file does not hold the projects' folders at the brain's start");
+            assertEquals(trading + "\n" + notes, afterALoad, "a project loaded while the brain runs did not reach its file");
+            assertFalse(told.containsKey("JAWATA_ACCESS_FOLDERS"), "the brain was told a list fixed at its start beside the file: " + told);
             assertEquals(lists.toString(), told.get("JAWATA_EDITOR_FOLDERS_DIR"), "the brain was not told where the windows' lists are kept");
-            assertTrue(!untold.containsKey("JAWATA_ACCESS_FOLDERS") && !untold.containsKey("JAWATA_EDITOR_FOLDERS_DIR"),
+            assertEquals(trading.toString(), noLists.get("JAWATA_ACCESS_FOLDERS"), "with no place for the file the brain was not told the projects' folders");
+            assertTrue(!untold.containsKey("JAWATA_ACCESS_FOLDERS") && !untold.containsKey("JAWATA_ACCESS_FOLDERS_FILE") && !untold.containsKey("JAWATA_EDITOR_FOLDERS_DIR"),
                 "CONTROL: with no access published the brain was told folders: " + untold);
         } finally {
             org.jawata.mcp.access.BrainAccess.publish(null, null);

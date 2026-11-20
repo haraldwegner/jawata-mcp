@@ -187,9 +187,13 @@ public final class HiredBrain {
         // The dialect owns argv (the prompt travels as one argument, unquoted); the caller owns
         // where and with what environment. Stderr is forced APART whatever the caller asked for:
         // a dialect reads stdout, and a merged stream would feed it a crash to misread.
+        // A brain started by its dialect is told where its guard reads what the engine allows, as one started over ACP is (second audit
+        // 2026-11-20, finding 8): without it that guard refuses the loaded projects' repositories the engine allows.
+        java.util.Map<String, String> environment = new java.util.LinkedHashMap<>(base.environment());
+        environment.putAll(org.jawata.mcp.access.BrainAccess.environment());
         HostCommand command = new HostCommand(
             dialect.command(prompt, tools == null ? List.of() : tools), base.workingDirectory(),
-            base.environment(), ceilings.wallClock(), false, base.cleanEnvironment());
+            environment, ceilings.wallClock(), false, base.cleanEnvironment());
 
         Process child = host.start(command);
         // A stop from the Agent Control panel kills this process: the read below is blocked and a thread interrupt cannot end it.
