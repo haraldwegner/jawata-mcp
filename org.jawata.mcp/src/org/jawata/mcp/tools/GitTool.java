@@ -33,7 +33,7 @@ public final class GitTool implements Tool {
 
     /** Words that name an AI agent in an author or co-author line. */
     private static final Pattern AGENT = Pattern.compile(
-        "claude|anthropic|cursor|copilot|openai|chatgpt|\\bgpt-|gemini|codex|devin|\\bai agent\\b|noreply@github\\.com.*\\[bot\\]");
+        "claude|anthropic|cursor|copilot|openai|chatgpt|\\bgpt-|gemini|codex|devin|aider|windsurf|codeium|\\bai agent\\b|noreply@github\\.com.*\\[bot\\]");
 
     private static final Pattern CO_AUTHOR = Pattern.compile("(?im)^\\s*co-authored-by:\\s*(.+)$");
 

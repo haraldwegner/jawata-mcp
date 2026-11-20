@@ -129,6 +129,18 @@ class GitToolTest {
         assertTrue(commit(plan, "Step 1\n\nCo-Authored-By: Ana Person <ana@example.invalid>").isSuccess(), "CONTROL: a person as co-author was refused");
     }
 
+    @Test
+    @DisplayName("28h-C26-28 (21): every agent the studio's commit hook names is refused here too, so the two guards do not disagree about who an AI agent is")
+    void everyAgentTheCommitHookNamesIsRefusedHereToo() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatChanged(true, "a.txt");
+
+        for (String agent : new String[] {"Aider", "Windsurf", "Codeium"}) {
+            assertFalse(commit(plan, "Step 1\n\nCo-Authored-By: " + agent + " <bot@example.invalid>").isSuccess(), agent + " was accepted as a co-author");
+        }
+        assertEquals("start", run(repo, "log", "-1", "--format=%s"), "a commit was made");
+    }
+
     private ToolResponse release(String caller, String tag) {
         ObjectNode arguments = JSON.createObjectNode().put("action", "release").put("folder", repo.toString()).put("tag", tag)
             .put("notes", "notes").put("publish", false);
