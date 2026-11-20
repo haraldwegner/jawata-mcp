@@ -4,7 +4,6 @@
 # whole docs/ tree — that keeps docs/release-notes/v1.0.0.md (the launch note,
 # read by release.yml) in the public archive.
 docs/adr/** export-ignore
-docs/sprints/** export-ignore
 docs/architecture.md export-ignore
 docs/bugs.md export-ignore
 docs/javalens_feeback_from_cursor.md export-ignore

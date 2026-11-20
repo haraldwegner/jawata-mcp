@@ -123,7 +123,7 @@ any MCP client: a lesson recorded in Cursor today answers by symbol in Claude Co
 tomorrow. Promote it, prune it, export it — it's yours.
 
 **Honest client parity** (measured, per client, per OS — the full grid lives in
-[the coverage matrix](docs/sprints/coverage-matrix-28a.md)): the **tools and the shared
+the sprint-28a coverage matrix): the **tools and the shared
 memory store work on all six supported clients** — Claude Code, Cursor, Codex, Copilot
 CLI, VS Code, Grok — verified live on Linux, Windows and macOS. The **enforcement guard
 runs on Claude Code and Cursor**, the two clients with a hook surface; the others hold
