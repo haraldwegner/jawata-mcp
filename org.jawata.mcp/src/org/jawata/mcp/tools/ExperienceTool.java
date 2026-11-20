@@ -152,6 +152,8 @@ public final class ExperienceTool implements Tool {
     private final Supplier<? extends SourceUnits> serviceSupplier;
     private final ExperienceStore store;
     private final ExperienceRetrieval retrieval;
+    /** What the loaded workspace says of a symbol, so a nominee of code it does not hold is not offered (row 28h-C27-21); null when nothing answers. */
+    private final Supplier<SymbolAnchors> anchorsOfTheWorkspace;
     private final ExperienceMaintenance maintenance;
     /**
      * Sprint 28c D2: the open nominations, per tool instance.
@@ -308,6 +310,7 @@ public final class ExperienceTool implements Tool {
         this.backups = backupsOverride != null ? backupsOverride
             : new org.jawata.mcp.knowledge.StoreBackups(this::currentH2Store);
         this.retrieval = new ExperienceRetrieval(store, anchors);
+        this.anchorsOfTheWorkspace = anchors;
         // Sprint 28g S14 D32 — THE SWEEP NOW ASKS WHAT THE WRITE GATE ASKS, and that is the
         // whole deliverable. It used to run on `resolvesViaJdt`, a SECOND resolver that split
         // `#member` off and resolved the TYPE only — so a job anchored at a deleted member was
@@ -3175,6 +3178,7 @@ public final class ExperienceTool implements Tool {
         List<Map<String, Object>> nominees = new java.util.ArrayList<>();
         List<String> asked = new java.util.ArrayList<>();
         long budget = budgetIn(args);
+        int[] outsideWorkspace = {0};
         for (org.jawata.mcp.tools.shared.DraftSource.DraftMethod m : drafted) {
             if (already.contains(m.name())) {
                 continue;
@@ -3183,7 +3187,7 @@ public final class ExperienceTool implements Tool {
             Map<String, Object> nomination = retrieval.nominate(
                 m.asQuestion(), org.jawata.mcp.knowledge.LaneScope.of(
                     org.jawata.mcp.knowledge.KnowledgeLane.CODE), budget);
-            Map<String, Object> hit = firstAnchored(nomination);
+            Map<String, Object> hit = firstAnchored(nomination, outsideWorkspace);
             if (hit != null) {
                 Map<String, Object> nominee = new java.util.LinkedHashMap<>();
                 nominee.put("method", m.name());
@@ -3208,6 +3212,9 @@ public final class ExperienceTool implements Tool {
             + " answer and is often the right one.");
         out.put("draftMethods", drafted.size());
         out.put("asked", asked);
+        // A nominee whose job is anchored in code the loaded workspace does not hold is skipped, never offered to a developer who cannot open it
+        // (row 28h-C27-21), and the skipping is said so that an empty list is not read as "nothing like this exists".
+        out.put("nomineesOutsideWorkspace", outsideWorkspace[0]);
         // WHAT COULD NOT BE CHECKED travels with the answer. An empty `matches` has two
         // causes — the lane knows no such job, or this could not tell a new member from an
         // existing one — and a gate acting on the first when the second is true is the
@@ -3228,7 +3235,7 @@ public final class ExperienceTool implements Tool {
      * rather than denied on, which is the same rule the gate applies at its own end.</p>
      */
     @SuppressWarnings("unchecked")
-    private Map<String, Object> firstAnchored(Map<String, Object> nomination) {
+    private Map<String, Object> firstAnchored(Map<String, Object> nomination, int[] outsideWorkspace) {
         Object raw = nomination == null ? null : nomination.get("candidates");
         if (!(raw instanceof List<?> candidates)) {
             return null;
@@ -3237,11 +3244,26 @@ public final class ExperienceTool implements Tool {
             if (c instanceof Map<?, ?> candidate) {
                 Object symbol = candidate.get("symbol");
                 if (symbol != null && !String.valueOf(symbol).isBlank()) {
+                    if (!workspaceHolds(String.valueOf(symbol))) {
+                        outsideWorkspace[0]++;
+                        continue;
+                    }
                     return (Map<String, Object>) candidate;
                 }
             }
         }
         return null;
+    }
+
+    /**
+     * Whether a nominee's symbol is still in the loaded workspace. The code lane is the store's and holds the engine's own jobs, which a developer
+     * working in another project cannot open; only an answer that the symbol is GONE skips it. A workspace that cannot say (nothing loaded, no
+     * answering anchors) keeps the nominee, the safe direction: a missed nomination costs a reader nothing and a false one costs the time to
+     * disprove it.
+     */
+    private boolean workspaceHolds(String symbol) {
+        SymbolAnchors anchors = anchorsOfTheWorkspace == null ? null : anchorsOfTheWorkspace.get();
+        return anchors == null || !Boolean.TRUE.equals(anchors.pointer(symbol).get("stale"));
     }
 
     /**
