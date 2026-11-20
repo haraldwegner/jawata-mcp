@@ -52,6 +52,11 @@ public final class HireRegistry {
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
         /** Whether the brain is compacting its own context right now, as its stream last said. */
         volatile boolean compacting;
+        /**
+         * The reports of this lead's hires that its run never put in front of its brain, held until this lead ends and then told again for its
+         * chat (28h-C27-18). Read and written only under the registry's lock, which closing this hire holds too, so none is added after the drain.
+         */
+        final List<Event> handedUp = new java.util.ArrayList<>();
 
         Running(String seat, String brief, String name, String leadId, Thread thread) {
             this.seat = seat;
@@ -95,6 +100,7 @@ public final class HireRegistry {
 
         @Override
         public void close() {
+            List<Event> handed;
             synchronized (HireRegistry.this) {
                 hire.claims = java.util.Set.of();
                 running.remove(hire);
@@ -103,12 +109,11 @@ public final class HireRegistry {
                 if (!hire.planId.isEmpty()) {
                     endedOn.put(hire.thread, new Ended(hire.planId, hire.name));
                 }
+                handed = List.copyOf(hire.handedUp);
+                hire.handedUp.clear();
             }
-            // Told outside the lock, now that this hire no longer runs: the reports its dead brain could not read go to whoever hired it.
-            List<Event> handed = hire.planId.isEmpty() ? null : handedUp.remove(hire.planId);
-            if (handed != null) {
-                handed.forEach(HireRegistry.this::retell);
-            }
+            // Told outside the lock, now that this hire no longer runs: the reports its brain never read go to its chat.
+            handed.forEach(HireRegistry.this::retell);
         }
     }
 
@@ -268,23 +273,44 @@ public final class HireRegistry {
         private final java.util.concurrent.LinkedBlockingQueue<Event> reports = new java.util.concurrent.LinkedBlockingQueue<>();
         private final java.util.concurrent.atomic.AtomicInteger out = new java.util.concurrent.atomic.AtomicInteger();
         private final Runnable unsubscribe;
+        /** The reports the lead's run has taken and not yet said were put in front of its brain; guarded by this inbox. */
+        private final List<Event> taken = new java.util.ArrayList<>();
+        /** Whether this inbox is closed, after which it takes no report and the registry hands each one up; guarded by this inbox. */
+        private boolean closed;
 
         private final String leadId;
 
         private Inbox(String leadId) {
             this.leadId = leadId;
-            openInboxes.add(leadId);
+            inboxes.put(leadId, this);
             this.unsubscribe = subscribe(event -> {
-                if (!leadId.equals(event.leadId()) || !event.background()) {
-                    return;
-                }
-                if ("started".equals(event.kind())) {
+                if (leadId.equals(event.leadId()) && event.background() && "started".equals(event.kind())) {
                     out.incrementAndGet();
-                } else if ("finished".equals(event.kind())) {
-                    out.decrementAndGet();
-                    reports.add(event);
                 }
             });
+        }
+
+        /**
+         * Takes the report of one of this lead's hires, the one way a report enters an inbox; false once the inbox is closed, when the caller
+         * hands the report up instead, so a report arriving while the inbox closes is neither queued for nobody nor told to nobody.
+         */
+        synchronized boolean offer(Event finished) {
+            if (closed) {
+                return false;
+            }
+            out.decrementAndGet();
+            reports.add(finished);
+            return true;
+        }
+
+        /** Says these reports were put in front of the lead's brain, which answered them: closing the inbox no longer hands them up. */
+        public synchronized void delivered(List<Event> shown) {
+            taken.removeAll(shown);
+        }
+
+        /** Whether a report has come that the lead's brain has not been shown and answered, taken or still waiting. */
+        public synchronized boolean hasUndelivered() {
+            return !taken.isEmpty() || !reports.isEmpty();
         }
 
         /** How many of this lead's background hires have started and not yet reported. */
@@ -301,6 +327,9 @@ public final class HireRegistry {
             List<Event> all = new java.util.ArrayList<>();
             all.add(first);
             reports.drainTo(all);
+            synchronized (this) {
+                taken.addAll(all);
+            }
             return all;
         }
 
@@ -328,15 +357,30 @@ public final class HireRegistry {
             return reports.isEmpty();
         }
 
+        /**
+         * Closes this inbox and hands up every report the lead's brain was not shown and did not answer, whatever way the lead's run ended (its
+         * brain died, a ceiling stopped it, a report came after its last turn): they are held until the lead ends and then go to its chat
+         * (28h-C27-18). A report that arrives after this takes the same way, since a closed inbox refuses it.
+         */
         @Override
         public void close() {
+            List<Event> unread;
+            synchronized (this) {
+                closed = true;
+                unread = new java.util.ArrayList<>(taken);
+                taken.clear();
+                reports.drainTo(unread);
+            }
+            inboxes.remove(leadId, this);
             unsubscribe.run();
-            openInboxes.remove(leadId);
+            if (!heldForItsLead(leadId, unread)) {
+                unread.forEach(HireRegistry.this::retell);
+            }
         }
     }
 
-    /** The leads whose run reads its hires' reports from an inbox right now. */
-    private final Set<String> openInboxes = ConcurrentHashMap.newKeySet();
+    /** The inbox each lead's run reads its hires' reports from right now, by the lead's plan id. */
+    private final java.util.Map<String, Inbox> inboxes = new ConcurrentHashMap<>();
 
     /** Opens the inbox of this lead, which must be opened before the lead's brain can start a hire, so that no report is missed. */
     public Inbox inboxFor(String leadId) {
@@ -593,31 +637,31 @@ public final class HireRegistry {
     /** The finished background hires no connection has taken the report of, by the chat session they trace back to, until one does. */
     private final java.util.Map<String, List<Event>> waiting = new ConcurrentHashMap<>();
 
-    /** The reports a lead's run took for a brain that had died, by the lead's plan id, until that lead's run ends (28h-C27-18). */
-    private final java.util.Map<String, List<Event>> handedUp = new ConcurrentHashMap<>();
-
     /**
-     * Hands up reports a lead's run received after the lead's brain had died (28h-C27-18): once the lead no longer runs, each is told again and
-     * kept for its chat, so whoever hired the lead receives it as the report of a hire whose lead has ended. While the lead's run is still
-     * closing they are held, so the chat does not take the lead for one still able to read them.
+     * Holds reports no brain of their lead will read on that lead's own record while it runs (28h-C27-18); once it has ended each is told again
+     * and kept for its chat, whose principal receives it as the report of a hire whose lead has ended. Holding and ending take the registry's
+     * lock, so a report is never held for a lead that has just ended: the answer is false then, and the caller passes the report on itself.
      *
-     * @param leadId  the plan id of the lead whose brain died
+     * @param leadId  the plan id of the lead
      * @param reports the reports that came for it
+     * @return whether the reports are held (nothing to hold counts as held); false when the lead does not run
      */
-    public void handUp(String leadId, List<Event> reports) {
-        if (leadId == null || leadId.isEmpty() || reports.isEmpty()) {
-            return;
+    private synchronized boolean heldForItsLead(String leadId, List<Event> reports) {
+        if (reports.isEmpty()) {
+            return true;
         }
-        if (isRunningPlan(leadId)) {
-            handedUp.computeIfAbsent(leadId, lead -> new CopyOnWriteArrayList<>()).addAll(reports);
-            return;
+        for (Running hire : running) {
+            if (leadId != null && !leadId.isEmpty() && leadId.equals(hire.planId)) {
+                hire.handedUp.addAll(reports);
+                return true;
+            }
         }
-        reports.forEach(this::retell);
+        return false;
     }
 
-    /** Tells a report again for whoever is above its ended lead, and keeps it until a connection takes it, as an orphaned report is kept. */
+    /** Tells a report again for the chat above its ended lead, and keeps it until a connection takes it, as an orphaned report is kept. */
     private void retell(Event report) {
-        waiting.computeIfAbsent(rootOf(report.leadId()), root -> new CopyOnWriteArrayList<>()).add(report);
+        keepForItsChat(report);
         tell(report);
     }
 
@@ -755,21 +799,25 @@ public final class HireRegistry {
         String plan = answer.path("plan").asText("");
         Event ended = new Event("finished", plan, answer.path("name").asText(""), seat, normal(brief), issuedBy.getOrDefault(plan, ""), answer,
             backgroundPlans.remove(plan));
-        // A background hire whose lead is not a running hire, a chat or a hire that has ended, has nobody running to read its report from an inbox:
-        // it is kept until a connection takes it, so a chat closed while it worked is told when it is opened again (ND4).
-        if (ended.background() && !isRunningPlan(ended.leadId())) {
-            List<Event> held = waiting.computeIfAbsent(rootOf(ended.leadId()), root -> new CopyOnWriteArrayList<>());
-            held.add(ended);
-            while (held.size() > 100) {
-                held.remove(0);
-            }
-        } else if (ended.background() && !openInboxes.contains(ended.leadId())) {
-            // the lead still runs but reads no inbox any more (its brain's turns are over, its gates run): nobody would read the report, so it is
-            // held and told again the moment the lead ends, to whoever is above it (28h-C27-18)
-            handUp(ended.leadId(), List.of(ended));
-            return;
+        // A lead's run that reads an inbox takes the report there. When none takes it, a lead that still runs (its brain's turns are over, or its
+        // brain is not started over ACP) has the report held and told again the moment it ends, for its chat (28h-C27-18). A background hire whose
+        // lead does not run, a chat or a hire that has ended, has its report kept until a connection takes it, so a chat closed while it worked is
+        // told when it is opened again (ND4).
+        Inbox inbox = ended.background() ? inboxes.get(ended.leadId()) : null;
+        if (ended.background() && (inbox == null || !inbox.offer(ended)) && !heldForItsLead(ended.leadId(), List.of(ended))) {
+            keepForItsChat(ended);
         }
+        // Told whoever holds the report: the hire has finished, so its card ends now, while its lead still runs too.
         tell(ended);
+    }
+
+    /** Keeps a finished hire's report for the chat its lead traces back to, until a connection takes it; the newest hundred are kept. */
+    private void keepForItsChat(Event ended) {
+        List<Event> held = waiting.computeIfAbsent(rootOf(ended.leadId()), root -> new CopyOnWriteArrayList<>());
+        held.add(ended);
+        while (held.size() > 100) {
+            held.remove(0);
+        }
     }
 
     /** The answer of the latest hire of this seat for this brief, or none when this engine ran no such hire. */

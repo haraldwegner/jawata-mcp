@@ -595,6 +595,9 @@ public final class AcpServer {
      * A hire started or finished, as the engine's registry says (Stage 24, M8): its card is made or changed on the connection whose conversation
      * the hire traces back to, whatever depth it is at. A hire of another connection's conversation is not this connection's to show.
      */
+    /** The plans whose end this connection has recorded in a session's record. */
+    private final java.util.Set<String> endedRecorded = ConcurrentHashMap.newKeySet();
+
     private void registryEvent(HireRegistry.Event event) {
         PrincipalSession session = sessions.get(HireRegistry.shared().rootOf(event.leadId()));
         if (session == null) {
@@ -605,7 +608,8 @@ public final class AcpServer {
             // A hire the engine ends after the turn that started it has ended is kept in the session's record in the state it ended in: the
             // turn's own line holds the card as that turn last saw it, which a session loaded later replays as failed (28h-C27-7).
             HireEntry ended = seen.entry();
-            if (!HireEntry.RUNNING.equals(ended.state()) && !HireEntry.COMPACTING.equals(ended.state())) {
+            // Once per plan: a report held for a lead that ended is told again then, and its hire ended once (28h-C27-18).
+            if (!HireEntry.RUNNING.equals(ended.state()) && !HireEntry.COMPACTING.equals(ended.state()) && endedRecorded.add(ended.planId())) {
                 // Nobody said anything: the line is the card alone, so a session loaded later shows no words as the person's or the agent's.
                 recorder.record(AgentRecorder.Level.HIRED, session, "ended_" + ended.planId(), "", "", List.of(ended.cardLine()));
             }

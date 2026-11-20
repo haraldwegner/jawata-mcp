@@ -264,8 +264,11 @@ public final class AcpBrainSession {
             List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate,
             Consumer<JsonNode> onThinking, HireRegistry.Inbox inbox, String leadId, String model) throws IOException, InterruptedException {
         // A lead plans and hires and changes no code (28h D57 (l)): its brain's own editors and shell are withheld, as the principal's are.
-        Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings, OwnTools.WITHHELD);
+        // Opened inside the try, so a brain that cannot be started still closes the inbox (the C27 audit).
+        Conversation conversation = null;
         try {
+            conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings, OwnTools.WITHHELD);
+            Conversation brain = conversation;
             conversation.onModel(model);
             // A hire this lead's brain starts is the lead's whatever caller id the engine saw its call under: the call's answer names the plan,
             // and the inbox counts the hires issued under the lead's own id (28h Stage 27, finding 28h-C27-1).
@@ -283,16 +286,15 @@ public final class AcpBrainSession {
             long toolMillis = last.toolMillis();
             while (last.stoppedBy().isEmpty() && conversation.alive() && (inbox.outstanding() > 0 || !inbox.isEmpty())) {
                 // waits only while the lead's brain lives: a brain that died (an exit 137) is never prompted again, so waiting on would leave the
-                // lead running with nobody to read the reports (28h-C27-15)
-                List<HireRegistry.Event> reports = inbox.awaitWhileOut(ceilings.wallClock().toMillis(),
-                    () -> conversation.alive() && !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
+                // lead running with nobody to read the reports (28h-C27-15). The wait is cut in slices of a second, after each of which it asks
+                // again whether the brain lives, so a brain that dies with a long hire out ends the lead within a second, not after its ceiling.
+                List<HireRegistry.Event> reports = inbox.awaitWhileOut(Math.min(ceilings.wallClock().toMillis(), DEATH_CHECK_MILLIS),
+                    () -> brain.alive() && !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
                 if (reports.isEmpty()) {
                     break;
                 }
                 if (!conversation.alive()) {
-                    // a report that came for a brain that has died goes up to whoever hired the lead once the lead's run has ended, never into the
-                    // dead brain, where it was lost (28h-C27-18)
-                    HireRegistry.shared().handUp(leadId, reports);
+                    // a report that came for a brain that has died is never put into it: closing the inbox hands it up (28h-C27-18)
                     break;
                 }
                 HiredBrain.Ceilings left = ceilings.maxToolSteps() > 0
@@ -303,6 +305,10 @@ public final class AcpBrainSession {
                 }
                 conversation.turn(HireReport.ofAll(reports, HireRegistry.shared().runningNamesFor(leadId)), List.of(), left, onText, toolUpdates,
                     onThinking);
+                if (conversation.alive()) {
+                    // the brain answered the turn that showed it these reports; a brain that died in it read none, and closing the inbox hands them up
+                    inbox.delivered(reports);
+                }
                 last = conversation.outcome();
                 steps += last.toolSteps();
                 names.addAll(last.toolNames());
@@ -310,20 +316,35 @@ public final class AcpBrainSession {
                 toolMillis += last.toolMillis();
             }
             Optional<String> stoppedBy = last.stoppedBy();
-            if (stoppedBy.isEmpty() && ceilings.maxToolSteps() > 0 && steps >= ceilings.maxToolSteps()
-                && (inbox.outstanding() > 0 || !inbox.isEmpty())) {
+            java.util.OptionalInt exit = last.exitCode();
+            if (stoppedBy.isEmpty() && !conversation.alive() && (inbox.outstanding() > 0 || inbox.hasUndelivered())) {
+                // the brain died with work of its hires still to read: it did not finish, so no check run afterwards proves its step, and the
+                // outcome says so instead of the clean answer it gave before it died (the C27 audit)
+                exit = conversation.outcome().exitCode();
+                stoppedBy = Optional.of("the lead's brain ended" + (exit.isPresent() ? " (exit " + exit.getAsInt() + ")" : "")
+                    + " while its hires were still out or their reports unread; those reports go to its chat");
+            } else if (stoppedBy.isEmpty() && ceilings.maxToolSteps() > 0 && steps >= ceilings.maxToolSteps()
+                && (inbox.outstanding() > 0 || inbox.hasUndelivered())) {
                 stoppedBy = Optional.of("tool steps: " + steps + " over the ceiling of " + ceilings.maxToolSteps());
             } else if (stoppedBy.isPresent() && stoppedBy.get().startsWith("tool steps")) {
                 stoppedBy = Optional.of("tool steps: " + steps + " over the ceiling of " + ceilings.maxToolSteps());
             }
             return new HiredBrain.Outcome(last.text(), last.costUsd(), steps, last.unreadableLines(), last.sawTerminalCost(), last.timedOut(),
-                last.exitCode(), last.stderrTail(), stoppedBy, List.copyOf(names), Optional.empty(), Optional.empty(), List.copyOf(calls),
+                exit, last.stderrTail(), stoppedBy, List.copyOf(names), Optional.empty(), Optional.empty(), List.copyOf(calls),
                 last.brainSessionId(), toolMillis);
         } finally {
-            conversation.end();
-            inbox.close();
+            try {
+                if (conversation != null) {
+                    conversation.end();
+                }
+            } finally {
+                inbox.close();
+            }
         }
     }
+
+    /** How long a lead's wait for its hires' reports goes before it asks again whether its brain still lives. */
+    static final long DEATH_CHECK_MILLIS = 1_000;
 
     /**
      * One brain process kept for a whole conversation (D53 (g)): started once, and prompted as often as the conversation has something to say.
