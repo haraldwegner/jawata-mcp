@@ -125,12 +125,12 @@ class AddMethodToolTest {
     @DisplayName("a return type that is no type, and a name that is no name, are refused and nothing is written")
     void aMalformedSignatureIsRefused() throws Exception {
         String original = Files.readString(classFile);
-        ObjectNode badType = request(classFile, 7, 4, "fine");
-        badType.put("returnType", "String; drop()");
-        ToolResponse badName = generate.execute(request(classFile, 7, 4, "not a name"));
-
-        assertFalse(generate.execute(badType).isSuccess(), "an injected return type was accepted");
-        assertFalse(badName.isSuccess(), "a name with spaces was accepted");
+        for (String notAType : java.util.List.of("String; drop()", "List<String", "int x, int y", "Strin g", "")) {
+            ObjectNode badType = request(classFile, 7, 4, "fine");
+            badType.put("returnType", notAType);
+            assertFalse(generate.execute(badType).isSuccess(), "'" + notAType + "' was accepted as a return type");
+        }
+        assertFalse(generate.execute(request(classFile, 7, 4, "not a name")).isSuccess(), "a name with spaces was accepted");
         assertEquals(original, Files.readString(classFile));
     }
 }
