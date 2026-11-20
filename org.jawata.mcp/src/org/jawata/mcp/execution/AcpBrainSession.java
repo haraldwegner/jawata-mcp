@@ -380,8 +380,16 @@ public final class AcpBrainSession {
             Map<String, String> environment = new LinkedHashMap<>(base.environment());
             environment.putAll(program.environment());
             environment.put(MACHINE_SESSION, "1");
+            // 28h-C27-31: the folders the engine lets the brain work in, so the guard in the brain's own client allows what the engine allows
+            java.util.List<java.nio.file.Path> access = org.jawata.mcp.access.BrainAccess.folders(null);
+            if (!access.isEmpty()) {
+                environment.put(ACCESS_FOLDERS, String.join(java.io.File.pathSeparator, access.stream().map(java.nio.file.Path::toString).toList()));
+            }
             return environment;
         }
+
+        /** The variable naming those folders, a path list of the platform; the studio's guard (jawata-hook {@code local.rs}) reads it. */
+        static final String ACCESS_FOLDERS = "JAWATA_ACCESS_FOLDERS";
 
         private static Conversation open(HostProcesses host, Program program, HireSite base, SelfEndpoint mcp, List<String> allowedTools,
                 Optional<String> resume, HiredBrain.Ceilings ceilings, OwnTools ownTools) throws IOException {

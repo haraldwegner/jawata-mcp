@@ -436,4 +436,23 @@ class AcpBrainSessionTest {
         assertEquals("1", environment.get("JAWATA_MACHINE_SESSION"), "the mark is the engine's and nothing overrides it");
         assertEquals("yes", environment.get("KEPT"), "the program's own variables are kept");
     }
+
+    @Test
+    @DisplayName("28h-C27-31: a brain the engine starts is told the folders the engine lets it work in, so the guard in the brain's own client allows what the engine allows; with no access published it is told none")
+    void aBrainTheEngineStartsIsToldTheFoldersItMayWorkIn() {
+        AcpBrainSession.Program program = new AcpBrainSession.Program(List.of("brain"), Map.of());
+        java.nio.file.Path trading = dir.resolve("Projects");
+        java.nio.file.Path notes = dir.resolve("notes");
+        try {
+            org.jawata.mcp.access.BrainAccess.publish(session -> List.of(trading, notes));
+            Map<String, String> told = AcpBrainSession.Conversation.environmentOf(HireSite.in(dir), program);
+            org.jawata.mcp.access.BrainAccess.publish(null);
+            Map<String, String> untold = AcpBrainSession.Conversation.environmentOf(HireSite.in(dir), program);
+
+            assertEquals(trading + java.io.File.pathSeparator + notes, told.get("JAWATA_ACCESS_FOLDERS"), "the brain was not told the engine's access folders");
+            assertTrue(!untold.containsKey("JAWATA_ACCESS_FOLDERS"), "CONTROL: with no access published the brain was told folders: " + untold.get("JAWATA_ACCESS_FOLDERS"));
+        } finally {
+            org.jawata.mcp.access.BrainAccess.publish(null);
+        }
+    }
 }

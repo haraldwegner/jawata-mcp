@@ -549,8 +549,7 @@ public class JawataEngine {
 			// folder (beside workspace.json) every time the editor starts or its folders change, and they are read from there on every call.
 			org.jawata.mcp.access.AccessFolders onDisk = new org.jawata.mcp.access.AccessFolders(
 					this.host().directories().workspaceRoot().map(root -> root.resolve("editor-folders.txt")).orElse(null));
-			this.getToolRegistry().setAccessCheck(new org.jawata.mcp.access.AccessCheck(policy,
-					session -> {
+			java.util.function.Function<String, java.util.List<java.nio.file.Path>> workspaceOf = session -> {
 						java.util.List<java.nio.file.Path> loaded = ports.workspace().get().projects().stream().map(project -> project.root()).toList();
 						// Stage 27 (z4): access is the workspace as it stands on disk, whoever started first: the repositories that enclose the loaded
 						// Java projects and the folders of the VS Code workspace file they belong to, read again when the file changes. The setting a
@@ -559,8 +558,11 @@ public class JawataEngine {
 								org.jawata.mcp.access.SessionFolders.editorFolders(this.host().settings().get("jawata.workspace.folders").orElse(null)));
 						beside.addAll(onDisk.of(loaded));
 						return this.getToolRegistry().sessionFolders().workspaceOf(session, loaded, beside);
-					},
+					};
+			this.getToolRegistry().setAccessCheck(new org.jawata.mcp.access.AccessCheck(policy, workspaceOf,
 					java.nio.file.Path.of(System.getProperty("user.home")), java.nio.file.Path.of(System.getProperty("java.io.tmpdir"))));
+			// 28h-C27-31: every brain the engine starts is told the same folders, so the guard in its own client allows what this check allows
+			org.jawata.mcp.access.BrainAccess.publish(workspaceOf);
 		});
 
 		// A host that serves Java is loading until the Java provider binds; the neutral set is published now, and each language's tools
