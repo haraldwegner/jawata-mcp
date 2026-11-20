@@ -25,7 +25,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * test of {@code UnresolvedFile} alone cannot see whether a tool hands it those projects. These tests go through real tools over a loaded
  * project, and they say which tools: the generate door, which decides it once for every generate kind, and {@code AnalyzeFileTool} as the
  * representative of the tools that each pass {@code service.allProjects()} themselves. With the projects not handed on (an empty list in place
- * of the loaded ones) the file inside the project is answered as outside every project, and each assertion below turns red. The other call
+ * of the loaded ones) the file inside the project is answered as outside every project, and the inside assertion below turns red (the outside and missing ones are controls and stay green). The other call
  * sites are not tested one by one; that is recorded in the sprint 28h plan, Stage 27, with its owner.
  */
 class UnresolvedFileThroughTheToolsTest {
