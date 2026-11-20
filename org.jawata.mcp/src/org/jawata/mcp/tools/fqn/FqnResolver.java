@@ -221,12 +221,7 @@ public final class FqnResolver {
      * order, and a stub has no bodies and cannot be a refactoring target. Binary only when no project has the source.
      */
     static Optional<IType> preferringSource(List<IType> found) {
-        for (IType type : found) {
-            if (!type.isBinary()) {
-                return Optional.of(type);
-            }
-        }
-        return found.stream().findFirst();
+        return org.jawata.mcp.tools.shared.LibrarySource.sourceFirst(found, type -> !type.isBinary()).stream().findFirst();
     }
 
     static Optional<IType> resolveType(String typeFqn, List<IJavaProject> projects) {

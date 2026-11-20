@@ -77,7 +77,7 @@ public final class LibrarySource {
      * (28h Stage 27, finding 28h-C27-16). Projects were asked in load order and the first to find the name answered, so the Eclipse project's
      * bundled jar of the engine answered its disassembled stub for a type whose source another loaded project owns.
      */
-    static <P> List<P> sourceFirst(List<P> projects, java.util.function.Predicate<P> holdsSource) {
+    public static <P> List<P> sourceFirst(List<P> projects, java.util.function.Predicate<P> holdsSource) {
         List<P> ordered = new java.util.ArrayList<>(projects.stream().filter(holdsSource).toList());
         projects.stream().filter(holdsSource.negate()).forEach(ordered::add);
         return List.copyOf(ordered);
