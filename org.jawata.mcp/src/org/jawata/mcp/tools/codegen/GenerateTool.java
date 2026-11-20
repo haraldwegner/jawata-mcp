@@ -207,6 +207,15 @@ public class GenerateTool extends AbstractTool
         if (kind == null || kind.isBlank()) {
             return ToolResponse.invalidParameter("kind", "kind is required; one of " + publishedKinds());
         }
+        // A file no loaded project holds a compilation unit of is answered once, here, for every kind, as the other Java tools answer it
+        // (C27-27, the C27 audit finding 3): absent, a non-Java file inside a loaded project, or outside every loaded project.
+        String filePath = getStringParam(arguments, "filePath");
+        if (filePath != null && !filePath.isBlank()) {
+            org.eclipse.jdt.core.ICompilationUnit unit = service.getCompilationUnit(java.nio.file.Path.of(filePath));
+            if (unit == null || !unit.exists()) {
+                return org.jawata.mcp.tools.shared.UnresolvedFile.fileNotFound(service.allProjects(), filePath);
+            }
+        }
         return switch (kind) {
             case "constructor"      -> constructor.executeWithService(service, arguments);
             case "getters_setters"  -> gettersSetters.executeWithService(service, remapAccessorKind(arguments));

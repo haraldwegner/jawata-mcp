@@ -53,6 +53,21 @@ class FilesToolTest {
     }
 
     @Test
+    @DisplayName("C27-27 (the C27 audit, finding 3): read given a folder, and search given a file, are answered as an invalid parameter that says what they need, not as a path that is not there; a path that is not there is still not found")
+    void aFolderToReadAndAFileToSearchAreSaidSoAndNotAnAbsence(@TempDir Path folder) throws Exception {
+        Path file = Files.writeString(folder.resolve("a.txt"), "x");
+
+        ToolResponse readFolder = call("read", Map.of("path", folder.toString()));
+        ToolResponse searchFile = call("search", Map.of("folder", file.toString(), "pattern", "x"));
+        ToolResponse missing = call("read", Map.of("path", folder.resolve("none.txt").toString()));
+
+        assertAll(
+            () -> assertEquals("INVALID_PARAMETER", readFolder.getError().getCode(), "read of a folder: " + readFolder.getError().getMessage()),
+            () -> assertEquals("INVALID_PARAMETER", searchFile.getError().getCode(), "search of a file: " + searchFile.getError().getMessage()),
+            () -> assertEquals("FILE_NOT_FOUND", missing.getError().getCode(), "CONTROL: a path that is not there was answered as present"));
+    }
+
+    @Test
     @DisplayName("28h D57 (j): any file that is not a .md document is refused, and nothing is written")
     void anythingButADocumentIsRefused(@TempDir Path folder) throws Exception {
         for (String name : List.of("Foo.java", "main.rs", "view.tsx", "pom.xml", "notes.md.java", "README")) {
