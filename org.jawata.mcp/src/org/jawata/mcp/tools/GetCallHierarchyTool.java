@@ -106,7 +106,8 @@ public class GetCallHierarchyTool extends AbstractTool {
                 "direction is required; one of " + DIRECTIONS);
         }
         // Said once for both directions, the symbol form excepted: incoming answered that the position does not resolve (the post-release audit).
-        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, arguments);
+        // after the direction is known to be one of ours: an unknown direction is a parameter error first, whatever file it carries
+        ToolResponse unresolved = DIRECTIONS.contains(direction) ? org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, arguments) : null;
         if (unresolved != null) {
             return unresolved;
         }

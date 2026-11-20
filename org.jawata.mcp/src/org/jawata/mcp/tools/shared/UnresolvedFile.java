@@ -52,7 +52,8 @@ public final class UnresolvedFile {
      * to a method", which reads as a wrong position when the file is what is wrong.
      *
      * <p>A request that names a symbol ({@code symbol} or {@code typeName}) is about that symbol and not about any file it also carries, which the
-     * symbol form has always ignored, so it is let through: a stale {@code filePath} beside a valid symbol must not be refused (the post-release audit).</p>
+     * symbol form has always ignored, so it is let through: a stale {@code filePath} beside a valid symbol must not be refused (the post-release audit). An
+     * explicit position ({@code line} and {@code column} beside the file) wins over the symbol, so the file is then the thing the request is about.</p>
      *
      * @param service   the Java service of the loaded projects
      * @param arguments the request, whose {@code filePath} is the file the caller named
@@ -60,7 +61,10 @@ public final class UnresolvedFile {
      */
     public static ToolResponse ofTheFileNamed(org.jawata.core.IJdtService service, com.fasterxml.jackson.databind.JsonNode arguments) {
         String filePath = arguments.path("filePath").asText("");
-        if (filePath.isBlank() || !arguments.path("symbol").asText("").isBlank() || !arguments.path("typeName").asText("").isBlank()) {
+        boolean namesASymbol = !arguments.path("symbol").asText("").isBlank() || !arguments.path("typeName").asText("").isBlank();
+        // an explicit position wins over the symbol (FqnTarget.materializePosition), so a file with a position is a file the request is about
+        boolean explicitPosition = arguments.path("line").asInt(-1) >= 0 && arguments.path("column").asInt(-1) >= 0;
+        if (filePath.isBlank() || (namesASymbol && !explicitPosition)) {
             return null;
         }
         try {

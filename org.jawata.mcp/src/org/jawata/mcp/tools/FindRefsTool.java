@@ -103,7 +103,8 @@ public class FindRefsTool extends AbstractTool {
         }
         // A file no loaded project holds is said so once for every kind, the symbol form excepted: the kinds below would each say the position does
         // not resolve (the post-release audit found implementations and method_references answering that way).
-        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, arguments);
+        // after the kind is known to be one of ours: an unknown kind is a parameter error first, whatever file it carries
+        ToolResponse unresolved = KINDS.contains(kind) ? org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, arguments) : null;
         if (unresolved != null) {
             return unresolved;
         }

@@ -255,6 +255,31 @@ class UnresolvedFileThroughTheToolsTest {
         assertEquals(java.util.List.of(), refused, "requests that name a symbol and were refused for the file they also carry");
     }
 
+    @Test
+    @DisplayName("a symbol with an explicit position in a file no loaded project holds is still refused as an unresolved file, since the explicit position wins; and an unknown kind or direction is answered as a parameter error before the file is looked at (the post-release audit, round 2)")
+    void anExplicitPositionBesideASymbolIsGuardedAndAnUnknownKindIsAParameterErrorFirst(@TempDir Path elsewhere) throws Exception {
+        String missing = elsewhere.resolve("Missing.java").toString();
+        java.util.Map<String, String> expected = new java.util.LinkedHashMap<>();
+        expected.put("DataTool {\"kind\":\"encapsulate_field\",\"symbol\":\"com.example.Calculator#nothing\",\"line\":0,\"column\":0}", "FILE_NOT_FOUND");
+        expected.put("FindRefsTool {\"kind\":\"nonsense\",\"line\":0,\"column\":0}", "INVALID_PARAMETER");
+        expected.put("GetCallHierarchyTool {\"direction\":\"sideways\",\"line\":0,\"column\":0}", "INVALID_PARAMETER");
+        java.util.List<String> wrong = new java.util.ArrayList<>();
+
+        for (java.util.Map.Entry<String, String> row : expected.entrySet()) {
+            String name = row.getKey().substring(0, row.getKey().indexOf(' '));
+            Class<?> type = name.equals("FindRefsTool") ? org.jawata.mcp.tools.FindRefsTool.class
+                : name.equals("DataTool") ? org.jawata.mcp.tools.DataTool.class : org.jawata.mcp.tools.GetCallHierarchyTool.class;
+            ObjectNode arguments = (ObjectNode) json.readTree(row.getKey().substring(name.length() + 1));
+            arguments.put("filePath", missing);
+            String answered = code(doorOf(type).execute(arguments));
+            if (!row.getValue().equals(answered)) {
+                wrong.add(row.getKey() + " answered " + answered + ", expected " + row.getValue());
+            }
+        }
+
+        assertEquals(java.util.List.of(), wrong, "requests answered otherwise than the audit says they must be");
+    }
+
     private static String code(ToolResponse answer) {
         return answer.getError() == null ? "(no error)" : answer.getError().getCode();
     }
