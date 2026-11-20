@@ -141,7 +141,10 @@ class LeadLoopTest {
             leadRun.close();
 
             assertAll(
-                () -> assertEquals("noted", ended.text(), "CONTROL: the lead's brain did not answer its turn before it died"),
+                // On a loaded machine the stand-in's start takes longer than the hire's work, so the report can reach the lead before the brain is
+                // killed: the brain then dies in the turn that shows it the report, which the lead must hand up all the same (the full suite, twice).
+                () -> assertTrue("noted".equals(ended.text()) || ended.text().contains("ended before it answered"),
+                    "CONTROL: the lead's brain neither answered its first turn nor died in the next: " + ended.text()),
                 () -> assertTrue(seconds < 30, "the lead waited on with a dead brain: " + seconds + " s"),
                 () -> assertTrue(ended.stoppedBy().isPresent(), "a lead whose brain died with a hire out was reported as a clean run"),
                 () -> assertEquals(whileTheLeadRuns + 1, told.size(), "the hire's report did not go up once the lead whose brain died had ended: " + told),
