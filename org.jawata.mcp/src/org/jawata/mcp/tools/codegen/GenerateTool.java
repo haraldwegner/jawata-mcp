@@ -43,7 +43,7 @@ public class GenerateTool extends AbstractTool
             new java.util.LinkedHashMap<>();
         for (org.jawata.mcp.tools.KindDelegate delegate : List.of(
                 constructor, gettersSetters, equalsHashCode, toStringTool,
-                testSkeleton, overrideMethods, copyClass)) {
+                testSkeleton, overrideMethods, copyClass, addMethod)) {
             published.put(delegate.kindName(), delegate);
         }
         return java.util.Collections.unmodifiableMap(published);
@@ -56,6 +56,7 @@ public class GenerateTool extends AbstractTool
     private final GenerateTestSkeletonTool testSkeleton;
     private final OverrideMethodsTool overrideMethods;
     private final CopyClassTool copyClass;
+    private final AddMethodTool addMethod;
 
     public GenerateTool(Supplier<IJdtService> serviceSupplier, RefactoringChangeCache cache) {
         super(serviceSupplier);
@@ -66,6 +67,7 @@ public class GenerateTool extends AbstractTool
         this.testSkeleton = new GenerateTestSkeletonTool(serviceSupplier, cache);
         this.overrideMethods = new OverrideMethodsTool(serviceSupplier, cache);
         this.copyClass = new CopyClassTool(serviceSupplier, cache);
+        this.addMethod = new AddMethodTool(serviceSupplier, cache);
     }
 
     @Override
@@ -118,7 +120,8 @@ public class GenerateTool extends AbstractTool
             - copy_class       — clone the top-level class at the caret into a new same-package file.
                                  Needs: newTypeName. The compiler-cheap way to derive a sibling class
                                  (e.g. PizzaSalami -> PizzaFungi) before Extract Superclass, instead
-                                 of re-authoring a near-duplicate.""";
+                                 of re-authoring a near-duplicate.
+            - add_method       — a method on the type at the caret: on a class a stub whose body throws UnsupportedOperationException, so a test of its behaviour fails for the behaviour and not for a missing method; on an interface the bare signature. Needs: methodName. Optional: returnType (default void), parameters[] ({name, type}), visibility (public by default).""";
 
     @Override
     public String footer() {
@@ -154,7 +157,7 @@ public class GenerateTool extends AbstractTool
         properties.put("column", Map.of("type", "integer", "description", "Zero-based column."));
         properties.put("fields", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "constructor/getters_setters/equals_hashcode/tostring: field names to include."));
-        properties.put("visibility", Map.of("type", "string", "description", "constructor/getters_setters: member visibility (e.g. public)."));
+        properties.put("visibility", Map.of("type", "string", "description", "constructor/getters_setters/add_method: member visibility (e.g. public)."));
         properties.put("callSuper", Map.of("type", "string", "description", "constructor: whether to call super (auto|true|false)."));
         properties.put("accessorKind", Map.of("type", "string", "enum", List.of("getters", "setters", "both"),
             "description", "getters_setters: which accessors to generate (default both)."));
@@ -212,6 +215,7 @@ public class GenerateTool extends AbstractTool
             case "test_skeleton"    -> testSkeleton.executeWithService(service, arguments);
             case "override_methods" -> overrideMethods.executeWithService(service, arguments);
             case "copy_class"       -> copyClass.executeWithService(service, arguments);
+            case "add_method"       -> addMethod.executeWithService(service, arguments);
             default -> ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         };

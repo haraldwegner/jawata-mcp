@@ -290,7 +290,7 @@ ships, fails the build. The prose that follows groups the same names by what the
   replace_parameter_with_query / replace_exception_with_precheck / preserve_whole_object /
   remove_flag_argument / replace_command_with_function / replace_error_code_with_exception)*,
   `generate` *(constructor / getters_setters / equals_hashcode / tostring / test_skeleton /
-  override_methods / copy_class)* · `refactoring` *(single change: apply / undo / inspect ·
+  override_methods / copy_class / add_method)* · `refactoring` *(single change: apply / undo / inspect ·
   multi-step, parity-gated: plan / apply_plan / inspect_plan / undo_plan)*
 - *Multi-step orchestration* — `refactoring(action=plan → apply_plan)` walks a refactoring as
   atomic, behaviour-preserving steps with a **parity gate** (compile 0/0 + a purity check) after

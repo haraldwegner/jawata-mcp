@@ -102,7 +102,7 @@ class DegradationStampMarkingTest {
      * {@code ComposeMethodTool} is among them.</p>
      */
     private static final java.util.Set<String> SELF_BUILT = java.util.Set.of(
-        "generate constructor", "generate copy_class", "generate equals_hashcode",
+        "generate add_method", "generate constructor", "generate copy_class", "generate equals_hashcode",
         "generate getters_setters", "generate override_methods", "generate test_skeleton",
         "generate tostring");
 
@@ -209,7 +209,7 @@ class DegradationStampMarkingTest {
      * THE MARKING. Every shape lands in a family with a verdict, or is named.
      */
     @Test
-    @DisplayName("every one of the 80 shapes is marked, and an unmarkable one is named")
+    @DisplayName("every one of the 81 shapes is marked, and an unmarkable one is named")
     void everyShapeIsMarked() {
         Map<String, String> byShape = familyByShape();
 
@@ -235,12 +235,13 @@ class DegradationStampMarkingTest {
             "every SHAPE derived to one verdict, so the marking is one judgement wearing "
                 + "several names. In use: " + verdictsInUse);
 
-        // 80 since Sprint 28g D9 change 3 published `inline kind=unreferenced_member`.
+        // 80 since Sprint 28g D9 change 3 published `inline kind=unreferenced_member`; 81 since
+        // 28h-C27-20 published `generate kind=add_method`.
         // The message deliberately does NOT repeat the number: it used to say "the census
         // population of 78" beside an assertion expecting 79, so the sentence meant to
         // justify the figure disagreed with it — and the assertion already prints both
         // sides. ResponseShapeCensusTest is the one place the population is written down.
-        assertEquals(80, byShape.size(),
+        assertEquals(81, byShape.size(),
             "the marked count must EQUAL the census population ResponseShapeCensusTest "
                 + "derives — C2b's exit clause. Per family: " + countByFamily(byShape));
     }

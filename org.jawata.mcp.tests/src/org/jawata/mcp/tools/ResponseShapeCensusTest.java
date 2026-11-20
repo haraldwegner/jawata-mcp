@@ -111,7 +111,8 @@ class ResponseShapeCensusTest {
         EXPECTED_KINDS_PER_DOOR.put("inline", 6);
         EXPECTED_KINDS_PER_DOOR.put("move", 6);
         EXPECTED_KINDS_PER_DOOR.put("hierarchy", 7);
-        EXPECTED_KINDS_PER_DOOR.put("generate", 7);
+        // EIGHT since 28h-C27-20 published `generate kind=add_method`.
+        EXPECTED_KINDS_PER_DOOR.put("generate", 8);
         EXPECTED_KINDS_PER_DOOR.put("refactor_to_pattern", 11);
         EXPECTED_KINDS_PER_DOOR.put("change_method_signature", 11);
         EXPECTED_KINDS_PER_DOOR.put("data", 11);

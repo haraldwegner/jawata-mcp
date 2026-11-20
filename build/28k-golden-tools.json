@@ -1636,13 +1636,18 @@
       "tostring",
       "test_skeleton",
       "override_methods",
-      "copy_class"
+      "copy_class",
+      "add_method"
      ],
      "type": "string"
     },
     "line": {
      "description": "Zero-based line of a caret in the target type.",
      "type": "integer"
+    },
+    "methodName": {
+     "description": "add_method: the new method's name.",
+     "type": "string"
     },
     "methods": {
      "description": "override_methods: specific method names to override (default all overridable).",
@@ -1655,12 +1660,31 @@
      "description": "copy_class: name for the cloned class (must not already exist in the package).",
      "type": "string"
     },
+    "parameters": {
+     "description": "add_method: the parameters, in order, each {name, type}.",
+     "items": {
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "type": {
+        "type": "string"
+       }
+      },
+      "type": "object"
+     },
+     "type": "array"
+    },
     "precedentOverride": {
      "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
      "type": "string"
     },
     "projectKey": {
      "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "type": "string"
+    },
+    "returnType": {
+     "description": "add_method: the return type as written in source (default void).",
      "type": "string"
     },
     "setterStyle": {
@@ -1680,7 +1704,7 @@
      "type": "string"
     },
     "visibility": {
-     "description": "constructor/getters_setters: member visibility (e.g. public).",
+     "description": "constructor/getters_setters/add_method: member visibility (e.g. public).",
      "type": "string"
     }
    },

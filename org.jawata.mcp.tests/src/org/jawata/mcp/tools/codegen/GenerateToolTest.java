@@ -51,6 +51,7 @@ class GenerateToolTest {
         narrowByKind.put("tostring", new GenerateToStringTool(() -> service, cache));
         narrowByKind.put("test_skeleton", new GenerateTestSkeletonTool(() -> service, cache));
         narrowByKind.put("override_methods", new OverrideMethodsTool(() -> service, cache));
+        narrowByKind.put("add_method", new AddMethodTool(() -> service, cache));
     }
 
     private ObjectNode minimal(String kind) {
@@ -79,8 +80,8 @@ class GenerateToolTest {
         // held six of the seven: copy_class was added under it and never reached it, and
         // because the assertion was containsAll it stayed green through the omission and would
         // have stayed green at eight.
-        assertEquals(7, kinds.size(),
-            "seven kinds ship on generate; a change in the routing table must be a deliberate"
+        assertEquals(8, kinds.size(),
+            "eight kinds ship on generate (add_method, 28h-C27-20, is the eighth); a change in the routing table must be a deliberate"
                 + " edit here rather than a silent one: " + kinds);
         assertTrue(props.containsKey("accessorKind"), "getters_setters accessor exposed as accessorKind");
         assertTrue(((List<String>) schema.get("required")).contains("kind"));

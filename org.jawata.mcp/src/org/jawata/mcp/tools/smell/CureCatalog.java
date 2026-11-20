@@ -905,7 +905,17 @@ public final class CureCatalog {
             + " Inline Class — a redundant level of hierarchy, not a dead published member; one"
             + " emission site makes that a census rather than a sample. So the gap is on the"
             + " DETECTOR side and this operation is unrouted rather than unroutable: a detector"
-            + " that reported a zero-reference exported member would route here unchanged.");
+            + " that reported a zero-reference exported member would route here unchanged.",
+
+        // 28h-C27-20: the stub a developer writes first, so that the test of a behaviour fails
+        // for the behaviour.
+        "generate kind=add_method",
+        "no detector reports a method that does not exist yet. The reason to add one is a test"
+            + " written first that names a method the code lacks, and the method's name, return"
+            + " type and parameters are the developer's design decision, which no finding can"
+            + " propose. The same holds for the other generate kinds, which are exempted by name"
+            + " as invoked because somebody wants the code; this one is new, so it is explained"
+            + " here instead of being added to that list.");
 
     // FOUR hierarchy ENTRIES WERE DELETED AT S8b STEP 9 —
     // replace_type_code_with_subclasses, replace_superclass_with_delegate,

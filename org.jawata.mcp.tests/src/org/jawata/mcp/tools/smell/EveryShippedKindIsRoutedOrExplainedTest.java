@@ -210,7 +210,9 @@ class EveryShippedKindIsRoutedOrExplainedTest {
         // zero-reference member never has; and `speculative_generality` has ONE emission site,
         // naming Collapse Hierarchy / Inline Class — a redundant hierarchy level, not a dead
         // published member.
-        org.junit.jupiter.api.Assertions.assertEquals(80, examined,
+        // 81 since 28h-C27-20 published `generate kind=add_method`, which carries a written reason
+        // in CureCatalog.SHIPPED_BUT_UNROUTED: no detector reports a method that does not exist yet.
+        org.junit.jupiter.api.Assertions.assertEquals(81, examined,
             "PROOF OF LIFE: the nine doors must publish their kinds here, or this loop runs"
                 + " over nothing and passes. A door removed from RefactoringDoors.all, or a"
                 + " kind added without a route or a reason, changes this number. Examined: "
