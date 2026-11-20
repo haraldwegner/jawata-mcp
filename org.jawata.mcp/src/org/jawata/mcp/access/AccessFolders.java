@@ -45,21 +45,15 @@ public final class AccessFolders {
 
     /** Access from the disk alone, with no list from the editor. */
     public AccessFolders() {
-        this(null);
+        this(null, null);
     }
 
     /**
      * Access that also covers the folders every editor window has open (his word 2026-11-20): the lists the studio writes into
      * {@code editorLists}, one per window, every time a window starts or its folders change, whether the engine is running or not, and
-     * removes when a window closes.
-     */
-    public AccessFolders(Path editorLists) {
-        this(editorLists, null);
-    }
-
-    /**
-     * As {@link #AccessFolders(Path)}, and each reading's projects' folders (the part without the windows' folders) are handed to
-     * {@code projectFoldersRead}, which keeps the brains the engine starts told what this reading allows (second audit 2026-11-20).
+     * removes when a window closes. Each reading's projects' folders (the part without the windows' folders) are handed to
+     * {@code projectFoldersRead} when it is given, which keeps the brains the engine starts told what this reading allows (second audit
+     * 2026-11-20).
      */
     public AccessFolders(Path editorLists, Consumer<List<Path>> projectFoldersRead) {
         this.editorLists = editorLists;

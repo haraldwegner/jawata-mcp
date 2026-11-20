@@ -142,7 +142,7 @@ class AccessFoldersTest {
         Path lists = root.resolve("editor-folders");
         editorList(lists, "window-a", trading);
         editorList(lists, "window-b", docs);
-        AccessFolders access = new AccessFolders(lists);
+        AccessFolders access = new AccessFolders(lists, null);
 
         List<Path> loading = access.of(List.of());
         List<Path> loaded = access.of(List.of(projectIn(folder(root, "engine"), "core")));
@@ -151,7 +151,7 @@ class AccessFoldersTest {
             () -> assertTrue(covers(loading, trading.resolve("jats2").resolve("bundle")) && covers(loading, docs), "while loading, the windows' folders are not covered: " + loading),
             () -> assertTrue(covers(loaded, trading) && covers(loaded, docs) && covers(loaded, root.resolve("engine")), "with a loaded project, a window's folders are not covered: " + loaded),
             () -> assertFalse(covers(loaded, stranger), "a folder no window holds was covered: " + loaded),
-            () -> assertFalse(covers(new AccessFolders(root.resolve("absent")).of(List.of()), trading), "CONTROL: with no lists from the editor their folders were covered"));
+            () -> assertFalse(covers(new AccessFolders(root.resolve("absent"), null).of(List.of()), trading), "CONTROL: with no lists from the editor their folders were covered"));
     }
 
     @Test
@@ -181,7 +181,7 @@ class AccessFoldersTest {
         Path lists = root.resolve("editor-folders");
         Path list = editorList(lists, "window-a", first);
         FileTime written = Files.getLastModifiedTime(list);
-        AccessFolders access = new AccessFolders(lists);
+        AccessFolders access = new AccessFolders(lists, null);
 
         List<Path> before = access.of(List.of());
         editorList(lists, "window-a", later);
