@@ -420,6 +420,18 @@ public final class HiredRun {
         return this;
     }
 
+    private java.util.function.Function<String, Optional<Boolean>> changesCodeOf = bare -> Optional.empty();
+
+    /**
+     * Says how this run tells a jawata tool that changes code from one that does not, by its bare name (28h-C27-22): the hire tool hands the
+     * registry's own answer. A worker held to writing its test first is also held to the files it changed by a shell or a patch, and a call of
+     * a tool that changes code makes that cross-check stand down, since such a tool's changes name no write. By default no name is known.
+     */
+    public HiredRun classifyingToolsBy(java.util.function.Function<String, Optional<Boolean>> changesCode) {
+        this.changesCodeOf = changesCode;
+        return this;
+    }
+
     /**
      * Names the seat that runs, the seat that hired it and the first name the hire carries; a run is built for one hire, so the names belong to
      * that hire alone.
@@ -526,7 +538,11 @@ public final class HiredRun {
         // 28h Stage 27 (z5): what the worker's test runs showed is taken whatever the brief, so the store never keeps a hire's runs; a worker
         // briefed with a BUILD instruction is held to writing the test first and seeing it fail.
         List<TestFirst.Run> testRuns = testRunsOf.apply(plan.value());
-        List<String> notTestFirst = worker && !Instructions.builds(brief).isEmpty() ? TestFirst.violations(outcome.toolCalls(), testRuns, base.workingDirectory()) : List.of();
+        List<String> notTestFirst = new ArrayList<>();
+        if (worker && !Instructions.builds(brief).isEmpty()) {
+            notTestFirst.addAll(TestFirst.violations(outcome.toolCalls(), testRuns, base.workingDirectory()));
+            notTestFirst.addAll(TestFirst.unseenWrites(outcome.toolCalls(), changed.changed(), changesCodeOf));
+        }
         int alreadyPassed = plans.currentStep(plan).orElse(-1);
         PlanLedger.Advance last = alreadyPassed >= 0 ? new PlanLedger.Advance(true, alreadyPassed, null) : null;
         for (GatedStep step : planned) {

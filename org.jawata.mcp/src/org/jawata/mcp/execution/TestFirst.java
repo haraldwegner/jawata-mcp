@@ -102,6 +102,39 @@ public final class TestFirst {
         return List.copyOf(violations);
     }
 
+    /**
+     * The production files the run changed that none of the worker's editor writes names, when the worker also wrote in a way this check
+     * cannot read: a shell command, or an editor call that names no file (a patch). Such a file was written past the order this check reads,
+     * so each one is a violation (28h-C27-22). Empty when the tree was not censused, when nothing unreadable was called, or when a jawata tool
+     * that changes code was called, since its changes name no write and could not be told from the shell's.
+     *
+     * @param changed     the files the run changed, from the repository's root, or empty when the tree could not be censused
+     * @param changesCode for a tool's bare name, whether the engine's tool of that name changes code; empty for a name the engine has not
+     */
+    public static List<String> unseenWrites(List<ToolCall> made, Optional<List<String>> changed,
+            java.util.function.Function<String, Optional<Boolean>> changesCode) {
+        if (changed.isEmpty() || made.stream().anyMatch(call -> changesCode.apply(call.bareName()).orElse(false))) {
+            return List.of();
+        }
+        boolean unreadable = made.stream().anyMatch(call -> RunEffects.isCliShell(call.bareName())
+            || RunEffects.isCliEditor(call.bareName()) && writtenFile(call).isEmpty());
+        if (!unreadable) {
+            return List.of();
+        }
+        List<String> named = made.stream().map(TestFirst::writtenFile).flatMap(Optional::stream).map(path -> path.replace('\\', '/')).toList();
+        List<String> unseen = new ArrayList<>();
+        for (String file : changed.get()) {
+            String path = file.replace('\\', '/');
+            if (isTestPath(path) || OwnWrites.isDocument(path)
+                    || named.stream().anyMatch(write -> write.equals(path) || write.endsWith("/" + path))) {
+                continue;
+            }
+            unseen.add(path + " was changed by a write the test-first check cannot read (a shell command or a patch), so the order of its"
+                + " test and its code is not known");
+        }
+        return List.copyOf(unseen);
+    }
+
     /** The path below the worker's folder when it lies in it, else as it was named. */
     private static String below(String path, Path root) {
         if (root == null) {

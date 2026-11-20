@@ -246,4 +246,54 @@ class TestFirstTest {
             () -> assertTrue(runs.take("plan-1").isEmpty(), "CONTROL: what was handed over was handed over again"),
             () -> assertEquals(List.of(Run.GREEN), runs.take("plan-2"), "CONTROL: the other caller's run was lost"));
     }
+
+    private static final String CHANGED_PRODUCTION = "org.jawata.mcp/src/org/jawata/mcp/execution/Foo.java";
+    private static final String CHANGED_TEST = "org.jawata.mcp.tests/src/org/jawata/mcp/execution/FooTest.java";
+
+    private static ToolCall shell(String command) {
+        return new ToolCall("Bash", MAPPER.createObjectNode().put("command", command));
+    }
+
+    @Test
+    @DisplayName("28h-C27-22: production code a worker changed by a shell or a patch, which no editor write names, is a violation")
+    void aProductionFileChangedPastTheEditorIsFlagged() {
+        List<String> byShell = TestFirst.unseenWrites(List.of(edit(TEST), shell("sed -i s/a/b/ Foo.java")),
+            Optional.of(List.of(CHANGED_TEST, CHANGED_PRODUCTION, "docs/notes.md")), bare -> Optional.empty());
+        List<String> byPatch = TestFirst.unseenWrites(
+            List.of(new ToolCall("apply_patch", MAPPER.createObjectNode().put("patch", "*** Update File: Foo.java"))),
+            Optional.of(List.of(CHANGED_PRODUCTION)), bare -> Optional.empty());
+
+        assertAll(
+            () -> assertEquals(1, byShell.size(), "the shell-written production file, and only it, is named: " + byShell),
+            () -> assertTrue(byShell.get(0).startsWith(CHANGED_PRODUCTION), byShell.get(0)),
+            () -> assertEquals(1, byPatch.size(), "a patch names no file, so the file it changed is named: " + byPatch),
+            () -> assertTrue(TestFirst.unseenWrites(List.of(shell("sed -i s/a/b/ Foo.java")), Optional.empty(), bare -> Optional.empty()).isEmpty(),
+                "CONTROL: a tree nobody could census names no file"));
+    }
+
+    @Test
+    @DisplayName("28h-C27-22: a run that called a jawata tool that changes code is not cross-checked, since that tool's changes name no write")
+    void aRunWithACodeChangingJawataToolIsNotFlagged() {
+        ToolCall rename = new ToolCall("mcp__jawata-javata-dev__rename_symbol", MAPPER.createObjectNode().put("newName", "Bar"));
+
+        List<String> unseen = TestFirst.unseenWrites(List.of(rename, shell("ls")), Optional.of(List.of(CHANGED_PRODUCTION)),
+            bare -> Optional.of("rename_symbol".equals(bare)));
+
+        assertAll(
+            () -> assertTrue(unseen.isEmpty(), "a refactoring's change was refused as an unseen write: " + unseen),
+            () -> assertEquals(1, TestFirst.unseenWrites(List.of(rename, shell("ls")), Optional.of(List.of(CHANGED_PRODUCTION)),
+                bare -> Optional.of(false)).size(), "CONTROL: a tool that changes nothing still leaves the shell's write flagged"));
+    }
+
+    @Test
+    @DisplayName("28h-C27-22: a changed file an editor write names is the ordinary test-first check's, and is not flagged again")
+    void aFileNamedByAnEditorWriteIsNotFlagged() {
+        List<String> unseen = TestFirst.unseenWrites(List.of(edit(PRODUCTION), shell("mvn -q test")),
+            Optional.of(List.of(CHANGED_PRODUCTION)), bare -> Optional.empty());
+
+        assertAll(
+            () -> assertTrue(unseen.isEmpty(), "a file the editor wrote was flagged as unseen: " + unseen),
+            () -> assertTrue(TestFirst.unseenWrites(List.of(edit(PRODUCTION)), Optional.of(List.of(CHANGED_PRODUCTION, "other/Bar.java")),
+                bare -> Optional.empty()).isEmpty(), "CONTROL: with no shell or patch call, every change is one the editor writes account for"));
+    }
 }

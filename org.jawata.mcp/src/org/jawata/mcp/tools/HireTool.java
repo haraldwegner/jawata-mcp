@@ -687,6 +687,8 @@ public class HireTool extends NeutralTool {
             .changing(declaredTree.tree().mayEditCode(hired))
             // What this worker's test runs showed is read from the store the registry fills as it answers its calls (Stage 27 (z5)).
             .readingTestRunsFrom(org.jawata.mcp.execution.TestRuns.shared()::take)
+            // Which of its calls changed code through a jawata tool is the registry's own answer (28h-C27-22).
+            .classifyingToolsBy(bare -> registry.get().getTool(bare).map(Tool::changesCode))
             .fixing(getStringParam(call.getArguments(), "fixes"))
             .issuedFrom(getStringParam(call.getArguments(), "instructionsFrom"));
         HiredRun.Proposal proposal;
