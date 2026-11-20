@@ -104,6 +104,11 @@ public final class HireRegistry {
                     endedOn.put(hire.thread, new Ended(hire.planId, hire.name));
                 }
             }
+            // Told outside the lock, now that this hire no longer runs: the reports its dead brain could not read go to whoever hired it.
+            List<Event> handed = hire.planId.isEmpty() ? null : handedUp.remove(hire.planId);
+            if (handed != null) {
+                handed.forEach(HireRegistry.this::retell);
+            }
         }
     }
 
@@ -579,6 +584,34 @@ public final class HireRegistry {
 
     /** The finished background hires no connection has taken the report of, by the chat session they trace back to, until one does. */
     private final java.util.Map<String, List<Event>> waiting = new ConcurrentHashMap<>();
+
+    /** The reports a lead's run took for a brain that had died, by the lead's plan id, until that lead's run ends (28h-C27-18). */
+    private final java.util.Map<String, List<Event>> handedUp = new ConcurrentHashMap<>();
+
+    /**
+     * Hands up reports a lead's run received after the lead's brain had died (28h-C27-18): once the lead no longer runs, each is told again and
+     * kept for its chat, so whoever hired the lead receives it as the report of a hire whose lead has ended. While the lead's run is still
+     * closing they are held, so the chat does not take the lead for one still able to read them.
+     *
+     * @param leadId  the plan id of the lead whose brain died
+     * @param reports the reports that came for it
+     */
+    public void handUp(String leadId, List<Event> reports) {
+        if (leadId == null || leadId.isEmpty() || reports.isEmpty()) {
+            return;
+        }
+        if (isRunningPlan(leadId)) {
+            handedUp.computeIfAbsent(leadId, lead -> new CopyOnWriteArrayList<>()).addAll(reports);
+            return;
+        }
+        reports.forEach(this::retell);
+    }
+
+    /** Tells a report again for whoever is above its ended lead, and keeps it until a connection takes it, as an orphaned report is kept. */
+    private void retell(Event report) {
+        waiting.computeIfAbsent(rootOf(report.leadId()), root -> new CopyOnWriteArrayList<>()).add(report);
+        tell(report);
+    }
 
     /** The first name and seat of the hire with this plan id, running or ended; the id itself when it is no hire's. */
     public String labelOf(String planId) {

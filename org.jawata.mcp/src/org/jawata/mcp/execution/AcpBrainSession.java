@@ -282,9 +282,17 @@ public final class AcpBrainSession {
             List<ToolCall> calls = new ArrayList<>(last.toolCalls());
             long toolMillis = last.toolMillis();
             while (last.stoppedBy().isEmpty() && conversation.alive() && (inbox.outstanding() > 0 || !inbox.isEmpty())) {
+                // waits only while the lead's brain lives: a brain that died (an exit 137) is never prompted again, so waiting on would leave the
+                // lead running with nobody to read the reports (28h-C27-15)
                 List<HireRegistry.Event> reports = inbox.awaitWhileOut(ceilings.wallClock().toMillis(),
-                    () -> !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
+                    () -> conversation.alive() && !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
                 if (reports.isEmpty()) {
+                    break;
+                }
+                if (!conversation.alive()) {
+                    // a report that came for a brain that has died goes up to whoever hired the lead once the lead's run has ended, never into the
+                    // dead brain, where it was lost (28h-C27-18)
+                    HireRegistry.shared().handUp(leadId, reports);
                     break;
                 }
                 HiredBrain.Ceilings left = ceilings.maxToolSteps() > 0

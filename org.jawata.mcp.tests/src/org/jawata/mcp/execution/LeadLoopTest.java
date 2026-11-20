@@ -115,6 +115,42 @@ class LeadLoopTest {
     }
 
     @Test
+    @DisplayName("28h-C27-15 and -18: a lead whose brain dies while a hire it started is out ends instead of waiting on, and the hire's report goes up to whoever hired the lead once the lead's run has ended")
+    void aLeadWhoseBrainDiedEndsAndHandsTheReportUp() throws Exception {
+        String lead = "c27-lead-died";
+        String child = "c27-child-of-dead";
+        List<HireRegistry.Event> told = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Runnable unsubscribe = HireRegistry.shared().subscribe(event -> {
+            if (child.equals(event.planId()) && "finished".equals(event.kind())) {
+                told.add(event);
+            }
+        });
+        HireRegistry.Registration leadRun = HireRegistry.shared().begin("pm", "c27 a lead whose brain dies", "c27-main");
+        try {
+            HireRegistry.shared().planOpened(lead);
+            HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead);
+            aHireIsOut(lead, child, "the code is written");
+            long began = System.nanoTime();
+            HiredBrain.Outcome ended = runAsLead("ANSWERTHENDIE", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, watching);
+            long seconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - began);
+            int whileTheLeadRuns = told.size();
+            leadRun.close();
+
+            assertAll(
+                () -> assertEquals("noted", ended.text(), "CONTROL: the lead's brain did not answer its turn before it died"),
+                () -> assertTrue(seconds < 30, "the lead waited on with a dead brain: " + seconds + " s"),
+                () -> assertEquals(1, whileTheLeadRuns, "the hire's report was told again while the lead still ran, or never came: " + told),
+                () -> assertEquals(2, told.size(), "the hire's report did not go up once the lead whose brain died had ended: " + told),
+                () -> assertTrue(HireRegistry.shared().undeliveredFor(HireRegistry.shared().rootOf(lead)).stream().anyMatch(e -> child.equals(e.planId())),
+                    "the report was not kept for the chat above the lead"));
+        } finally {
+            leadRun.close();
+            unsubscribe.run();
+            told.forEach(HireRegistry.shared()::markDelivered);
+        }
+    }
+
+    @Test
     @DisplayName("28h Stage 27, finding 28h-C27-1: a hire the lead's brain started but the engine saw under another caller id is the lead's once its call's answer names the plan, so the lead waits for its report and is prompted with it")
     void aHireSeenUnderAnotherCallerIdIsTheLeadsOnceItsAnswerNamesIt() throws Exception {
         String lead = "c27-lead";

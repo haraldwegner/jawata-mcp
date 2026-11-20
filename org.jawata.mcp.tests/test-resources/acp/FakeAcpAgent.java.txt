@@ -342,6 +342,17 @@ public class FakeAcpAgent {
             if (text.contains("Answer: SPEND")) {
                 spend(session);
             }
+        } else if (text.startsWith("ANSWERTHENDIE")) {
+            // answers its turn, and a moment later the process is killed as the system kills a brain, with exit code 137 (28h-C27-18)
+            chunk(session, "noted");
+            Thread killer = new Thread(() -> {
+                try {
+                    Thread.sleep(300);
+                } catch (InterruptedException ignored) {
+                }
+                Runtime.getRuntime().halt(137);
+            });
+            killer.start();
         } else if (text.startsWith("STREAM")) {
             chunk(session, "first");
             Thread.sleep(1500);
