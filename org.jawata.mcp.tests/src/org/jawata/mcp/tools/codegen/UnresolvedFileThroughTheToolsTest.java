@@ -173,7 +173,10 @@ class UnresolvedFileThroughTheToolsTest {
             new Object[] {org.jawata.mcp.tools.DataTool.class, "{\"kind\":\"split_variable\"," + position + ",\"newName\":\"x\"}"},
             new Object[] {org.jawata.mcp.tools.ChangeMethodSignatureTool.class, "{\"kind\":\"change_signature\"," + position + ",\"newName\":\"x\"}"},
             new Object[] {org.jawata.mcp.tools.RenameSymbolTool.class, "{" + position + ",\"newName\":\"Renamed\"}"},
-            new Object[] {org.jawata.mcp.tools.FindReferencesTool.class, "{\"kind\":\"references\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.FindRefsTool.class, "{\"kind\":\"references\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.FindRefsTool.class, "{\"kind\":\"implementations\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.FindRefsTool.class, "{\"kind\":\"method_references\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetCallHierarchyTool.class, "{\"direction\":\"incoming\"," + position + "}"},
             new Object[] {org.jawata.mcp.tools.FindFieldWritesTool.class, "{" + position + "}"},
             new Object[] {org.jawata.mcp.tools.GetCallHierarchyTool.class, "{\"direction\":\"outgoing\"," + position + "}"},
             new Object[] {org.jawata.mcp.tools.InspectTool.class, "{\"kind\":\"document_symbols\"}"},
@@ -227,6 +230,29 @@ class UnresolvedFileThroughTheToolsTest {
             () -> assertEquals("NOT_A_JAVA_SOURCE", code(inside), "a non-Java file inside the project"),
             () -> assertEquals("NOT_A_JAVA_PROJECT", code(beside), "a file outside every loaded project"),
             () -> assertEquals("FILE_NOT_FOUND", code(missing), "CONTROL: a path that is not there"));
+    }
+
+    @Test
+    @DisplayName("a request that names a symbol answers for the symbol even when it also carries a filePath that no loaded project holds: the file is not what the request is about (the post-release audit)")
+    void aSymbolRequestWithAStaleFilePathIsNotRefusedAsAnUnresolvedFile(@TempDir Path elsewhere) throws Exception {
+        String stale = elsewhere.resolve("Stale.java").toString();
+        java.util.List<String> refused = new java.util.ArrayList<>();
+        java.util.List<Object[]> rows = java.util.List.of(
+            new Object[] {org.jawata.mcp.tools.FindRefsTool.class, "{\"kind\":\"references\",\"symbol\":\"com.example.Calculator\"}"},
+            new Object[] {org.jawata.mcp.tools.FindRefsTool.class, "{\"kind\":\"implementations\",\"symbol\":\"com.example.Calculator\"}"},
+            new Object[] {org.jawata.mcp.tools.FindFieldWritesTool.class, "{\"symbol\":\"com.example.Calculator#nothing\"}"},
+            new Object[] {org.jawata.mcp.tools.GetCallHierarchyTool.class, "{\"direction\":\"incoming\",\"symbol\":\"com.example.Calculator#add\"}"});
+
+        for (Object[] row : rows) {
+            ObjectNode arguments = (ObjectNode) json.readTree((String) row[1]);
+            arguments.put("filePath", stale);
+            String answered = code(doorOf((Class<?>) row[0]).execute(arguments));
+            if (answered.equals("FILE_NOT_FOUND") || answered.equals("NOT_A_JAVA_SOURCE") || answered.equals("NOT_A_JAVA_PROJECT")) {
+                refused.add(((Class<?>) row[0]).getSimpleName() + " " + row[1] + " answered " + answered);
+            }
+        }
+
+        assertEquals(java.util.List.of(), refused, "requests that name a symbol and were refused for the file they also carry");
     }
 
     private static String code(ToolResponse answer) {

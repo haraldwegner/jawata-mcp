@@ -101,6 +101,12 @@ public class FindRefsTool extends AbstractTool {
                 && arguments instanceof com.fasterxml.jackson.databind.node.ObjectNode obj) {
             obj.put("symbol", query);
         }
+        // A file no loaded project holds is said so once for every kind, the symbol form excepted: the kinds below would each say the position does
+        // not resolve (the post-release audit found implementations and method_references answering that way).
+        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, arguments);
+        if (unresolved != null) {
+            return unresolved;
+        }
         return switch (kind) {
             case "references"        -> references.executeWithService(service, arguments);
             case "implementations"   -> implementations.executeWithService(service, arguments);

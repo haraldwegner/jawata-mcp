@@ -156,7 +156,7 @@ public class HierarchyTool extends AbstractTool implements KindedTool {
             return ToolResponse.invalidParameter("direction",
                 "Unknown direction '" + direction + "'. Allowed: " + publishedKinds());
         }
-        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, getStringParam(arguments, "filePath"));
+        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, arguments);
         if (unresolved != null) {
             return unresolved;
         }

@@ -105,6 +105,11 @@ public class GetCallHierarchyTool extends AbstractTool {
             return ToolResponse.invalidParameter("direction",
                 "direction is required; one of " + DIRECTIONS);
         }
+        // Said once for both directions, the symbol form excepted: incoming answered that the position does not resolve (the post-release audit).
+        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, arguments);
+        if (unresolved != null) {
+            return unresolved;
+        }
         return switch (direction) {
             case "incoming" -> incoming.executeWithService(service, arguments);
             case "outgoing" -> outgoing.executeWithService(service, arguments);

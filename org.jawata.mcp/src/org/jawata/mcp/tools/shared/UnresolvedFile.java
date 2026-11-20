@@ -51,12 +51,16 @@ public final class UnresolvedFile {
      * cannot be read as a path, so the kind goes on as it did. Without it each kind says "no symbol at the position" or "the position does not resolve
      * to a method", which reads as a wrong position when the file is what is wrong.
      *
-     * @param service  the Java service of the loaded projects
-     * @param filePath the file as the caller named it, or null
-     * @return the unresolved-file answer, or null when the file resolves or none was named
+     * <p>A request that names a symbol ({@code symbol} or {@code typeName}) is about that symbol and not about any file it also carries, which the
+     * symbol form has always ignored, so it is let through: a stale {@code filePath} beside a valid symbol must not be refused (the post-release audit).</p>
+     *
+     * @param service   the Java service of the loaded projects
+     * @param arguments the request, whose {@code filePath} is the file the caller named
+     * @return the unresolved-file answer, or null when the file resolves, none was named, or the request names a symbol
      */
-    public static ToolResponse ofTheFileNamed(org.jawata.core.IJdtService service, String filePath) {
-        if (filePath == null || filePath.isBlank()) {
+    public static ToolResponse ofTheFileNamed(org.jawata.core.IJdtService service, com.fasterxml.jackson.databind.JsonNode arguments) {
+        String filePath = arguments.path("filePath").asText("");
+        if (filePath.isBlank() || !arguments.path("symbol").asText("").isBlank() || !arguments.path("typeName").asText("").isBlank()) {
             return null;
         }
         try {
