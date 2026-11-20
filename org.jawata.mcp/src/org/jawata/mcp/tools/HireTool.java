@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.jawata.core.host.HostProcesses;
@@ -33,6 +34,7 @@ import org.jawata.mcp.execution.SeatTree;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.execution.ToolGateRunner;
 import org.jawata.mcp.execution.WriteContainment;
+import org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap;
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.GatedStep;
@@ -41,6 +43,7 @@ import org.jawata.mcp.learn.PlanLedger;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.runtime.RuntimeArtifactStore;
 import org.jawata.spi.host.EngineSettings;
+import org.jawata.spi.lang.SourceUnits;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -143,6 +146,9 @@ public class HireTool extends NeutralTool {
 
     private final Supplier<EngineSettings> settings;
 
+    /** The loaded languages' source units, asked per hire for whether a file is test code; a SUPPLIER that may answer null while none is loaded (28h-C27-24). */
+    private final Supplier<SourceUnits> sourceUnits;
+
     /** A hire with no endpoint of its own to hand the brain — the stdio resident's case. */
     public HireTool(HostProcesses host,
             RuntimeArtifactStore artifacts, PlanLedger plans,
@@ -166,25 +172,28 @@ public class HireTool extends NeutralTool {
             RuntimeArtifactStore artifacts, PlanLedger plans,
             Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> self) {
-        this(host, artifacts, plans, journal, registry, self, () -> null, () -> key -> java.util.Optional.empty(), null);
+        this(host, artifacts, plans, journal, registry, self, () -> null, () -> key -> java.util.Optional.empty(), null, () -> null);
     }
 
     /**
      * @param rules where the accepted rules a hired seat is bound by are read (Sprint 28g D45): a
      *     SUPPLIER that may answer null, for the same reason the journal's may — a degraded resident
      *     has no store, and a hire still goes ahead without its rules.
-     * @param settings TODO
+     * @param settings the host's settings, read per call (the brains' programs and the cap on running hires)
      * @param area what the catalogue says about the ground a brief is about (Sprint 28h S14, D16), burned into the prompt of a seat that
      *     changes code; null for none, and a hire then carries no ground
+     * @param sourceUnits the loaded languages' source units, a SUPPLIER that may answer null while no language is loaded: the test-first check
+     *     of a worker's writes asks them whether a file is test code before it falls back to a path rule (28h-C27-24)
      */
     public HireTool(HostProcesses host,
             RuntimeArtifactStore artifacts, PlanLedger plans,
             Supplier<LearnerEventStore> journal, Supplier<ToolRegistry> registry,
             Supplier<SelfEndpoint> self, Supplier<ExperienceStore> rules, Supplier<EngineSettings> settings,
-            java.util.function.Function<String, org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap> area) {
+            Function<String, AreaMap> area, Supplier<SourceUnits> sourceUnits) {
         this.area = area;
         this.rules = rules == null ? () -> null : rules;
         this.settings = settings == null ? () -> key -> java.util.Optional.empty() : settings;
+        this.sourceUnits = sourceUnits == null ? () -> null : sourceUnits;
         if (host == null || artifacts == null || plans == null || journal == null
                 || registry == null) {
             throw new IllegalArgumentException("a hire needs a host to spawn on, somewhere to put"
@@ -198,6 +207,26 @@ public class HireTool extends NeutralTool {
         this.journal = journal;
         this.registry = registry;
         this.self = self == null ? () -> null : self;
+    }
+
+    /**
+     * What a hire's test-first check asks whether a file is test code (28h-C27-24): the language's own answer from its loaded model, read at the
+     * moment of the ask. A path in full is asked as it is, a relative one from the folder the hire worked in, and a place the model does not hold
+     * (no language loaded, a project the engine has not loaded, a file that is no source of one) answers empty, which leaves it to the path rule.
+     */
+    private java.util.function.Function<String, Optional<Boolean>> modelSaysTest(HireSite base) {
+        return path -> {
+            SourceUnits units = sourceUnits.get();
+            if (units == null) {
+                return Optional.empty();
+            }
+            try {
+                Path named = Path.of(path);
+                return units.isTest(named.isAbsolute() || base.workingDirectory() == null ? named : base.workingDirectory().resolve(named));
+            } catch (InvalidPathException unusual) {
+                return Optional.empty();
+            }
+        };
     }
 
     @Override
@@ -689,6 +718,8 @@ public class HireTool extends NeutralTool {
             .readingTestRunsFrom(org.jawata.mcp.execution.TestRuns.shared()::take)
             // Which of its calls changed code through a jawata tool is the registry's own answer (28h-C27-22).
             .classifyingToolsBy(bare -> registry.get().getTool(bare).map(Tool::changesCode))
+            // Which of its files are test code is the loaded model's answer where the model holds the file (28h-C27-24).
+            .judgingTestFilesBy(modelSaysTest(base))
             .fixing(getStringParam(call.getArguments(), "fixes"))
             .issuedFrom(getStringParam(call.getArguments(), "instructionsFrom"));
         HiredRun.Proposal proposal;

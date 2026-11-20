@@ -6,6 +6,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IWorkspaceRoot;
+import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IMethod;
@@ -14,6 +17,8 @@ import org.eclipse.jdt.core.ISourceRange;
 import org.eclipse.jdt.core.IType;
 import org.eclipse.jdt.core.JavaModelException;
 import org.jawata.core.IJdtService;
+import org.jawata.core.LoadedProject;
+import org.jawata.core.project.SourceRootClassifier;
 import org.jawata.spi.lang.SourceUnits;
 
 /**
@@ -86,6 +91,39 @@ public final class JavaSourceUnits implements SourceUnits {
             return Optional.of(methods);
         } catch (JavaModelException e) {
             throw new IOException(e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Read from the source root that holds the place, so a test file written a moment ago, which no compilation unit exists for yet, is
+     * judged like one the model knows; a place outside every loaded project, or under no source root, is not this model's to judge.
+     */
+    @Override
+    public Optional<Boolean> isTest(Path file) {
+        Path place = file.toAbsolutePath().normalize();
+        LoadedProject owner = LoadedProject.owning(service.allProjects(), place);
+        if (owner == null || owner.javaProject() == null) {
+            return Optional.empty();
+        }
+        try {
+            IWorkspaceRoot workspace = owner.javaProject().getProject().getWorkspace().getRoot();
+            IClasspathEntry holding = null;
+            Path holdingRoot = null;
+            for (IClasspathEntry entry : owner.javaProject().getRawClasspath()) {
+                IResource source = entry.getEntryKind() == IClasspathEntry.CPE_SOURCE ? workspace.findMember(entry.getPath()) : null;
+                if (source == null || source.getLocation() == null) {
+                    continue;
+                }
+                // The folder on disk, which a loaded project's source root need not share with the workspace project's own location.
+                Path folder = source.getLocation().toFile().toPath().toAbsolutePath().normalize();
+                if (place.startsWith(folder) && (holdingRoot == null || folder.getNameCount() > holdingRoot.getNameCount())) {
+                    holding = entry;
+                    holdingRoot = folder;
+                }
+            }
+            return holding == null ? Optional.empty() : Optional.of(SourceRootClassifier.isTestEntry(holding));
+        } catch (JavaModelException unreadable) {
+            return Optional.empty();
         }
     }
 

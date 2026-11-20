@@ -35,6 +35,19 @@ public interface SourceUnits {
     Optional<List<MemberAt>> methods(Path file, boolean withLines) throws IOException;
 
     /**
+     * Whether the language's loaded model marks a file as test code (28h-C27-24): the model's own classification, which a path rule only
+     * approximates, so a check that must tell test code from production code asks here first and falls back to a rule only for a place the
+     * model does not hold. The file need not exist yet, since a file written a moment ago is judged by where it lies.
+     *
+     * @param file a file, in full
+     * @return true when it lies under a source root the model marks as test, false when under one it does not, and empty when the language
+     *         holds no project at that place or the place is under no source root
+     */
+    default Optional<Boolean> isTest(Path file) {
+        return Optional.empty();
+    }
+
+    /**
      * What a file declares.
      *
      * @param packageName the package it declares, empty for none

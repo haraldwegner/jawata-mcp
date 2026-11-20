@@ -432,6 +432,18 @@ public final class HiredRun {
         return this;
     }
 
+    private java.util.function.Function<String, Optional<Boolean>> testByModel = path -> Optional.empty();
+
+    /**
+     * Says how this run asks the loaded model whether a file is test code (28h-C27-24): the hire tool hands the language's own answer, which
+     * reads the source root that holds the file, so the test-first check no longer decides by a path rule where the model knows. A file the
+     * model does not hold is left to the path rule. By default the model holds no file.
+     */
+    public HiredRun judgingTestFilesBy(java.util.function.Function<String, Optional<Boolean>> modelSaysTest) {
+        this.testByModel = modelSaysTest;
+        return this;
+    }
+
     /**
      * Names the seat that runs, the seat that hired it and the first name the hire carries; a run is built for one hire, so the names belong to
      * that hire alone.
@@ -540,8 +552,8 @@ public final class HiredRun {
         List<TestFirst.Run> testRuns = testRunsOf.apply(plan.value());
         List<String> notTestFirst = new ArrayList<>();
         if (worker && !Instructions.builds(brief).isEmpty()) {
-            notTestFirst.addAll(TestFirst.violations(outcome.toolCalls(), testRuns, base.workingDirectory()));
-            notTestFirst.addAll(TestFirst.unseenWrites(outcome.toolCalls(), changed.changed(), changesCodeOf));
+            notTestFirst.addAll(TestFirst.violations(outcome.toolCalls(), testRuns, base.workingDirectory(), testByModel));
+            notTestFirst.addAll(TestFirst.unseenWrites(outcome.toolCalls(), changed.changed(), changesCodeOf, testByModel));
         }
         int alreadyPassed = plans.currentStep(plan).orElse(-1);
         PlanLedger.Advance last = alreadyPassed >= 0 ? new PlanLedger.Advance(true, alreadyPassed, null) : null;

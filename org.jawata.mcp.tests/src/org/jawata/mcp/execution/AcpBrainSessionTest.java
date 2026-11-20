@@ -353,7 +353,7 @@ class AcpBrainSessionTest {
         assertEquals(List.of("Write"), outcome.toolNames(), "the write kept the title the adapter opened it with");
         assertEquals("/p/src/main/java/demo/Extra.java", outcome.toolCalls().get(0).arguments().path("file_path").asText(),
             "the write was kept without the file it wrote");
-        assertTrue(TestFirst.violations(outcome.toolCalls(), List.of(), null).stream().anyMatch(v -> v.contains("production code was written before")),
+        assertTrue(TestFirst.violations(outcome.toolCalls(), List.of(), null, path -> java.util.Optional.empty()).stream().anyMatch(v -> v.contains("production code was written before")),
             "a production file written with no test seen failing was not read as such");
     }
 

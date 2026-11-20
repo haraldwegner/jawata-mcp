@@ -556,6 +556,32 @@ class HiredRunProposesTest {
     }
 
     @Test
+    @DisplayName("28h-C27-24: a worker's test written into a root only the loaded model calls test code is read as a test when the run is handed the model, and as production code when it is not")
+    void aTestRootOnlyTheModelKnowsIsReadAsATestWhenTheRunHoldsTheModel() throws Exception {
+        String build = "INSTRUCTION 1\nBUILD: org.x.Foo gets a method that greets\nTESTS: it greets by name\n";
+        List<TestFirst.Run> redThenGreen = List.of(TestFirst.Run.RED, TestFirst.Run.GREEN);
+        String[] calls = {"Write:org/x/checks/FooChecks.java", "run_tests", "Edit:org/x/Foo.java", "run_tests"};
+
+        Path withModelRepo = aTreeHolding("org/x/Foo.java", "org/x/checks/FooChecks.java");
+        HostCommand withModelBrain = workerCalling(withModelRepo, calls);
+        HiredRun.Proposal withModel = new HiredRun(new RecordsTheArgv(host, withModelBrain), artifacts, plans, events, null, () -> store).changing(true)
+            .readingTestRunsFrom(plan -> redThenGreen)
+            .judgingTestFilesBy(path -> path.endsWith("FooChecks.java") ? java.util.Optional.of(true) : java.util.Optional.empty())
+            .issue(SeatHire.read(CODE_SEAT), site(withModelBrain), build, twoSteps(), HiredRunProposesTest::passed, List.of());
+
+        Path withoutModelRepo = aTreeHolding("org/x/Foo.java", "org/x/checks/FooChecks.java");
+        HostCommand withoutModelBrain = workerCalling(withoutModelRepo, calls);
+        HiredRun.Proposal withoutModel = new HiredRun(new RecordsTheArgv(host, withoutModelBrain), artifacts, plans, events, null, () -> store).changing(true)
+            .readingTestRunsFrom(plan -> redThenGreen)
+            .issue(SeatHire.read(CODE_SEAT), site(withoutModelBrain), build, twoSteps(), HiredRunProposesTest::passed, List.of());
+
+        assertAll(
+            () -> assertTrue(withModel.notTestFirst().isEmpty(), "a test the model marks was read as production code: " + withModel.notTestFirst()),
+            () -> assertEquals(2, withModel.stepsPassed(), "the plan did not move although the worker wrote its test first"),
+            () -> assertFalse(withoutModel.notTestFirst().isEmpty(), "CONTROL: with no model the same worker is held to a path rule that does not know the root"));
+    }
+
+    @Test
     @DisplayName("M5a's gate clause, all four: the brief is issued, the gates run, the run is journalled, and the record is on disk")
     void oneHiredRunEndToEnd() throws Exception {
         HostCommand command = brain("""

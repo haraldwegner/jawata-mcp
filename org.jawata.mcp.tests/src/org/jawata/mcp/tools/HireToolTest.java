@@ -1836,6 +1836,51 @@ class HireToolTest {
             () -> assertEquals(1, flagged.get(1).size(), "CONTROL: with no BUILD instruction the edit was not flagged: " + flagged.get(1)));
     }
 
+    /** A loaded model that marks every file it is asked about as test code. */
+    private static final class ModelMarkingEveryFileAsTest implements org.jawata.spi.lang.SourceUnits {
+        @Override
+        public List<Path> files() {
+            return List.of();
+        }
+
+        @Override
+        public java.util.Optional<SourceFacts> facts(Path file) {
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public java.util.Optional<List<MemberAt>> methods(Path file, boolean withLines) {
+            return java.util.Optional.empty();
+        }
+
+        @Override
+        public java.util.Optional<Boolean> isTest(Path file) {
+            return java.util.Optional.of(true);
+        }
+    }
+
+    @Test
+    @DisplayName("28h-C27-24, at the hire: a worker's edit of a file the loaded model calls test code is not production written first, so the observer is not handed it; with no model the same edit is")
+    @SuppressWarnings("unchecked")
+    void aFileTheLoadedModelCallsTestCodeIsNotProductionAtTheHire() throws Exception {
+        Files.writeString(dir.resolve("observer.md"), CATALOGUER_SEAT);
+        List<Integer> corrections = new java.util.ArrayList<>();
+        for (java.util.function.Supplier<org.jawata.spi.lang.SourceUnits> model : List.<java.util.function.Supplier<org.jawata.spi.lang.SourceUnits>>of(
+                ModelMarkingEveryFileAsTest::new, () -> null)) {
+            HireTool hire = new Finishing(new StandsIn(host, aBrainCallingThenAnObserverWhoHalts("Edit", EDIT_OF_PRODUCTION).withSeparateStderr()),
+                artifacts, plans, () -> events, () -> aRegistryWithACleanGate(), () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), model);
+            com.fasterxml.jackson.databind.node.ObjectNode args =
+                (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "developer");
+            args.put("brief", BUILD_BRIEF);
+
+            Map<String, Object> score = (Map<String, Object>) dataOf(hire.execute(args)).get("instructionScore");
+            Map<String, Object> observed = score == null ? null : (Map<String, Object>) score.get("observer");
+            corrections.add(observed == null ? 0 : ((List<?>) observed.get("corrections")).size());
+        }
+
+        assertEquals(List.of(0, 1), corrections, "[with the model, without it]: the loaded model's word did not reach the hire's test-first check");
+    }
+
     @Test
     @DisplayName("C27 audit (z2): a lead that edits a code file with its own editor has it in the answer's ownWrites, and one that edits no file has none")
     @SuppressWarnings("unchecked")
@@ -2422,7 +2467,13 @@ class HireToolTest {
                   java.util.function.Supplier<ToolRegistry> registry, java.util.function.Supplier<SelfEndpoint> self,
                   java.util.function.Supplier<org.jawata.mcp.knowledge.ExperienceStore> rules,
                   java.util.function.Supplier<org.jawata.spi.host.EngineSettings> settings, java.util.function.Function<String, AreaMap> area) {
-            super(host, artifacts, plans, journal, registry, self, rules, settings, area);
+            super(host, artifacts, plans, journal, registry, self, rules, settings, area, () -> null);
+        }
+
+        Finishing(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans, java.util.function.Supplier<LearnerEventStore> journal,
+                  java.util.function.Supplier<ToolRegistry> registry, java.util.function.Supplier<SelfEndpoint> self,
+                  java.util.function.Supplier<org.jawata.spi.lang.SourceUnits> sourceUnits) {
+            super(host, artifacts, plans, journal, registry, self, null, null, null, sourceUnits);
         }
 
         @Override
@@ -2532,7 +2583,7 @@ class HireToolTest {
     private HireTool plainToolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
-            () -> key -> java.util.Optional.ofNullable(settings.get(key)), null);
+            () -> key -> java.util.Optional.ofNullable(settings.get(key)), null, () -> null);
     }
 
     private static final String SEAT_WITHOUT_A_MODEL = CATALOGUER_SEAT.replace("model: claude-sonnet-5\n", "");

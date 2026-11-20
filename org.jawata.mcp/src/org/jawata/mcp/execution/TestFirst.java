@@ -4,6 +4,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -40,8 +41,10 @@ public final class TestFirst {
      *
      * @param root the folder the worker ran in, or null when it is not known: the folders that mark a test are read below it, so a project
      *             that lives under a folder named {@code test} still has production code
+     * @param modelSaysTest for a file in full, whether the loaded model marks it as test code, or empty when the model does not hold the
+     *                      place: the model decides where it holds the file, and the path rule only where it does not (28h-C27-24)
      */
-    public static List<String> violations(List<ToolCall> made, List<Run> runs, Path root) {
+    public static List<String> violations(List<ToolCall> made, List<Run> runs, Path root, Function<String, Optional<Boolean>> modelSaysTest) {
         List<String> violations = new ArrayList<>();
         int runIndex = 0;
         boolean redSeen = false;
@@ -67,7 +70,7 @@ public final class TestFirst {
                 continue;
             }
             Optional<String> written = writtenFile(call);
-            if (written.filter(path -> isTestPath(below(path, root))).isPresent()) {
+            if (written.filter(path -> isTest(path, root, modelSaysTest)).isPresent()) {
                 testWritten = true;
                 redSeen = false;
                 continue;
@@ -108,11 +111,13 @@ public final class TestFirst {
      * so each one is a violation (28h-C27-22). Empty when the tree was not censused, when nothing unreadable was called, or when a jawata tool
      * that changes code was called, since its changes name no write and could not be told from the shell's.
      *
-     * @param changed     the files the run changed, from the repository's root, or empty when the tree could not be censused
-     * @param changesCode for a tool's bare name, whether the engine's tool of that name changes code; empty for a name the engine has not
+     * @param changed       the files the run changed, from the repository's root, or empty when the tree could not be censused
+     * @param changesCode   for a tool's bare name, whether the engine's tool of that name changes code; empty for a name the engine has not
+     * @param modelSaysTest for a changed file as the census names it, whether the loaded model marks it as test code, or empty when the model
+     *                      does not hold the place, when the path rule decides
      */
     public static List<String> unseenWrites(List<ToolCall> made, Optional<List<String>> changed,
-            java.util.function.Function<String, Optional<Boolean>> changesCode) {
+            Function<String, Optional<Boolean>> changesCode, Function<String, Optional<Boolean>> modelSaysTest) {
         if (changed.isEmpty() || made.stream().anyMatch(call -> changesCode.apply(call.bareName()).orElse(false))) {
             return List.of();
         }
@@ -125,7 +130,7 @@ public final class TestFirst {
         List<String> unseen = new ArrayList<>();
         for (String file : changed.get()) {
             String path = file.replace('\\', '/');
-            if (isTestPath(path) || OwnWrites.isDocument(path)
+            if (modelSaysTest.apply(path).orElseGet(() -> isTestPath(path)) || OwnWrites.isDocument(path)
                     || named.stream().anyMatch(write -> write.equals(path) || write.endsWith("/" + path))) {
                 continue;
             }
@@ -133,6 +138,23 @@ public final class TestFirst {
                 + " test and its code is not known");
         }
         return List.copyOf(unseen);
+    }
+
+    /**
+     * Whether a file a worker wrote is test code: what the loaded model says of it, and only for a place the model does not hold (a project
+     * the engine has not loaded, a file that is no source of one) the path rule (28h-C27-24). A relative path is given to the model in full,
+     * from the folder the worker ran in.
+     */
+    private static boolean isTest(String path, Path root, Function<String, Optional<Boolean>> modelSaysTest) {
+        String inFull = path;
+        try {
+            if (root != null && !Path.of(path).isAbsolute()) {
+                inFull = root.resolve(path).toString();
+            }
+        } catch (java.nio.file.InvalidPathException unusual) {
+            inFull = path;
+        }
+        return modelSaysTest.apply(inFull).orElseGet(() -> isTestPath(below(path, root)));
     }
 
     /** The path below the worker's folder when it lies in it, else as it was named. */
