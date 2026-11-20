@@ -36,29 +36,13 @@ class AccessFoldersTest {
     }
 
     /**
-     * Whether the engine's covered folders hold the place, compared as the filesystem names it: a temp folder is {@code /var/...} on macOS
-     * and an 8.3 short name on Windows, and the engine hands back the canonical spelling (found by CI, 2026-11-20).
+     * Whether the engine's covered folders hold the place, compared as the engine names places: a temp folder is {@code /var/...} on macOS and
+     * a short name on Windows, and the engine's covered folders are in the one spelling {@link PlaceNames#normalise} gives (real path, case
+     * folded where the filesystem folds it), so the place is put in that spelling too (found by CI, 2026-11-20).
      */
     private static boolean covers(List<Path> covered, Path place) {
-        Path real = place.toAbsolutePath().normalize();
-        java.util.ArrayDeque<Path> missing = new java.util.ArrayDeque<>();
-        Path existing = real;
-        while (existing != null && !Files.exists(existing)) {
-            missing.addFirst(existing.getFileName());
-            existing = existing.getParent();
-        }
-        try {
-            if (existing != null) {
-                real = existing.toRealPath();
-                for (Path name : missing) {
-                    real = real.resolve(name);
-                }
-            }
-        } catch (IOException unreadable) {
-            // compared as spelled
-        }
-        Path inFull = real;
-        return covered.stream().anyMatch(folder -> inFull.startsWith(folder));
+        Path named = PlaceNames.normalise(place);
+        return covered.stream().anyMatch(folder -> named.startsWith(folder));
     }
 
     @Test

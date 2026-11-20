@@ -302,7 +302,7 @@ public class FakeAcpAgent {
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"h1\",\"title\":\"Edit\",\"kind\":\"edit\",\"status\":\"pending\",\"rawInput\":{}}}}");
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
-                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"h1\",\"rawInput\":{\"file_path\":\"" + file + "\"}}}}");
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"h1\",\"rawInput\":{\"file_path\":\"" + file.replace("\\", "\\\\") + "\"}}}}");
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"h1\",\"status\":\"completed\"}}}");
             chunk(session, "written");
