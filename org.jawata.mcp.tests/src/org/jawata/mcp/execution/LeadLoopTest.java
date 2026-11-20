@@ -155,7 +155,8 @@ class LeadLoopTest {
             leadRun.close();
 
             assertAll(
-                () -> assertEquals("noted", ended.text(), "CONTROL: the lead's brain did not answer its turn before it died"),
+                () -> assertEquals("noted", ended.text(), "CONTROL: the lead's brain did not answer its turn before it died (clean=" + ended.clean() + ", stopped by "
+                    + ended.stoppedBy() + ", its stderr: " + ended.stderrTail() + ")"),
                 () -> assertTrue(seconds < 30, "the lead waited on with a dead brain: " + seconds + " s"),
                 () -> assertTrue(ended.stoppedBy().isPresent(), "a lead whose brain died with a hire out was reported as a clean run"),
                 () -> assertEquals(whileTheLeadRuns + 1, told.size(), "the hire's report did not go up once the lead whose brain died had ended: " + told),
@@ -278,7 +279,8 @@ class LeadLoopTest {
             long seconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - began);
 
             assertAll(
-                () -> assertEquals("noted", ended.text(), "CONTROL: the lead's brain did not answer its turn before it died"),
+                () -> assertEquals("noted", ended.text(), "CONTROL: the lead's brain did not answer its turn before it died (clean=" + ended.clean() + ", stopped by "
+                    + ended.stoppedBy() + ", its stderr: " + ended.stderrTail() + ")"),
                 () -> assertTrue(seconds < 15, "the lead waited " + seconds + " s on a dead brain while its hire ran on"),
                 () -> assertTrue(ended.stoppedBy().isPresent(), "a lead whose brain died with a hire out was reported as a clean run"));
         } finally {
