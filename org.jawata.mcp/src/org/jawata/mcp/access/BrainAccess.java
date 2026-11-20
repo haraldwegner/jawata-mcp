@@ -9,6 +9,10 @@ import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 /**
@@ -17,7 +21,8 @@ import java.util.function.Supplier;
  * the engine tells each brain it starts where to read what the engine allows, so that guard allows what the engine allows.
  *
  * <p><b>Nothing a brain is told is a picture of its start</b> (second audit 2026-11-20, finding 1). The folders of the loaded Java projects
- * are kept in a file the engine rewrites whenever they change, and the editor windows' folders in the windows' own lists; the guard reads
+ * are kept in a file the engine rewrites at every access question and at least every {@link #KEEP_SECONDS} seconds when they changed, and
+ * the editor windows' folders in the windows' own lists; the guard reads
  * both on every call, so a folder a window closes, or a project that is unloaded, stops being allowed while the brain still runs. Only a host
  * with no place for that file tells a brain the projects' folders as they stand at its start, which does not hold the windows' folders.</p>
  */
@@ -56,6 +61,39 @@ public final class BrainAccess {
             projectFolders = projectFoldersNow;
             editorLists = editorListsFolder;
             written = null;
+            if (keeping != null) {
+                keeping.cancel(false);
+                keeping = null;
+            }
+            // A project can be loaded or unloaded with no access question after it (the engine loads at its start, a brain calls load_project
+            // and then reads with its own tools), so the file is read again on a short beat as well (third audit 2026-11-20, finding A).
+            if (projectFoldersNow != null && editorListsFolder != null) {
+                keeping = BEAT.scheduleWithFixedDelay(BrainAccess::refreshNow, KEEP_SECONDS, KEEP_SECONDS, TimeUnit.SECONDS);
+            }
+        }
+    }
+
+    /** How often the file is brought up to date when no access question asks; a brain's guard lags the engine by at most this. */
+    static final long KEEP_SECONDS = 2;
+
+    private static final ScheduledExecutorService BEAT = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "jawata-brain-access");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    private static ScheduledFuture<?> keeping;
+
+    /** Reads the projects' folders now and rewrites the file when they changed; a failed reading leaves the file as it is. */
+    private static void refreshNow() {
+        Supplier<List<Path>> reading = projectFolders;
+        if (reading == null) {
+            return;
+        }
+        try {
+            refresh(reading.get());
+        } catch (RuntimeException unreadable) {
+            // the next beat reads again; the file keeps the last folders that were read
         }
     }
 
