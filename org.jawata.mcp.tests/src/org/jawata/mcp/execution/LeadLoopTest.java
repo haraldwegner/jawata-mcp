@@ -223,6 +223,34 @@ class LeadLoopTest {
     }
 
     @Test
+    @DisplayName("the full suite, 2026-11-20: a brain whose output ends in the turn that showed it a report, while its process is still seen alive, has not read the report: it reaches the lead's chat and the lead is reported stopped")
+    void aReportShownToABrainWhoseOutputEndedIsNotTakenAsRead() throws Exception {
+        String lead = "c27-lead-output-ended";
+        String child = "c27-child-output-ended";
+        HireRegistry.Registration leadRun = HireRegistry.shared().begin("pm", "c27 a lead whose brain's output ends", "c27-main-5");
+        try {
+            HireRegistry.shared().planOpened(lead);
+            HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead);
+            aHireIsOut(lead, child, "the code is written", 1_500);
+            HiredBrain.Outcome ended = runAsLead("ANSWERTHENCLOSE", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, watching);
+            children.get(children.size() - 1).join(10_000);
+            boolean keptWhileTheLeadRuns = HireRegistry.shared().undeliveredFor(HireRegistry.shared().rootOf(lead)).stream()
+                .anyMatch(e -> child.equals(e.planId()));
+            leadRun.close();
+
+            assertAll(
+                () -> assertTrue(ended.text().contains("ended before it answered"), "CONTROL: the brain answered the report's turn: " + ended.text()),
+                () -> assertTrue(ended.stoppedBy().isPresent(), "a lead whose brain's output ended with a report unread was reported as a clean run"),
+                () -> assertFalse(keptWhileTheLeadRuns, "the report went to the chat while its lead still ran"),
+                () -> assertTrue(HireRegistry.shared().undeliveredFor(HireRegistry.shared().rootOf(lead)).stream().anyMatch(e -> child.equals(e.planId())),
+                    "the report shown to a brain whose output ended was taken as read and lost"));
+        } finally {
+            leadRun.close();
+            HireRegistry.shared().undeliveredFor(HireRegistry.shared().rootOf(lead)).forEach(HireRegistry.shared()::markDelivered);
+        }
+    }
+
+    @Test
     @DisplayName("the C27 audit: a lead whose brain dies while a hire of its runs long ends within seconds, not after its own wall-clock ceiling")
     void aLeadWhoseBrainDiesWithALongHireOutEndsWithinSeconds() throws Exception {
         String lead = "c27-lead-died-long";

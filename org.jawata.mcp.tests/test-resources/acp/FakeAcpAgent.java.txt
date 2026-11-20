@@ -64,6 +64,9 @@ public class FakeAcpAgent {
     static final java.io.PrintStream out = new java.io.PrintStream(new java.io.FileOutputStream(java.io.FileDescriptor.out), true,
         java.nio.charset.StandardCharsets.UTF_8);
 
+    /** Set once an ANSWERTHENCLOSE prompt is answered: the next prompt closes the output and the process lives on a while. */
+    static boolean closeOnNextPrompt;
+
     public static void main(String[] args) throws Exception {
         Path state = Path.of(System.getenv().getOrDefault("FAKE_ACP_STATE", System.getProperty("java.io.tmpdir")));
         for (String line = in.readLine(); line != null; line = in.readLine()) {
@@ -134,6 +137,13 @@ public class FakeAcpAgent {
         String session = field(line, "sessionId");
         String text = field(line, "text");
         Path memory = state.resolve(session + ".txt");
+        if (closeOnNextPrompt) {
+            // after an ANSWERTHENCLOSE turn, whatever is prompted next: the output closes and the process lives on for five seconds, as a dying
+            // brain whose process the system has not yet reaped, so the reader sees the end of the output while the process is still alive
+            out.close();
+            Thread.sleep(5_000);
+            Runtime.getRuntime().halt(137);
+        }
         if (text.contains("EDITS:")) {
             // the brain edits N times, each call reported as pending and then completed (an editing kind, as a real brain's own Edit is), then waits
             // 700 ms, drops $FAKE_ACP_STATE/answered.marker and ANSWERS: a gate that ran for a step before the marker ran while the brain worked
@@ -342,6 +352,12 @@ public class FakeAcpAgent {
             if (text.contains("Answer: SPEND")) {
                 spend(session);
             }
+        } else if (text.startsWith("ANSWERTHENCLOSE")) {
+            // answers its first turn; at the next prompt it closes its output and lives on (see the start of this method)
+            closeOnNextPrompt = true;
+            chunk(session, "noted");
+            reply(id, "{\"stopReason\":\"end_turn\"}");
+            return;
         } else if (text.startsWith("ANSWERTHENDIE")) {
             // answers its turn in full, and only then is the process killed as the system kills a brain, with exit code 137 (28h-C27-18); the kill
             // follows the reply, never races it, so a loaded machine cannot turn the answer into a brain that died mid-turn

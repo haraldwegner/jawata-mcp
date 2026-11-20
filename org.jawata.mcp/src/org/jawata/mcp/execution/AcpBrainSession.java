@@ -284,16 +284,16 @@ public final class AcpBrainSession {
             List<String> names = new ArrayList<>(last.toolNames());
             List<ToolCall> calls = new ArrayList<>(last.toolCalls());
             long toolMillis = last.toolMillis();
-            while (last.stoppedBy().isEmpty() && conversation.alive() && (inbox.outstanding() > 0 || !inbox.isEmpty())) {
+            while (last.stoppedBy().isEmpty() && !conversation.lost() && (inbox.outstanding() > 0 || !inbox.isEmpty())) {
                 // waits only while the lead's brain lives: a brain that died (an exit 137) is never prompted again, so waiting on would leave the
                 // lead running with nobody to read the reports (28h-C27-15). The wait is cut in slices of a second, after each of which it asks
                 // again whether the brain lives, so a brain that dies with a long hire out ends the lead within a second, not after its ceiling.
                 List<HireRegistry.Event> reports = inbox.awaitWhileOut(Math.min(ceilings.wallClock().toMillis(), DEATH_CHECK_MILLIS),
-                    () -> brain.alive() && !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
+                    () -> !brain.lost() && !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
                 if (reports.isEmpty()) {
                     break;
                 }
-                if (!conversation.alive()) {
+                if (conversation.lost()) {
                     // a report that came for a brain that has died is never put into it: closing the inbox hands it up (28h-C27-18)
                     break;
                 }
@@ -305,7 +305,7 @@ public final class AcpBrainSession {
                 }
                 conversation.turn(HireReport.ofAll(reports, HireRegistry.shared().runningNamesFor(leadId)), List.of(), left, onText, toolUpdates,
                     onThinking);
-                if (conversation.alive()) {
+                if (!conversation.lost()) {
                     // the brain answered the turn that showed it these reports; a brain that died in it read none, and closing the inbox hands them up
                     inbox.delivered(reports);
                 }
@@ -317,7 +317,7 @@ public final class AcpBrainSession {
             }
             Optional<String> stoppedBy = last.stoppedBy();
             java.util.OptionalInt exit = last.exitCode();
-            if (stoppedBy.isEmpty() && !conversation.alive() && (inbox.outstanding() > 0 || inbox.hasUndelivered())) {
+            if (stoppedBy.isEmpty() && conversation.lost() && (inbox.outstanding() > 0 || inbox.hasUndelivered())) {
                 // the brain died with work of its hires still to read: it did not finish, so no check run afterwards proves its step, and the
                 // outcome says so instead of the clean answer it gave before it died (the C27 audit)
                 exit = conversation.outcome().exitCode();
@@ -595,6 +595,18 @@ public final class AcpBrainSession {
             return child.isAlive() && sessionId != null;
         }
 
+        /** Whether the last turn ended at the end of the brain's output with no answer, no ceiling and no clock having ended it. */
+        private boolean endedUnanswered;
+
+        /**
+         * Whether the brain is gone: its process has ended, or its last turn ran into the end of its output unanswered. The second is said apart
+         * because a brain that dies closes its output a moment before its process is seen to end, and in that moment {@link #alive()} still
+         * says yes (the full suite, 2026-11-20: a lead took the report it showed a dying brain for read, and it was lost).
+         */
+        boolean lost() {
+            return !alive() || endedUnanswered;
+        }
+
         /** Tells the brain the person stopped its turn; the brain ends the turn with its reply, and the read waiting for that reply returns. */
         public void cancel() {
             if (sessionId == null) {
@@ -622,6 +634,7 @@ public final class AcpBrainSession {
             cost = OptionalDouble.empty();
             stoppedBy = null;
             answered = false;
+            endedUnanswered = false;
             if (sessionId == null) {
                 return;
             }
@@ -716,7 +729,8 @@ public final class AcpBrainSession {
             wire.closeToolTime();
             stoppedBy = wire.stoppedBy;
             answered = stop != null;
-            if (stop == null && !reaped && stoppedBy == null) {
+            endedUnanswered = stop == null && !reaped && stoppedBy == null;
+            if (endedUnanswered) {
                 said.append(said.length() == 0 ? "" : "\n").append("(the brain ended before it answered the prompt)");
             }
         }
