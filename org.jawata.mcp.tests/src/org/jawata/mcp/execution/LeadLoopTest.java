@@ -70,14 +70,19 @@ class LeadLoopTest {
      * A hire this lead's brain started in the background, running on a thread of its own as the engine runs one. It ends a moment after the lead's
      * run has begun, and what it answers is kept after its registration has closed, as the hire tool keeps it.
      * @param workMillis how long the hire works before it reports
+     * @param startsWorkWhen released when the hire may begin its work, so a test can fix the order of the hire's report and the lead's brain's first
+     *                       answer instead of racing them on a loaded machine; null when the hire works from the moment it starts
      */
-    private void aHireIsOut(String leadId, String planId, String answer, long workMillis) throws InterruptedException {
+    private void aHireIsOut(String leadId, String planId, String answer, long workMillis, CountDownLatch startsWorkWhen) throws InterruptedException {
         CountDownLatch started = new CountDownLatch(1);
         Thread child = new Thread(() -> {
             HireRegistry.shared().nextHireIsBackground();
             try (HireRegistry.Registration ignored = HireRegistry.shared().begin("developer", "m12 " + planId, leadId)) {
                 HireRegistry.shared().planOpened(planId);
                 started.countDown();
+                if (startsWorkWhen != null && !startsWorkWhen.await(60, TimeUnit.SECONDS)) {
+                    return;
+                }
                 Thread.sleep(workMillis);
             } catch (InterruptedException ended) {
                 Thread.currentThread().interrupt();
@@ -106,7 +111,7 @@ class LeadLoopTest {
 
         String lead = "m12-lead-reported";
         HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead);
-        aHireIsOut(lead, "m12-child-report", "the code is written", 1_500);
+        aHireIsOut(lead, "m12-child-report", "the code is written", 1_500, null);
         HiredBrain.Outcome reported = runAsLead("REMEMBER:bluebird", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, watching);
 
         assertAll(
@@ -131,9 +136,18 @@ class LeadLoopTest {
         try {
             HireRegistry.shared().planOpened(lead);
             HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead);
-            aHireIsOut(lead, child, "the code is written", 1_500);
+            // The hire's work begins when the brain's first answer has streamed, and the stand-in is killed 300 ms after it answers, so the report
+            // comes 1.2 s after the brain is gone whatever time the stand-in took to start: started at once, the hire could report before a slow
+            // start had answered, and the brain then died in the report's turn (the full suite, twice, on a loaded machine).
+            CountDownLatch answered = new CountDownLatch(1);
+            aHireIsOut(lead, child, "the code is written", 1_500, answered);
             long began = System.nanoTime();
-            HiredBrain.Outcome ended = runAsLead("ANSWERTHENDIE", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, watching);
+            HiredBrain.Outcome ended = AcpBrainSession.runAsLead(host, agent, HireSite.in(dir), "ANSWERTHENDIE", null, List.of(), Optional.empty(),
+                HiredBrain.Ceilings.of(Duration.ofSeconds(60)), text -> {
+                    if (text.contains("noted")) {
+                        answered.countDown();
+                    }
+                }, null, update -> { }, watching, lead, null);
             long seconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - began);
             // the hire ends while the lead is still registered, whether the lead saw its brain die while waiting or before it waited
             children.get(children.size() - 1).join(10_000);
@@ -141,10 +155,7 @@ class LeadLoopTest {
             leadRun.close();
 
             assertAll(
-                // On a loaded machine the stand-in's start takes longer than the hire's work, so the report can reach the lead before the brain is
-                // killed: the brain then dies in the turn that shows it the report, which the lead must hand up all the same (the full suite, twice).
-                () -> assertTrue("noted".equals(ended.text()) || ended.text().contains("ended before it answered"),
-                    "CONTROL: the lead's brain neither answered its first turn nor died in the next: " + ended.text()),
+                () -> assertEquals("noted", ended.text(), "CONTROL: the lead's brain did not answer its turn before it died"),
                 () -> assertTrue(seconds < 30, "the lead waited on with a dead brain: " + seconds + " s"),
                 () -> assertTrue(ended.stoppedBy().isPresent(), "a lead whose brain died with a hire out was reported as a clean run"),
                 () -> assertEquals(whileTheLeadRuns + 1, told.size(), "the hire's report did not go up once the lead whose brain died had ended: " + told),
@@ -172,7 +183,7 @@ class LeadLoopTest {
         HireRegistry.Registration leadRun = HireRegistry.shared().begin("pm", "c27 a lead that reads no inbox", "c27-main-2");
         try {
             HireRegistry.shared().planOpened(lead);
-            aHireIsOut(lead, child, "the code is written", 1_500);
+            aHireIsOut(lead, child, "the code is written", 1_500, null);
             children.get(children.size() - 1).join(10_000);
             int whileTheLeadRuns = told.size();
             boolean keptWhileTheLeadRuns = HireRegistry.shared().undeliveredFor(HireRegistry.shared().rootOf(lead)).stream()
@@ -202,11 +213,11 @@ class LeadLoopTest {
         try {
             HireRegistry.shared().planOpened(lead);
             HireRegistry.Inbox inbox = HireRegistry.shared().inboxFor(lead);
-            aHireIsOut(lead, taken, "the first is written", 100);
+            aHireIsOut(lead, taken, "the first is written", 100, null);
             children.get(children.size() - 1).join(10_000);
             List<HireRegistry.Event> got = inbox.await(5_000);
             inbox.close();
-            aHireIsOut(lead, late, "the second is written", 100);
+            aHireIsOut(lead, late, "the second is written", 100, null);
             children.get(children.size() - 1).join(10_000);
             String chat = HireRegistry.shared().rootOf(lead);
             boolean keptWhileTheLeadRuns = HireRegistry.shared().undeliveredFor(chat).stream()
@@ -234,7 +245,7 @@ class LeadLoopTest {
         try {
             HireRegistry.shared().planOpened(lead);
             HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead);
-            aHireIsOut(lead, child, "the code is written", 1_500);
+            aHireIsOut(lead, child, "the code is written", 1_500, null);
             HiredBrain.Outcome ended = runAsLead("ANSWERTHENCLOSE", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, watching);
             children.get(children.size() - 1).join(10_000);
             boolean keptWhileTheLeadRuns = HireRegistry.shared().undeliveredFor(HireRegistry.shared().rootOf(lead)).stream()
@@ -261,7 +272,7 @@ class LeadLoopTest {
         try {
             HireRegistry.shared().planOpened(lead);
             HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead);
-            aHireIsOut(lead, "c27-child-long", "the code is written", 30_000);
+            aHireIsOut(lead, "c27-child-long", "the code is written", 30_000, null);
             long began = System.nanoTime();
             HiredBrain.Outcome ended = runAsLead("ANSWERTHENDIE", HiredBrain.Ceilings.of(Duration.ofSeconds(120)), lead, watching);
             long seconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - began);
@@ -283,11 +294,11 @@ class LeadLoopTest {
         String lead = "c27-lead";
         // THE CONTROL: the hire is out under the engine's own session id and the lead's brain never says it started one, so nothing is the lead's.
         HireRegistry.Inbox unaware = HireRegistry.shared().inboxFor("c27-lead-unaware");
-        aHireIsOut("c27-server-session-a", "c27-child-a", "the code is written", 1_500);
+        aHireIsOut("c27-server-session-a", "c27-child-a", "the code is written", 1_500, null);
         HiredBrain.Outcome ignored = runAsLead("REMEMBER:bluebird", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), "c27-lead-unaware", unaware);
 
         HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead);
-        aHireIsOut("c27-server-session-b", "c27-child-b", "the code is written", 1_500);
+        aHireIsOut("c27-server-session-b", "c27-child-b", "the code is written", 1_500, null);
         HiredBrain.Outcome reported = runAsLead("STARTHIRE:c27-child-b", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, watching);
 
         assertAll(
@@ -313,13 +324,13 @@ class LeadLoopTest {
         // THE CONTROL: no ceiling, the same two turns of five tool calls each end clean.
         String free = "m12-lead-free";
         HireRegistry.Inbox freeInbox = HireRegistry.shared().inboxFor(free);
-        aHireIsOut(free, "m12-child-free", "SPEND", 1_500);
+        aHireIsOut(free, "m12-child-free", "SPEND", 1_500, null);
         HiredBrain.Outcome unlimited = runAsLead("SPEND", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), free, freeInbox);
 
         // WITH A CEILING OF SEVEN across the turns: the first turn spends five, and the second goes over.
         String bounded = "m12-lead-bounded";
         HireRegistry.Inbox boundedInbox = HireRegistry.shared().inboxFor(bounded);
-        aHireIsOut(bounded, "m12-child-bounded", "SPEND", 1_500);
+        aHireIsOut(bounded, "m12-child-bounded", "SPEND", 1_500, null);
         HiredBrain.Outcome capped = runAsLead("SPEND", new HiredBrain.Ceilings(Duration.ofSeconds(60), 7, null), bounded, boundedInbox);
 
         assertAll(
