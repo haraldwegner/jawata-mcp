@@ -464,6 +464,12 @@ class AcpBrainSessionTest {
             assertEquals(trading.toString(), noLists.get("JAWATA_ACCESS_FOLDERS"), "with no place for the file the brain was not told the projects' folders");
             assertTrue(!untold.containsKey("JAWATA_ACCESS_FOLDERS") && !untold.containsKey("JAWATA_ACCESS_FOLDERS_FILE") && !untold.containsKey("JAWATA_EDITOR_FOLDERS_DIR"),
                 "CONTROL: with no access published the brain was told folders: " + untold);
+            // sign-off audit note 5: an engine with no lists folder and no project still marks its brain, so the guard takes no person's fallback
+            org.jawata.mcp.access.BrainAccess.publish(List::of, null);
+            Map<String, String> allowedNothing = AcpBrainSession.Conversation.environmentOf(HireSite.in(dir), program);
+            assertEquals("1", allowedNothing.get("JAWATA_ACCESS_FROM_ENGINE"), "a brain the engine allows nothing was not marked as the engine's: " + allowedNothing);
+            assertEquals("1", told.get("JAWATA_ACCESS_FROM_ENGINE"), "a brain told its access was not marked as the engine's");
+            assertFalse(untold.containsKey("JAWATA_ACCESS_FROM_ENGINE"), "CONTROL: with no access published the brain was marked as the engine's");
         } finally {
             org.jawata.mcp.access.BrainAccess.publish(null, null);
         }

@@ -37,6 +37,9 @@ public final class BrainAccess {
     /** The variable naming the folder of the editor windows' lists (jawata-studio {@code EDITOR_FOLDERS_DIR_ENV}, jawata-hook {@code local.rs}). */
     public static final String EDITOR_FOLDERS_DIR = "JAWATA_EDITOR_FOLDERS_DIR";
 
+    /** The variable marking a brain whose access the engine decides, whatever it is allowed; the studio's guard reads it. */
+    public static final String FROM_ENGINE = "JAWATA_ACCESS_FROM_ENGINE";
+
     /** The file's name, beside the folder of the windows' lists. */
     static final String ACCESS_FILE_NAME = "engine-access.txt";
 
@@ -118,6 +121,8 @@ public final class BrainAccess {
         if (reading == null) {
             return told;
         }
+        // the brain is the engine's even when it is allowed nothing, so its guard takes no person's fallback (sign-off audit 2026-11-20, note 5)
+        told.put(FROM_ENGINE, "1");
         List<Path> folders;
         try {
             folders = reading.get();
