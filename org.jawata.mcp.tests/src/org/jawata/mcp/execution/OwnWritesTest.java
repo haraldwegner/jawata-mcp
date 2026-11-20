@@ -65,6 +65,25 @@ class OwnWritesTest {
     }
 
     @Test
+    @DisplayName("row 28h-C26-27: a link that leads into a seats folder is a seat, the instruction files of the other agents are refused, and an ordinary document under .github or in a project below a seats folder is not")
+    void theRealPathAndTheOtherAgentsFilesAreJudgedAndOrdinaryDocumentsAreNot(@org.junit.jupiter.api.io.TempDir java.nio.file.Path root)
+            throws java.io.IOException {
+        java.nio.file.Path seat = java.nio.file.Files.writeString(java.nio.file.Files.createDirectories(root.resolve("seats")).resolve("pm.md"), "seat");
+        java.nio.file.Path link = java.nio.file.Files.createSymbolicLink(root.resolve("notes.md"), seat);
+        java.nio.file.Path linkedFolder = java.nio.file.Files.createSymbolicLink(root.resolve("drafts"), seat.getParent());
+        List<String> instructions = List.of("/w/GEMINI.md", "/w/CLAUDE.local.md", "/w/.clinerules", "/w/.clinerules/r.md", "/w/.windsurf/rules/r.md",
+            "/w/.continue/rules.md", "/w/.gemini/notes.md", "/w/.kiro/steering/s.md", "/w/.github/instructions/java.instructions.md",
+            "/w/.github/prompts/fix.prompt.md");
+        List<String> documents = List.of("/w/.github/CONTRIBUTING.md", "/w/seats/project/docs/plan.md", "/w/docs/seats.md");
+        assertAll(
+            () -> assertTrue(!OwnWrites.isDocument(link.toString()), "a link named notes.md that leads to a seat was taken for a document"),
+            () -> assertTrue(!OwnWrites.isDocument(linkedFolder.resolve("new.md").toString()), "a new file in a folder linked to seats was taken for a document"),
+            () -> instructions.forEach(path -> assertTrue(!OwnWrites.isDocument(path), path + " was taken for a document")),
+            () -> documents.forEach(path -> assertTrue(OwnWrites.isDocument(path), path + " was refused although it is an ordinary document")),
+            () -> assertTrue(OwnWrites.isDocument(root.resolve("plain.md").toString()), "CONTROL: a plain document beside the link was refused"));
+    }
+
+    @Test
     @DisplayName("the correction names each file and carries the rule in the words the seats carry, and is empty when nothing was flagged")
     void theCorrectionNamesTheFilesAndTheRule() {
         String correction = OwnWrites.correction(OwnWrites.flags(List.of(write("Edit", "/w/org/x/Foo.java"), write("Write", "/w/a.rs"))));

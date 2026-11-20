@@ -29,19 +29,56 @@ public final class OwnWrites {
     private static final java.util.Set<String> BINARY_ENDINGS = java.util.Set.of("png", "jpg", "jpeg", "gif", "webp", "pdf");
 
     /** The files an agent is told its rules by, and the folders they live in: a document in any of them changes what a seat or a hire may do. */
-    private static final java.util.Set<String> INSTRUCTION_FILES = java.util.Set.of("claude.md", "agents.md", "skill.md", "copilot-instructions.md",
-        ".cursorrules", ".windsurfrules");
+    private static final java.util.Set<String> INSTRUCTION_FILES = java.util.Set.of("claude.md", "claude.local.md", "agents.md", "gemini.md",
+        "skill.md", "copilot-instructions.md", ".cursorrules", ".windsurfrules", ".clinerules");
 
-    private static final java.util.Set<String> INSTRUCTION_FOLDERS = java.util.Set.of(".claude", ".cursor", ".codex", ".github", "seats");
+    /** The endings of the instruction files Copilot keeps under .github; the folder's other documents (CONTRIBUTING.md) are ordinary ones. */
+    private static final List<String> INSTRUCTION_ENDINGS = List.of(".instructions.md", ".prompt.md", ".chatmode.md");
+
+    /** The folders whose whole content configures an agent. */
+    private static final java.util.Set<String> INSTRUCTION_FOLDERS = java.util.Set.of(".claude", ".cursor", ".codex", ".clinerules", ".windsurf",
+        ".continue", ".gemini", ".kiro");
+
+    /** The folder that holds jawata's seat files: a document directly in it is a seat, one in a project below it is not. */
+    private static final String SEATS_FOLDER = "seats";
 
     /**
      * Whether this path is one an agent takes its instructions from, by its file name or any folder on its way. Such a file is not a document a
      * lead may write whatever its ending: a lead that could change it could widen what a hire may do (C27-24: a lead's own editor could write
-     * CLAUDE.md, because it ends in .md).
+     * CLAUDE.md, because it ends in .md). It is judged as spelled and as the place it really is, so a link named notes.md that leads into a
+     * seats folder is a seat (the post-C26 audit, row 28h-C26-27).
      */
     public static boolean tellsAnAgentWhatItMayDo(String path) {
+        return instructsByName(path) || realPathOf(path).map(OwnWrites::instructsByName).orElse(false);
+    }
+
+    /** Where the path really leads: the file itself when it exists, else its folder's real place with its name; none when neither can be read. */
+    private static java.util.Optional<String> realPathOf(String path) {
+        try {
+            java.nio.file.Path spelled = java.nio.file.Path.of(path);
+            if (java.nio.file.Files.exists(spelled)) {
+                return java.util.Optional.of(spelled.toRealPath().toString());
+            }
+            java.nio.file.Path folder = spelled.toAbsolutePath().getParent();
+            if (folder != null && java.nio.file.Files.exists(folder) && spelled.getFileName() != null) {
+                return java.util.Optional.of(folder.toRealPath().resolve(spelled.getFileName()).toString());
+            }
+        } catch (java.io.IOException | RuntimeException unreadable) {
+            // a path that cannot be followed is judged as spelled
+        }
+        return java.util.Optional.empty();
+    }
+
+    private static boolean instructsByName(String path) {
         String[] parts = path.replace('\\', '/').split("/");
-        if (parts.length > 0 && INSTRUCTION_FILES.contains(parts[parts.length - 1].toLowerCase(java.util.Locale.ROOT))) {
+        if (parts.length == 0) {
+            return false;
+        }
+        String name = parts[parts.length - 1].toLowerCase(java.util.Locale.ROOT);
+        if (INSTRUCTION_FILES.contains(name) || INSTRUCTION_ENDINGS.stream().anyMatch(name::endsWith)) {
+            return true;
+        }
+        if (parts.length >= 2 && SEATS_FOLDER.equalsIgnoreCase(parts[parts.length - 2])) {
             return true;
         }
         for (String part : parts) {
