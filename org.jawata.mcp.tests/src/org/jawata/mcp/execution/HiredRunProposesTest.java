@@ -838,7 +838,7 @@ class HiredRunProposesTest {
         HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
         RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
         List<String> asked = new java.util.ArrayList<>();
-        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store, null, brief -> {
+        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store, brief -> {
             asked.add(brief);
             return GROUND;
         });
@@ -865,7 +865,7 @@ class HiredRunProposesTest {
         HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
         RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
         List<String> asked = new java.util.ArrayList<>();
-        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store, null, brief -> {
+        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store, brief -> {
             asked.add(brief);
             return GROUND;
         });
@@ -884,7 +884,7 @@ class HiredRunProposesTest {
     void aLookupThatFailsIsSaidAndDoesNotStopTheHire() throws Exception {
         HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
         RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
-        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store, null, brief -> {
+        HiredRun run = new HiredRun(spy, artifacts, plans, events, null, () -> store, brief -> {
             throw new IllegalStateException("the store is closed");
         });
 
@@ -933,7 +933,7 @@ class HiredRunProposesTest {
         Path repo = aTreeHolding("org/x/Foo.java", "org/x/Bar.java");
         HostCommand standIn = brain("echo 'edited' >> '" + repo.resolve("org/x/Foo.java") + "'\n"
             + "echo '{\"type\":\"result\",\"result\":\"done\"}'").in(repo);
-        HiredRun run = new HiredRun(new RecordsTheArgv(host, standIn), artifacts, plans, events, null, () -> store, null, brief -> TWO_MEMBERS);
+        HiredRun run = new HiredRun(new RecordsTheArgv(host, standIn), artifacts, plans, events, null, () -> store, brief -> TWO_MEMBERS);
 
         HiredRun.Proposal proposal = run.issue(SeatHire.read(CODE_SEAT), site(standIn), "Make Foo go faster.", twoSteps(),
             HiredRunProposesTest::passed, List.of());
@@ -951,7 +951,7 @@ class HiredRunProposesTest {
         Path repo = aTreeHolding("org/x/Foo.java", "org/x/Bar.java", "org/x/Elsewhere.java");
         HostCommand standIn = brain("echo 'edited' >> '" + repo.resolve("org/x/Elsewhere.java") + "'\n"
             + "echo '{\"type\":\"result\",\"result\":\"done\"}'").in(repo);
-        HiredRun run = new HiredRun(new RecordsTheArgv(host, standIn), artifacts, plans, events, null, () -> store, null, brief -> TWO_MEMBERS);
+        HiredRun run = new HiredRun(new RecordsTheArgv(host, standIn), artifacts, plans, events, null, () -> store, brief -> TWO_MEMBERS);
 
         HiredRun.Proposal proposal = run.issue(SeatHire.read(CODE_SEAT), site(standIn), "Make Foo go faster.", twoSteps(),
             HiredRunProposesTest::passed, List.of());

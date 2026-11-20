@@ -14,7 +14,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 import org.jawata.core.host.HostProcesses;
-import org.jawata.mcp.access.SessionFolders;
 import org.jawata.mcp.execution.AcpBrainSession.Program;
 import org.jawata.mcp.knowledge.ExperienceRetrieval;
 import org.jawata.mcp.knowledge.ExperienceStore;
@@ -124,9 +123,6 @@ public final class HiredRun {
     /** Nullable: where the accepted rules a hired seat is bound by are read from (D45). */
     private final Supplier<ExperienceStore> rules;
 
-    /** Nullable: the folder each hired session works in, which narrows its workspace under the access policy (S13, ACL4). */
-    private final SessionFolders folders;
-
     /** Nullable: the area's jobs for a brief, burned into the prompt of a seat that changes code (S14, D16). */
     private final Function<String, ExperienceRetrieval.AreaMap> area;
 
@@ -151,23 +147,13 @@ public final class HiredRun {
     }
 
     /**
-     * @param folders where each hired session's working folder is recorded for the access policy (Sprint 28h S13, ACL4); nullable, and
-     *     without it a hire is held to the whole manifest as before
-     */
-    public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
-            LearnerEventStore journal, SelfEndpoint self, Supplier<ExperienceStore> rules, SessionFolders folders) {
-        this(host, artifacts, plans, journal, self, rules, folders, null);
-    }
-
-    /**
      * @param area what the catalogue says about the ground a brief is about (Sprint 28h S14, D16): the task's words in, the map of the area's
      *     jobs with their live locations out; nullable, and without it a hire carries no ground, exactly as before
      */
     public HiredRun(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans,
-            LearnerEventStore journal, SelfEndpoint self, Supplier<ExperienceStore> rules, SessionFolders folders,
+            LearnerEventStore journal, SelfEndpoint self, Supplier<ExperienceStore> rules,
             Function<String, ExperienceRetrieval.AreaMap> area) {
         this.area = area;
-        this.folders = folders;
         this.host = Objects.requireNonNull(host, "a hired run needs a process boundary");
         this.artifacts = Objects.requireNonNull(artifacts, "a proposal with nowhere to land"
             + " is not a proposal");
@@ -507,19 +493,16 @@ public final class HiredRun {
         // THE ONE START PATH (S12): a brain with a program that speaks ACP is run through the engine's ACP client, under this plan's own
         // session id, with the seat's tools as its allowlist (an empty list allows none); any other brain is started by its dialect.
         LiveGates live = acp.isPresent() ? new LiveGates(plan, declaredGates) : null;
-        // ACL4: while the brain works, its session (the plan id it presents to the resident) is concerned with the folder it was hired in,
-        // not with every project the manifest holds; the binding ends with the run.
-        HiredBrain.Outcome outcome;
+        // ACL4 as amended 2026-11-20 (his rulings): while the brain works its session sees the whole workspace, the union of the editor
+        // windows' folders and the Java projects' folders, whatever folder it was hired in, so no binding to that folder is kept.
         final long brainStartedMs = System.currentTimeMillis();
-        try (SessionFolders.Binding ignored = folders == null ? null : folders.bind(plan.value(), base.workingDirectory())) {
-            outcome = acp.isEmpty()
-                ? HiredBrain.hire(host, dialect, base, brief, tools, ceilings)
-                : lead
-                    ? AcpBrainSession.runAsLead(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                        resume, ceilings, null, live, update -> { }, HireRegistry.shared().inboxFor(plan.value()), plan.value(), model)
-                    : AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                        resume, ceilings, null, live, update -> { }, model);
-        }
+        HiredBrain.Outcome outcome = acp.isEmpty()
+            ? HiredBrain.hire(host, dialect, base, brief, tools, ceilings)
+            : lead
+                ? AcpBrainSession.runAsLead(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
+                    resume, ceilings, null, live, update -> { }, HireRegistry.shared().inboxFor(plan.value()), plan.value(), model)
+                : AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
+                    resume, ceilings, null, live, update -> { }, model);
 
         final long brainRanMs = System.currentTimeMillis() - brainStartedMs;
 

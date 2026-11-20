@@ -94,23 +94,6 @@ class AccessFoldersTest {
     }
 
     @Test
-    @DisplayName("a hire bound to a folder of the workspace file that is no Java project has the workspace, whoever started first, and one bound to a folder in neither has none")
-    void aHireBoundInAFolderOfTheWorkspaceFileIsInItsWorkspace(@TempDir Path root) throws Exception {
-        Path core = projectIn(folder(root, "engine"), "core");
-        Path enterprise = folder(root, "enterprise");
-        Path stranger = folder(root, "stranger");
-        workspaceFile(root.resolve("dev.code-workspace"), "{\"path\": \"engine\"}, {\"path\": \"enterprise\"}");
-        SessionFolders sessions = new SessionFolders();
-        List<Path> beside = new AccessFolders().of(List.of(core));
-
-        try (SessionFolders.Binding inside = sessions.bind("plan-in", enterprise); SessionFolders.Binding outside = sessions.bind("plan-out", stranger)) {
-            assertAll(
-                () -> assertFalse(sessions.workspaceOf("plan-in", List.of(core), beside).isEmpty(), "a hire in a folder of the workspace file has no workspace"),
-                () -> assertFalse(covers(sessions.workspaceOf("plan-out", List.of(core), beside), stranger), "the folder of no source that a hire named was covered"));
-        }
-    }
-
-    @Test
     @DisplayName("C27 audit: a workspace file that lists the filesystem root or the person's home folder does not make them writable, and its other folders still are")
     void aWorkspaceFileCannotWidenAccessToTheRootOrTheHome(@TempDir Path root) throws Exception {
         Path core = projectIn(folder(root, "engine"), "core");
@@ -144,77 +127,55 @@ class AccessFoldersTest {
             () -> assertTrue(covers(covered, root.resolve("chat")), "CONTROL: the workspace file in the folder above was not read: " + covered));
     }
 
-    private static void editorFolders(Path file, Path... folders) throws IOException {
-        Files.writeString(file, String.join("\n", java.util.Arrays.stream(folders).map(Path::toString).toList()));
+    /** One editor window's list as the studio writes it: `<window>.txt` in the folder of lists, one folder to a line. */
+    private static Path editorList(Path lists, String window, Path... folders) throws IOException {
+        Files.createDirectories(lists);
+        return Files.writeString(lists.resolve(window + ".txt"), String.join("\n", java.util.Arrays.stream(folders).map(Path::toString).toList()));
     }
 
     @Test
-    @DisplayName("his word 2026-11-20: the folders the editor window has open are covered, read from what the editor handed the studio, with no workspace file beside the repositories and before any Java project has loaded, and a folder the window does not hold is not")
+    @DisplayName("his word 2026-11-20: the folders every editor window has open are covered, each window by its own list, with no workspace file beside the repositories and before any Java project has loaded, and a folder no window holds is not")
     void theEditorWindowsOpenFoldersAreCovered(@TempDir Path root) throws Exception {
         Path trading = folder(root, "Projects");
         Path docs = folder(root, "notes");
         Path stranger = folder(root, "stranger");
-        Path handed = root.resolve("editor-folders.txt");
-        editorFolders(handed, trading, docs);
-        AccessFolders access = new AccessFolders(handed);
+        Path lists = root.resolve("editor-folders");
+        editorList(lists, "window-a", trading);
+        editorList(lists, "window-b", docs);
+        AccessFolders access = new AccessFolders(lists);
 
         List<Path> loading = access.of(List.of());
         List<Path> loaded = access.of(List.of(projectIn(folder(root, "engine"), "core")));
 
         assertAll(
-            () -> assertTrue(covers(loading, trading.resolve("jats2").resolve("bundle")) && covers(loading, docs), "while loading, the window's folders are not covered: " + loading),
-            () -> assertTrue(covers(loaded, trading) && covers(loaded, docs) && covers(loaded, root.resolve("engine")), "with a loaded project, the window's folders are not covered: " + loaded),
-            () -> assertFalse(covers(loaded, stranger), "a folder the window does not hold was covered: " + loaded),
-            () -> assertFalse(covers(new AccessFolders(root.resolve("absent.txt")).of(List.of()), trading), "CONTROL: with no list from the editor its folders were covered"));
+            () -> assertTrue(covers(loading, trading.resolve("jats2").resolve("bundle")) && covers(loading, docs), "while loading, the windows' folders are not covered: " + loading),
+            () -> assertTrue(covers(loaded, trading) && covers(loaded, docs) && covers(loaded, root.resolve("engine")), "with a loaded project, a window's folders are not covered: " + loaded),
+            () -> assertFalse(covers(loaded, stranger), "a folder no window holds was covered: " + loaded),
+            () -> assertFalse(covers(new AccessFolders(root.resolve("absent")).of(List.of()), trading), "CONTROL: with no lists from the editor their folders were covered"));
     }
 
     @Test
-    @DisplayName("his word 2026-11-20: a folder the editor window opens later is covered by the next question without a restart of the engine, and a folder it closed stops being covered")
-    void aChangeOfTheEditorWindowsFoldersIsSeenWithoutARestart(@TempDir Path root) throws Exception {
+    @DisplayName("his word 2026-11-20 and audit bugs B and G: a folder a window opens later is covered at the next question without a restart, also when its list is rewritten within the same second, and a closed window's folders stop being covered")
+    void aChangeOfAWindowsFoldersIsSeenWithoutARestart(@TempDir Path root) throws Exception {
         Path first = folder(root, "first");
-        Path later = folder(root, "later");
-        Path handed = root.resolve("editor-folders.txt");
-        editorFolders(handed, first);
-        AccessFolders access = new AccessFolders(handed);
+        Path later = folder(root, "laterFolder");
+        Path lists = root.resolve("editor-folders");
+        Path list = editorList(lists, "window-a", first);
+        FileTime written = Files.getLastModifiedTime(list);
+        AccessFolders access = new AccessFolders(lists);
 
         List<Path> before = access.of(List.of());
-        editorFolders(handed, later);
-        Files.setLastModifiedTime(handed, FileTime.fromMillis(System.currentTimeMillis() + 60_000));
-        List<Path> after = access.of(List.of());
+        editorList(lists, "window-a", later);
+        Files.setLastModifiedTime(list, written);
+        List<Path> sameSecond = access.of(List.of());
+        Files.delete(list);
+        List<Path> closed = access.of(List.of());
 
         assertAll(
             () -> assertTrue(covers(before, first) && !covers(before, later), "before: " + before),
-            () -> assertTrue(covers(after, later), "a folder the window opened later was not seen: " + after),
-            () -> assertFalse(covers(after, first), "a folder the window closed is still covered: " + after));
-    }
-
-    @Test
-    @DisplayName("audit 2026-11-20: a workspace file beside the repositories that lists module folders inside a repository, not the repository itself, is read")
-    void aWorkspaceFileListingModulesInsideARepositoryIsRead(@TempDir Path root) throws Exception {
-        Path repo = folder(root, "jats");
-        Path core = projectIn(repo, "core");
-        folder(repo, "ui");
-        folder(root, "docs");
-        workspaceFile(root.resolve("trading.code-workspace"), "{\"path\": \"jats/core\"}, {\"path\": \"jats/ui\"}, {\"path\": \"docs\"}");
-
-        List<Path> covered = new AccessFolders().of(List.of(core));
-
-        assertTrue(covers(covered, root.resolve("docs")), "a workspace file listing folders inside the repository was not read: " + covered);
-    }
-
-    @Test
-    @DisplayName("his ruling 2026-11-18 (\"always the union of the VSCode workspace and the jawata workspace\"): a hire bound to a folder outside it still has the whole workspace, and the folder it names does not widen it")
-    void aHireBoundOutsideStillHasTheUnionAndItsFolderDoesNotWiden(@TempDir Path root) throws Exception {
-        Path core = projectIn(folder(root, "engine"), "core");
-        Path worktree = folder(root, "tmp-worktree");
-        SessionFolders sessions = new SessionFolders();
-
-        try (SessionFolders.Binding outside = sessions.bind("plan-out", worktree)) {
-            List<Path> workspace = sessions.workspaceOf("plan-out", List.of(core), List.of());
-            assertAll(
-                () -> assertTrue(covers(workspace, core), "a hire bound outside the workspace lost the loaded project: " + workspace),
-                () -> assertFalse(covers(workspace, worktree), "the folder the hire named widened the workspace: " + workspace));
-        }
+            () -> assertTrue(covers(sameSecond, later), "a list rewritten within the same time stamp was not seen (bug G): " + sameSecond),
+            () -> assertFalse(covers(sameSecond, first), "a folder the window closed is still covered: " + sameSecond),
+            () -> assertFalse(covers(closed, later), "a closed window's folders are still covered: " + closed));
     }
 
     @Test

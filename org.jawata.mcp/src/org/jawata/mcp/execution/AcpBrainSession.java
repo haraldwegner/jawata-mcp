@@ -385,8 +385,13 @@ public final class AcpBrainSession {
             if (!access.isEmpty()) {
                 environment.put(ACCESS_FOLDERS, String.join(java.io.File.pathSeparator, access.stream().map(java.nio.file.Path::toString).toList()));
             }
+            // and where the editor windows' lists are, which that guard reads on every call, so a folder a window opens later is reached too
+            org.jawata.mcp.access.BrainAccess.editorLists().ifPresent(lists -> environment.put(EDITOR_FOLDERS_DIR, lists.toString()));
             return environment;
         }
+
+        /** The variable naming the folder of the editor windows' lists (jawata-studio {@code EDITOR_FOLDERS_DIR_ENV}, jawata-hook {@code local.rs}). */
+        static final String EDITOR_FOLDERS_DIR = "JAWATA_EDITOR_FOLDERS_DIR";
 
         /** The variable naming those folders, a path list of the platform; the studio's guard (jawata-hook {@code local.rs}) reads it. */
         static final String ACCESS_FOLDERS = "JAWATA_ACCESS_FOLDERS";

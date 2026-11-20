@@ -677,7 +677,7 @@ public class HireTool extends NeutralTool {
                     "wait for that agent to end, which releases its claim, or claim a package that does not overlap");
             }
         }
-        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, registry.get().sessionFolders(), area)
+        HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, area)
             // A replacement starts on another brain, which cannot continue the session of the one it replaces.
             .resuming(call.getReplacing() != null ? Optional.empty() : principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
             // The plan this hire opens belongs to the session that issued it, whoever it is: only that session's turn waits on its step (S10).
@@ -1224,7 +1224,7 @@ public class HireTool extends NeutralTool {
                 String observerBrain = observerSeat.brain().label();
                 Optional<AcpBrainSession.Program> acp = settings.get().get(BRAINS_SETTING).flatMap(text -> AcpBrainSession.programFor(text, observerBrain));
                 Optional<String> earlier = issuer.flatMap(key -> SeatBrainSessions.shared().recall(key, OBSERVER_SESSION_SEAT));
-                HiredRun judging = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, engineTools.sessionFolders()).ownedBy(issuer)
+                HiredRun judging = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules).ownedBy(issuer)
                     .resuming(earlier);
                 HiredRun.Proposal verdict = judging.issue(observerSeat, base, Observer.briefFor(flags, issued, window),
                     List.of(new GatedStep(0, "health_check", JSON.createObjectNode())), new ToolGateRunner(engineTools), hidden, acp);

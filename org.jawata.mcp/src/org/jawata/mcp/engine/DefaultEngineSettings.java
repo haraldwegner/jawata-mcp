@@ -22,9 +22,9 @@ public final class DefaultEngineSettings implements EngineSettings {
         // how many past sessions History shows at a time (his ruling 2026-11-18), ten until it says another number
         Map.entry("jawata.agent.historyPage", "JAWATA_AGENT_HISTORY_PAGE"),
         Map.entry("jawata.agent.hireBrains", "JAWATA_AGENT_HIRE_BRAINS"),
-        // Stage 27 (p): the folders of the editor's workspace that are not Java projects, a path list; the access policy's ${workspace} is these
-        // and the loaded projects together. The studio writes it from the editor's workspace file.
-        Map.entry("jawata.workspace.folders", "JAWATA_WORKSPACE_FOLDERS"),
+        // His word 2026-11-20: the folder of the editor windows' lists, one per window, which the studio names to the engine it starts; the
+        // engine reads the lists on every access question, so access follows the windows without a restart.
+        Map.entry("jawata.editor.foldersDir", "JAWATA_EDITOR_FOLDERS_DIR"),
         // Sprint 28h S12: the folder of seat files whose schedules the engine fires (ScheduledHires). The studio does NOT write it yet: that
         // is owed to S15 (the plan's Stage 15 carries it), and until then only a person or a test that sets it makes seats run on a schedule.
         Map.entry("jawata.agent.seatsDir", "JAWATA_AGENT_SEATS_DIR"));

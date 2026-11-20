@@ -15,12 +15,24 @@ public final class BrainAccess {
     /** The engine's reading of the workspace a session may work in; null when no access check is installed. */
     private static volatile Function<String, List<Path>> published;
 
+    /** The folder of the editor windows' lists, which a brain's guard reads live; null when there is none. */
+    private static volatile Path editorLists;
+
     private BrainAccess() {
     }
 
-    /** Publishes the reading the engine's access check uses; null withdraws it. */
-    public static void publish(Function<String, List<Path>> workspaceOf) {
+    /**
+     * Publishes the reading the engine's access check uses and the folder of the editor windows' lists; nulls withdraw them, which the
+     * engine does when it stops, so nothing answers for a workspace that is gone.
+     */
+    public static void publish(Function<String, List<Path>> workspaceOf, Path editorListsFolder) {
         published = workspaceOf;
+        editorLists = editorListsFolder;
+    }
+
+    /** The folder of the editor windows' lists, for a brain's guard to read what the windows hold now (audit 2026-11-20, bug E). */
+    public static java.util.Optional<Path> editorLists() {
+        return java.util.Optional.ofNullable(editorLists);
     }
 
     /** The folders a brain started for {@code session} may work in; none when nothing is published or the reading fails. */

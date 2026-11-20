@@ -444,15 +444,19 @@ class AcpBrainSessionTest {
         java.nio.file.Path trading = dir.resolve("Projects");
         java.nio.file.Path notes = dir.resolve("notes");
         try {
-            org.jawata.mcp.access.BrainAccess.publish(session -> List.of(trading, notes));
+            java.nio.file.Path lists = dir.resolve("editor-folders");
+            org.jawata.mcp.access.BrainAccess.publish(session -> List.of(trading, notes), lists);
             Map<String, String> told = AcpBrainSession.Conversation.environmentOf(HireSite.in(dir), program);
-            org.jawata.mcp.access.BrainAccess.publish(null);
+            org.jawata.mcp.access.BrainAccess.publish(null, null);
             Map<String, String> untold = AcpBrainSession.Conversation.environmentOf(HireSite.in(dir), program);
 
             assertEquals(trading + java.io.File.pathSeparator + notes, told.get("JAWATA_ACCESS_FOLDERS"), "the brain was not told the engine's access folders");
-            assertTrue(!untold.containsKey("JAWATA_ACCESS_FOLDERS"), "CONTROL: with no access published the brain was told folders: " + untold.get("JAWATA_ACCESS_FOLDERS"));
+            // audit bug E: the folders above are a picture of the brain's start; the windows' lists are where its guard reads what they hold now
+            assertEquals(lists.toString(), told.get("JAWATA_EDITOR_FOLDERS_DIR"), "the brain was not told where the windows' lists are kept");
+            assertTrue(!untold.containsKey("JAWATA_ACCESS_FOLDERS") && !untold.containsKey("JAWATA_EDITOR_FOLDERS_DIR"),
+                "CONTROL: with no access published the brain was told folders: " + untold);
         } finally {
-            org.jawata.mcp.access.BrainAccess.publish(null);
+            org.jawata.mcp.access.BrainAccess.publish(null, null);
         }
     }
 }

@@ -545,24 +545,23 @@ public class JawataEngine {
 			} catch (java.io.IOException e) {
 				log.error("The default access policy could not be written to {}: calls naming a place are refused until it exists", policy, e);
 			}
-			// His word 2026-11-20: the editor window's folders are covered whichever started first. The studio writes them into the workspace's
-			// folder (beside workspace.json) every time the editor starts or its folders change, and they are read from there on every call.
-			org.jawata.mcp.access.AccessFolders onDisk = new org.jawata.mcp.access.AccessFolders(
-					this.host().directories().workspaceRoot().map(root -> root.resolve("editor-folders.txt")).orElse(null));
+			// His word 2026-11-20: every editor window's folders are covered, whichever started first. The studio keeps one list per window in
+			// the folder it names to this engine (jawata.editor.foldersDir), writes a window's list every time it starts or its folders change
+			// and removes it when it closes; the lists are read on every call. Without the setting, the workspace's own folder holds them.
+			java.nio.file.Path editorLists = this.host().settings().get("jawata.editor.foldersDir").map(java.nio.file.Path::of)
+					.or(() -> this.host().directories().workspaceRoot().map(root -> root.resolve("editor-folders"))).orElse(null);
+			org.jawata.mcp.access.AccessFolders onDisk = new org.jawata.mcp.access.AccessFolders(editorLists);
 			java.util.function.Function<String, java.util.List<java.nio.file.Path>> workspaceOf = session -> {
 						java.util.List<java.nio.file.Path> loaded = ports.workspace().get().projects().stream().map(project -> project.root()).toList();
-						// Stage 27 (z4): access is the workspace as it stands on disk, whoever started first: the repositories that enclose the loaded
-						// Java projects and the folders of the VS Code workspace file they belong to, read again when the file changes. The setting a
-						// host may still supply (Stage 27 (p)) adds to them; it is no longer the only way a folder that is no Java project is reached.
-						java.util.List<java.nio.file.Path> beside = new java.util.ArrayList<>(
-								org.jawata.mcp.access.SessionFolders.editorFolders(this.host().settings().get("jawata.workspace.folders").orElse(null)));
-						beside.addAll(onDisk.of(loaded));
-						return this.getToolRegistry().sessionFolders().workspaceOf(session, loaded, beside);
+						// Stage 27 (z4): access is the workspace as it stands now, whoever started first: the repositories that enclose the loaded Java
+						// projects, the editor windows' folders and the folders of the VS Code workspace file they belong to. No list fixed at the
+						// engine's start is added: one would keep a folder a window has closed (audit 2026-11-20, bug B).
+						return this.getToolRegistry().sessionFolders().workspaceOf(session, loaded, onDisk.of(loaded));
 					};
 			this.getToolRegistry().setAccessCheck(new org.jawata.mcp.access.AccessCheck(policy, workspaceOf,
 					java.nio.file.Path.of(System.getProperty("user.home")), java.nio.file.Path.of(System.getProperty("java.io.tmpdir"))));
 			// 28h-C27-31: every brain the engine starts is told the same folders, so the guard in its own client allows what this check allows
-			org.jawata.mcp.access.BrainAccess.publish(workspaceOf);
+			org.jawata.mcp.access.BrainAccess.publish(workspaceOf, editorLists);
 		});
 
 		// A host that serves Java is loading until the Java provider binds; the neutral set is published now, and each language's tools
@@ -740,6 +739,8 @@ public class JawataEngine {
 	 * partial copy fails its read-back at the next start and is removed.</p>
 	 */
 	public void stop() {
+		// a process-wide supplier left behind answers for a workspace that is gone (the stored lesson on JawataEngine#stop)
+		org.jawata.mcp.access.BrainAccess.publish(null, null);
 		Thread backfill = getEmbeddingBackfillThread();
 		if (backfill != null) {
 			backfill.interrupt();
