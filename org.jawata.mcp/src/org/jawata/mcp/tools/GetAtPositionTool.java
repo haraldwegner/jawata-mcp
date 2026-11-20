@@ -122,6 +122,18 @@ public class GetAtPositionTool extends AbstractTool {
         if (kind == null || kind.isBlank()) {
             return ToolResponse.invalidParameter("kind", "kind is required; one of " + KINDS);
         }
+        // A file no loaded project holds a compilation unit of is answered here once for every kind, as the generate door does: the kinds below
+        // would each say "no symbol found at position", which reads as a wrong position when the file is the thing that is wrong.
+        String filePath = getStringParam(arguments, "filePath");
+        if (KINDS.contains(kind) && filePath != null && !filePath.isBlank()) {
+            try {
+                if (service.getCompilationUnit(java.nio.file.Path.of(filePath)) == null) {
+                    return org.jawata.mcp.tools.shared.UnresolvedFile.fileNotFound(service.allProjects(), filePath);
+                }
+            } catch (java.nio.file.InvalidPathException unusual) {
+                // a path that cannot be read as one is left to the kind below, as before
+            }
+        }
         return switch (kind) {
             case "type"      -> type.executeWithService(service, arguments);
             case "method"    -> method.executeWithService(service, arguments);

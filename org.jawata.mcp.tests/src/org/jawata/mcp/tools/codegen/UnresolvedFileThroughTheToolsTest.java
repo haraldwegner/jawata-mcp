@@ -104,6 +104,86 @@ class UnresolvedFileThroughTheToolsTest {
         assertEquals(java.util.List.of(), differing, "kinds of the analyze door that do not answer an unresolved file as the others do");
     }
 
+    private org.jawata.mcp.tools.Tool doorOf(Class<?> type) throws Exception {
+        java.util.function.Supplier<org.jawata.core.IJdtService> supplier = () -> service;
+        for (java.lang.reflect.Constructor<?> constructor : type.getConstructors()) {
+            Class<?>[] parameters = constructor.getParameterTypes();
+            if (parameters.length == 1 && java.util.function.Supplier.class.isAssignableFrom(parameters[0])) {
+                return (org.jawata.mcp.tools.Tool) constructor.newInstance(supplier);
+            }
+            if (parameters.length == 2 && java.util.function.Supplier.class.isAssignableFrom(parameters[0]) && parameters[1] == RefactoringChangeCache.class) {
+                return (org.jawata.mcp.tools.Tool) constructor.newInstance(supplier, new RefactoringChangeCache());
+            }
+        }
+        throw new IllegalStateException(type.getSimpleName() + " has no constructor this test knows how to call");
+    }
+
+    @Test
+    @DisplayName("the other front doors answer an unresolved file the same three ways for each kind that takes one: extract, inline, quick_fix, apply_cleanup, refactor_to_pattern, get_at_position, the call hierarchy, inspect, validate, diagnostics, organize imports and format")
+    void theOtherDoorsAnswerAnUnresolvedFileTheSameWayForEveryKindThatTakesOne(@TempDir Path elsewhere) throws Exception {
+        Path pom = helper.getFixturePath("simple-maven").resolve("pom.xml");
+        Path outside = Files.writeString(elsewhere.resolve("notes.txt"), "x");
+        Path missing = elsewhere.resolve("Missing.java");
+        java.util.Map<String, String> expected = new java.util.LinkedHashMap<>();
+        expected.put(pom.toString(), "NOT_A_JAVA_SOURCE");
+        expected.put(outside.toString(), "NOT_A_JAVA_PROJECT");
+        expected.put(missing.toString(), "FILE_NOT_FOUND");
+        String position = "\"line\":0,\"column\":0";
+        String range = "\"startLine\":0,\"startColumn\":0,\"endLine\":1,\"endColumn\":0";
+        java.util.List<Object[]> rows = java.util.List.of(
+            new Object[] {org.jawata.mcp.tools.ExtractTool.class, "{\"kind\":\"method\"," + range + ",\"methodName\":\"x\"}"},
+            new Object[] {org.jawata.mcp.tools.ExtractTool.class, "{\"kind\":\"variable\"," + range + "}"},
+            new Object[] {org.jawata.mcp.tools.ExtractTool.class, "{\"kind\":\"constant\"," + range + ",\"constantName\":\"X\"}"},
+            new Object[] {org.jawata.mcp.tools.ExtractTool.class, "{\"kind\":\"interface\"," + position + ",\"interfaceName\":\"I\"}"},
+            new Object[] {org.jawata.mcp.tools.InlineTool.class, "{\"kind\":\"method\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.InlineTool.class, "{\"kind\":\"variable\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.QuickFixTool.class, "{\"action\":\"list\",\"line\":0}"},
+            new Object[] {org.jawata.mcp.tools.ApplyCleanupTool.class, "{\"kind\":\"add_final\"}"},
+            new Object[] {org.jawata.mcp.tools.RefactorToPatternTool.class, "{\"kind\":\"refactor_to_state\"," + position + ",\"states\":[\"a\",\"b\"]}"},
+            new Object[] {org.jawata.mcp.tools.RefactorToPatternTool.class, "{\"kind\":\"refactor_to_command_dispatcher\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.RefactorToPatternTool.class, "{\"kind\":\"form_template_method\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.RefactorToPatternTool.class, "{\"kind\":\"decompose_conditional\"," + position + ",\"conditionName\":\"c\"}"},
+            new Object[] {org.jawata.mcp.tools.RefactorToPatternTool.class, "{\"kind\":\"replace_conditional_with_polymorphism\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"type\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"method\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"enclosing\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"field\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"hover\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"javadoc\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"signature\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"super\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"symbol\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GoToDefinitionTool.class, "{" + position + "}"},
+            new Object[] {org.jawata.mcp.tools.GetCallHierarchyTool.class, "{\"direction\":\"outgoing\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.InspectTool.class, "{\"kind\":\"document_symbols\"}"},
+            new Object[] {org.jawata.mcp.tools.InspectTool.class, "{\"kind\":\"complexity\"}"},
+            new Object[] {org.jawata.mcp.tools.ValidateSyntaxTool.class, "{}"},
+            new Object[] {org.jawata.mcp.tools.OrganizeImportsTool.class, "{}"},
+            new Object[] {org.jawata.mcp.tools.workflow.FormatTool.class, "{\"scope\":{\"kind\":\"file\"}}"});
+        java.util.List<String> differing = new java.util.ArrayList<>();
+
+        for (Object[] row : rows) {
+            Class<?> type = (Class<?>) row[0];
+            org.jawata.mcp.tools.Tool door = doorOf(type);
+            for (java.util.Map.Entry<String, String> place : expected.entrySet()) {
+                ObjectNode arguments = (ObjectNode) json.readTree((String) row[1]);
+                if (arguments.has("scope")) {
+                    ((ObjectNode) arguments.get("scope")).put("filePath", place.getKey());
+                } else {
+                    arguments.put("filePath", place.getKey());
+                }
+                ToolResponse answer = door.execute(arguments);
+                String code = answer.getError() == null ? "(no error)" : answer.getError().getCode();
+                if (!place.getValue().equals(code)) {
+                    differing.add(type.getSimpleName() + " " + row[1] + " on a " + place.getValue() + " place answered " + code
+                        + (answer.getError() == null ? "" : ": " + answer.getError().getMessage()));
+                }
+            }
+        }
+
+        assertEquals(java.util.List.of(), differing, "doors and kinds that do not answer an unresolved file as the others do");
+    }
+
     @Test
     @DisplayName("an analysis tool, which passes the loaded projects itself, answers the same three ways")
     void anAnalysisToolHandsItsLoadedProjectsToTheAnswer(@TempDir Path elsewhere) throws Exception {

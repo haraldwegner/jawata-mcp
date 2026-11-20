@@ -92,6 +92,11 @@ public class GoToDefinitionTool extends AbstractTool {
         try {
             Path path = Path.of(filePath);
 
+            // A file no loaded project holds a compilation unit of is said so, and not answered as a symbol that was not found at the position.
+            if (service.getCompilationUnit(path) == null) {
+                return org.jawata.mcp.tools.shared.UnresolvedFile.fileNotFound(service.allProjects(), filePath);
+            }
+
             // Get element at position using code select
             IJavaElement element = service.getElementAtPosition(path, line, column);
 
