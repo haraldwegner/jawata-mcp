@@ -268,6 +268,12 @@ public final class HireRegistry {
      * What a hired lead's run waits on between its turns (Stage 24, M12): the reports of the hires its brain started in the background. It counts
      * those hires from the moment they start and not from the moment they end, so a lead is never told it has nothing out in the instant between a
      * hire's registration closing and its report being kept.
+     *
+     * <p>The inbox also owns what happens to a report its lead's brain never read (28h-C27-18). A report is taken in by {@link #offer} and counts
+     * as read only when the lead says its brain answered the turn that showed it ({@link #delivered}). Closing the inbox, whatever way the lead's
+     * run ended (its brain died, a ceiling stopped it, a report came after its last turn), hands every report not read up to the registry, which
+     * holds it on the lead's own record and tells it again for the lead's chat when the lead ends. A closed inbox refuses new reports, so one
+     * that arrives while it closes goes the same way.</p>
      */
     public final class Inbox implements AutoCloseable {
         private final java.util.concurrent.LinkedBlockingQueue<Event> reports = new java.util.concurrent.LinkedBlockingQueue<>();
