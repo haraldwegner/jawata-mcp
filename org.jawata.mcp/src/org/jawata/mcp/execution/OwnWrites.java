@@ -29,11 +29,14 @@ public final class OwnWrites {
     private static final java.util.Set<String> BINARY_ENDINGS = java.util.Set.of("png", "jpg", "jpeg", "gif", "webp", "pdf");
 
     /** The files an agent is told its rules by, and the folders they live in: a document in any of them changes what a seat or a hire may do. */
-    private static final java.util.Set<String> INSTRUCTION_FILES = java.util.Set.of("claude.md", "claude.local.md", "agents.md", "gemini.md",
-        "skill.md", "copilot-instructions.md", ".cursorrules", ".windsurfrules", ".clinerules");
+    private static final java.util.Set<String> INSTRUCTION_FILES = java.util.Set.of("claude.md", "claude.local.md", "agents.md", "agents.override.md",
+        "gemini.md", "skill.md", "copilot-instructions.md", ".cursorrules", ".windsurfrules", ".clinerules");
 
-    /** The endings of the instruction files Copilot keeps under .github; the folder's other documents (CONTRIBUTING.md) are ordinary ones. */
-    private static final List<String> INSTRUCTION_ENDINGS = List.of(".instructions.md", ".prompt.md", ".chatmode.md");
+    /**
+     * The endings of the instruction files Copilot keeps under .github, its custom agents ({@code .agent.md}) among them; the folder's other
+     * documents (CONTRIBUTING.md) are ordinary ones.
+     */
+    private static final List<String> INSTRUCTION_ENDINGS = List.of(".instructions.md", ".prompt.md", ".chatmode.md", ".agent.md");
 
     /** The folders whose whole content configures an agent. */
     private static final java.util.Set<String> INSTRUCTION_FOLDERS = java.util.Set.of(".claude", ".cursor", ".codex", ".clinerules", ".windsurf",
@@ -49,24 +52,49 @@ public final class OwnWrites {
      * seats folder is a seat (the post-C26 audit, row 28h-C26-27).
      */
     public static boolean tellsAnAgentWhatItMayDo(String path) {
-        return instructsByName(path) || realPathOf(path).map(OwnWrites::instructsByName).orElse(false);
+        return instructsByName(normalised(path)) || realPathOf(path).map(OwnWrites::instructsByName).orElse(false);
     }
 
-    /** Where the path really leads: the file itself when it exists, else its folder's real place with its name; none when neither can be read. */
+    /** The path with its {@code .} and {@code ..} steps taken, so {@code seats/zz/../pm.md} is judged as the seat it names; as given when it cannot be read. */
+    private static String normalised(String path) {
+        try {
+            return java.nio.file.Path.of(path).normalize().toString();
+        } catch (java.nio.file.InvalidPathException unreadable) {
+            return path;
+        }
+    }
+
+    /**
+     * Where an absolute path really leads: the real place of its nearest folder that exists, with the rest of the path after it, so a link
+     * anywhere on the way is followed although the folders below it are still to be made (the C27 audit). None for a relative path, which names
+     * no place until a folder is given for it, so it is not resolved against the engine's own folder; none when nothing on the way can be read.
+     */
     private static java.util.Optional<String> realPathOf(String path) {
         try {
             java.nio.file.Path spelled = java.nio.file.Path.of(path);
-            if (java.nio.file.Files.exists(spelled)) {
-                return java.util.Optional.of(spelled.toRealPath().toString());
+            if (!spelled.isAbsolute()) {
+                return java.util.Optional.empty();
             }
-            java.nio.file.Path folder = spelled.toAbsolutePath().getParent();
-            if (folder != null && java.nio.file.Files.exists(folder) && spelled.getFileName() != null) {
-                return java.util.Optional.of(folder.toRealPath().resolve(spelled.getFileName()).toString());
+            java.nio.file.Path rest = java.nio.file.Path.of("");
+            for (java.nio.file.Path existing = spelled.normalize(); existing != null; existing = existing.getParent()) {
+                if (java.nio.file.Files.exists(existing)) {
+                    return java.util.Optional.of(existing.toRealPath().resolve(rest).toString());
+                }
+                java.nio.file.Path name = existing.getFileName();
+                rest = name == null ? rest : name.resolve(rest);
             }
         } catch (java.io.IOException | RuntimeException unreadable) {
             // a path that cannot be followed is judged as spelled
         }
         return java.util.Optional.empty();
+    }
+
+    /**
+     * The place a write to this path lands, as it was judged: its real place when that can be read, else the path with its steps taken. The
+     * files tool writes there and nowhere else, so a link the check followed is not followed a second time to somewhere it did not judge.
+     */
+    public static java.nio.file.Path placeOf(String path) {
+        return java.nio.file.Path.of(realPathOf(path).orElse(normalised(path)));
     }
 
     private static boolean instructsByName(String path) {

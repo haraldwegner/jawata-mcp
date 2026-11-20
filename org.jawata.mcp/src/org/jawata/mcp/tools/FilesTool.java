@@ -197,20 +197,23 @@ public final class FilesTool implements Tool {
         if (given.isBlank() || !arguments.has("content")) {
             return ToolResponse.invalidParameter(given.isBlank() ? "path" : "content", "write needs the document's path and its content");
         }
-        if (!org.jawata.mcp.execution.OwnWrites.isTextDocument(given)) {
-            return ToolResponse.invalidParameter("path", "only a text document (.md, .csv, .txt, .html and the like) is written here, not " + given
-                + ": code and every other file are changed by a seat that changes code, through a hire", "NOT_A_DOCUMENT");
-        }
-        Path path = Path.of(given);
+        // The instruction refusal is asked first: such a file is no text document either, and its own reason is the one that applies.
         if (org.jawata.mcp.execution.OwnWrites.tellsAnAgentWhatItMayDo(given)) {
             return ToolResponse.invalidParameter("path", given + " tells an agent what it may do (its instructions, a seat or a skill), and a document"
                 + " writer that could change it could widen what a hire may do: the person changes it, or a seat that changes code does", "NOT_A_DOCUMENT");
         }
+        if (!org.jawata.mcp.execution.OwnWrites.isTextDocument(given)) {
+            return ToolResponse.invalidParameter("path", "only a text document (.md, .csv, .txt, .html and the like) is written here, not " + given
+                + ": code and every other file are changed by a seat that changes code, through a hire", "NOT_A_DOCUMENT");
+        }
+        // Written at the place that was judged, and a link at its end is not followed: a link the check did not see leads nowhere it did not judge.
+        Path path = org.jawata.mcp.execution.OwnWrites.placeOf(given);
         if (path.getParent() != null) {
             Files.createDirectories(path.getParent());
         }
         String content = arguments.get("content").asText();
-        Files.writeString(path, content, StandardCharsets.UTF_8);
+        Files.writeString(path, content, StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+            java.nio.file.StandardOpenOption.WRITE, java.nio.file.LinkOption.NOFOLLOW_LINKS);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("path", path.toString());
         data.put("bytes", content.getBytes(StandardCharsets.UTF_8).length);
@@ -228,15 +231,15 @@ public final class FilesTool implements Tool {
             return ToolResponse.invalidParameter(given.isBlank() ? "path" : oldText.isEmpty() ? "oldText" : "newText",
                 "edit needs the document's path, the passage to replace (not empty) and what replaces it");
         }
-        if (!org.jawata.mcp.execution.OwnWrites.isTextDocument(given)) {
-            return ToolResponse.invalidParameter("path", "only a text document (.md, .csv, .txt, .html and the like) is edited here, not " + given
-                + ": code and every other file are changed by a seat that changes code, through a hire", "NOT_A_DOCUMENT");
-        }
-        Path path = Path.of(given);
         if (org.jawata.mcp.execution.OwnWrites.tellsAnAgentWhatItMayDo(given)) {
             return ToolResponse.invalidParameter("path", given + " tells an agent what it may do (its instructions, a seat or a skill), and a document"
                 + " editor that could change it could widen what a hire may do: the person changes it, or a seat that changes code does", "NOT_A_DOCUMENT");
         }
+        if (!org.jawata.mcp.execution.OwnWrites.isTextDocument(given)) {
+            return ToolResponse.invalidParameter("path", "only a text document (.md, .csv, .txt, .html and the like) is edited here, not " + given
+                + ": code and every other file are changed by a seat that changes code, through a hire", "NOT_A_DOCUMENT");
+        }
+        Path path = org.jawata.mcp.execution.OwnWrites.placeOf(given);
         if (!Files.isRegularFile(path)) {
             return ToolResponse.invalidParameter("path", given + " is not a document that exists: edit changes one, it does not make one (write does)", "FILE_NOT_FOUND");
         }

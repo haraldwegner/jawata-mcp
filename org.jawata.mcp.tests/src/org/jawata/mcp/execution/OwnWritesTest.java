@@ -73,8 +73,9 @@ class OwnWritesTest {
         java.nio.file.Path linkedFolder = java.nio.file.Files.createSymbolicLink(root.resolve("drafts"), seat.getParent());
         List<String> instructions = List.of("/w/GEMINI.md", "/w/CLAUDE.local.md", "/w/.clinerules", "/w/.clinerules/r.md", "/w/.windsurf/rules/r.md",
             "/w/.continue/rules.md", "/w/.gemini/notes.md", "/w/.kiro/steering/s.md", "/w/.github/instructions/java.instructions.md",
-            "/w/.github/prompts/fix.prompt.md");
-        List<String> documents = List.of("/w/.github/CONTRIBUTING.md", "/w/seats/project/docs/plan.md", "/w/docs/seats.md");
+            "/w/.github/prompts/fix.prompt.md", "/w/AGENTS.override.md", "/w/.github/agents/reviewer.agent.md", "/w/seats/zz/../pm.md");
+        // a relative path, as git status names one, is judged as spelled and not against the engine's own folder (the C27 audit)
+        List<String> documents = List.of("/w/.github/CONTRIBUTING.md", "/w/seats/project/docs/plan.md", "/w/docs/seats.md", "plan.md", "docs/notes.md");
         assertAll(
             () -> assertTrue(!OwnWrites.isDocument(link.toString()), "a link named notes.md that leads to a seat was taken for a document"),
             () -> assertTrue(!OwnWrites.isDocument(linkedFolder.resolve("new.md").toString()), "a new file in a folder linked to seats was taken for a document"),

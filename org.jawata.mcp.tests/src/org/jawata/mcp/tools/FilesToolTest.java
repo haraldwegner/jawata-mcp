@@ -1,5 +1,6 @@
 package org.jawata.mcp.tools;
 
+import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -75,6 +76,30 @@ class FilesToolTest {
             assertFalse(call("write", Map.of("path", folder.resolve(name).toString(), "content", "x")).isSuccess(), name + " was written");
             assertFalse(Files.exists(folder.resolve(name)), name + " exists after the refusal");
         }
+    }
+
+    @Test
+    @DisplayName("the C27 audit: a write that reaches a seat or an agent's folder by a .. step or by a link higher up the path, through folders still to be made, is refused with the reason that applies, and nothing is written there")
+    void aWriteThatReachesAnInstructionFolderByAnyWayIsRefused(@TempDir Path folder) throws Exception {
+        Path seats = Files.createDirectories(folder.resolve("seats"));
+        Path claude = Files.createDirectories(folder.resolve(".claude"));
+        Files.createSymbolicLink(folder.resolve("link"), claude);
+        String byStep = seats + "/zz/../pm.md";
+        String byLink = folder.resolve("link").resolve("agents").resolve("x.md").toString();
+
+        ToolResponse stepped = call("write", Map.of("path", byStep, "content", "x"));
+        ToolResponse linked = call("write", Map.of("path", byLink, "content", "x"));
+        ToolResponse named = call("write", Map.of("path", folder.resolve("CLAUDE.md").toString(), "content", "x"));
+
+        assertAll(
+            () -> assertFalse(stepped.isSuccess(), "a .. step wrote a seat"),
+            () -> assertFalse(Files.exists(seats.resolve("pm.md")), "the seat exists after the refusal"),
+            () -> assertFalse(linked.isSuccess(), "a link higher up the path wrote into .claude"),
+            () -> assertFalse(Files.exists(claude.resolve("agents")), "the folder under .claude was made after the refusal"),
+            () -> assertTrue(String.valueOf(named.getError()).contains("tells an agent what it may do"),
+                "CLAUDE.md was refused for another reason than the one that applies: " + named.getError()),
+            () -> assertTrue(call("write", Map.of("path", folder.resolve("docs").resolve("plan.md").toString(), "content", "ok")).isSuccess(),
+                "CONTROL: an ordinary document was refused"));
     }
 
     @Test
