@@ -12,6 +12,7 @@ import org.eclipse.jdt.core.Signature;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -91,7 +92,7 @@ public class GetDocumentSymbolsTool extends AbstractTool {
             ICompilationUnit cu = service.getCompilationUnit(path);
 
             if (cu == null) {
-                return ToolResponse.fileNotFound(filePath);
+                return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
             }
 
             List<Map<String, Object>> symbols = new ArrayList<>();

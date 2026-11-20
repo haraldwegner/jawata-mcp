@@ -13,6 +13,7 @@ import org.eclipse.jdt.core.Signature;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -99,7 +100,7 @@ public class GetEnclosingElementTool extends AbstractTool {
             // If no element at exact position, try getting the compilation unit
             ICompilationUnit cu = service.getCompilationUnit(path);
             if (cu == null) {
-                return ToolResponse.fileNotFound(filePath);
+                return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
             }
 
             // If no element found, use getElementAt with offset

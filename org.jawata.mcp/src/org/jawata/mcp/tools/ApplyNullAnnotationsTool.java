@@ -36,6 +36,7 @@ import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.fqn.FqnResolver;
 import org.jawata.mcp.tools.nullness.NullnessStyle;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -168,7 +169,7 @@ public class ApplyNullAnnotationsTool extends AbstractApplyingRefactoringTool {
         if (filePath != null && !filePath.isBlank()) {
             java.nio.file.Path p = java.nio.file.Path.of(filePath);
             if (service.getCompilationUnit(p) == null) {
-                return Preparation.fail(ToolResponse.fileNotFound(filePath));
+                return Preparation.fail(UnresolvedFile.fileNotFound(service.allProjects(), filePath));
             }
             targets.add(p);
         } else {

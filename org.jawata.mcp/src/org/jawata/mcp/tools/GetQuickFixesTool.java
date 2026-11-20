@@ -18,6 +18,7 @@ import org.jawata.core.TypeLookupException;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.ImportCandidates;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -116,7 +117,7 @@ public class GetQuickFixesTool extends AbstractTool {
             Path path = Path.of(filePath);
             ICompilationUnit cu = service.getCompilationUnit(path);
             if (cu == null) {
-                return ToolResponse.fileNotFound(filePath);
+                return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
             }
 
             // REL44-26: NOT reconcile — it answers null for a unit no editor has open, which

@@ -105,7 +105,9 @@ public final class FilesTool implements Tool {
         }
         Path path = Path.of(given);
         if (!Files.isRegularFile(path)) {
-            return ToolResponse.fileNotFound(given);
+            return Files.exists(path)
+                ? ToolResponse.invalidParameter("path", "'" + given + "' is not a file; read needs a file")
+                : ToolResponse.error(org.jawata.mcp.models.ErrorInfo.fileNotFound(given));
         }
         List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
         int offset = Math.max(0, arguments.path("offset").asInt(0));
@@ -132,7 +134,9 @@ public final class FilesTool implements Tool {
         }
         Path folder = Path.of(folderGiven);
         if (!Files.isDirectory(folder)) {
-            return ToolResponse.fileNotFound(folderGiven);
+            return Files.exists(folder)
+                ? ToolResponse.invalidParameter("folder", "'" + folderGiven + "' is not a folder; search needs a folder")
+                : ToolResponse.error(org.jawata.mcp.models.ErrorInfo.fileNotFound(folderGiven));
         }
         Pattern pattern;
         try {

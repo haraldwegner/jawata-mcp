@@ -22,6 +22,7 @@ import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.CompilationProblems;
 import org.jawata.mcp.tools.shared.HeadlessJdtConfig;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -193,7 +194,7 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         Path path = Path.of(filePath);
         ICompilationUnit cu = service.getCompilationUnit(path);
         if (cu == null) {
-            return Preparation.fail(ToolResponse.fileNotFound(filePath));
+            return Preparation.fail(UnresolvedFile.fileNotFound(service.allProjects(), filePath));
         }
 
         HeadlessJdtConfig.ensureInitialized();

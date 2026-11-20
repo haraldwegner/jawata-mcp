@@ -23,6 +23,7 @@ import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.refactoring.Recipe;
 import org.jawata.mcp.refactoring.RecipeEngine;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -198,7 +199,7 @@ public class DecomposeConditionalTool extends AbstractTool
         try {
             ICompilationUnit cu = service.getCompilationUnit(Path.of(filePath));
             if (cu == null) {
-                return ToolResponse.fileNotFound(filePath);
+                return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
             }
             CompilationUnit ast = parse(cu);
             int offset = ast.getPosition(line + 1, column);

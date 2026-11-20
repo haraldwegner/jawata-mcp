@@ -23,6 +23,7 @@ import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.nullness.NullnessStyle;
 import org.jawata.mcp.tools.shared.SourceScan;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -170,7 +171,7 @@ public class AnalyzeNullnessTool extends AbstractTool {
             if (filePath != null && !filePath.isBlank()) {
                 Path p = Path.of(filePath);
                 if (service.getCompilationUnit(p) == null) {
-                    return ToolResponse.fileNotFound(filePath);
+                    return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
                 }
                 targets.add(p);
             } else {
@@ -270,7 +271,7 @@ public class AnalyzeNullnessTool extends AbstractTool {
             if (filePath != null && !filePath.isBlank()) {
                 Path p = Path.of(filePath);
                 if (service.getCompilationUnit(p) == null) {
-                    return ToolResponse.fileNotFound(filePath);
+                    return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
                 }
                 targets.add(p);
             } else {
@@ -365,7 +366,7 @@ public class AnalyzeNullnessTool extends AbstractTool {
             if (filePath != null && !filePath.isBlank()) {
                 cu = service.getCompilationUnit(Path.of(filePath));
                 if (cu == null) {
-                    return ToolResponse.fileNotFound(filePath);
+                    return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
                 }
             } else if (symbol != null && !symbol.isBlank()) {
                 java.util.Optional<org.eclipse.jdt.core.IJavaElement> el =

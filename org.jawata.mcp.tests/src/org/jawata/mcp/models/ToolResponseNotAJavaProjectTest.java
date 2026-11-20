@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import org.jawata.core.LoadedProject;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -22,9 +24,9 @@ class ToolResponseNotAJavaProjectTest {
     void anExistingPlaceOutsideTheJavaProjectsIsNotAJavaProject(@TempDir Path folder) throws Exception {
         Path file = Files.writeString(folder.resolve("package.json"), "{}");
 
-        ToolResponse theFile = ToolResponse.fileNotFound(file.toString());
-        ToolResponse theFolder = ToolResponse.fileNotFound(folder.toString());
-        ToolResponse missing = ToolResponse.fileNotFound(folder.resolve("Missing.java").toString());
+        ToolResponse theFile = UnresolvedFile.fileNotFound(java.util.List.of(), file.toString());
+        ToolResponse theFolder = UnresolvedFile.fileNotFound(java.util.List.of(), folder.toString());
+        ToolResponse missing = UnresolvedFile.fileNotFound(java.util.List.of(), folder.resolve("Missing.java").toString());
 
         assertAll(
             () -> assertEquals("NOT_A_JAVA_PROJECT", theFile.getError().getCode(), "an existing file outside the Java projects"),
@@ -34,12 +36,28 @@ class ToolResponseNotAJavaProjectTest {
     }
 
     @Test
+    @DisplayName("C27-27: a file that exists inside a loaded project but is no Java source of it is answered as not a Java source, one outside every loaded project as not a Java project")
+    void aPlaceInsideALoadedProjectIsDecidedByTheProjectsRoot(@TempDir Path folder) throws Exception {
+        Path root = Files.createDirectory(folder.resolve("project"));
+        Path pom = Files.writeString(root.resolve("pom.xml"), "<project/>");
+        Path outside = Files.writeString(folder.resolve("notes.txt"), "x");
+        LoadedProject project = new LoadedProject("project", root, null, null, null, null, 0, 0, null, null, null);
+
+        ToolResponse inside = UnresolvedFile.fileNotFound(java.util.List.of(project), pom.toString());
+        ToolResponse beside = UnresolvedFile.fileNotFound(java.util.List.of(project), outside.toString());
+
+        assertAll(
+            () -> assertEquals("NOT_A_JAVA_SOURCE", inside.getError().getCode(), inside.getError().getMessage()),
+            () -> assertEquals("NOT_A_JAVA_PROJECT", beside.getError().getCode(), "CONTROL: a file outside the project's root was decided by the project"));
+    }
+
+    @Test
     @DisplayName("C27-27: a relative path has no place of its own, so it is not claimed to exist on disk because a file of that name lies in the engine's working folder")
     void aRelativePathIsJudgedByNoFolderOfTheEngine() throws Exception {
         Path here = Files.createTempFile(Path.of("").toAbsolutePath(), "relative-probe-", ".txt");
         try {
-            ToolResponse relative = ToolResponse.fileNotFound(here.getFileName().toString());
-            ToolResponse absolute = ToolResponse.fileNotFound(here.toString());
+            ToolResponse relative = UnresolvedFile.fileNotFound(java.util.List.of(), here.getFileName().toString());
+            ToolResponse absolute = UnresolvedFile.fileNotFound(java.util.List.of(), here.toString());
 
             assertAll(
                 () -> assertEquals("FILE_NOT_FOUND", relative.getError().getCode(), "a relative name was resolved against the engine's folder: " + relative.getError().getMessage()),

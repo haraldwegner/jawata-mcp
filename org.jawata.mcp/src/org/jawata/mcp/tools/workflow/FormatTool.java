@@ -16,6 +16,7 @@ import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.AbstractTool;
 import org.jawata.mcp.tools.shared.SourceFormatting;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -124,7 +125,7 @@ public class FormatTool extends AbstractTool {
                     Path path = Path.of(scope.get("filePath").asText());
                     ICompilationUnit cu = service.getCompilationUnit(path);
                     if (cu == null) {
-                        return ToolResponse.fileNotFound(path.toString());
+                        return UnresolvedFile.fileNotFound(service.allProjects(), path.toString());
                     }
                     targets.add(cu);
                 }

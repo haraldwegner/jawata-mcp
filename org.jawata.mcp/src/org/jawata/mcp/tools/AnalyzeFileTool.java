@@ -21,6 +21,7 @@ import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -99,7 +100,7 @@ public class AnalyzeFileTool extends AbstractTool {
             ICompilationUnit cu = service.getCompilationUnit(path);
 
             if (cu == null) {
-                return ToolResponse.fileNotFound(filePath);
+                return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
             }
 
             Map<String, Object> data = new LinkedHashMap<>();

@@ -16,6 +16,7 @@ import org.eclipse.jdt.core.dom.Type;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -110,7 +111,7 @@ public class ApplyQuickFixTool extends AbstractTool {
             Path path = Path.of(filePath);
             ICompilationUnit cu = service.getCompilationUnit(path);
             if (cu == null) {
-                return ToolResponse.fileNotFound(filePath);
+                return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
             }
 
             // Parse fixId: {type}:{param}

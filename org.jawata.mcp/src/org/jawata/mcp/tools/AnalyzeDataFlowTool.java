@@ -23,6 +23,7 @@ import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,7 +113,7 @@ public class AnalyzeDataFlowTool extends AbstractTool {
             Path filePath = service.getPathUtils().resolve(filePathStr);
             ICompilationUnit cu = service.getCompilationUnit(filePath);
             if (cu == null) {
-                return ToolResponse.fileNotFound(filePathStr);
+                return UnresolvedFile.fileNotFound(service.allProjects(), filePathStr);
             }
 
             ASTParser parser = ASTParser.newParser(AST.getJLSLatest());

@@ -1,5 +1,6 @@
 package org.jawata.mcp.models;
 
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -99,7 +100,7 @@ class ToolResponseTest {
     void fileNotFound_includesPath() {
         String path = "/path/to/file.java";
 
-        ToolResponse response = ToolResponse.fileNotFound(path);
+        ToolResponse response = UnresolvedFile.fileNotFound(java.util.List.of(), path);
 
         assertFalse(response.isSuccess());
         assertEquals(ErrorInfo.FILE_NOT_FOUND, response.getError().getCode());

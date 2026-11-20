@@ -3,6 +3,7 @@ package org.jawata.mcp.tools;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.jawata.spi.lang.LoadedWorkspace;
 import org.jawata.spi.lang.SourceDiagnostics;
 import org.slf4j.Logger;
@@ -122,7 +123,7 @@ public class GetDiagnosticsTool extends WorkspaceTool<LoadedWorkspace> {
                 Path path = Path.of(filePath);
                 Optional<List<SourceDiagnostics.Row>> rows = language.inFile(workspace, path);
                 if (rows.isEmpty()) {
-                    return ToolResponse.fileNotFound(filePath);
+                    return UnresolvedFile.fileNotFound(workspace, filePath);
                 }
                 filesChecked = 1;
                 collect(workspace, path, rows.get(), severity, maxResults, collected, tally);

@@ -42,6 +42,7 @@ import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.FormatterOptions;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -209,7 +210,7 @@ public class DeleteAnonymousImplementationTool extends AbstractApplyingRefactori
         Path path = service.getPathUtils().resolve(filePathStr);
         ICompilationUnit unit = service.getCompilationUnit(path);
         if (unit == null) {
-            return Preparation.fail(ToolResponse.fileNotFound(filePathStr));
+            return Preparation.fail(UnresolvedFile.fileNotFound(service.allProjects(), filePathStr));
         }
         CompilationUnit ast = parse(unit);
         int offset = ast.getPosition(line + 1, column);

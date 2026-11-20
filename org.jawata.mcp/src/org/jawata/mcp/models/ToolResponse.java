@@ -234,29 +234,6 @@ public class ToolResponse {
     }
 
     /**
-     * Create a file not found error. A path that exists on disk but is no file of a loaded Java project is not "not found": access to a folder is
-     * not reach of the Java tools, and the answer says that the place is not a Java project (Stage 27 (z4)).
-     */
-    public static ToolResponse fileNotFound(String path) {
-        if (path != null && existsOnDisk(path)) {
-            return error("NOT_A_JAVA_PROJECT",
-                "'" + path + "' exists on disk but is not a Java project file here: the Java tools found no file of a loaded Java project at it; it lies outside every loaded project, or it is not a Java source of one.",
-                "Read or change it with the document and file tools; a Java tool answers for a file of a loaded Java project.");
-        }
-        return error(ErrorInfo.fileNotFound(path));
-    }
-
-    private static boolean existsOnDisk(String path) {
-        try {
-            // only a path in full has a place of its own; a relative one would be judged against the engine's working folder, which is no folder of the workspace (C27-27)
-            java.nio.file.Path named = java.nio.file.Path.of(path);
-            return named.isAbsolute() && java.nio.file.Files.exists(named);
-        } catch (RuntimeException invalidPath) {
-            return false;
-        }
-    }
-
-    /**
      * Create a symbol not found error.
      *
      * <p>Sprint 28a (D11): the hint names WHICH workspace looked and failed. A bare

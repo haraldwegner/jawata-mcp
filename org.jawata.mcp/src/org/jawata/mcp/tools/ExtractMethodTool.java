@@ -14,6 +14,7 @@ import org.eclipse.ltk.core.refactoring.RefactoringStatusEntry;
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -178,7 +179,7 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool
         Path path = Path.of(filePath);
         ICompilationUnit cu = service.getCompilationUnit(path);
         if (cu == null) {
-            return Preparation.fail(ToolResponse.fileNotFound(filePath));
+            return Preparation.fail(UnresolvedFile.fileNotFound(service.allProjects(), filePath));
         }
 
         // Parse only to translate line/column into offsets.

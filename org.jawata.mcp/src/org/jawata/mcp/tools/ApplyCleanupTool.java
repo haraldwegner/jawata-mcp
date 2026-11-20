@@ -17,6 +17,7 @@ import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.SourceScan;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 
 import java.util.Optional;
 
@@ -331,7 +332,7 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
         if (filePath != null && !filePath.isBlank()) {
             Path path = Path.of(filePath);
             if (service.getCompilationUnit(path) == null) {
-                return Preparation.fail(ToolResponse.fileNotFound(filePath));
+                return Preparation.fail(UnresolvedFile.fileNotFound(service.allProjects(), filePath));
             }
             targets.add(path);
         } else {

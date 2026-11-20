@@ -18,6 +18,7 @@ import org.jawata.core.IJdtService;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.HeadlessJdtConfig;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -119,7 +120,7 @@ public class ConvertAnonymousToLambdaTool extends AbstractApplyingRefactoringToo
         Path path = Path.of(filePath);
         ICompilationUnit cu = service.getCompilationUnit(path);
         if (cu == null) {
-            return Preparation.fail(ToolResponse.fileNotFound(filePath));
+            return Preparation.fail(UnresolvedFile.fileNotFound(service.allProjects(), filePath));
         }
 
         ASTParser parser = ASTParser.newParser(AST.getJLSLatest());

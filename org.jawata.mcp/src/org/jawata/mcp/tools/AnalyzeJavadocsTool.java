@@ -30,6 +30,7 @@ import org.jawata.mcp.knowledge.SymbolFact;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.tools.shared.SourceScan;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -341,7 +342,7 @@ public class AnalyzeJavadocsTool extends AbstractTool {
         String filePath = getStringParam(arguments, "filePath");
         List<Path> targets = resolveTargets(service, arguments);
         if (targets.isEmpty() && filePath != null && !filePath.isBlank()) {
-            return ToolResponse.fileNotFound(filePath);
+            return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
         }
 
         List<Map<String, Object>> findings = new ArrayList<>();
@@ -428,7 +429,7 @@ public class AnalyzeJavadocsTool extends AbstractTool {
             if (filePath != null && !filePath.isBlank()) {
                 Path p = Path.of(filePath);
                 if (service.getCompilationUnit(p) == null) {
-                    return ToolResponse.fileNotFound(filePath);
+                    return UnresolvedFile.fileNotFound(service.allProjects(), filePath);
                 }
                 targets.add(p);
             } else {

@@ -41,6 +41,7 @@ import org.jawata.core.IJdtService;
 import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.tools.shared.UnresolvedFile;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -153,7 +154,7 @@ public class RefactorToStateTool extends AbstractApplyingRefactoringTool
         Path path = Path.of(filePath);
         ICompilationUnit cu = service.getCompilationUnit(path);
         if (cu == null) {
-            return Preparation.fail(ToolResponse.fileNotFound(filePath));
+            return Preparation.fail(UnresolvedFile.fileNotFound(service.allProjects(), filePath));
         }
         String source = cu.getSource();
         CompilationUnit ast = parse(cu);
