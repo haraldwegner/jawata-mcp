@@ -155,8 +155,12 @@ class LeadLoopTest {
             leadRun.close();
 
             assertAll(
-                () -> assertEquals("noted", ended.text(), "CONTROL: the lead's brain did not answer its turn before it died (clean=" + ended.clean() + ", stopped by "
-                    + ended.stoppedBy() + ", its stderr: " + ended.stderrTail() + ")"),
+                // The brain's answer streamed before it died: that answer is what let the hire begin its work. The outcome's own text is the LAST
+                // turn's, and on a slow machine (the macOS runner) the brain's end is seen after the hire's report came, so the lead was prompted
+                // once more and the dead brain's reply is "ended before it answered" (CI 4.6.10, three runs); what this test is about is that the
+                // lead then ended at once and handed the report up, which the assertions below say.
+                () -> assertEquals(0, answered.getCount(), "CONTROL: the lead's brain did not answer its turn before it died (clean=" + ended.clean() + ", stopped by "
+                    + ended.stoppedBy() + ", its text: " + ended.text() + ", its stderr: " + ended.stderrTail() + ")"),
                 () -> assertTrue(seconds < 30, "the lead waited on with a dead brain: " + seconds + " s"),
                 () -> assertTrue(ended.stoppedBy().isPresent(), "a lead whose brain died with a hire out was reported as a clean run"),
                 () -> assertEquals(whileTheLeadRuns + 1, told.size(), "the hire's report did not go up once the lead whose brain died had ended: " + told),
