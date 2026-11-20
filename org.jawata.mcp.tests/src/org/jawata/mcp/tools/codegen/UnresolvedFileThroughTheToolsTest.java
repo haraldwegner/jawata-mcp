@@ -212,6 +212,28 @@ class UnresolvedFileThroughTheToolsTest {
     }
 
     @Test
+    @DisplayName("get_diagnostics, which holds the language-neutral workspace and a diagnostics source, answers the same three ways")
+    void theDiagnosticsToolAnswersAnUnresolvedFileTheSameWay(@TempDir Path elsewhere) throws Exception {
+        org.jawata.mcp.tools.GetDiagnosticsTool diagnostics = new org.jawata.mcp.tools.GetDiagnosticsTool(() -> service,
+            () -> new org.jawata.mcp.java.JavaSourceDiagnostics());
+        Path pom = helper.getFixturePath("simple-maven").resolve("pom.xml");
+        Path outside = Files.writeString(elsewhere.resolve("notes.txt"), "x");
+
+        ToolResponse inside = diagnostics.execute(json.createObjectNode().put("filePath", pom.toString()));
+        ToolResponse beside = diagnostics.execute(json.createObjectNode().put("filePath", outside.toString()));
+        ToolResponse missing = diagnostics.execute(json.createObjectNode().put("filePath", elsewhere.resolve("Missing.java").toString()));
+
+        assertAll(
+            () -> assertEquals("NOT_A_JAVA_SOURCE", code(inside), "a non-Java file inside the project"),
+            () -> assertEquals("NOT_A_JAVA_PROJECT", code(beside), "a file outside every loaded project"),
+            () -> assertEquals("FILE_NOT_FOUND", code(missing), "CONTROL: a path that is not there"));
+    }
+
+    private static String code(ToolResponse answer) {
+        return answer.getError() == null ? "(no error)" : answer.getError().getCode();
+    }
+
+    @Test
     @DisplayName("an analysis tool, which passes the loaded projects itself, answers the same three ways")
     void anAnalysisToolHandsItsLoadedProjectsToTheAnswer(@TempDir Path elsewhere) throws Exception {
         Path pom = helper.getFixturePath("simple-maven").resolve("pom.xml");
