@@ -41,6 +41,8 @@ public class FakeAcpAgent {
     static final Map<String, String> withheld = new HashMap<>();
     /** Whether the client asked the brain, in the session's own options, to load no MCP server but the ones the session names (28h Stage 27); a prompt ONLYOURSERVERS answers it. */
     static final Map<String, String> only = new HashMap<>();
+    /** The settings sources the client asked the brain to load, from the session's own options (28h Stage 27 (z11)); a prompt WHICHSETTINGS answers them as the client wrote them, or "none" when it named none. */
+    static final Map<String, String> sources = new HashMap<>();
 
     static String modes() {
         StringBuilder available = new StringBuilder();
@@ -92,6 +94,7 @@ public class FakeAcpAgent {
                     servers.put(session, between(line, "\"mcpServers\":"));
                     withheld.put(session, between(line, "\"disallowedTools\":"));
                     only.put(session, line.contains("\"strictMcpConfig\":true") ? "only the named servers" : "every server it can find");
+                    sources.put(session, between(line, "\"settingSources\":"));
                     reply(id, "{\"sessionId\":\"" + session + "\""
                         + (offeredModels.length == 0 ? "" : ",\"configOptions\":[" + modelOption() + "]")
                         + (offeredModes.length == 0 ? "" : ",\"modes\":" + modes()) + "}");
@@ -120,6 +123,7 @@ public class FakeAcpAgent {
                     servers.put(session, between(line, "\"mcpServers\":"));
                     withheld.put(session, between(line, "\"disallowedTools\":"));
                     only.put(session, line.contains("\"strictMcpConfig\":true") ? "only the named servers" : "every server it can find");
+                    sources.put(session, between(line, "\"settingSources\":"));
                     chunk(session, "HISTORY of the earlier session");
                     reply(id, offeredModes.length == 0 ? "{}" : "{\"modes\":" + modes() + "}");
                 }
@@ -175,6 +179,8 @@ public class FakeAcpAgent {
             chunk(session, modeNow.isEmpty() ? "no modes" : modeNow);
         } else if (text.contains("ONLYOURSERVERS")) {
             chunk(session, only.getOrDefault(session, "unknown"));
+        } else if (text.contains("WHICHSETTINGS")) {
+            chunk(session, sources.getOrDefault(session, "none"));
         } else if (text.contains("WITHHELD")) {
             chunk(session, withheld.getOrDefault(session, "none"));
         } else if (text.contains("WHICHMODEL")) {

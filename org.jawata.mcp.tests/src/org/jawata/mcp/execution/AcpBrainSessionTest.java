@@ -92,6 +92,13 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27 (z11): a brain is asked to load only the person's own settings, never a project's or a local one, whichever tools it keeps, so a settings file in the project it works in cannot widen what it may do")
+    void aBrainIsAskedToLoadOnlyThePersonsOwnSettings() throws Exception {
+        assertEquals("[\"user\"]", converse("WHICHSETTINGS", List.of(), AcpBrainSession.OwnTools.KEPT), "a worker was left to load a project's settings");
+        assertEquals("[\"user\"]", converse("WHICHSETTINGS", List.of(), AcpBrainSession.OwnTools.WITHHELD), "a lead was left to load a project's settings");
+    }
+
+    @Test
     @DisplayName("28h Stage 27 (z2): a brain whose own tools are withheld stays in its normal mode although it offers a read-only 'ask' mode, as Cursor's agent does, because 'ask' hides the jawata tools and with them hire")
     void aWithheldBrainStaysInItsNormalMode() throws Exception {
         agent = new AcpBrainSession.Program(agent.command(), Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_MODES", "agent,plan,ask"));
