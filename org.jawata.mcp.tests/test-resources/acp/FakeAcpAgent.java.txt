@@ -343,8 +343,10 @@ public class FakeAcpAgent {
                 spend(session);
             }
         } else if (text.startsWith("ANSWERTHENDIE")) {
-            // answers its turn, and a moment later the process is killed as the system kills a brain, with exit code 137 (28h-C27-18)
+            // answers its turn in full, and only then is the process killed as the system kills a brain, with exit code 137 (28h-C27-18); the kill
+            // follows the reply, never races it, so a loaded machine cannot turn the answer into a brain that died mid-turn
             chunk(session, "noted");
+            reply(id, "{\"stopReason\":\"end_turn\"}");
             Thread killer = new Thread(() -> {
                 try {
                     Thread.sleep(300);
@@ -353,6 +355,7 @@ public class FakeAcpAgent {
                 Runtime.getRuntime().halt(137);
             });
             killer.start();
+            return;
         } else if (text.startsWith("STREAM")) {
             chunk(session, "first");
             Thread.sleep(1500);

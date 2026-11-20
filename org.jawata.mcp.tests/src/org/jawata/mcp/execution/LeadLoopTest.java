@@ -133,14 +133,47 @@ class LeadLoopTest {
             long began = System.nanoTime();
             HiredBrain.Outcome ended = runAsLead("ANSWERTHENDIE", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, watching);
             long seconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - began);
+            // the hire ends while the lead is still registered, whether the lead saw its brain die while waiting or before it waited
+            children.get(children.size() - 1).join(10_000);
             int whileTheLeadRuns = told.size();
             leadRun.close();
 
             assertAll(
                 () -> assertEquals("noted", ended.text(), "CONTROL: the lead's brain did not answer its turn before it died"),
                 () -> assertTrue(seconds < 30, "the lead waited on with a dead brain: " + seconds + " s"),
-                () -> assertEquals(1, whileTheLeadRuns, "the hire's report was told again while the lead still ran, or never came: " + told),
-                () -> assertEquals(2, told.size(), "the hire's report did not go up once the lead whose brain died had ended: " + told),
+                () -> assertEquals(whileTheLeadRuns + 1, told.size(), "the hire's report did not go up once the lead whose brain died had ended: " + told),
+                () -> assertEquals(lead, told.get(told.size() - 1).leadId(), "the report that went up does not name the lead that ended"),
+                () -> assertTrue(HireRegistry.shared().undeliveredFor(HireRegistry.shared().rootOf(lead)).stream().anyMatch(e -> child.equals(e.planId())),
+                    "the report was not kept for the chat above the lead"));
+        } finally {
+            leadRun.close();
+            unsubscribe.run();
+            told.forEach(HireRegistry.shared()::markDelivered);
+        }
+    }
+
+    @Test
+    @DisplayName("28h-C27-18: a report that comes while its lead still runs but reads no inbox any more (its brain's turns are over) is held, and told to whoever is above the lead once it ends")
+    void aReportForALeadThatReadsNoInboxIsHeldUntilTheLeadEnds() throws Exception {
+        String lead = "c27-lead-no-inbox";
+        String child = "c27-child-no-inbox";
+        List<HireRegistry.Event> told = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Runnable unsubscribe = HireRegistry.shared().subscribe(event -> {
+            if (child.equals(event.planId()) && "finished".equals(event.kind())) {
+                told.add(event);
+            }
+        });
+        HireRegistry.Registration leadRun = HireRegistry.shared().begin("pm", "c27 a lead that reads no inbox", "c27-main-2");
+        try {
+            HireRegistry.shared().planOpened(lead);
+            aHireIsOut(lead, child, "the code is written");
+            children.get(children.size() - 1).join(10_000);
+            int whileTheLeadRuns = told.size();
+            leadRun.close();
+
+            assertAll(
+                () -> assertEquals(0, whileTheLeadRuns, "the report was told while its lead still ran and nobody read it: " + told),
+                () -> assertEquals(1, told.size(), "the report was not told once its lead had ended: " + told),
                 () -> assertTrue(HireRegistry.shared().undeliveredFor(HireRegistry.shared().rootOf(lead)).stream().anyMatch(e -> child.equals(e.planId())),
                     "the report was not kept for the chat above the lead"));
         } finally {

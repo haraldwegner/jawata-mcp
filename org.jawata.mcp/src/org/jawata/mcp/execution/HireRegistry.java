@@ -269,7 +269,11 @@ public final class HireRegistry {
         private final java.util.concurrent.atomic.AtomicInteger out = new java.util.concurrent.atomic.AtomicInteger();
         private final Runnable unsubscribe;
 
+        private final String leadId;
+
         private Inbox(String leadId) {
+            this.leadId = leadId;
+            openInboxes.add(leadId);
             this.unsubscribe = subscribe(event -> {
                 if (!leadId.equals(event.leadId()) || !event.background()) {
                     return;
@@ -327,8 +331,12 @@ public final class HireRegistry {
         @Override
         public void close() {
             unsubscribe.run();
+            openInboxes.remove(leadId);
         }
     }
+
+    /** The leads whose run reads its hires' reports from an inbox right now. */
+    private final Set<String> openInboxes = ConcurrentHashMap.newKeySet();
 
     /** Opens the inbox of this lead, which must be opened before the lead's brain can start a hire, so that no report is missed. */
     public Inbox inboxFor(String leadId) {
@@ -755,6 +763,11 @@ public final class HireRegistry {
             while (held.size() > 100) {
                 held.remove(0);
             }
+        } else if (ended.background() && !openInboxes.contains(ended.leadId())) {
+            // the lead still runs but reads no inbox any more (its brain's turns are over, its gates run): nobody would read the report, so it is
+            // held and told again the moment the lead ends, to whoever is above it (28h-C27-18)
+            handUp(ended.leadId(), List.of(ended));
+            return;
         }
         tell(ended);
     }
