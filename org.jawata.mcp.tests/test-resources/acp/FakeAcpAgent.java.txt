@@ -43,6 +43,8 @@ public class FakeAcpAgent {
     static final Map<String, String> only = new HashMap<>();
     /** The settings sources the client asked the brain to load, from the session's own options (28h Stage 27 (z11)); a prompt WHICHSETTINGS answers them as the client wrote them, or "none" when it named none. */
     static final Map<String, String> sources = new HashMap<>();
+    /** Whether the client asked the brain, in the session's own options, never to allow the mode that runs without asking (28h Stage 27 (z11)); a prompt WHICHBYPASS answers it. */
+    static final Map<String, String> bypass = new HashMap<>();
 
     static String modes() {
         StringBuilder available = new StringBuilder();
@@ -95,6 +97,7 @@ public class FakeAcpAgent {
                     withheld.put(session, between(line, "\"disallowedTools\":"));
                     only.put(session, line.contains("\"strictMcpConfig\":true") ? "only the named servers" : "every server it can find");
                     sources.put(session, between(line, "\"settingSources\":"));
+                    bypass.put(session, line.contains("\"allowDangerouslySkipPermissions\":false") ? "bypass refused" : "bypass left to the settings");
                     reply(id, "{\"sessionId\":\"" + session + "\""
                         + (offeredModels.length == 0 ? "" : ",\"configOptions\":[" + modelOption() + "]")
                         + (offeredModes.length == 0 ? "" : ",\"modes\":" + modes()) + "}");
@@ -124,6 +127,7 @@ public class FakeAcpAgent {
                     withheld.put(session, between(line, "\"disallowedTools\":"));
                     only.put(session, line.contains("\"strictMcpConfig\":true") ? "only the named servers" : "every server it can find");
                     sources.put(session, between(line, "\"settingSources\":"));
+                    bypass.put(session, line.contains("\"allowDangerouslySkipPermissions\":false") ? "bypass refused" : "bypass left to the settings");
                     chunk(session, "HISTORY of the earlier session");
                     reply(id, offeredModes.length == 0 ? "{}" : "{\"modes\":" + modes() + "}");
                 }
@@ -181,6 +185,8 @@ public class FakeAcpAgent {
             chunk(session, only.getOrDefault(session, "unknown"));
         } else if (text.contains("WHICHSETTINGS")) {
             chunk(session, sources.getOrDefault(session, "none"));
+        } else if (text.contains("WHICHBYPASS")) {
+            chunk(session, bypass.getOrDefault(session, "unknown"));
         } else if (text.contains("WITHHELD")) {
             chunk(session, withheld.getOrDefault(session, "none"));
         } else if (text.contains("WHICHMODEL")) {

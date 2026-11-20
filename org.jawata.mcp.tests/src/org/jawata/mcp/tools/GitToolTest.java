@@ -135,7 +135,8 @@ class GitToolTest {
         Files.writeString(repo.resolve("a.txt"), "two\n");
         String plan = hireThatChanged(true, "a.txt");
 
-        for (String agent : new String[] {"Aider", "Windsurf", "Codeium"}) {
+        for (String agent : new String[] {"Aider", "Windsurf", "Codeium", "Gemini", "Google Gemini", "Codex", "Devin", "Copilot", "ChatGPT", "GPT-4", "OpenAI",
+                "dependabot[bot]"}) {
             assertFalse(commit(plan, "Step 1\n\nCo-Authored-By: " + agent + " <bot@example.invalid>").isSuccess(), agent + " was accepted as a co-author");
         }
         assertEquals("start", run(repo, "log", "-1", "--format=%s"), "a commit was made");

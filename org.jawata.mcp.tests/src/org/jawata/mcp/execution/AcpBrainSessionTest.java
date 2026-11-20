@@ -96,6 +96,17 @@ class AcpBrainSessionTest {
     void aBrainIsAskedToLoadOnlyThePersonsOwnSettings() throws Exception {
         assertEquals("[\"user\"]", converse("WHICHSETTINGS", List.of(), AcpBrainSession.OwnTools.KEPT), "a worker was left to load a project's settings");
         assertEquals("[\"user\"]", converse("WHICHSETTINGS", List.of(), AcpBrainSession.OwnTools.WITHHELD), "a lead was left to load a project's settings");
+        assertEquals("[\"user\"]", hire("WHICHSETTINGS", List.of(), Optional.of("fake-earlier-session"), HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null).text(),
+            "a resumed session was left to load a project's settings");
+    }
+
+    @Test
+    @DisplayName("28h Stage 27 (z11): a brain is asked never to allow the mode that runs without asking, new or resumed, because the Claude adapter reads a project's own default mode itself whatever settings sources it is told to load")
+    void aBrainIsAskedNeverToRunWithoutAsking() throws Exception {
+        assertEquals("bypass refused", converse("WHICHBYPASS", List.of(), AcpBrainSession.OwnTools.KEPT), "a worker could be put in the mode that runs without asking");
+        assertEquals("bypass refused", converse("WHICHBYPASS", List.of(), AcpBrainSession.OwnTools.WITHHELD), "a lead could be put in the mode that runs without asking");
+        assertEquals("bypass refused", hire("WHICHBYPASS", List.of(), Optional.of("fake-earlier-session"), HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null).text(),
+            "a resumed session could be put in the mode that runs without asking");
     }
 
     @Test

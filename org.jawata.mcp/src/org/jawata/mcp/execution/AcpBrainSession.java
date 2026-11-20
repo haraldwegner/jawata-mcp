@@ -520,11 +520,16 @@ public final class AcpBrainSession {
             // reads the user's own servers too, and a hired chief engineer was seen hiring through the user's own jawata server, not this
             // engine. A brain that does not know the option ignores it.
             options.put("strictMcpConfig", true);
-            // A hired brain loads the person's own settings and no others (28h Stage 27 (z11)): the Claude adapter otherwise also reads the
+            // A hired brain loads the person's own settings and no others (28h Stage 27 (z11)): the Claude process otherwise also reads the
             // project's .claude/settings.json and .claude/settings.local.json, and a rule there (permissions.allow, additionalDirectories, a hook,
             // env) can let a hire read or run what the person's own settings do not allow. The person's own file keeps their deny rules and the
             // guard hooks the studio puts there. A brain that does not know the option ignores it.
             options.putArray("settingSources").add("user");
+            // The adapter builds its own settings reader on the session's folder and takes the starting permission mode from a project's own
+            // permissions.defaultMode whatever sources are named above (claude-agent-acp, dist/v1/acp-agent.js, SettingsManager and
+            // resolveInitialPermissionMode); refusing bypass outright is what keeps a project's file from putting a hire in the mode that runs
+            // without asking (the C27 audit, finding 1).
+            options.put("allowDangerouslySkipPermissions", false);
             if (ownTools != OwnTools.WITHHELD) {
                 return;
             }
