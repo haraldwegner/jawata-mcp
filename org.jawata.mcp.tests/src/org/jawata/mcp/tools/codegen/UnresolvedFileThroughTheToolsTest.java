@@ -114,6 +114,12 @@ class UnresolvedFileThroughTheToolsTest {
             if (parameters.length == 2 && java.util.function.Supplier.class.isAssignableFrom(parameters[0]) && parameters[1] == RefactoringChangeCache.class) {
                 return (org.jawata.mcp.tools.Tool) constructor.newInstance(supplier, new RefactoringChangeCache());
             }
+            if (parameters.length == 3 && java.util.function.Supplier.class.isAssignableFrom(parameters[0]) && parameters[1] == RefactoringChangeCache.class
+                    && java.util.function.Supplier.class.isAssignableFrom(parameters[2])) {
+                // rename_symbol also takes the experience store, which an unresolved file is answered without ever reading
+                java.util.function.Supplier<Object> noStore = () -> null;
+                return (org.jawata.mcp.tools.Tool) constructor.newInstance(supplier, new RefactoringChangeCache(), noStore);
+            }
         }
         throw new IllegalStateException(type.getSimpleName() + " has no constructor this test knows how to call");
     }
@@ -166,6 +172,7 @@ class UnresolvedFileThroughTheToolsTest {
             new Object[] {org.jawata.mcp.tools.DataTool.class, "{\"kind\":\"encapsulate_collection\"," + position + "}"},
             new Object[] {org.jawata.mcp.tools.DataTool.class, "{\"kind\":\"split_variable\"," + position + ",\"newName\":\"x\"}"},
             new Object[] {org.jawata.mcp.tools.ChangeMethodSignatureTool.class, "{\"kind\":\"change_signature\"," + position + ",\"newName\":\"x\"}"},
+            new Object[] {org.jawata.mcp.tools.RenameSymbolTool.class, "{" + position + ",\"newName\":\"Renamed\"}"},
             new Object[] {org.jawata.mcp.tools.FindReferencesTool.class, "{\"kind\":\"references\"," + position + "}"},
             new Object[] {org.jawata.mcp.tools.FindFieldWritesTool.class, "{" + position + "}"},
             new Object[] {org.jawata.mcp.tools.GetCallHierarchyTool.class, "{\"direction\":\"outgoing\"," + position + "}"},

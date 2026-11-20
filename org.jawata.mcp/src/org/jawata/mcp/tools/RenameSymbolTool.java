@@ -213,6 +213,10 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
                 ToolResponse.invalidParameter("newName", "Not a valid Java identifier"));
         }
 
+        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, filePath);
+        if (unresolved != null) {
+            return Preparation.fail(unresolved);
+        }
         Path path = Path.of(filePath);
 
         // Same reliable position resolution the other tools use.
