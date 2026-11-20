@@ -1,7 +1,13 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
+import java.util.Map;
+
 import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.H2ExperienceStore;
 import org.jawata.mcp.models.ToolResponse;
@@ -10,12 +16,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-import java.util.Map;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Sprint 28f Stage 8 D3 — IS THIS JOB ALREADY DONE?
@@ -132,6 +134,56 @@ class DuplicateCheckTest {
      * discrimination that does not exist would have been the comfortable thing to keep and
      * would have shipped a gate nobody could work with.</p>
      */
+    /** Anchors that answer for a loaded workspace: a symbol is gone when the workspace does not hold it, and the question can be answered. */
+    private static org.jawata.spi.lang.SymbolAnchors workspaceHolding(java.util.Set<String> held) {
+        return new org.jawata.spi.lang.SymbolAnchors() {
+            @Override
+            public java.util.Optional<String> anchorFor(String freeText) {
+                return java.util.Optional.empty();
+            }
+
+            @Override
+            public Map<String, Object> pointer(String symbol) {
+                return held.contains(symbol) ? Map.of("symbol", symbol, "resolved", true) : Map.of("symbol", symbol, "stale", true);
+            }
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> checkWith(ExperienceTool asked, String draft) {
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "duplicate_check");
+        a.put("filePath", "/sandbox/src/Other.java");
+        a.put("draft", draft);
+        ToolResponse r = asked.execute(a);
+        assertTrue(r.isSuccess(), "duplicate_check must answer: " + r.getError());
+        return (Map<String, Object>) r.getData();
+    }
+
+    @Test
+    @DisplayName("row 28h-C27-21: a nominee whose job is anchored in code the loaded workspace does not hold is skipped and COUNTED; one the workspace holds, or one nobody can check, is kept")
+    void aNomineeFromAnotherCodebaseIsSkippedAndCounted() {
+        String draft = """
+            /** Parses a compilation unit, resolving bindings, and returns the syntax tree. */
+            private static Tree buildSyntaxTree(Source source) {
+                return null;
+            }
+            """;
+        ExperienceTool elsewhere = ExperienceTool.withAnchors(() -> null, store, () -> List.of(), () -> workspaceHolding(java.util.Set.of("sandbox.Other#run")));
+        ExperienceTool here = ExperienceTool.withAnchors(() -> null, store, () -> List.of(), () -> workspaceHolding(java.util.Set.of(OWNER, ROUNDER)));
+
+        Map<String, Object> notHeld = checkWith(elsewhere, draft);
+        Map<String, Object> held = checkWith(here, draft);
+        Map<String, Object> unknown = check("/sandbox/src/Other.java", draft);
+
+        assertAll(
+            () -> assertTrue(nominees(notHeld).isEmpty(), "a job of code this workspace does not hold was offered to a developer who cannot open it: " + notHeld),
+            () -> assertEquals(2, notHeld.get("nomineesOutsideWorkspace"), "and the skipping of both recorded jobs was not said: " + notHeld),
+            () -> assertEquals(OWNER, nominees(held).get(0).get("location"), "CONTROL: a job the workspace holds was dropped: " + held),
+            () -> assertEquals(0, held.get("nomineesOutsideWorkspace"), "nothing was outside here: " + held),
+            () -> assertFalse(nominees(unknown).isEmpty(), "no answer is not an answer of absence, so an unanswerable anchor keeps its nominee: " + unknown));
+    }
+
     @Test
     @DisplayName("the answer is an ORDERING and says so — rank one is not evidence")
     void theAnswerIsAnOrderingAndSaysSo() {
