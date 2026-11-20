@@ -45,6 +45,27 @@ public final class UnresolvedFile {
         return decide(workspace.projects().stream().map(LoadedWorkspace.ProjectInfo::root).toList(), path);
     }
 
+    /**
+     * A front door's one check of the file its caller named, made before its kinds look for a symbol at a position: the answer for an unresolved file
+     * when no loaded project holds a compilation unit of it, and null when it does, when no file was named (a kind that takes none), or when the name
+     * cannot be read as a path, so the kind goes on as it did. Without it each kind says "no symbol at the position" or "the position does not resolve
+     * to a method", which reads as a wrong position when the file is what is wrong.
+     *
+     * @param service  the Java service of the loaded projects
+     * @param filePath the file as the caller named it, or null
+     * @return the unresolved-file answer, or null when the file resolves or none was named
+     */
+    public static ToolResponse ofTheFileNamed(org.jawata.core.IJdtService service, String filePath) {
+        if (filePath == null || filePath.isBlank()) {
+            return null;
+        }
+        try {
+            return service.getCompilationUnit(Path.of(filePath)) == null ? fileNotFound(service.allProjects(), filePath) : null;
+        } catch (RuntimeException unreadable) {
+            return null;
+        }
+    }
+
     private static ToolResponse decide(List<Path> roots, String path) {
         Path place = absolutePlace(path);
         if (place == null || !Files.exists(place)) {

@@ -154,6 +154,20 @@ class UnresolvedFileThroughTheToolsTest {
             new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"super\"," + position + "}"},
             new Object[] {org.jawata.mcp.tools.GetAtPositionTool.class, "{\"kind\":\"symbol\"," + position + "}"},
             new Object[] {org.jawata.mcp.tools.GoToDefinitionTool.class, "{" + position + "}"},
+            new Object[] {org.jawata.mcp.tools.MoveTool.class, "{\"kind\":\"class\"," + position + ",\"targetPackage\":\"a.b\"}"},
+            new Object[] {org.jawata.mcp.tools.MoveTool.class, "{\"kind\":\"method\"," + position + ",\"target\":\"t\"}"},
+            new Object[] {org.jawata.mcp.tools.MoveTool.class, "{\"kind\":\"field\"," + position + ",\"targetType\":\"a.B\"}"},
+            new Object[] {org.jawata.mcp.tools.HierarchyTool.class, "{\"direction\":\"up\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.HierarchyTool.class, "{\"direction\":\"down\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.DataTool.class, "{\"kind\":\"encapsulate_field\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.DataTool.class, "{\"kind\":\"hide_delegate\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.DataTool.class, "{\"kind\":\"special_case\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.DataTool.class, "{\"kind\":\"replace_primitive\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.DataTool.class, "{\"kind\":\"encapsulate_collection\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.DataTool.class, "{\"kind\":\"split_variable\"," + position + ",\"newName\":\"x\"}"},
+            new Object[] {org.jawata.mcp.tools.ChangeMethodSignatureTool.class, "{\"kind\":\"change_signature\"," + position + ",\"newName\":\"x\"}"},
+            new Object[] {org.jawata.mcp.tools.FindReferencesTool.class, "{\"kind\":\"references\"," + position + "}"},
+            new Object[] {org.jawata.mcp.tools.FindFieldWritesTool.class, "{" + position + "}"},
             new Object[] {org.jawata.mcp.tools.GetCallHierarchyTool.class, "{\"direction\":\"outgoing\"," + position + "}"},
             new Object[] {org.jawata.mcp.tools.InspectTool.class, "{\"kind\":\"document_symbols\"}"},
             new Object[] {org.jawata.mcp.tools.InspectTool.class, "{\"kind\":\"complexity\"}"},
@@ -164,7 +178,13 @@ class UnresolvedFileThroughTheToolsTest {
 
         for (Object[] row : rows) {
             Class<?> type = (Class<?>) row[0];
-            org.jawata.mcp.tools.Tool door = doorOf(type);
+            org.jawata.mcp.tools.Tool door;
+            try {
+                door = doorOf(type);
+            } catch (IllegalStateException unknownShape) {
+                differing.add("NOT PROBED: " + unknownShape.getMessage());
+                continue;
+            }
             for (java.util.Map.Entry<String, String> place : expected.entrySet()) {
                 ObjectNode arguments = (ObjectNode) json.readTree((String) row[1]);
                 if (arguments.has("scope")) {

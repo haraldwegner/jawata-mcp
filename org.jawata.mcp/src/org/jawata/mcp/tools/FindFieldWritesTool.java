@@ -115,6 +115,11 @@ public class FindFieldWritesTool extends AbstractTool {
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
         int maxResults = getIntParam(arguments, "maxResults", 100);
         maxResults = Math.min(Math.max(maxResults, 1), 1000);
+        // A file no loaded project holds is said so, and not answered as a success with no writes, which reads as "this field is never written".
+        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, getStringParam(arguments, "filePath"));
+        if (unresolved != null) {
+            return unresolved;
+        }
 
         try {
             // Sprint 14 Phase B.2 (bugs.md #12 capability half): FQN form

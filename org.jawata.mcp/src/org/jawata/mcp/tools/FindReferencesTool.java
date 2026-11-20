@@ -109,6 +109,10 @@ public class FindReferencesTool extends AbstractTool {
         } catch (IllegalArgumentException e) {
             return ToolResponse.invalidParameter("fields", e.getMessage());
         }
+        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, getStringParam(arguments, "filePath"));
+        if (unresolved != null) {
+            return unresolved;
+        }
 
         try {
             // Sprint 14 Phase B.2 (bugs.md #12 capability half): FQN form

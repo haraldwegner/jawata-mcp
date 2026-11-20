@@ -156,6 +156,10 @@ public class HierarchyTool extends AbstractTool implements KindedTool {
             return ToolResponse.invalidParameter("direction",
                 "Unknown direction '" + direction + "'. Allowed: " + publishedKinds());
         }
+        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, getStringParam(arguments, "filePath"));
+        if (unresolved != null) {
+            return unresolved;
+        }
         // THE LOOKUP IS THE DISPATCH. There is no second table to disagree with this one, so
         // there is no "unreachable" arm to guard the disagreement either.
         return delegate.executeWithService(service, arguments);

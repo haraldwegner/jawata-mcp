@@ -209,6 +209,10 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
             return ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         }
+        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, getStringParam(arguments, "filePath"));
+        if (unresolved != null) {
+            return unresolved;
+        }
         // THE NAME FORM IS RESOLVED AT THE DOOR, for every kind, before dispatch.
         //
         // `data` was the ONE refactoring front door that did not do this — measured against

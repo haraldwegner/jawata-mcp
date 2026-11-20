@@ -191,6 +191,10 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
             return ToolResponse.invalidParameter("kind",
                 "Unknown kind '" + kind + "'. Allowed: " + publishedKinds());
         }
+        ToolResponse unresolved = org.jawata.mcp.tools.shared.UnresolvedFile.ofTheFileNamed(service, getStringParam(arguments, "filePath"));
+        if (unresolved != null) {
+            return unresolved;
+        }
         // DISPATCH THROUGH THE DELEGATE JUST LOOKED UP (C4-1) — see DataTool, which had the
         // same discarded lookup and eleven-arm switch. One table, no unreachable default arm.
         return ((AbstractTool) delegate).executeWithService(service, arguments);
