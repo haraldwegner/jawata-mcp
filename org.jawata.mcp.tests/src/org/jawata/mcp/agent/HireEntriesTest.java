@@ -224,7 +224,7 @@ class HireEntriesTest {
 
         HireEntry shown = stored.observe(onThePage).orElseThrow();
         assertEquals(Optional.of("Haiku 5.5"), shown.model(), "the seat file's model was shown above the Seats page's");
-        assertEquals(Optional.of("claude"), shown.brain(), "the seat file's brain was shown above the Seats page's");
+        assertEquals(Optional.of("claude-code"), shown.brain(), "the seat file's brain was shown above the Seats page's, or under another name than the menu and the ended card use");
         assertEquals(Optional.of("gpt-5"), none.observe(withNothing).orElseThrow().model(), "CONTROL: with nothing stored the seat file's model is the card's");
     }
 

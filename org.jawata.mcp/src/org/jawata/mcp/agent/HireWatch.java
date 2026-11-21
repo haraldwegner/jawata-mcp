@@ -5,7 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -317,7 +316,7 @@ final class HireWatch {
     private void readSeatFile(Live hire) {
         try {
             SeatHire file = SeatHire.read(Files.readString(Path.of(hire.seatFile)));
-            hire.brain = Optional.of(file.brain().name().toLowerCase(Locale.ROOT).replace("_code", ""));
+            hire.brain = Optional.of(file.brain().label());
             // The seat file's own word first, then the registry's model for its brain: the order the hire tool runs the hire in.
             hire.model = file.model() == null || file.model().isBlank()
                 ? org.jawata.mcp.execution.Hirer.brainIn(registry.get(), file.brain().label())
@@ -327,7 +326,7 @@ final class HireWatch {
             // 28h Stage 27 (z14) rule 2: the Seats page's choice for the seat is what the hire runs on, so it is what its card shows while it runs
             org.jawata.mcp.execution.SeatSettingsService.storedBrainOf(key -> Optional.of(seatBrains.get()), hire.seat).ifPresent(page ->
                 org.jawata.mcp.execution.SeatHire.Brain.named(page[0]).ifPresent(chosen -> {
-                    hire.brain = Optional.of(chosen.name().toLowerCase(Locale.ROOT).replace("_code", ""));
+                    hire.brain = Optional.of(chosen.label());
                     hire.model = page[1] != null ? Optional.of(page[1])
                         : org.jawata.mcp.execution.Hirer.brainIn(registry.get(), chosen.label()).map(org.jawata.mcp.execution.Hirer.Brain::model).filter(offered -> !offered.isBlank());
                 }));
