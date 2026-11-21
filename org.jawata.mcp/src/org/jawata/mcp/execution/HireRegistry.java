@@ -49,6 +49,8 @@ public final class HireRegistry {
         volatile long claimedAtMs;
         /** When this hire last showed a sign of life (28h Stage 27, z28): a tool call, a usage report, a compaction, or its plan opening; the time it registered until then. */
         volatile long lastActivityMs = System.currentTimeMillis();
+        /** How many seconds this hire had been quiet when the engine stopped it for that (28h Stage 27, z28, the second ceiling); negative while it was not. */
+        volatile long stalledForSeconds = -1;
         final Thread thread;
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
@@ -116,6 +118,11 @@ public final class HireRegistry {
             }
             // Told outside the lock, now that this hire no longer runs: the reports its brain never read go to its chat.
             handed.forEach(HireRegistry.this::retell);
+        }
+
+        /** How many seconds this hire had been quiet when the engine stopped it for that (28h Stage 27, z28); none when it was not stopped as a stall. */
+        public OptionalLong stalledFor() {
+            return hire.stalledForSeconds < 0 ? OptionalLong.empty() : OptionalLong.of(hire.stalledForSeconds);
         }
     }
 
@@ -902,5 +909,27 @@ public final class HireRegistry {
             }
         }
         return java.util.OptionalLong.empty();
+    }
+
+    /**
+     * Stops every running hire that has shown no sign of life for this many seconds or more (28h Stage 27, z28, the second ceiling): a hire that
+     * goes quiet is not left running for ever, it is stopped the way a person's stop ends it, marked as a stall with how long it was quiet so its
+     * answer can say why, and named in what this answers, as first name and seat. A hire with no plan open yet is not judged: nothing has been asked
+     * of its brain.
+     */
+    public synchronized List<String> stopStalled(long ceilingSeconds) {
+        List<String> stoppedNames = new java.util.ArrayList<>();
+        long now = System.currentTimeMillis();
+        for (Running hire : running) {
+            long idle = Math.max(0, now - hire.lastActivityMs) / 1000;
+            if (!hire.planId.isEmpty() && idle >= ceilingSeconds && hire.stalledForSeconds < 0) {
+                hire.stalledForSeconds = idle;
+                stopped.add(hire.thread);
+                hire.onStop.forEach(Runnable::run);
+                hire.thread.interrupt();
+                stoppedNames.add(hire.name + " · " + hire.seat);
+            }
+        }
+        return stoppedNames;
     }
 }

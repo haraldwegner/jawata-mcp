@@ -380,6 +380,63 @@ public class HireTool extends NeutralTool {
         return java.util.OptionalLong.empty();
     }
 
+    /**
+     * The host setting that names how many seconds a running hire may show no sign of life before the engine stops it (28h Stage 27, z28, the second
+     * ceiling), after the first one (a client that asks {@code hire_wait} is told it is stalled). Zero or less switches the stop off.
+     */
+    public static final String STALL_STOP_SETTING = "jawata.hire.stallStopSeconds";
+
+    private static final long DEFAULT_STALL_STOP_SECONDS = 1200;
+
+    private static final java.util.concurrent.atomic.AtomicLong STALL_CEILING = new java.util.concurrent.atomic.AtomicLong(0);
+
+    private static final java.util.concurrent.atomic.AtomicBoolean WATCHING = new java.util.concurrent.atomic.AtomicBoolean();
+
+    /**
+     * Records the stall ceiling the host set, which the watchdog reads on every tick, and starts the watchdog the first time: one daemon thread of the
+     * engine that asks the registry every half minute to stop what has been quiet past the ceiling, so a hire that goes quiet is never left running
+     * for ever. Asked on every hire, so a changed setting takes effect with the next hire.
+     */
+    static void watchForStalls(long ceilingSeconds) {
+        STALL_CEILING.set(ceilingSeconds);
+        if (WATCHING.compareAndSet(false, true)) {
+            java.util.concurrent.ScheduledExecutorService watch = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(job -> {
+                Thread thread = new Thread(job, "jawata-hire-stall-watch");
+                thread.setDaemon(true);
+                return thread;
+            });
+            watch.scheduleWithFixedDelay(() -> {
+                try {
+                    stopQuietHires();
+                } catch (RuntimeException failed) {
+                    // a failing tick must not end the watch: the next one asks again
+                }
+            }, 30, 30, java.util.concurrent.TimeUnit.SECONDS);
+        }
+    }
+
+    /** One tick of the watchdog: stops every running hire quiet past the ceiling and answers who was stopped; nothing when the ceiling is off. */
+    static java.util.List<String> stopQuietHires() {
+        long ceiling = STALL_CEILING.get();
+        return ceiling > 0 ? HireRegistry.shared().stopStalled(ceiling) : java.util.List.of();
+    }
+
+    /**
+     * What a hire that was stopped answers: a stop the engine made because the hire showed no sign of life says so and for how long, so its hirer can
+     * tell a stall from a person's stop; a person's stop is answered as before.
+     */
+    static ToolResponse stoppedAnswer(HireRegistry.Registration stopped) {
+        java.util.OptionalLong quiet = stopped.stalledFor();
+        if (quiet.isPresent()) {
+            return ToolResponse.error("HIRE_STALLED",
+                "the hire was stopped by the engine: it showed no sign of life for " + quiet.getAsLong() + " seconds",
+                "the child process is reaped; nothing is left running; hire again with a smaller task if the work is still wanted");
+        }
+        return ToolResponse.error("HIRE_STOPPED",
+            "the hire was stopped from the Agent Control panel while the brain was running",
+            "the child process is reaped; nothing is left running; hire again if the work is still wanted");
+    }
+
     /** The seat name under which one issuer's observer conversation is kept between its flagged steps (28h Stage 27 (d)). */
     private static final String OBSERVER_SESSION_SEAT = "observer";
 
@@ -433,6 +490,14 @@ public class HireTool extends NeutralTool {
                 + " admitted on at least " + floorMb + " MB; " + HireRegistry.shared().runningCount() + " hires are running",
                 "wait for a hire to end, close what else uses the memory, or lower the floor, which is the setting " + MIN_FREE_MEMORY_SETTING);
         }
+        // THE SECOND CEILING (28h Stage 27, z28): a hire quiet for this long is stopped by the engine's watchdog, which reads the ceiling the host sets.
+        watchForStalls(settings.get().get(STALL_STOP_SETTING).map(text -> {
+            try {
+                return Long.parseLong(text.strip());
+            } catch (NumberFormatException notANumber) {
+                return DEFAULT_STALL_STOP_SECONDS;
+            }
+        }).orElse(DEFAULT_STALL_STOP_SECONDS));
         java.util.concurrent.CompletableFuture<Map<String, Object>> opened = new java.util.concurrent.CompletableFuture<>();
         java.util.concurrent.CompletableFuture<ToolResponse> ended = new java.util.concurrent.CompletableFuture<>();
         HIRES.execute(() -> {
@@ -829,10 +894,8 @@ public class HireTool extends NeutralTool {
                 return hire(new HireCall(call.getArguments(), replacement.get(), call.getSaidBefore(), call.getServing()));
             }
             if (running.wasStopped()) {
-                // The person's stop is handled here and ends with this answer, so the thread is left as it is for the next request.
-                return ToolResponse.error("HIRE_STOPPED",
-                    "the hire was stopped from the Agent Control panel while the brain was running",
-                    "the child process is reaped; nothing is left running; hire again if the work is still wanted");
+                // The person's stop, or the engine's for a stall, is handled here and ends with this answer, so the thread is left as it is for the next request.
+                return stoppedAnswer(running);
             }
             Thread.currentThread().interrupt();
             return ToolResponse.error("INTERNAL_ERROR",
@@ -854,9 +917,7 @@ public class HireTool extends NeutralTool {
             return hire(new HireCall(call.getArguments(), replacement.get(), call.getSaidBefore() + proposal.outcome().text(), call.getServing()));
         }
         if (stoppedByPerson) {
-            return ToolResponse.error("HIRE_STOPPED",
-                "the hire was stopped from the Agent Control panel while the brain was running",
-                "the child process is reaped; nothing is left running; hire again if the work is still wanted");
+            return stoppedAnswer(running);
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
