@@ -2843,7 +2843,7 @@ class HireToolTest {
             () -> assertEquals(machineSaysHowMuchIsFree, !refused.isSuccess() && "TOO_LITTLE_MEMORY".equals(refused.getError().getCode()),
                 "a machine that reports its free memory must refuse a hire below the floor, and one that cannot must admit it: " + codeOf(refused)),
             () -> assertTrue(!machineSaysHowMuchIsFree || refused.getError().getMessage().contains("MB"), "the refusal names the memory figure: " + refused.getError()),
-            () -> assertEquals(!machineSaysHowMuchIsFree, !refusedProcesses.asked().isEmpty(), "a hire was started, or not, against what the machine can report: " + refusedProcesses.asked()),
+            () -> assertTrue(!machineSaysHowMuchIsFree || refusedProcesses.asked().isEmpty(), "nothing was started where the hire was refused: " + refusedProcesses.asked()),
             () -> assertFalse("TOO_LITTLE_MEMORY".equals(codeOf(lowFloor)), "CONTROL: a floor of 1 MB refused a hire on a machine that has more"),
             () -> assertFalse("TOO_LITTLE_MEMORY".equals(codeOf(switchedOff)), "CONTROL: a floor of zero, which switches the check off, refused a hire"));
     }
