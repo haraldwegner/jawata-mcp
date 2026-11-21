@@ -74,6 +74,8 @@ if [ -n "${Z34_ACP:-}" ]; then
     ACP_PROP="-Djawata.agent.hireBrains={\"claude-code\":{\"command\":[\"claude-agent-acp\"],\"vendor\":\"anthropic\",\"model\":\"Haiku 5.5\"}}"
     sed -i 's/^model: claude-haiku-5-5/model: Haiku 5.5/' "$WS/test-manager.md"
 fi
+# The developer seat is the test manager's file (the REAL Claude, and the ACP model name when that is switched on) with a changing tool.
+sed 's/^name: test-manager$/name: developer/; s/^tools: .*/tools: [inspect, rename_symbol]\nchanges_code: true/' "$WS/test-manager.md" > "$WS/developer.md"
 # shellcheck disable=SC2086
 java $VECTOR ${ACP_PROP:+"$ACP_PROP"} -Djawata.experience.shared.dir="$STORE" -Djawata.hire.stallSeconds=3 -Djawata.hire.stallStopSeconds=0 \
      -jar "$JAR" -data "$WS/ws" -port "$PORT" -token "$TOKEN" > "$LOG" 2>&1 &
@@ -177,6 +179,25 @@ for n in range(RUNS):
 if finished == RUNS and not wrote: ok("a read-only seat told to write a file wrote none, in %d of %d runs" % (RUNS, RUNS))
 elif wrote: bad("a read-only seat wrote a file: %s" % wrote)
 else: bad("only %d of %d write-brief hires finished" % (finished, RUNS))
+
+# ---- 3. A HIRED DEVELOPER's changing tool (Z34_DEV=1): a seat that changes code was never in plan mode; this shows a real brain can use its tool.
+if os.environ.get("Z34_DEV"):
+    dev_brief = ("You are the developer. Call the rename_symbol tool ONCE with symbol com.example.SharedHelper and newName SharedHelperZ34. "
+                 "Then answer in one line what rename_symbol answered (success flag or error code).")
+    dv = hire(dev_brief, hirer="pm", seat="developer", session=pm_id)
+    did = (dv.get("data") or {}).get("hireId", "")
+    if not did: print("  note  the developer hire was not started: %s" % json.dumps(dv)[:600])
+    dd = {}
+    for _ in range(8):
+        dd = call("hire_wait", {"hireId": did, "waitSeconds": 50}).get("data", {})
+        if dd.get("state") not in ("running", None): break
+    dr = dd.get("report") or {}
+    print("  note  the developer brain said: %s; tools called: %s" % (json.dumps(dr.get("answer"))[:300], dr.get("toolsCalled")))
+    renamed = os.path.exists(os.environ["PROBE_PROJECT"] + "/src/main/java/com/example/SharedHelperZ34.java")
+    staged = bool(os.environ.get("Z34_ACP")) and "staged" in json.dumps(dr.get("answer")).lower() and "mcp__jawata__rename_symbol" in (dr.get("toolsCalled") or [])
+    if dd.get("state") == "finished" and renamed: ok("a real hired developer renamed a class through rename_symbol")
+    elif dd.get("state") == "finished" and staged: ok("a real hired developer, over the chat's path, called rename_symbol and STAGED the change as that path's propose-don't-apply rule asks")
+    else: bad("the developer did not rename the class: state=%s renamed=%s answer=%s" % (dd.get("state"), renamed, json.dumps(dr.get("answer"))[:200]))
 
 print("\n%d passed, %d failed" % (passed, failed))
 raise SystemExit(1 if failed else 0)
