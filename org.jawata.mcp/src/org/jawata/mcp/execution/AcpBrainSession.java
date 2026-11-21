@@ -688,6 +688,14 @@ public final class AcpBrainSession {
                                 name = editor;
                             }
                         }
+                        // 28h Stage 27 (z24), seen in the hires' records as "the worker never called Bash": Claude's adapter opens a shell call
+                        // under the call's own description (kind execute), so it was named by that text and no instruction for Bash found it.
+                        if ("execute".equals(update.path("kind").asText())) {
+                            String shell = update.path("_meta").path("claudeCode").path("toolName").asText("");
+                            if (RunEffects.isCliShell(shell)) {
+                                name = shell;
+                            }
+                        }
                         callAt.put(update.path("toolCallId").asText(""), toolNames.size());
                         toolNames.add(name);
                         toolCalls.add(new ToolCall(name, update.has("rawInput") ? update.get("rawInput") : JSON.createObjectNode()));

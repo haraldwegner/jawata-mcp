@@ -492,4 +492,14 @@ class AcpBrainSessionTest {
             org.jawata.mcp.access.BrainAccess.publish(null, null);
         }
     }
+
+    @Test
+    @DisplayName("28h Stage 27 (z24): a shell call Claude's ACP adapter opens under its own description is kept as a Bash call with its command, so an instruction for Bash can be compared with it")
+    void aShellCallClaudeRunsIsKeptAsABashCall() throws Exception {
+        HiredBrain.Outcome outcome = hire("CLAUDEBASH:xvfb-run -a mvn -B verify");
+
+        assertEquals(List.of("Bash"), outcome.toolNames(), "the call kept the description the adapter opened it with: " + outcome.toolNames());
+        assertEquals("xvfb-run -a mvn -B verify", outcome.toolCalls().get(0).arguments().path("command").asText(),
+            "the call was kept without the command it ran");
+    }
 }

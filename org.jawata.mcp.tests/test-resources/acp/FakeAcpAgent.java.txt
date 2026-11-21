@@ -323,6 +323,19 @@ public class FakeAcpAgent {
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"w1\",\"status\":\"completed\"}}}");
             chunk(session, "written");
+        } else if (text.startsWith("CLAUDEBASH:")) {
+            // As Claude's ACP adapter sends a shell call (28h Stage 27 (z24), seen in the hires' records as "the worker never called Bash"):
+            // opened with the call's own description as its title, kind execute, the tool named only in _meta, the command in a later update.
+            String command = text.substring("CLAUDEBASH:".length()).trim().replace("\\", "\\\\").replace("\"", "\\\"");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"_meta\":{\"claudeCode\":{\"toolName\":\"Bash\"}},\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"b1\","
+                + "\"title\":\"Run the plug-in build\",\"kind\":\"execute\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"_meta\":{\"claudeCode\":{\"toolName\":\"Bash\"}},\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"b1\","
+                + "\"rawInput\":{\"command\":\"" + command + "\",\"description\":\"Run the plug-in build\"}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"b1\",\"status\":\"completed\"}}}");
+            chunk(session, "ran");
         } else if (text.startsWith("CURSORNEWFILE")) {
             // Cursor's agent creating a file: as CURSOREDIT, but the diff of the completed call has no old text (architect watch of C27).
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
