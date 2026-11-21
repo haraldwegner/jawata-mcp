@@ -35,12 +35,12 @@ class EveryDialectsWholeArgvIsPinnedTest {
     }
 
     @Test
-    @DisplayName("claude, read-only, given the hiring resident: only that server, none of the user's settings, no built-in tools")
+    @DisplayName("claude, read-only, given the hiring resident: only that server, none of the user's settings, no built-in tools, and not plan mode, which a hired test manager read as forbidding run_tests (28h z34)")
     void claudeWithTheResidentsEndpoint() {
         SelfEndpoint self = new SelfEndpoint("http://127.0.0.1:1/mcp", "t0ken");
 
         assertEquals(List.of("claude", "-p", BRIEF, "--output-format", "stream-json",
-                "--permission-mode", "plan", "--verbose", "--max-turns", "7",
+                "--permission-mode", "manual", "--verbose", "--max-turns", "7",
                 "--model", "claude-sonnet-5",
                 "--strict-mcp-config", "--mcp-config", self.claudeMcpConfig(),
                 "--setting-sources", "project", "--tools", "",

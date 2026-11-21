@@ -45,13 +45,22 @@ public record SelfEndpoint(String url, String token, String sessionId) {
         ObjectNode root = MAPPER.createObjectNode();
         ObjectNode server = root.putObject("mcpServers").putObject(SERVER_NAME);
         server.put("type", "http");
-        server.put("url", url);
+        server.put("url", urlWithSession());
         ObjectNode headers = server.putObject("headers");
         headers.put("Authorization", "Bearer " + token);
         if (sessionId != null) {
             headers.put(SESSION_HEADER, sessionId);
         }
         return root.toString();
+    }
+
+    /**
+     * The URL a brain is given: the session id goes in it as well as in a header, because a brain's tool server was seen to keep the URL and
+     * drop the header, which left every call the brain made to the anonymous caller (28h Stage 27, findings 28h-C27-1 and 28h-C27-3, and the
+     * dogfood after release, z34, for a Claude started through the command line). An unbound endpoint's URL is its own.
+     */
+    public String urlWithSession() {
+        return sessionId == null ? url : url + "?session=" + java.net.URLEncoder.encode(sessionId, java.nio.charset.StandardCharsets.UTF_8);
     }
 
     /** A jawata tool's name as a brain given this server sees it. */

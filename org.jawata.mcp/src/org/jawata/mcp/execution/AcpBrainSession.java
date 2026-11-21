@@ -866,10 +866,8 @@ public final class AcpBrainSession {
             ObjectNode server = servers.addObject();
             server.put("type", "http");
             server.put("name", SelfEndpoint.SERVER_NAME);
-            // The session id goes in the URL as well as in a header: a brain's tool server was seen to keep the URL and drop the header, which
-            // left every hire the brain made to the anonymous caller (28h Stage 27, findings 28h-C27-1 and 28h-C27-3).
-            server.put("url", mcp.sessionId() == null ? mcp.url()
-                : mcp.url() + "?session=" + java.net.URLEncoder.encode(mcp.sessionId(), StandardCharsets.UTF_8));
+            // The session id goes in the URL as well as in a header (see SelfEndpoint#urlWithSession).
+            server.put("url", mcp.urlWithSession());
             ArrayNode headers = server.putArray("headers");
             ObjectNode header = headers.addObject();
             header.put("name", "Authorization");

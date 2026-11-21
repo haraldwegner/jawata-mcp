@@ -191,7 +191,13 @@ public final class ClaudeCodeDialect implements BrainDialect {
             // CLI's own editors. Both are sent, and NEITHER is a mechanism. Compare codex, whose
             // sandbox was observed rejecting an attempted apply_patch, and copilot, which answers
             // permission_denied — those are mechanisms; this is not.
-            "--permission-mode", readOnly ? "plan" : "manual",
+            //
+            // PLAN MODE ONLY WHERE NOTHING ELSE CONTAINS THE BRAIN (28h z34, 2026-11-21). With the resident attached the brain has
+            // no built-in editors (--tools) and the code-changing operations its seat did not name are taken away (--disallowedTools),
+            // so plan mode adds no bound there, as the measurement above says; what it does add is that the model reads it as
+            // forbidding every tool it cannot tell is read-only, and a hired test manager, on Haiku 5.5 and on Sonnet 5.5, answered
+            // "no call made: plan mode is active" to a brief that told it to call run_tests, which was offered and in the allowlist.
+            "--permission-mode", readOnly && self == null ? "plan" : "manual",
             "--verbose",
             "--max-turns", Integer.toString(maxTurns)));
         if (model != null && !model.isBlank()) {
@@ -310,8 +316,11 @@ public final class ClaudeCodeDialect implements BrainDialect {
                 + " toolsOffered, and a call naming a tool not on it is listed as"
                 + " attemptedButNotOffered and not counted as a call), --allowedTools naming the"
                 + " seat's jawata operations as the CLI sees them (mcp__jawata__<tool>), and"
-                + " --permission-mode plan. MEASURED, NOT PROVEN: in 10 of 10 hires told to edit a"
-                + " file no file was written anywhere. NOT CONTAINED BY ABSENCE: every jawata tool of"
+                + " --permission-mode manual (not plan: with the resident attached plan mode bounds"
+                + " nothing, and a brain reads it as forbidding run_tests). MEASURED, NOT PROVEN: in 10"
+                + " of 10 hires told to edit a file, started with --tools \"\" and plan mode, no file was"
+                + " written anywhere; with --tools \"\" and manual mode the same containment was not"
+                + " re-measured. NOT CONTAINED BY ABSENCE: every jawata tool of"
                 + " the resident is offered, and the seat's list only pre-approves some of them");
         }
         return ToolAttachment.perRun((readOnly
