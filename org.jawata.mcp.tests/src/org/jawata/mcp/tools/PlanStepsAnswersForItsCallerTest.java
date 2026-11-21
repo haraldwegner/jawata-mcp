@@ -75,6 +75,22 @@ class PlanStepsAnswersForItsCallerTest {
                 "a caller that opened nothing still hears the plan nobody owns"));
     }
 
+    @SuppressWarnings("unchecked")
+    @Test
+    @DisplayName("28h z23: a listed plan names the caller that opened it, so a step nobody runs can be traced to who opened it; a plan nobody was recorded for says none")
+    void aListedPlanNamesWhoOpenedIt() throws Exception {
+        PlanId owned = openedFor("principal-1");
+        PlanId ownerless = openedFor(null);
+
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) ((Map<String, Object>) tool.execute(JSON.createObjectNode()).getData()).get("pending");
+        Map<String, String> ownerOf = new java.util.LinkedHashMap<>();
+        rows.forEach(row -> ownerOf.put((String) row.get("planId"), String.valueOf(row.get("owner"))));
+
+        assertAll(
+            () -> assertEquals("principal-1", ownerOf.get(owned.toString()), "the plan did not name the caller that opened it"),
+            () -> assertEquals("", ownerOf.get(ownerless.toString()), "the control: a plan nobody was recorded for is not given an owner"));
+    }
+
     @Test
     @DisplayName("a call made outside the registry has no caller to answer for and sees every plan")
     void aCallWithNoCallerSeesEveryPlan() throws Exception {

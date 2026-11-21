@@ -35,7 +35,8 @@ public final class PlanStepsTool implements Tool {
 
             USAGE: plan_steps()
 
-            Answers {pending: [{planId, passedStep, inFlight, step: {index, tool, arguments}}]}, oldest plan first. inFlight is true
+            Answers {pending: [{planId, passedStep, owner, inFlight, step: {index, tool, arguments}}]}, oldest plan first. owner is the
+            session that opened the plan, empty when none was recorded. inFlight is true
             when a hire of that plan is running right now, so the step is waiting because someone is working on it. A plan whose every step has
             passed is not listed. A plan advances only when its next step's gate call answered and reported no errors, so an empty
             list means no step is waiting, and a listed plan names the gate tool that would move it.
@@ -63,6 +64,8 @@ public final class PlanStepsTool implements Tool {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("planId", open.id().toString());
             row.put("passedStep", open.passedStep());
+            // Who opened the plan (28h z23): a step nobody runs is then traceable to the session that opened it. Empty when nobody was recorded.
+            row.put("owner", plans.ownerOf(open.id()));
             row.put("step", step);
             // A step of a plan whose hire is running is waiting because the hire is working on it (Stage 24, M11), not because it was left behind.
             row.put("inFlight", org.jawata.mcp.execution.HireRegistry.shared().isRunningPlan(open.id().toString()));

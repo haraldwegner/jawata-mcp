@@ -463,6 +463,12 @@ public final class PlanLedger {
         }
     }
 
+    /** The session that opened this plan, as {@link #ownedBy} recorded it; empty for a plan nobody was recorded for and for one the ledger does not hold. */
+    public synchronized String ownerOf(PlanId id) {
+        Entry entry = id == null ? null : plans.get(id);
+        return entry == null ? "" : entry.owner;
+    }
+
     /** Records the tools the seat that opened the plan may call, so the choke can refuse a call outside them (S13); an empty list allows none. */
     public synchronized void allowTools(PlanId id, java.util.Collection<String> tools) {
         Entry entry = plans.get(id);
