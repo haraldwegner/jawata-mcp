@@ -705,6 +705,49 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h z26: a second pm for a sprint plan file a running pm already holds is refused naming the running one; a pm for another plan file, a pm with no plan file and another seat for the same file are not")
+    void aSecondPmForTheSameSprintIsRefused() throws Exception {
+        HireRegistry hires = HireRegistry.shared();
+        String sprint = dir.resolve("z26-sprint-plan.md").toString();
+        String otherSprint = dir.resolve("z26-other-sprint-plan.md").toString();
+        String pmSeat = CATALOGUER_SEAT.replace("name: cataloguer", "name: pm");
+        try (HireRegistry.Registration firstPm = hires.begin("pm", "z26 the first pm", "")) {
+            hires.planOpened("plan-z26-first-pm");
+            assertTrue(firstPm.claim(List.of(hires.sprintClaim(sprint))).isEmpty(), "the running pm could not take its own sprint");
+
+            ObjectNode same = (ObjectNode) hireArgs(seatFile(pmSeat), "pm");
+            same.put("hirer", "main").put("boardFile", sprint);
+            StandsIn sameProcesses = new StandsIn(host, aBrainThatAnswers());
+            ToolResponse refused = toolWith(sameProcesses, events, aRegistryWithACleanGate()).execute(same);
+
+            ObjectNode other = (ObjectNode) hireArgs(seatFile(pmSeat), "pm");
+            other.put("hirer", "main").put("boardFile", otherSprint);
+            ToolResponse anotherSprint = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(other);
+
+            ObjectNode none = (ObjectNode) hireArgs(seatFile(pmSeat), "pm");
+            none.put("hirer", "main");
+            ToolResponse noPlanFile = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(none);
+
+            ObjectNode developer = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT.replace("name: cataloguer", "name: developer")), "developer");
+            developer.put("boardFile", sprint);
+            ToolResponse notAPm = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(developer);
+
+            assertAll(
+                () -> assertFalse(refused.isSuccess(), "a second pm was let run the same sprint"),
+                () -> assertEquals("CLAIM_REFUSED", refused.getError().getCode()),
+                () -> assertTrue(refused.getError().getMessage().contains("pm"), "the refusal names the running pm: " + refused.getError().getMessage()),
+                () -> assertTrue(sameProcesses.asked().isEmpty(), "nothing was started: " + sameProcesses.asked()),
+                () -> assertFalse("CLAIM_REFUSED".equals(codeOf(anotherSprint)), "CONTROL: a pm for another sprint was refused by the sprint claim"),
+                () -> assertFalse("CLAIM_REFUSED".equals(codeOf(noPlanFile)), "CONTROL: a pm with no plan file was refused by the sprint claim"),
+                () -> assertFalse("CLAIM_REFUSED".equals(codeOf(notAPm)), "CONTROL: a seat that is not a pm was refused by the sprint claim"));
+        }
+    }
+
+    private static String codeOf(ToolResponse response) {
+        return response.isSuccess() ? "" : response.getError().getCode();
+    }
+
+    @Test
     @DisplayName("S18a (D51): a seat file that declares another parent moves the seat in the tree: the new parent hires it and the signed parent no longer does")
     void aSeatFileThatDeclaresAnotherParentMovesTheSeat() throws Exception {
         String moved = CATALOGUER_SEAT.replaceFirst("---\n", "---\nparent: pm\nrole: reviewer\n");

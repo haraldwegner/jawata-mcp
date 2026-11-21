@@ -716,6 +716,12 @@ public class HireTool extends NeutralTool {
         // claim is refused with who holds it, and nothing has been spent; the claim is released when the registration closes, however the hire ends.
         List<String> claimed = new ArrayList<>();
         call.getArguments().path("claims").forEach(claim -> claimed.add(claim.asText()));
+        // 28h Stage 27 (z26): one pm runs a sprint. The sprint is the plan file the hire names (no sprint id is on the call), and a pm that names one
+        // takes it as a claim through this same admission, so a second pm for it is refused naming the first.
+        String sprintFile = getStringParam(call.getArguments(), "boardFile");
+        if ("pm".equals(hired) && sprintFile != null && !sprintFile.isBlank()) {
+            claimed.add(HireRegistry.shared().sprintClaim(sprintFile));
+        }
         if (!claimed.isEmpty()) {
             Optional<String> refused = running.claim(claimed);
             if (refused.isPresent()) {

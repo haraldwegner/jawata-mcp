@@ -862,4 +862,13 @@ public final class HireRegistry {
         }
         return isRoot(callerId) ? Optional.of(SeatTree.TOP) : Optional.empty();
     }
+
+    /**
+     * The claim a pm takes for the sprint whose plan file is {@code boardFile} (28h Stage 27, z26): one pm runs a sprint, and a second is refused by
+     * the same admission that refuses two hires in one package, naming the pm that holds it. The sprint is the plan file because no sprint id is
+     * on the hire call; the key cannot overlap a package name, so it never clashes with a package claim.
+     */
+    public String sprintClaim(String boardFile) {
+        return "sprint:" + java.nio.file.Path.of(boardFile).toAbsolutePath().normalize();
+    }
 }
