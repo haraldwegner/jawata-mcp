@@ -68,8 +68,14 @@ VECTOR=""
 java --add-modules jdk.incubator.vector -version >/dev/null 2>&1 && VECTOR="--add-modules jdk.incubator.vector"
 
 # THE FIRST CEILING IS A HOST SETTING (z28): three seconds here, so the probe does not wait five minutes. The stop ceiling is off.
+ACP_PROP=""
+if [ -n "${Z34_ACP:-}" ]; then
+    # THE CHAT'S OWN PATH: a brain with a program that speaks ACP is run through the engine's ACP client, not through its command line (HireTool, the registry setting).
+    ACP_PROP="-Djawata.agent.hireBrains={\"claude-code\":{\"command\":[\"claude-agent-acp\"],\"vendor\":\"anthropic\",\"model\":\"Haiku 5.5\"}}"
+    sed -i 's/^model: claude-haiku-5-5/model: Haiku 5.5/' "$WS/test-manager.md"
+fi
 # shellcheck disable=SC2086
-java $VECTOR -Djawata.experience.shared.dir="$STORE" -Djawata.hire.stallSeconds=3 -Djawata.hire.stallStopSeconds=0 \
+java $VECTOR ${ACP_PROP:+"$ACP_PROP"} -Djawata.experience.shared.dir="$STORE" -Djawata.hire.stallSeconds=3 -Djawata.hire.stallStopSeconds=0 \
      -jar "$JAR" -data "$WS/ws" -port "$PORT" -token "$TOKEN" > "$LOG" 2>&1 &
 RESIDENT_PID=$!
 READY=0
