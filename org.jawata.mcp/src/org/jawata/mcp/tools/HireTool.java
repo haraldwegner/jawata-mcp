@@ -354,6 +354,31 @@ public class HireTool extends NeutralTool {
 
     private static final int DEFAULT_MAX_RUNNING = 8;
 
+    /**
+     * The host setting that names the least free memory, in MB, a new hire is admitted on (28h Stage 27, z29): each hire starts an agent process of
+     * its own and runs builds and tests, so a machine out of memory swaps and dies, as it did with a single agent. Zero or less switches the check off.
+     */
+    public static final String MIN_FREE_MEMORY_SETTING = "jawata.hire.minFreeMemoryMb";
+
+    private static final long DEFAULT_MIN_FREE_MEMORY_MB = 1024;
+
+    /** The memory the machine can still give a new process, in MB: /proc/meminfo's MemAvailable where there is one, else the JVM's free physical figure; none when neither says. */
+    private static java.util.OptionalLong availableMemoryMb() {
+        try {
+            for (String line : java.nio.file.Files.readAllLines(Path.of("/proc/meminfo"))) {
+                if (line.startsWith("MemAvailable:")) {
+                    return java.util.OptionalLong.of(Long.parseLong(line.replaceAll("[^0-9]", "")) / 1024);
+                }
+            }
+        } catch (java.io.IOException | RuntimeException notLinux) {
+            // fall through to the JVM's own figure
+        }
+        if (java.lang.management.ManagementFactory.getOperatingSystemMXBean() instanceof com.sun.management.OperatingSystemMXBean machine) {
+            return java.util.OptionalLong.of(machine.getFreeMemorySize() / (1024 * 1024));
+        }
+        return java.util.OptionalLong.empty();
+    }
+
     /** The seat name under which one issuer's observer conversation is kept between its flagged steps (28h Stage 27 (d)). */
     private static final String OBSERVER_SESSION_SEAT = "observer";
 
@@ -391,6 +416,21 @@ public class HireTool extends NeutralTool {
             return ToolResponse.error("TOO_MANY_HIRES", "refused: " + HireRegistry.shared().runningCount() + " hires are running, which is the most this"
                 + " engine runs at once (" + cap + "): " + String.join(", ", HireRegistry.shared().runningNames()),
                 "wait for one of them to end, or stop one from the Agent Control panel; the limit is the setting " + MAX_RUNNING_SETTING);
+        }
+        // THE MEMORY FLOOR (28h Stage 27, z29): the same admission, asked of the machine as well as of the count, since each hire is a process of
+        // its own. A machine that cannot say how much it has free is admitted, not guessed at.
+        long floorMb = settings.get().get(MIN_FREE_MEMORY_SETTING).map(text -> {
+            try {
+                return Long.parseLong(text.strip());
+            } catch (NumberFormatException notANumber) {
+                return DEFAULT_MIN_FREE_MEMORY_MB;
+            }
+        }).orElse(DEFAULT_MIN_FREE_MEMORY_MB);
+        java.util.OptionalLong freeMb = floorMb > 0 ? availableMemoryMb() : java.util.OptionalLong.empty();
+        if (freeMb.isPresent() && freeMb.getAsLong() < floorMb) {
+            return ToolResponse.error("TOO_LITTLE_MEMORY", "refused: this machine has " + freeMb.getAsLong() + " MB of memory available and a hire is"
+                + " admitted on at least " + floorMb + " MB; " + HireRegistry.shared().runningCount() + " hires are running",
+                "wait for a hire to end, close what else uses the memory, or lower the floor, which is the setting " + MIN_FREE_MEMORY_SETTING);
         }
         java.util.concurrent.CompletableFuture<Map<String, Object>> opened = new java.util.concurrent.CompletableFuture<>();
         java.util.concurrent.CompletableFuture<ToolResponse> ended = new java.util.concurrent.CompletableFuture<>();

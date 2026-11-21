@@ -2740,6 +2740,24 @@ class HireToolTest {
         return at < 0 || at + 1 >= argv.size() ? null : argv.get(at + 1);
     }
 
+    @Test
+    @DisplayName("28h z29: a hire is refused naming the free-memory figure when the machine has less free memory than the floor the setting names; a low floor and a floor of zero let it run")
+    void aHireIsRefusedWhenTheMachineIsOutOfMemory() throws Exception {
+        String floor = "jawata.hire.minFreeMemoryMb";
+        StandsIn refusedProcesses = new StandsIn(host, aBrainThatAnswers());
+        ToolResponse refused = plainToolWithSettings(refusedProcesses, Map.of(floor, "100000000")).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+        ToolResponse lowFloor = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()), Map.of(floor, "1")).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+        ToolResponse switchedOff = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()), Map.of(floor, "0")).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+
+        assertAll(
+            () -> assertFalse(refused.isSuccess(), "a hire was started on a machine with less free memory than the floor"),
+            () -> assertEquals("TOO_LITTLE_MEMORY", refused.getError().getCode()),
+            () -> assertTrue(refused.getError().getMessage().contains("MB"), "the refusal names the memory figure: " + refused.getError().getMessage()),
+            () -> assertTrue(refusedProcesses.asked().isEmpty(), "nothing was started: " + refusedProcesses.asked()),
+            () -> assertFalse("TOO_LITTLE_MEMORY".equals(codeOf(lowFloor)), "CONTROL: a floor of 1 MB refused a hire on a machine that has more"),
+            () -> assertFalse("TOO_LITTLE_MEMORY".equals(codeOf(switchedOff)), "CONTROL: a floor of zero, which switches the check off, refused a hire"));
+    }
+
     private ObjectNode consultantHireArgs() throws Exception {
         ObjectNode args = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
         args.put("hirer", "main");
