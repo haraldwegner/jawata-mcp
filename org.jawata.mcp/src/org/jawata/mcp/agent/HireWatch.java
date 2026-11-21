@@ -306,6 +306,14 @@ final class HireWatch {
         }
     }
 
+    /** The seat brains the Seats page stores, read each time a hire's seat file is read: what the page chose shows on a running card above the seat file's own. */
+    private volatile java.util.function.Supplier<String> seatBrains = () -> "";
+
+    /** Installs the source of the stored seat brains (application wiring); none offered reads as nothing stored. */
+    void useSeatBrains(java.util.function.Supplier<String> stored) {
+        this.seatBrains = stored == null ? () -> "" : stored;
+    }
+
     private void readSeatFile(Live hire) {
         try {
             SeatHire file = SeatHire.read(Files.readString(Path.of(hire.seatFile)));
@@ -316,6 +324,13 @@ final class HireWatch {
                     .map(org.jawata.mcp.execution.Hirer.Brain::model).filter(offered -> !offered.isBlank())
                 : Optional.of(file.model());
             hire.seatCommand = Optional.ofNullable(file.command()).map(command -> "/" + command);
+            // 28h Stage 27 (z14) rule 2: the Seats page's choice for the seat is what the hire runs on, so it is what its card shows while it runs
+            org.jawata.mcp.execution.SeatSettingsService.storedBrainOf(key -> Optional.of(seatBrains.get()), hire.seat).ifPresent(page ->
+                org.jawata.mcp.execution.SeatHire.Brain.named(page[0]).ifPresent(chosen -> {
+                    hire.brain = Optional.of(chosen.name().toLowerCase(Locale.ROOT).replace("_code", ""));
+                    hire.model = page[1] != null ? Optional.of(page[1])
+                        : org.jawata.mcp.execution.Hirer.brainIn(registry.get(), chosen.label()).map(org.jawata.mcp.execution.Hirer.Brain::model).filter(offered -> !offered.isBlank());
+                }));
         } catch (IOException | RuntimeException e) {
             hire.brain = Optional.empty();
             hire.model = Optional.empty();

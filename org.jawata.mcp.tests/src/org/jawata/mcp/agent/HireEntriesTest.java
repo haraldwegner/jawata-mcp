@@ -211,6 +211,24 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27 (z14) rule 2: while a hire runs, its card shows the brain and model the Seats page stores for the seat, above the seat file's own; with nothing stored it shows the seat file's")
+    void aRunningHiresCardShowsTheSeatsPagesChoice(@TempDir java.nio.file.Path dir) throws Exception {
+        HireWatch stored = new HireWatch(now::get);
+        stored.useSeatBrains(() -> "pm=claude-code/Haiku 5.5");
+        HireWatch none = new HireWatch(now::get);
+        java.nio.file.Path file = Files.writeString(dir.resolve("pm.md"), "---\nname: pm\nbrain: cursor\nmodel: gpt-5\n---\n\nbody\n");
+        ObjectNode onThePage = withInput(hireCall("tool_call", "s1", "pending"), "main", "pm", "plan it");
+        ((ObjectNode) onThePage.get("rawInput")).put("seatFile", file.toString());
+        ObjectNode withNothing = withInput(hireCall("tool_call", "s2", "pending"), "main", "pm", "plan it");
+        ((ObjectNode) withNothing.get("rawInput")).put("seatFile", file.toString());
+
+        HireEntry shown = stored.observe(onThePage).orElseThrow();
+        assertEquals(Optional.of("Haiku 5.5"), shown.model(), "the seat file's model was shown above the Seats page's");
+        assertEquals(Optional.of("claude"), shown.brain(), "the seat file's brain was shown above the Seats page's");
+        assertEquals(Optional.of("gpt-5"), none.observe(withNothing).orElseThrow().model(), "CONTROL: with nothing stored the seat file's model is the card's");
+    }
+
+    @Test
     @DisplayName("S17: a hire as Cursor's agent streams it is seen — the call is unnamed at first, a later update names it \"jawata: hire\" with the arguments under rawInput.args, and the echo that ends the call holds no data and does not end the card")
     void aHireAsCursorStreamsItIsSeen() throws Exception {
         ObjectNode first = JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "c1").put("title", "MCP: tool").put("kind", "other").put("status", "pending");

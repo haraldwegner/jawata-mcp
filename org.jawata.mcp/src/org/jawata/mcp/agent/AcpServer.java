@@ -192,6 +192,11 @@ public final class AcpServer {
     /** Where the registry of brains is read from, each time it is asked for; none offered reads as no brains. */
     private volatile Supplier<String> brainRegistry = () -> "";
 
+    /** Installs the source of the seat brains the Seats page stores, which a running hire's card shows above its seat file's own (application wiring). */
+    void offerSeatBrains(Supplier<String> stored) {
+        hires.useSeatBrains(stored);
+    }
+
     /** Installs the source of the model registry that {@code _jawata/brains} serves (application wiring). */
     void offerBrains(Supplier<String> registry) {
         this.brainRegistry = registry == null ? () -> "" : registry;

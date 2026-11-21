@@ -206,6 +206,7 @@ public final class AgentFace implements RoutedFace {
             attached.settings().get("jawata.agent.historyPage").flatMap(AgentFace::positive).ifPresent(server::pageOf);
         }
         server.offerBrains(() -> attached.settings() == null ? "" : attached.settings().get(Hirer.BRAINS_SETTING).orElse(""));
+        server.offerSeatBrains(() -> attached.settings() == null ? "" : attached.settings().get(org.jawata.mcp.engine.SettingKeys.SEATS_BRAINS.name()).orElse(""));
         server.offerCommandTexts(name -> commandText(attached, name));
         return server;
     }
