@@ -2283,6 +2283,40 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h z27: the answer of a hire carries the reasons it gave for full test runs, for the pm that reads it; a hire that gave none has no such field")
+    void aHiresAnswerCarriesTheReasonsItGaveForFullRuns() throws Exception {
+        boolean[] orderTheRun = {true};
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new Tool() {
+            @Override public String getName() {
+                return "compile_workspace";
+            }
+            @Override public String getDescription() {
+                return "a gate fixture that, on the hire's own thread, orders a full test run with a reason when the test asks it to";
+            }
+            @Override public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+            @Override public ToolResponse execute(JsonNode arguments) {
+                if (orderTheRun[0]) {
+                    for (PlanLedger.Pending open : plans.pending()) {
+                        HireRegistry.shared().noteFullRunReason(open.id().value(), "the checkpoint C27 gate");
+                    }
+                }
+                return ToolResponse.success(Map.of("errorCount", 0));
+            }
+        });
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, registry);
+        Map<String, Object> reasoned = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        orderTheRun[0] = false;
+        Map<String, Object> plain = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(List.of("the checkpoint C27 gate"), reasoned.get("fullRunReasons"), "the reason is not in the hire's answer: " + reasoned.keySet()),
+            () -> assertTrue(!plain.containsKey("fullRunReasons"), "CONTROL: a hire that gave no reason has the field: " + plain.get("fullRunReasons")));
+    }
+
+    @Test
     @DisplayName("D4: a later hire of the same seat in the same principal session continues the brain's own session and answers what only the first hire saw")
     void aLaterHireOfTheSameSeatContinuesTheBrainsSession() throws Exception {
         Map<String, Object> program = theStandInAcpProgram();

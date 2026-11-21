@@ -931,6 +931,33 @@ public final class HireRegistry {
         return java.util.OptionalLong.empty();
     }
 
+    /** Keeps the reason a running hire gave for a full test run on that hire's record, for the pm that reads the hire (28h Stage 27, z27); a blank reason or a caller that is no running hire keeps nothing. */
+    public void noteFullRunReason(String callerId, String reason) {
+        if (callerId == null || callerId.isEmpty() || reason == null || reason.isBlank()) {
+            return;
+        }
+        for (Running hire : running) {
+            if (callerId.equals(hire.planId)) {
+                synchronized (fullRunReasons) {
+                    fullRunReasons.computeIfAbsent(callerId, plan -> new java.util.ArrayList<>()).add(reason.strip());
+                    while (fullRunReasons.size() > KEPT) {
+                        fullRunReasons.remove(fullRunReasons.keySet().iterator().next());
+                    }
+                }
+            }
+        }
+    }
+
+    /** The reasons the hire with this plan id gave for full test runs, in the order given, kept after the hire ends so its answer can carry them; none for any other id. */
+    public List<String> fullRunReasonsOf(String planId) {
+        synchronized (fullRunReasons) {
+            return List.copyOf(fullRunReasons.getOrDefault(planId == null ? "" : planId, List.of()));
+        }
+    }
+
+    /** The reasons each hire gave for its full test runs, by plan id; the newest {@value #KEPT} hires are kept (28h Stage 27, z27). */
+    private final java.util.Map<String, List<String>> fullRunReasons = new java.util.LinkedHashMap<>();
+
     /**
      * Tells the subscribers, once for each stretch of quiet, of every running hire that has shown no sign of life for this many seconds or more
      * (28h Stage 27, z28, the first ceiling): the event {@code stalled}, so a card and a lead are told without anything having to ask. A hire that

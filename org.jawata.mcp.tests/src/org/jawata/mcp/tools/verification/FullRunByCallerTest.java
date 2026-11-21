@@ -116,6 +116,29 @@ class FullRunByCallerTest {
             () -> assertTrue("plain text".equals(RunTestsTool.repeatingReason(noData, "any").getData()), "CONTROL: an answer that is not a map was changed"));
     }
 
+    @Test
+    @DisplayName("28h z27: the reason the test manager gave for a full run is kept on that hire's record; a refused full run and a run that is no full run keep none")
+    void theReasonIsKeptOnTheTestManagersHireRecord() throws Exception {
+        CountDownLatch end = new CountDownLatch(1);
+        Thread manager = holdRunning("test-manager", "plan-z27-record-manager", end);
+        Thread developer = holdRunning("developer", "plan-z27-record-developer", end);
+        try {
+            asCaller("plan-z27-record-manager", fullRunOrNot(true, "the checkpoint gate"));
+            asCaller("plan-z27-record-manager", fullRunOrNot(false, "not a full run"));
+            asCaller("plan-z27-record-developer", fullRunOrNot(true, "a developer's argument"));
+
+            org.junit.jupiter.api.Assertions.assertAll(
+                () -> org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of("the checkpoint gate"),
+                    HireRegistry.shared().fullRunReasonsOf("plan-z27-record-manager"), "the reason was not kept on the test manager's hire"),
+                () -> org.junit.jupiter.api.Assertions.assertEquals(java.util.List.of(),
+                    HireRegistry.shared().fullRunReasonsOf("plan-z27-record-developer"), "CONTROL: a refused developer's argument was kept on its hire"));
+        } finally {
+            end.countDown();
+            manager.join(5_000);
+            developer.join(5_000);
+        }
+    }
+
     private ObjectNode scoped(String kind) {
         ObjectNode args = JSON.createObjectNode();
         ObjectNode scope = args.putObject("scope");

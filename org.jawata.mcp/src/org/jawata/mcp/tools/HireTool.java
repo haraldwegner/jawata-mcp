@@ -1027,6 +1027,12 @@ public class HireTool extends NeutralTool {
             bare -> engine.getTool(bare).map(Tool::changesCode), proposal.outcome().toolsOffered());
         List<String> incomplete = incompleteReasons(effects, proposal.outcome(), dialect);
         data.put("toolsCalled", proposal.outcome().toolNames());
+        // WHAT A FULL TEST RUN WAS ARGUED FOR (28h Stage 27, z27): the reasons this hire gave for the full runs it ordered stay on its record for
+        // the pm that reads it; absent when it ordered none.
+        List<String> fullRunReasons = HireRegistry.shared().fullRunReasonsOf(proposal.plan().value());
+        if (!fullRunReasons.isEmpty()) {
+            data.put("fullRunReasons", fullRunReasons);
+        }
         // WHAT THE CLI SAID IT OFFERED, and which of the brain's calls named something else. A call
         // to an unoffered tool is an ATTEMPT the CLI refused, not a call that ran; it is listed here
         // and kept out of the four buckets below, so a refused Write cannot read as a code change.

@@ -118,6 +118,9 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
                 return ToolResponse.error("FULL_RUN_NOT_ALLOWED", refused.get(),
                     "run a class or a method, which runs the tests your change reaches, or ask the test-manager for a full run");
             }
+            // The run is allowed: what it was argued for stays on the hire's own record, where the pm that reads the hire finds it (28h z27).
+            org.jawata.mcp.models.CallerIdentity.serving()
+                .ifPresent(caller -> org.jawata.mcp.execution.HireRegistry.shared().noteFullRunReason(caller.id(), getStringParam(arguments, "reason")));
         }
         if (arguments != null && "package".equals(arguments.path("scope").path("kind").asText(""))) {
             java.util.Optional<String> refused = hirer.refusePackageRun(callerSeat);
