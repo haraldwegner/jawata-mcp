@@ -573,6 +573,18 @@ public class HireTool extends NeutralTool {
                     "choose its brain again in Preferences > jawata > Seats");
             }
             seat = seat.withBrain(stored.get(), sealedRow.model().orElse(null));
+        } else {
+            // 28h Stage 27 (z14): on an engine whose seats are not sealed the Seats page's choice for the seat is the seat's brain and model too,
+            // whichever seat file is named; the file's own brain and model are the default beneath it, never above it.
+            Optional<String[]> page = SeatSettingsService.storedBrainOf(settings.get(), hired);
+            if (page.isPresent()) {
+                Optional<SeatHire.Brain> chosen = SeatHire.Brain.named(page.get()[0]);
+                if (chosen.isEmpty()) {
+                    return ToolResponse.error("INVALID_PARAMETER", "seat '" + hired + "' is set to run on '" + page.get()[0] + "', which is not a brain a hire can start",
+                        "choose its brain again on the Seats page");
+                }
+                seat = seat.withBrain(chosen.get(), page.get()[1]);
+            }
         }
 
         // THE PERSON'S REPLACE (D53 (i)): a hire moved onto another brain in the Agent Control panel runs on that brain this once; the seat file, its

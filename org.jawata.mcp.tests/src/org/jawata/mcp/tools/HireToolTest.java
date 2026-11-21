@@ -2572,6 +2572,62 @@ class HireToolTest {
             () -> assertTrue(String.valueOf(response.getError()).contains("seatFile"), String.valueOf(response.getError())));
     }
 
+    /** The seat of a developer whose file names no brain and no model: the shipped default under whatever the Seats page stores. */
+    private static final String DEVELOPER_SEAT_WITHOUT_BRAIN_OR_MODEL = CATALOGUER_SEAT.replace("model: claude-sonnet-5\n", "").replace("name: cataloguer", "name: developer");
+
+    /** The same developer, whose file names the cursor brain (opted in to its writes) and the model Sonnet. */
+    private static final String DEVELOPER_SEAT_ON_CURSOR = CATALOGUER_SEAT.replace("name: cataloguer", "name: developer\nbrain: cursor\naccepts_uncontained_writes: true")
+        .replace("model: claude-sonnet-5", "model: Sonnet");
+
+    private static Object brainFieldOf(Map<String, Object> answer, String field) {
+        return ((Map<?, ?>) answer.get("brain")).get(field);
+    }
+
+    @Test
+    @DisplayName("z14 rule 1 (a): on an engine whose seats are not sealed, the brain and model the Seats page stores for a seat are the ones a hire of a seat file that names none runs on")
+    void anUnsealedHireRunsOnTheBrainAndModelTheSeatSettingsStore() throws Exception {
+        Map<String, Object> answer = dataOf(toolWithSettings(new StandsIn(host, aBrainThatAnswers()),
+            Map.of(SettingKeys.SEATS_BRAINS.name(), "developer=claude-code/Haiku 5.5")).execute(hireArgs(seatFile(DEVELOPER_SEAT_WITHOUT_BRAIN_OR_MODEL), "developer")));
+
+        assertAll(
+            () -> assertEquals("claude-code", brainFieldOf(answer, "brain"), String.valueOf(answer)),
+            () -> assertEquals("Haiku 5.5", brainFieldOf(answer, "model"), String.valueOf(answer)));
+    }
+
+    @Test
+    @DisplayName("z14 rule 1 (b): the stored brain and model are above the seat file's own: a file naming cursor and Sonnet still runs on what the settings store")
+    void aStoredBrainAndModelAreAboveTheSeatFilesOwn() throws Exception {
+        Map<String, Object> answer = dataOf(toolWithSettings(new StandsIn(host, aBrainThatAnswers()),
+            Map.of(SettingKeys.SEATS_BRAINS.name(), "developer=claude-code/Haiku 5.5")).execute(hireArgs(seatFile(DEVELOPER_SEAT_ON_CURSOR), "developer")));
+
+        assertAll(
+            () -> assertEquals("claude-code", brainFieldOf(answer, "brain"), String.valueOf(answer)),
+            () -> assertEquals("Haiku 5.5", brainFieldOf(answer, "model"), String.valueOf(answer)));
+    }
+
+    @Test
+    @DisplayName("z14 rule 1 (c), the control: with nothing stored a hire runs on exactly what its seat file names")
+    void withNothingStoredAnUnsealedHireRunsOnItsSeatFile() throws Exception {
+        Map<String, Object> answer = dataOf(toolWithSettings(new StandsIn(host, aBrainThatAnswers()), Map.of())
+            .execute(hireArgs(seatFile(DEVELOPER_SEAT_ON_CURSOR), "developer")));
+
+        assertAll(
+            () -> assertEquals("cursor-agent", brainFieldOf(answer, "brain"), String.valueOf(answer)),
+            () -> assertEquals("Sonnet", brainFieldOf(answer, "model"), String.valueOf(answer)));
+    }
+
+    @Test
+    @DisplayName("z14 rule 1 (d): a brain stored for the seat that is not a brain a hire can start refuses the hire INVALID_PARAMETER and starts nothing")
+    void aStoredBrainNoHireCanStartIsRefusedOnAnUnsealedEngine() throws Exception {
+        ToolResponse refused = toolWithSettings(aHostThatMustNotSpawn(), Map.of(SettingKeys.SEATS_BRAINS.name(), "developer=nonsense"))
+            .execute(hireArgs(seatFile(DEVELOPER_SEAT_WITHOUT_BRAIN_OR_MODEL), "developer"));
+
+        assertAll(
+            () -> assertFalse(refused.isSuccess(), "a hire ran on a brain the settings store that no hire can start"),
+            () -> assertTrue(String.valueOf(refused.getError()).contains("INVALID_PARAMETER"), String.valueOf(refused.getError())),
+            () -> assertTrue(String.valueOf(refused.getError()).contains("nonsense"), String.valueOf(refused.getError())));
+    }
+
     /** A hire tool that runs the hire to its end, whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new Finishing(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),

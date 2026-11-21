@@ -315,6 +315,26 @@ public final class SeatSettingsService implements SeatSettings {
         return loaded.refused() ? Optional.of("the engine would refuse this tree: " + String.join("; ", loaded.refusals())) : Optional.empty();
     }
 
+    /**
+     * The brain and model the Seats page stores for a seat, as written there (28h z14): the brain's name, and the model or null when the entry names
+     * none. The brain is not checked here, so the one who hires can refuse a stored brain no hire can start by name instead of running on another.
+     *
+     * @param settings the engine's settings, which hold what the Seats page stored
+     * @param seat     the seat's name
+     * @return the stored brain and model, or none when nothing is stored for the seat
+     */
+    public static Optional<String[]> storedBrainOf(EngineSettings settings, String seat) {
+        for (String entry : settings.get(SettingKeys.SEATS_BRAINS.name()).orElse("").split(";")) {
+            int equals = entry.indexOf('=');
+            if (equals > 0 && entry.substring(0, equals).strip().equals(seat)) {
+                String[] brainAndModel = entry.substring(equals + 1).split("/", 2);
+                boolean named = brainAndModel.length > 1 && !brainAndModel[1].isBlank();
+                return Optional.of(new String[] {brainAndModel[0].strip(), named ? brainAndModel[1].strip() : null});
+            }
+        }
+        return Optional.empty();
+    }
+
     private String stored(String key) {
         return settings.get(key).orElse("");
     }
