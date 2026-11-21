@@ -109,14 +109,21 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
      */
     @Override
     public ToolResponse execute(JsonNode arguments) {
+        org.jawata.mcp.execution.Hirer hirer = new org.jawata.mcp.execution.Hirer(org.jawata.mcp.execution.SeatTree.standard(), Map.of(), java.util.Set.of());
+        java.util.Optional<String> callerSeat = org.jawata.mcp.models.CallerIdentity.serving()
+            .flatMap(caller -> org.jawata.mcp.execution.HireRegistry.shared().seatOfCaller(caller.id()));
         if (arguments != null && arguments.path("fullRun").asBoolean(false)) {
-            java.util.Optional<String> refused = new org.jawata.mcp.execution.Hirer(org.jawata.mcp.execution.SeatTree.standard(), Map.of(), java.util.Set.of())
-                .refuseFullRun(org.jawata.mcp.models.CallerIdentity.serving()
-                    .flatMap(caller -> org.jawata.mcp.execution.HireRegistry.shared().seatOfCaller(caller.id())),
-                    getStringParam(arguments, "reason"));
+            java.util.Optional<String> refused = hirer.refuseFullRun(callerSeat, getStringParam(arguments, "reason"));
             if (refused.isPresent()) {
                 return ToolResponse.error("FULL_RUN_NOT_ALLOWED", refused.get(),
-                    "run a class or a package without fullRun, which runs the tests your change reaches, or ask the test-manager for a full run");
+                    "run a class or a method, which runs the tests your change reaches, or ask the test-manager for a full run");
+            }
+        }
+        if (arguments != null && "package".equals(arguments.path("scope").path("kind").asText(""))) {
+            java.util.Optional<String> refused = hirer.refusePackageRun(callerSeat);
+            if (refused.isPresent()) {
+                return ToolResponse.error("PACKAGE_RUN_NOT_ALLOWED", refused.get(),
+                    "run the class or the method your change reaches, or ask the test-manager to run the package");
             }
         }
         return super.execute(arguments);

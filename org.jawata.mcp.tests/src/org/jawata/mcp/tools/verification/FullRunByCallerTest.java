@@ -99,4 +99,55 @@ class FullRunByCallerTest {
             manager.join(5_000);
         }
     }
+
+    private ObjectNode scoped(String kind) {
+        ObjectNode args = JSON.createObjectNode();
+        ObjectNode scope = args.putObject("scope");
+        scope.put("kind", kind);
+        if ("package".equals(kind)) {
+            scope.put("packageName", "com.example.z27");
+        } else {
+            scope.put("typeName", "com.example.z27.SomeTest");
+        }
+        return args;
+    }
+
+    private static boolean refusedAsAPackageRun(ToolResponse response) {
+        return !response.isSuccess() && String.valueOf(response.getError().getMessage()).contains("package-wide test run");
+    }
+
+    @Test
+    @DisplayName("28h z27: a package-wide run from a developer's, a chief engineer's or a pm's session is refused naming the seat; the test manager, the test writer, a class run by the developer and a caller nobody knows are not")
+    void aPackageRunIsForTheTestersOnly() throws Exception {
+        CountDownLatch end = new CountDownLatch(1);
+        Thread developer = holdRunning("developer", "plan-z27p-developer", end);
+        Thread chief = holdRunning("chief-engineer", "plan-z27p-chief", end);
+        Thread pm = holdRunning("pm", "plan-z27p-pm", end);
+        Thread manager = holdRunning("test-manager", "plan-z27p-manager", end);
+        Thread writer = holdRunning("test-writer", "plan-z27p-writer", end);
+        try {
+            ToolResponse byDeveloper = asCaller("plan-z27p-developer", scoped("package"));
+            ToolResponse byChief = asCaller("plan-z27p-chief", scoped("package"));
+            ToolResponse byPm = asCaller("plan-z27p-pm", scoped("package"));
+            ToolResponse byManager = asCaller("plan-z27p-manager", scoped("package"));
+            ToolResponse byWriter = asCaller("plan-z27p-writer", scoped("package"));
+            ToolResponse classByDeveloper = asCaller("plan-z27p-developer", scoped("class"));
+            ToolResponse stranger = asCaller("z27p-nobody-registered", scoped("package"));
+
+            assertAll(
+                () -> assertTrue(refusedAsAPackageRun(byDeveloper), "a developer's session was let run a package: " + byDeveloper.getError()),
+                () -> assertTrue(String.valueOf(byDeveloper.getError().getMessage()).contains("developer"), "the refusal names the calling seat"),
+                () -> assertTrue(refusedAsAPackageRun(byChief), "a chief engineer's session was let run a package: " + byChief.getError()),
+                () -> assertTrue(refusedAsAPackageRun(byPm), "a pm's session was let run a package: " + byPm.getError()),
+                () -> assertFalse(refusedAsAPackageRun(byManager), "CONTROL: the test manager's package run was refused by this rule"),
+                () -> assertFalse(refusedAsAPackageRun(byWriter), "CONTROL: the test writer's package run was refused by this rule"),
+                () -> assertFalse(refusedAsAPackageRun(classByDeveloper), "CONTROL: a developer's class run was refused by this rule"),
+                () -> assertFalse(refusedAsAPackageRun(stranger), "CONTROL: a caller nobody registered was refused by this rule"));
+        } finally {
+            end.countDown();
+            for (Thread held : new Thread[] {developer, chief, pm, manager, writer}) {
+                held.join(5_000);
+            }
+        }
+    }
 }
