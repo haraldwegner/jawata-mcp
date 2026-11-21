@@ -124,4 +124,25 @@ class HireWaitToolTest {
             () -> assertEquals(Boolean.FALSE, again.get("newToYou"), "the second read of the same report was marked new again"),
             () -> assertEquals(List.of(), hires.undeliveredFor(""), "the chat would still hand over a report the tool already gave"));
     }
+
+    @Test
+    @DisplayName("28h z30: a report the chat already took is handed over by the tool as not new, so it is never told twice from the other side either")
+    void aReportTheChatAlreadyTookIsNotNewToTheTool() throws Exception {
+        String plan = "plan-z30-chat-first";
+        hires.nextHireIsBackground();
+        try (HireRegistry.Registration hire = hires.begin("developer", "z30 chat first", "")) {
+            hires.planOpened(plan);
+        }
+        JsonNode answer = JSON.createObjectNode().put("plan", plan).put("name", "Yan").put("result", "done");
+        hires.record("developer", "z30 chat first", answer);
+        List<HireRegistry.Event> waiting = hires.undeliveredFor("");
+        assertEquals(1, waiting.size(), "CONTROL: the report was not waiting for the chat before it took it: " + waiting);
+        hires.markDelivered(waiting.get(0));
+
+        Map<String, Object> asked = dataOf(ask(plan, 0));
+
+        assertAll(
+            () -> assertEquals("finished", asked.get("state"), String.valueOf(asked)),
+            () -> assertEquals(Boolean.FALSE, asked.get("newToYou"), "a report the chat had already taken was marked new to the tool: " + asked));
+    }
 }

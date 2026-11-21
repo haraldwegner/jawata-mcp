@@ -362,7 +362,11 @@ public class HireTool extends NeutralTool {
 
     private static final long DEFAULT_MIN_FREE_MEMORY_MB = 1024;
 
-    /** The memory the machine can still give a new process, in MB: /proc/meminfo's MemAvailable where there is one, else the JVM's free physical figure; none when neither says. */
+    /**
+     * The memory the machine can still give a new process, in MB: /proc/meminfo's MemAvailable; none where there is no such file, so off Linux
+     * nothing is checked and the hire is admitted. The JVM's own free-memory figure is not used as a stand-in: on macOS it counts only the
+     * truly free pages and leaves out the cache the system gives back, so it would refuse hires on a machine with plenty to give.
+     */
     private static java.util.OptionalLong availableMemoryMb() {
         try {
             for (String line : java.nio.file.Files.readAllLines(Path.of("/proc/meminfo"))) {
@@ -371,10 +375,7 @@ public class HireTool extends NeutralTool {
                 }
             }
         } catch (java.io.IOException | RuntimeException notLinux) {
-            // fall through to the JVM's own figure
-        }
-        if (java.lang.management.ManagementFactory.getOperatingSystemMXBean() instanceof com.sun.management.OperatingSystemMXBean machine) {
-            return java.util.OptionalLong.of(machine.getFreeMemorySize() / (1024 * 1024));
+            // no figure: the check is skipped
         }
         return java.util.OptionalLong.empty();
     }
