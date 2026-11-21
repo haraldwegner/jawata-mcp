@@ -3,12 +3,17 @@ package org.jawata.resident.workspace;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
+import org.eclipse.jdt.core.IClasspathEntry;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IJavaProject;
@@ -467,5 +472,80 @@ class JdtServiceImplTest {
         // Workspace queries still delegate.
         assertEquals(service.allProjects().size(), scoped.allProjects().size());
         assertEquals(service.defaultProjectKey(), scoped.defaultProjectKey());
+    }
+
+    // ========== reresolveWorkspace re-derives the library entries (z19) ==========
+
+    /** A copy of the plain-eclipse fixture whose one library is lib/dep-1.0.jar, named by its .classpath. */
+    private Path projectWithLibrary(String name) throws Exception {
+        Path root = helper.copyFixtureAs("plain-eclipse", name);
+        Files.move(root.resolve("lib/example-lib.jar"), root.resolve("lib/dep-1.0.jar"));
+        renameLibraryInClasspath(root, "lib/example-lib.jar", "lib/dep-1.0.jar");
+        return root;
+    }
+
+    private static void renameLibraryInClasspath(Path root, String from, String to) throws Exception {
+        Path classpathFile = root.resolve(".classpath");
+        Files.writeString(classpathFile, Files.readString(classpathFile).replace(from, to));
+    }
+
+    private static List<String> libraryPaths(LoadedProject project) throws Exception {
+        List<String> paths = new ArrayList<>();
+        for (IClasspathEntry entry : project.javaProject().getRawClasspath()) {
+            if (entry.getEntryKind() == IClasspathEntry.CPE_LIBRARY) {
+                paths.add(entry.getPath().toOSString());
+            }
+        }
+        return paths;
+    }
+
+    private static List<String> buildPath(LoadedProject project) throws Exception {
+        List<String> entries = new ArrayList<>();
+        for (IClasspathEntry entry : project.javaProject().getRawClasspath()) {
+            entries.add(entry.getEntryKind() + " " + entry.getPath().toOSString() + " " + entry.isExported());
+        }
+        return entries;
+    }
+
+    @Test
+    @DisplayName("reresolveWorkspace puts a replaced library jar's new version on the build path and takes the old one off")
+    void reresolveWorkspace_swapsAReplacedLibraryJar() throws Exception {
+        Path root = projectWithLibrary("lib-swap");
+        LoadedProject loaded = service.addProject(root);
+        Path oldJar = root.resolve("lib/dep-1.0.jar");
+        Path newJar = root.resolve("lib/dep-2.0.jar");
+        assertTrue(libraryPaths(loaded).contains(oldJar.toString()), "precondition: the old jar is on the build path");
+
+        Files.move(oldJar, newJar);
+        renameLibraryInClasspath(root, "lib/dep-1.0.jar", "lib/dep-2.0.jar");
+        service.reresolveWorkspace();
+
+        List<String> after = libraryPaths(service.getProject(loaded.projectKey()).orElseThrow());
+        assertTrue(after.contains(newJar.toString()), "the new jar is on the build path: " + after);
+        assertFalse(after.contains(oldJar.toString()), "the old jar is no longer on the build path: " + after);
+    }
+
+    @Test
+    @DisplayName("reresolveWorkspace with nothing changed on disk leaves the build path exactly as it was")
+    void reresolveWorkspace_nothingChangedLeavesTheBuildPath() throws Exception {
+        LoadedProject loaded = service.addProject(projectWithLibrary("lib-same"));
+        List<String> before = buildPath(loaded);
+
+        service.reresolveWorkspace();
+
+        assertEquals(before, buildPath(service.getProject(loaded.projectKey()).orElseThrow()));
+    }
+
+    @Test
+    @DisplayName("reresolveWorkspace keeps a project's cached entries when its build file is gone, and does not throw")
+    void reresolveWorkspace_keepsCachedEntriesWhenTheBuildFileIsGone() throws Exception {
+        Path root = projectWithLibrary("lib-gone");
+        LoadedProject loaded = service.addProject(root);
+        List<String> before = buildPath(loaded);
+        Files.delete(root.resolve(".classpath"));
+
+        assertDoesNotThrow(() -> service.reresolveWorkspace());
+
+        assertEquals(before, buildPath(service.getProject(loaded.projectKey()).orElseThrow()));
     }
 }
