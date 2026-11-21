@@ -425,17 +425,14 @@ public class HireTool extends NeutralTool {
     /** How long a call waits for a hire to open its plan before it gives up: opening a plan is quick, and nothing in it waits for a brain. */
     private static final long OPENS_WITHIN_SECONDS = 30;
 
-    /** The engine's own threads that run hires started in the background; they end when the engine does. */
-    private static final java.util.concurrent.ExecutorService HIRES = java.util.concurrent.Executors.newCachedThreadPool(new java.util.concurrent.ThreadFactory() {
-        private final java.util.concurrent.atomic.AtomicInteger count = new java.util.concurrent.atomic.AtomicInteger();
-
-        @Override
-        public Thread newThread(Runnable job) {
-            Thread thread = new Thread(job, "jawata-hire-" + count.incrementAndGet());
-            thread.setDaemon(true);
-            return thread;
-        }
-    });
+    /**
+     * The engine's own threads that run hires started in the background (28h Stage 27, z28): virtual threads, because a hire spends nearly all its
+     * time waiting on its agent process and a platform thread each is a thread paid for to wait. A virtual thread is a daemon and ends with the
+     * engine, keeps a thread's identity, so the registry's maps keyed by {@code Thread} and {@code interrupt} work as they did, and carries its own
+     * thread-locals, so the caller's identity set on it is its own.
+     */
+    private static final java.util.concurrent.ExecutorService HIRES = java.util.concurrent.Executors.newThreadPerTaskExecutor(
+        Thread.ofVirtual().name("jawata-hire-", 1).factory());
 
     /**
      * Runs the hire on one of the engine's threads and answers once its plan is open, with the hire's identity and no result: the hire's plan id, its

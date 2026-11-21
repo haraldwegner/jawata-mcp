@@ -2811,6 +2811,29 @@ class HireToolTest {
                 "the answer does not say to call hire_wait with the hireId: " + answer));
     }
 
+    @Test
+    @DisplayName("28h z28: a hire the tool starts in the background runs on a virtual thread of the engine, not on a platform thread of a pool, so many hires waiting on their agent processes cost no thread each")
+    void aHireRunsOnAVirtualThread() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<Thread> hireThread = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.CountDownLatch started = new java.util.concurrent.CountDownLatch(1);
+        Runnable unsubscribe = org.jawata.mcp.execution.HireRegistry.shared().subscribe(event -> {
+            if ("started".equals(event.kind()) && "cataloguer".equals(event.seat()) && hireThread.compareAndSet(null, Thread.currentThread())) {
+                started.countDown();
+            }
+        });
+        try {
+            ToolResponse response = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()), Map.of()).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+
+            assertAll(
+                () -> assertTrue(response.isSuccess(), String.valueOf(response.getError())),
+                () -> assertTrue(started.await(10, java.util.concurrent.TimeUnit.SECONDS), "the hire never announced that it started"),
+                () -> assertTrue(hireThread.get() != null && hireThread.get() != Thread.currentThread(), "the hire ran on the calling thread"),
+                () -> assertTrue(hireThread.get() != null && hireThread.get().isVirtual(), "the hire ran on a platform thread: " + hireThread.get()));
+        } finally {
+            unsubscribe.run();
+        }
+    }
+
     private ObjectNode consultantHireArgs() throws Exception {
         ObjectNode args = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
         args.put("hirer", "main");
