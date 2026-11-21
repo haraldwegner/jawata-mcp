@@ -107,8 +107,10 @@ class HireWaitToolTest {
     @DisplayName("28h z30: a finished hire's report is handed over, new the first time and marked read, so the chat does not hand it over again; asking again answers the same report as not new")
     void aFinishedReportIsHandedOverOnce() throws Exception {
         String plan = "plan-z30-finished";
+        // A chat id of this test's own: the reports every other test leaves unread under the empty id are not this test's to count.
+        String chat = "z30-chat-once";
         hires.nextHireIsBackground();
-        try (HireRegistry.Registration hire = hires.begin("developer", "z30 finished", "")) {
+        try (HireRegistry.Registration hire = hires.begin("developer", "z30 finished", chat)) {
             hires.planOpened(plan);
         }
         JsonNode answer = JSON.createObjectNode().put("plan", plan).put("name", "Zed").put("result", "done");
@@ -122,20 +124,21 @@ class HireWaitToolTest {
             () -> assertEquals(answer, JSON.valueToTree(first.get("report")), "the report is not the hire's answer"),
             () -> assertEquals(Boolean.TRUE, first.get("newToYou"), "the first read was not marked new"),
             () -> assertEquals(Boolean.FALSE, again.get("newToYou"), "the second read of the same report was marked new again"),
-            () -> assertEquals(List.of(), hires.undeliveredFor(""), "the chat would still hand over a report the tool already gave"));
+            () -> assertEquals(List.of(), hires.undeliveredFor(chat), "the chat would still hand over a report the tool already gave"));
     }
 
     @Test
     @DisplayName("28h z30: a report the chat already took is handed over by the tool as not new, so it is never told twice from the other side either")
     void aReportTheChatAlreadyTookIsNotNewToTheTool() throws Exception {
         String plan = "plan-z30-chat-first";
+        String chat = "z30-chat-first";
         hires.nextHireIsBackground();
-        try (HireRegistry.Registration hire = hires.begin("developer", "z30 chat first", "")) {
+        try (HireRegistry.Registration hire = hires.begin("developer", "z30 chat first", chat)) {
             hires.planOpened(plan);
         }
         JsonNode answer = JSON.createObjectNode().put("plan", plan).put("name", "Yan").put("result", "done");
         hires.record("developer", "z30 chat first", answer);
-        List<HireRegistry.Event> waiting = hires.undeliveredFor("");
+        List<HireRegistry.Event> waiting = hires.undeliveredFor(chat);
         assertEquals(1, waiting.size(), "CONTROL: the report was not waiting for the chat before it took it: " + waiting);
         hires.markDelivered(waiting.get(0));
 

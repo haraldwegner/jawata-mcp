@@ -2835,11 +2835,15 @@ class HireToolTest {
         ToolResponse lowFloor = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()), Map.of(floor, "1")).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
         ToolResponse switchedOff = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()), Map.of(floor, "0")).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
 
+        // The figure is read from /proc/meminfo only (the release notes say so): a machine that cannot say how much it has free, such as macOS,
+        // admits the hire, and that is what is asserted there; the refusal is asserted where the figure exists.
+        boolean machineSaysHowMuchIsFree = org.jawata.mcp.execution.MachineMemory.availableMb().isPresent();
+
         assertAll(
-            () -> assertFalse(refused.isSuccess(), "a hire was started on a machine with less free memory than the floor"),
-            () -> assertEquals("TOO_LITTLE_MEMORY", refused.getError().getCode()),
-            () -> assertTrue(refused.getError().getMessage().contains("MB"), "the refusal names the memory figure: " + refused.getError().getMessage()),
-            () -> assertTrue(refusedProcesses.asked().isEmpty(), "nothing was started: " + refusedProcesses.asked()),
+            () -> assertEquals(machineSaysHowMuchIsFree, !refused.isSuccess() && "TOO_LITTLE_MEMORY".equals(refused.getError().getCode()),
+                "a machine that reports its free memory must refuse a hire below the floor, and one that cannot must admit it: " + codeOf(refused)),
+            () -> assertTrue(!machineSaysHowMuchIsFree || refused.getError().getMessage().contains("MB"), "the refusal names the memory figure: " + refused.getError()),
+            () -> assertEquals(!machineSaysHowMuchIsFree, !refusedProcesses.asked().isEmpty(), "a hire was started, or not, against what the machine can report: " + refusedProcesses.asked()),
             () -> assertFalse("TOO_LITTLE_MEMORY".equals(codeOf(lowFloor)), "CONTROL: a floor of 1 MB refused a hire on a machine that has more"),
             () -> assertFalse("TOO_LITTLE_MEMORY".equals(codeOf(switchedOff)), "CONTROL: a floor of zero, which switches the check off, refused a hire"));
     }
