@@ -11,7 +11,6 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.jawata.mcp.execution.ForkedTestRunner;
 import org.jawata.mcp.models.ResponseMeta;
 import org.jawata.mcp.models.ToolResponse;
-import org.jawata.mcp.tools.junit.JUnitLaunchHelper;
 import org.jawata.spi.lang.LoadedWorkspace;
 import org.jawata.spi.lang.RunnerSpec;
 import org.jawata.spi.lang.TestRuntime;
@@ -102,6 +101,25 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
     @Override
     public String getName() {
         return "run_tests";
+    }
+
+    /**
+     * A full run is the test manager's decision (28h Stage 27, z27): asked of the seat the engine knows the caller to be, before the call needs any
+     * workspace, so a developer's session that pins the whole scope is refused and told to run the tests its change reaches.
+     */
+    @Override
+    public ToolResponse execute(JsonNode arguments) {
+        if (arguments != null && arguments.path("fullRun").asBoolean(false)) {
+            java.util.Optional<String> refused = new org.jawata.mcp.execution.Hirer(org.jawata.mcp.execution.SeatTree.standard(), Map.of(), java.util.Set.of())
+                .refuseFullRun(org.jawata.mcp.models.CallerIdentity.serving()
+                    .flatMap(caller -> org.jawata.mcp.execution.HireRegistry.shared().seatOfCaller(caller.id())),
+                    getStringParam(arguments, "reason"));
+            if (refused.isPresent()) {
+                return ToolResponse.error("FULL_RUN_NOT_ALLOWED", refused.get(),
+                    "run a class or a package without fullRun, which runs the tests your change reaches, or ask the test-manager for a full run");
+            }
+        }
+        return super.execute(arguments);
     }
 
     /**
@@ -289,7 +307,12 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
                 + "true where the whole scope is the point: a checkpoint, a release gate. "
                 + "Where the evidence cannot prove the narrowing is safe the response SAYS "
                 + "SO and everything runs anyway, so a quiet short run is not a state this "
-                + "can reach."));
+                + "can reach. Only the test-manager seat may pass it (a developer runs the "
+                + "tests its change reaches), and it gives a reason."));
+        properties.put("reason", Map.of("type", "string",
+            "description", "fullRun only: why the whole scope is run now, for the pm the test-manager "
+                + "answers to to weigh against what a full run costs the machine. Required from the "
+                + "test-manager seat when fullRun is true."));
         properties.put("evidenceKind", Map.of("type", "string",
             "enum", List.of("unit", "integration", "system", "replay", "manual"),
             "description", "Evidence classification recorded in the coverage artifact "

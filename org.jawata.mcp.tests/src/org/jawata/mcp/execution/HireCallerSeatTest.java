@@ -50,4 +50,18 @@ class HireCallerSeatTest {
             () -> assertEquals(Optional.empty(), HIRER.refuseClaim("Main", Optional.of("main")), "CONTROL: a spelling that differs only in case was refused"),
             () -> assertEquals(Optional.empty(), HIRER.refuseClaim("chief-engineer", Optional.empty()), "CONTROL: a caller the registry does not know was refused"));
     }
+
+    @Test
+    @DisplayName("28h z27: a full test run is refused for a known seat that is not the test manager, and for the test manager with no reason; the test manager with a reason and a caller nobody knows pass")
+    void aFullRunIsTheTestManagersDecision() {
+        Optional<String> byDeveloper = HIRER.refuseFullRun(Optional.of("developer"), "all of it");
+        Optional<String> noReason = HIRER.refuseFullRun(Optional.of("test-manager"), "  ");
+
+        assertAll(
+            () -> assertTrue(byDeveloper.orElse("").contains("developer") && byDeveloper.orElse("").contains("test-manager"),
+                "a developer was let order a full run, or the refusal names neither seat: " + byDeveloper),
+            () -> assertTrue(noReason.orElse("").contains("reason"), "the test manager ordered a full run with no reason: " + noReason),
+            () -> assertEquals(Optional.empty(), HIRER.refuseFullRun(Optional.of("test-manager"), "the checkpoint C27 gate"), "CONTROL: the test manager's reasoned full run was refused"),
+            () -> assertEquals(Optional.empty(), HIRER.refuseFullRun(Optional.empty(), null), "CONTROL: a caller nobody knows, such as the person's own run, was refused"));
+    }
 }

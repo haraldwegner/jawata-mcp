@@ -2334,7 +2334,7 @@
      "type": "string"
     },
     "fullRun": {
-     "description": "PIN the whole scope. A kind='package' run otherwise narrows ITSELF to the tests the coverage evidence says your changes reach \u2014 by default, on every client and OS, with no flag to remember. Pass this true where the whole scope is the point: a checkpoint, a release gate. Where the evidence cannot prove the narrowing is safe the response SAYS SO and everything runs anyway, so a quiet short run is not a state this can reach.",
+     "description": "PIN the whole scope. A kind='package' run otherwise narrows ITSELF to the tests the coverage evidence says your changes reach \u2014 by default, on every client and OS, with no flag to remember. Pass this true where the whole scope is the point: a checkpoint, a release gate. Where the evidence cannot prove the narrowing is safe the response SAYS SO and everything runs anyway, so a quiet short run is not a state this can reach. Only the test-manager seat may pass it (a developer runs the tests its change reaches), and it gives a reason.",
      "type": "boolean"
     },
     "lineThresholdPercent": {
@@ -2359,6 +2359,10 @@
     },
     "range": {
      "description": "Commit range for diff=range, e.g. 'HEAD~1..HEAD'.",
+     "type": "string"
+    },
+    "reason": {
+     "description": "fullRun only: why the whole scope is run now, for the pm the test-manager answers to to weigh against what a full run costs the machine. Required from the test-manager seat when fullRun is true.",
      "type": "string"
     },
     "scope": {

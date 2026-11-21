@@ -197,4 +197,22 @@ public final class Hirer {
         }
         return Optional.of("the call says it is hired by " + claimed + ", but it is made by " + actual.get() + "; a hire is made as the seat that makes it");
     }
+
+    /**
+     * Whether a call may order a full test run (28h Stage 27, z27): a developer runs the tests its change reaches and a whole run costs the machine,
+     * so only the test manager orders one, and says why, so the pm it answers to can weigh the cost. A caller whose seat the engine does not know,
+     * such as the person's own run or a script, is not refused, for the same reason {@link #refuseClaim} does not refuse it.
+     */
+    public Optional<String> refuseFullRun(Optional<String> callerSeat, String reason) {
+        if (callerSeat.isEmpty()) {
+            return Optional.empty();
+        }
+        if (!"test-manager".equals(callerSeat.get())) {
+            return Optional.of("a full test run is the test-manager's decision, and this call is made by " + callerSeat.get()
+                + "; run the tests your change reaches, or ask the test-manager for a full run");
+        }
+        return reason == null || reason.isBlank()
+            ? Optional.of("a full test run costs the machine, so the test manager gives a reason (the reason argument) that the pm can weigh")
+            : Optional.empty();
+    }
 }
