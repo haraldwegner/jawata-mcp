@@ -192,6 +192,14 @@ public final class AcpServer {
     /** Where the registry of brains is read from, each time it is asked for; none offered reads as no brains. */
     private volatile Supplier<String> brainRegistry = () -> "";
 
+    /** What lists the models a brain offers, asked for each brain of the brains answer; none offered lists none. */
+    private volatile java.util.function.Function<String, List<String>> modelsOf = brain -> List.of();
+
+    /** Installs what lists a brain's models (application wiring), so the Agent Control menu can offer each one. */
+    void offerModels(java.util.function.Function<String, List<String>> models) {
+        this.modelsOf = models == null ? brain -> List.of() : models;
+    }
+
     /** Installs the source of the seat brains the Seats page stores, which a running hire's card shows above its seat file's own (application wiring). */
     void offerSeatBrains(Supplier<String> stored) {
         hires.useSeatBrains(stored);
@@ -210,10 +218,18 @@ public final class AcpServer {
         ObjectNode result = JSON.createObjectNode();
         ArrayNode brains = result.putArray("brains");
         Hirer.brainsIn(brainRegistry.get()).forEach((name, brain) -> {
-            ObjectNode row = brains.addObject();
-            row.put("brain", name);
-            row.put("vendor", brain.vendor());
-            row.put("model", brain.model());
+            // 28h Stage 27 (z14) rule 3: each model the brain offers is its own row, so the menu offers them; a brain whose models cannot be
+            // listed keeps the registry's one row
+            List<String> offered;
+            try {
+                offered = modelsOf.apply(name);
+            } catch (RuntimeException cannotList) {
+                offered = List.of();
+            }
+            if (offered.isEmpty()) {
+                brains.addObject().put("brain", name).put("vendor", brain.vendor()).put("model", brain.model());
+            }
+            offered.forEach(model -> brains.addObject().put("brain", name).put("vendor", brain.vendor()).put("model", model));
         });
         return result;
     }

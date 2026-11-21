@@ -54,6 +54,25 @@ class AgentControlBrainsTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27 (z14) rule 3: where the engine can list a brain's models, each is its own row of that brain; a brain it lists none for keeps the registry's one row")
+    void eachModelABrainOffersIsItsOwnRow() {
+        List<JsonNode> said = new ArrayList<>();
+        AcpServer server = new AcpServer((prompt, chunks) -> chunks.accept("x"), List::of, message -> said.add(JSON.valueToTree(message)),
+            TurnBoundary.open(), AgentRecorder.off(), null);
+        server.offerBrains(() -> REGISTRY);
+        server.offerModels(brain -> brain.equals("claude-code") ? List.of("Haiku 5.5", "Sonnet 5.5") : List.of());
+        server.receive(JsonRpcMessage.request(7, "_jawata/brains", JSON.createObjectNode()));
+        JsonNode brains = said.stream().filter(m -> m.path("id").asInt() == 7).findFirst().orElseThrow().path("result").path("brains");
+
+        assertEquals(4, brains.size(), brains.toString());
+        assertEquals("claude-code", brains.get(0).path("brain").asText());
+        assertEquals("Haiku 5.5", brains.get(0).path("model").asText());
+        assertEquals("claude-code", brains.get(1).path("brain").asText());
+        assertEquals("Sonnet 5.5", brains.get(1).path("model").asText());
+        assertEquals("gpt-5", brains.get(2).path("model").asText(), "CONTROL: a brain with no listed models keeps the registry's model");
+    }
+
+    @Test
     @DisplayName("a brain the registry names without a vendor or model is served with them blank, never invented")
     void aBrainWithoutAModelIsServedBlank() {
         JsonNode bare = brainsAnswer(REGISTRY).path("result").path("brains").get(2);

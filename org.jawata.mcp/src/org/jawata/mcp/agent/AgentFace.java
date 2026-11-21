@@ -207,6 +207,8 @@ public final class AgentFace implements RoutedFace {
         }
         server.offerBrains(() -> attached.settings() == null ? "" : attached.settings().get(Hirer.BRAINS_SETTING).orElse(""));
         server.offerSeatBrains(() -> attached.settings() == null ? "" : attached.settings().get(org.jawata.mcp.engine.SettingKeys.SEATS_BRAINS.name()).orElse(""));
+        server.offerModels(offeredBrain -> attached.settings() == null ? java.util.List.of()
+            : org.jawata.mcp.execution.SeatSettingsService.sealed(attached.settings(), attached.tools()).conversationModels(offeredBrain));
         server.offerCommandTexts(name -> commandText(attached, name));
         return server;
     }
