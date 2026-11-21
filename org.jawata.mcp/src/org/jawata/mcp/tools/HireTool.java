@@ -750,6 +750,13 @@ public class HireTool extends NeutralTool {
         Optional<String> principalSession = call.getServing()
             .filter(caller -> caller.origin() == org.jawata.mcp.models.CallerIdentity.Origin.CLIENT_SUPPLIED)
             .map(org.jawata.mcp.models.CallerIdentity::id);
+        // 28h Stage 27 (z26): a pm runs one sprint plan, so a pm hire names it. Without a plan file there is nothing to hold a second pm to, and a pm
+        // would start for a few fixes outside any sprint, which is the slicing the chief engineer does.
+        String namedPlanFile = getStringParam(call.getArguments(), "boardFile");
+        if ("pm".equals(hired) && (namedPlanFile == null || namedPlanFile.isBlank())) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", "a pm hire names the sprint plan it runs: pass boardFile, the sprint's ...-plan.md",
+                "a few fixes outside a sprint plan go to the chief engineer, not to a pm");
+        }
         // While the brain runs this hire can be stopped from the Agent Control panel (S9): the panel's stop interrupts this thread, which ends the
         // run the way any interruption does, and the answer says the person stopped it. The hire is registered before the run is built because
         // registering gives it its first name (Stage 24, D55), which the run writes into its journal row.

@@ -743,6 +743,31 @@ class HireToolTest {
         }
     }
 
+    @Test
+    @DisplayName("28h z26: a pm hired with no plan file is refused saying to name one, so no pm starts for a few fixes outside a sprint plan; a pm that names one and a developer that does not are not refused for it")
+    void aPmWithNoPlanFileIsRefused() throws Exception {
+        String pmSeat = CATALOGUER_SEAT.replace("name: cataloguer", "name: pm");
+        ObjectNode none = (ObjectNode) hireArgs(seatFile(pmSeat), "pm");
+        none.put("hirer", "main");
+        StandsIn started = new StandsIn(host, aBrainThatAnswers());
+        ToolResponse refused = toolWith(started, events, aRegistryWithACleanGate()).execute(none);
+
+        ObjectNode named = (ObjectNode) hireArgs(seatFile(pmSeat), "pm");
+        named.put("hirer", "main").put("boardFile", dir.resolve("z26-named-sprint-plan.md").toString());
+        ToolResponse withPlanFile = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(named);
+
+        ObjectNode developer = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT.replace("name: cataloguer", "name: developer")), "developer");
+        ToolResponse notAPm = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(developer);
+
+        assertAll(
+            () -> assertFalse(refused.isSuccess(), "a pm with no plan file was let start"),
+            () -> assertEquals("PRECONDITION_NOT_MET", codeOf(refused)),
+            () -> assertTrue(String.valueOf(refused.getError().getMessage()).contains("boardFile"), "the refusal says what to name: " + refused.getError().getMessage()),
+            () -> assertTrue(started.asked().isEmpty(), "nothing was started: " + started.asked()),
+            () -> assertFalse("PRECONDITION_NOT_MET".equals(codeOf(withPlanFile)), "CONTROL: a pm that names its plan file was refused for it"),
+            () -> assertFalse("PRECONDITION_NOT_MET".equals(codeOf(notAPm)), "CONTROL: a developer with no plan file was refused for it"));
+    }
+
     private static String codeOf(ToolResponse response) {
         return response.isSuccess() ? "" : response.getError().getCode();
     }
