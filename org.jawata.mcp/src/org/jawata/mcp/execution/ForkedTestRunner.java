@@ -172,12 +172,32 @@ public final class ForkedTestRunner {
             return t;
         });
 
+    /** The least memory, in MB, the machine must have available for a test run to start (28h Stage 27, z29): each run is a JVM of its own. */
+    private static final long MIN_FREE_MEMORY_MB = 512;
+
+    /**
+     * Why a test run may not start on a machine with this much memory available, or empty when it may (28h Stage 27, z29): a run is a process of
+     * its own, and a machine out of memory swaps and dies, so one is refused below the floor with the figure named. A machine that cannot say how
+     * much it has is admitted, not guessed at.
+     */
+    static java.util.Optional<String> refuseForMemory(java.util.OptionalLong availableMb, long floorMb) {
+        if (availableMb.isPresent() && availableMb.getAsLong() < floorMb) {
+            return java.util.Optional.of("this machine has " + availableMb.getAsLong() + " MB of memory available and a test run is admitted on at least "
+                + floorMb + " MB; retry after a running session finishes or memory is freed.");
+        }
+        return java.util.Optional.empty();
+    }
+
     public Result run(Spec spec) throws IOException, InterruptedException, SessionLimitException {
         return start(spec).await();
     }
 
     /** Fork the run asynchronously; the session limit is checked here, synchronously. */
     public RunningSession start(Spec spec) throws InterruptedException, SessionLimitException {
+        java.util.Optional<String> outOfMemory = refuseForMemory(MachineMemory.availableMb(), MIN_FREE_MEMORY_MB);
+        if (outOfMemory.isPresent()) {
+            throw new SessionLimitException(outOfMemory.get());
+        }
         if (!SESSIONS.tryAcquire(5, TimeUnit.SECONDS)) {
             throw new SessionLimitException("Concurrent test-session limit ("
                 + MAX_CONCURRENT_SESSIONS + ") reached; retry after a running session finishes.");

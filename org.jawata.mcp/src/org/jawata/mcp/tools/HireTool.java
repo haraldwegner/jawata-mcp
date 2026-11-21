@@ -363,24 +363,6 @@ public class HireTool extends NeutralTool {
     private static final long DEFAULT_MIN_FREE_MEMORY_MB = 1024;
 
     /**
-     * The memory the machine can still give a new process, in MB: /proc/meminfo's MemAvailable; none where there is no such file, so off Linux
-     * nothing is checked and the hire is admitted. The JVM's own free-memory figure is not used as a stand-in: on macOS it counts only the
-     * truly free pages and leaves out the cache the system gives back, so it would refuse hires on a machine with plenty to give.
-     */
-    private static java.util.OptionalLong availableMemoryMb() {
-        try {
-            for (String line : java.nio.file.Files.readAllLines(Path.of("/proc/meminfo"))) {
-                if (line.startsWith("MemAvailable:")) {
-                    return java.util.OptionalLong.of(Long.parseLong(line.replaceAll("[^0-9]", "")) / 1024);
-                }
-            }
-        } catch (java.io.IOException | RuntimeException notLinux) {
-            // no figure: the check is skipped
-        }
-        return java.util.OptionalLong.empty();
-    }
-
-    /**
      * The host setting that names how many seconds a running hire may show no sign of life before the engine stops it (28h Stage 27, z28, the second
      * ceiling), after the first one (a client that asks {@code hire_wait} is told it is stalled). Zero or less switches the stop off.
      */
@@ -484,7 +466,7 @@ public class HireTool extends NeutralTool {
                 return DEFAULT_MIN_FREE_MEMORY_MB;
             }
         }).orElse(DEFAULT_MIN_FREE_MEMORY_MB);
-        java.util.OptionalLong freeMb = floorMb > 0 ? availableMemoryMb() : java.util.OptionalLong.empty();
+        java.util.OptionalLong freeMb = floorMb > 0 ? org.jawata.mcp.execution.MachineMemory.availableMb() : java.util.OptionalLong.empty();
         if (freeMb.isPresent() && freeMb.getAsLong() < floorMb) {
             return ToolResponse.error("TOO_LITTLE_MEMORY", "refused: this machine has " + freeMb.getAsLong() + " MB of memory available and a hire is"
                 + " admitted on at least " + floorMb + " MB; " + HireRegistry.shared().runningCount() + " hires are running",
