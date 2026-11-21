@@ -19,6 +19,7 @@ import org.jawata.mcp.knowledge.ExperienceStore;
 import org.jawata.mcp.knowledge.LearnerEventStore;
 import org.jawata.mcp.learn.PlanLedger;
 import org.jawata.mcp.runtime.RuntimeSessionRegistry;
+import org.jawata.mcp.tools.BrainsTool;
 import org.jawata.mcp.tools.CompileWorkspaceTool;
 import org.jawata.mcp.tools.ExperienceTool;
 import org.jawata.mcp.tools.FieldTool;
@@ -28,8 +29,8 @@ import org.jawata.mcp.tools.GetDiagnosticsTool;
 import org.jawata.mcp.tools.GitTool;
 import org.jawata.mcp.tools.HealthCheckTool;
 import org.jawata.mcp.tools.HireTool;
+import org.jawata.mcp.tools.HireWaitTool;
 import org.jawata.mcp.tools.LookupTool;
-import org.jawata.mcp.tools.BrainsTool;
 import org.jawata.mcp.tools.PlanBoardTool;
 import org.jawata.mcp.tools.PlanStepsTool;
 import org.jawata.mcp.tools.ProjectTool;
@@ -208,6 +209,9 @@ public final class ShippedTools {
             planLedger,
             w.learnerEvents(), w.registry(), w.selfEndpoint(), w::experienceStore, w.settings(), experience::areaMapFor, ports.sourceUnits()));
         tools.add(new PlanStepsTool(planLedger));
+        // hire_wait is how a client that runs this server without the jawata chat collects a hire's report: nothing can push it into that client's
+        // turn, since there jawata is not the principal (28h Stage 27, z30).
+        tools.add(new HireWaitTool(org.jawata.mcp.execution.HireRegistry.shared()));
         // plan_board draws the same ledger into the sprint's plan file, so the file a person reads is the ledger's word (S10, D18).
         tools.add(new PlanBoardTool(planLedger));
         // files reads and searches any file and writes a document: what the principal, whose brain's own editors and shell are withheld,

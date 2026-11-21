@@ -82,6 +82,7 @@ go_to_definition	live	v1.0.0	next
 health_check	live	v1.0.0	next
 hierarchy	live	v4.1.0	next
 hire	live	v4.4.0	next
+hire_wait	live	next	next
 inline	live	v1.1.0	next
 inline_method	retired	v1.0.0	v1.0.0
 inline_variable	retired	v1.0.0	v1.0.0

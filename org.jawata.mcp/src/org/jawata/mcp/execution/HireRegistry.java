@@ -684,6 +684,18 @@ public final class HireRegistry {
         }
     }
 
+    /**
+     * Marks the report of the hire with this plan id as read (28h Stage 27, z30), for whichever chat it was kept for, so the chat does not hand
+     * over a report a client already took with {@code hire_wait}. Answers whether it was still waiting to be read.
+     */
+    public boolean takeReportOf(String planId) {
+        boolean wasWaiting = false;
+        for (List<Event> held : waiting.values()) {
+            wasWaiting |= held.removeIf(kept -> kept.planId().equals(planId));
+        }
+        return wasWaiting;
+    }
+
     /** The reports of finished background hires that trace back to this chat session and that no connection has taken, oldest first. */
     public List<Event> undeliveredFor(String sessionId) {
         return List.copyOf(waiting.getOrDefault(sessionId, new CopyOnWriteArrayList<>()));

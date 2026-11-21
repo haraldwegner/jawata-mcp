@@ -3612,6 +3612,29 @@
  {
   "inputSchema": {
    "properties": {
+    "hireId": {
+     "description": "The hireId the hire tool answered.",
+     "type": "string"
+    },
+    "precedentOverride": {
+     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "type": "string"
+    },
+    "waitSeconds": {
+     "description": "How long to wait for a running hire, 0 to 50 (default 0).",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "hireId"
+   ],
+   "type": "object"
+  },
+  "name": "hire_wait"
+ },
+ {
+  "inputSchema": {
+   "properties": {
     "file": {
      "description": "Path of the sprint plan file, named ...-plan.md, carrying the board markers.",
      "type": "string"

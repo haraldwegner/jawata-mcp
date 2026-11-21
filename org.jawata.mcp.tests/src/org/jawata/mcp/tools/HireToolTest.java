@@ -2758,6 +2758,18 @@ class HireToolTest {
             () -> assertFalse("TOO_LITTLE_MEMORY".equals(codeOf(switchedOff)), "CONTROL: a floor of zero, which switches the check off, refused a hire"));
     }
 
+    @Test
+    @DisplayName("28h z30: the answer a hire gives at once says to call hire_wait with its hireId next, so a client with no turn to receive the report knows how to collect it")
+    void theAtOnceAnswerSaysToCallHireWait() throws Exception {
+        ToolResponse response = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()), Map.of()).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+
+        Map<String, Object> answer = dataOf(response);
+        assertAll(
+            () -> assertTrue(response.isSuccess(), String.valueOf(response.getError())),
+            () -> assertTrue(String.valueOf(answer.get("next")).contains("hire_wait") && String.valueOf(answer.get("next")).contains(String.valueOf(answer.get("hireId"))),
+                "the answer does not say to call hire_wait with the hireId: " + answer));
+    }
+
     private ObjectNode consultantHireArgs() throws Exception {
         ObjectNode args = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
         args.put("hirer", "main");

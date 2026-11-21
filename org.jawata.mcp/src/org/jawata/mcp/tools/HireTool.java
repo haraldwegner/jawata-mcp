@@ -442,6 +442,8 @@ public class HireTool extends NeutralTool {
                 answer.put("state", "running");
                 answer.put("hirer", getStringParam(arguments, "hirer"));
                 answer.put("hired", getStringParam(arguments, "seat"));
+                // A client that runs this server without the jawata chat has no turn the report can come back in (28h Stage 27, z30): it collects it.
+                answer.put("next", "call hire_wait with hireId=" + plan + " (waitSeconds up to 50) to learn when this hire has finished and to take its report");
                 opened.complete(answer);
             });
             HireRegistry.shared().nextHireIsBackground();

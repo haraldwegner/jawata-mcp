@@ -1,0 +1,91 @@
+package org.jawata.mcp.tools;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.jawata.mcp.execution.HireRegistry;
+import org.jawata.mcp.models.ToolResponse;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
+/**
+ * What a client that runs jawata without the jawata chat asks to learn what its hire did (Sprint 28h, Stage 27, z30). In the chat jawata is the
+ * principal and a hire's report comes back as a new turn; a client that only calls this server's tools is its own principal, nothing can push a
+ * report into its turn, and the hire tool answers at once. So it asks: the state of one hire's plan, waiting a few seconds for a running one.
+ */
+public final class HireWaitTool implements Tool {
+
+    private final HireRegistry hires;
+
+    public HireWaitTool(HireRegistry hires) {
+        this.hires = hires;
+    }
+
+    @Override
+    public String getName() {
+        return "hire_wait";
+    }
+
+    /** The longest one call waits, kept under the shortest client timeout known (Cursor gave up on a 109 s tool call). */
+    static final int MAX_WAIT_SECONDS = 50;
+
+    @Override
+    public String getDescription() {
+        return """
+            The state of one hire and, once it has finished, its report: what to call after hire when your client has no turn the report can come back in.
+
+            USAGE: hire_wait(hireId="<the hireId hire answered>" [, waitSeconds=N])
+
+            hire answers at once with a hireId and the hire goes on working on the engine's own thread; its report comes back to the seat that hired
+            as a new turn only where jawata itself is that seat (the jawata chat). A client that calls this server's tools is its own principal, so it
+            asks here. Answers {state, hireId}: running (with the calls it has made so far), finished (with report, the hire's own answer, and
+            newToYou, false when the report was already handed over, by this tool or to the chat), or unknown (no hire has that id on this engine).
+            waitSeconds (0 to 50, default 0) is how long to wait for a running hire before answering running: call again, and between the calls
+            you are free to answer the person. A finished report is handed over once as new and marked read, so the chat does not hand it over again.
+            """;
+    }
+
+    @Override
+    public Map<String, Object> getInputSchema() {
+        return Map.of("type", "object",
+            "properties", Map.of(
+                "hireId", Map.of("type", "string", "description", "The hireId the hire tool answered."),
+                "waitSeconds", Map.of("type", "integer", "description", "How long to wait for a running hire, 0 to " + MAX_WAIT_SECONDS + " (default 0).")),
+            "required", List.of("hireId"));
+    }
+
+    @Override
+    public ToolResponse execute(JsonNode arguments) {
+        String hireId = arguments == null || !arguments.hasNonNull("hireId") ? "" : arguments.get("hireId").asText().strip();
+        if (hireId.isEmpty()) {
+            return ToolResponse.invalidParameter("hireId", "name the hire to wait for: the hireId the hire tool answered");
+        }
+        int waitSeconds = Math.max(0, Math.min(MAX_WAIT_SECONDS, arguments.path("waitSeconds").asInt(0)));
+        long deadline = System.nanoTime() + waitSeconds * 1_000_000_000L;
+        while (hires.isRunningPlan(hireId) && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("hireId", hireId);
+        java.util.Optional<JsonNode> report = hires.answerOfPlan(hireId);
+        if (hires.isRunningPlan(hireId)) {
+            data.put("state", "running");
+        } else if (report.isPresent()) {
+            data.put("state", "finished");
+            data.put("report", report.get());
+            data.put("newToYou", hires.takeReportOf(hireId));
+        } else if (hires.labelOf(hireId).equals(hireId)) {
+            data.put("state", "unknown");
+        } else {
+            // the hire has ended and its report is being kept: not a finished report yet
+            data.put("state", "running");
+        }
+        return ToolResponse.success(data);
+    }
+}
