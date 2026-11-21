@@ -141,6 +141,9 @@ public final class OwnWrites {
             ToolCall call = made.get(i);
             TestFirst.writtenFile(call).filter(path -> !isDocument(path)).ifPresent(path -> flags.add(new Observer.Flag(0,
                 "a code-changing call of the brain's own editor on a file that is not a document: " + call.bareName() + " on " + path
+                    + (tellsAnAgentWhatItMayDo(path)
+                        ? " (it tells an agent what it may do: an instruction file, a seat, or a note under an agent's own folder such as .claude, which a lead does not write)"
+                        : " (it is code, or a build or configuration file)")
                     + ". A lead writes only documents, data and pictures and hires the rest.")));
         }
         return List.copyOf(flags);

@@ -24,6 +24,20 @@ class OwnWritesTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27 (z22): the flag names the class the file was put in, so a memory note under a .claude folder, which tells an agent what it may do, is not mistaken for a misread extension, and a source file is named as code")
+    void theFlagNamesTheClassOfTheFile() {
+        List<Observer.Flag> flags = OwnWrites.flags(List.of(
+            write("Write", "/home/h/.claude/projects/p/memory/note.md"),
+            write("Write", "/w/crate/src/lib.rs")));
+
+        assertAll(
+            () -> assertEquals(2, flags.size(), flags.toString()),
+            () -> assertTrue(flags.get(0).why().contains("tells an agent what it may do"), "the note's class is not named: " + flags.get(0).why()),
+            () -> assertTrue(flags.get(1).why().contains("it is code"), "the source file's class is not named: " + flags.get(1).why()),
+            () -> assertTrue(!flags.get(1).why().contains("tells an agent what it may do"), "CONTROL: a source file was called an instruction file: " + flags.get(1).why()));
+    }
+
+    @Test
     @DisplayName("a write of the brain's own editor to a file that is not a document is flagged by file, and a document, a read and a jawata call are not")
     void onlyNonDocumentWritesAreFlagged() {
         List<ToolCall> made = List.of(
