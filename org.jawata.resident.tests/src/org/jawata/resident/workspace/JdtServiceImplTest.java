@@ -548,4 +548,20 @@ class JdtServiceImplTest {
 
         assertEquals(before, buildPath(service.getProject(loaded.projectKey()).orElseThrow()));
     }
+
+    @Test
+    @DisplayName("28h Stage 27 (z19): reresolveWorkspace puts a source folder the build file gained after the load on the build path")
+    void reresolveWorkspace_picksUpASourceFolderAddedAfterTheLoad() throws Exception {
+        Path root = projectWithLibrary("src-added");
+        LoadedProject loaded = service.addProject(root);
+        Path extra = Files.createDirectories(root.resolve("extra-src"));
+        Path classpathFile = root.resolve(".classpath");
+        Files.writeString(classpathFile, Files.readString(classpathFile).replace("</classpath>", "\t<classpathentry kind=\"src\" path=\"extra-src\"/>\n</classpath>"));
+        assertFalse(buildPath(loaded).stream().anyMatch(entry -> entry.contains("extra-src")), "precondition: the folder is not on the build path yet");
+
+        service.reresolveWorkspace();
+
+        List<String> after = buildPath(service.getProject(loaded.projectKey()).orElseThrow());
+        assertTrue(after.stream().anyMatch(entry -> entry.contains("extra-src")), "the new source folder " + extra + " is on the build path: " + after);
+    }
 }

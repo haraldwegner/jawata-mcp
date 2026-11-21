@@ -79,6 +79,9 @@ public class JdtServiceImpl implements IJdtService {
     // work unchanged. Additional projects loaded via addProject(Path) are
     // tracked here keyed by ProjectKeys.derive(path). The default key
     // points at the project returned by the legacy getJavaProject() etc.
+    /** The source folders each project's member declared when it was added, by project key, for a refresh to derive its model with them again. */
+    private final Map<String, DeclaredSourceRoots> declaredByKey = new java.util.concurrent.ConcurrentHashMap<>();
+
     private final Map<String, LoadedProject> projectsByKey = new ConcurrentHashMap<>();
     private volatile String defaultProjectKey;
 
@@ -316,6 +319,7 @@ public class JdtServiceImpl implements IJdtService {
             droppedKeyTimestamps.put(projectKey, System.currentTimeMillis());
             workspaceSearchService = null;  // scope changed — rebuild on next access
             pdeInputsByKey.remove(projectKey);
+            declaredByKey.remove(projectKey);
             // And actually delete it from the Eclipse workspace — "removed" used to
             // mean "forgotten by the service but still alive in the model".
             deleteWorkspaceProject(removed);
@@ -358,6 +362,27 @@ public class JdtServiceImpl implements IJdtService {
         assertNoWorkspaceRuleHeld();
         synchronized (resolveLock) {
             org.jawata.resident.project.ExternalBundlePool.clearCaches();
+            // 28h Stage 27 (z19): a refresh re-derives each project's model (its library entries and its source folders) as a fresh add does,
+            // not only the bundle wiring: a library jar replaced by another version, or a source folder added after the load, was never seen.
+            // A project whose build file is gone, or reads as another kind of build now, keeps the model it has.
+            for (LoadedProject known : new ArrayList<>(projectsByKey.values())) {
+                try {
+                    Path root = known.projectRoot();
+                    if (projectImporter.detectBuildSystem(root) != known.buildSystem()) {
+                        continue;
+                    }
+                    DeclaredSourceRoots declared = declaredByKey.get(known.projectKey());
+                    org.jawata.resident.project.ImportResult imported =
+                        projectImporter.configureJavaProject(known.javaProject().getProject(), root, workspaceManager, declared);
+                    projectsByKey.put(known.projectKey(), new LoadedProject(known.projectKey(), root, imported.javaProject(), known.searchService(),
+                        known.pathUtils(), known.loadedAt(), projectImporter.countSourceFiles(root, declared),
+                        projectImporter.findPackages(root, declared).size(), projectImporter.findPackages(root, declared), known.buildSystem(),
+                        imported.unresolved()));
+                } catch (CoreException | RuntimeException cannotDerive) {
+                    log.warn("Cannot re-derive the model of project '{}': {}", known.projectKey(), cannotDerive.getMessage());
+                }
+            }
+            workspaceSearchService = null;
             resolveWorkspaceLocked();
         }
     }
@@ -602,6 +627,9 @@ public class JdtServiceImpl implements IJdtService {
             fileCount, pkgList.size(), pkgList, detected, imported.unresolved()
         );
         projectsByKey.put(key, loaded);
+        if (declared != null) {
+            declaredByKey.put(key, declared); // kept so a refresh derives the project's model with the same declared folders
+        }
 
         // Stage 12.1 — the inventory: parsed ONCE here, read by every
         // subsequent resolve. A non-bundle project (no manifest) simply has
