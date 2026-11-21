@@ -233,6 +233,8 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
                 // S10 (F7): ownedBy(PlanId,String) records WHO opened a plan and moves no step; pendingFor(String) is a READ of pending() narrowed
                 // to one caller, returning copies. A plan's owner is not its step, so the one-member rule for the step still holds.
                 "ownedBy(PlanId,String)", "pendingFor(String)",
+                // 28h z23: ownerOf(PlanId) is a READ of the owner ownedBy recorded, so plan_steps can name who opened a plan; it moves no step.
+                "ownerOf(PlanId)",
                 // S13 (F2): allowTools(PlanId,Collection) records which tools the hired seat may call and moves no step; allowance(String) is a READ
                 // that hands back a copy. A plan's tool list is not its step, so the one-member rule for the step still holds.
                 "allowTools(PlanId,Collection)", "allowance(String)")),
