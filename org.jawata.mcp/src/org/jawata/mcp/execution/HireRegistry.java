@@ -47,6 +47,8 @@ public final class HireRegistry {
         volatile java.util.Set<String> claims = java.util.Set.of();
         /** When the claims were made, in milliseconds. */
         volatile long claimedAtMs;
+        /** When this hire last showed a sign of life (28h Stage 27, z28): a tool call, a usage report, a compaction, or its plan opening; the time it registered until then. */
+        volatile long lastActivityMs = System.currentTimeMillis();
         final Thread thread;
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
@@ -195,6 +197,7 @@ public final class HireRegistry {
                 List<String> calls = title == null || title.isBlank() ? seen.calls()
                     : java.util.stream.Stream.concat(seen.calls().stream(), java.util.stream.Stream.of(title)).toList();
                 hire.progress = new Progress(seen.toolSteps() + 1, seen.contextTokens(), seen.costUsd(), calls);
+                hire.lastActivityMs = System.currentTimeMillis();
             }
         }
     }
@@ -209,6 +212,7 @@ public final class HireRegistry {
                 Progress seen = hire.progress;
                 hire.progress = new Progress(seen.toolSteps(), contextTokens.isPresent() ? contextTokens : seen.contextTokens(),
                     costUsd.isPresent() ? costUsd : seen.costUsd(), seen.calls());
+                hire.lastActivityMs = System.currentTimeMillis();
             }
         }
     }
@@ -218,6 +222,7 @@ public final class HireRegistry {
         for (Running hire : running) {
             if (hire.thread == Thread.currentThread()) {
                 hire.compacting = compacting;
+                hire.lastActivityMs = System.currentTimeMillis();
             }
         }
     }
@@ -529,6 +534,7 @@ public final class HireRegistry {
         for (Running hire : running) {
             if (hire.thread == Thread.currentThread()) {
                 hire.planId = planId;
+                hire.lastActivityMs = System.currentTimeMillis();
                 issuedBy.put(planId, hire.leadId);
                 labels.put(planId, hire.name + " · " + hire.seat);
                 java.util.function.BiConsumer<String, String> told = planListeners.get(hire.thread);
@@ -882,5 +888,19 @@ public final class HireRegistry {
      */
     public String sprintClaim(String boardFile) {
         return "sprint:" + java.nio.file.Path.of(boardFile).toAbsolutePath().normalize();
+    }
+
+    /**
+     * How long the running hire with this plan id has shown no sign of life, in whole seconds (28h Stage 27, z28): a hire whose brain has made no
+     * call, sent no usage report and begun no compaction since this long is quiet, and a principal that is told can look at it. None when no
+     * hire with this plan id is running.
+     */
+    public java.util.OptionalLong idleSecondsOf(String planId) {
+        for (Running hire : running) {
+            if (planId != null && !planId.isEmpty() && planId.equals(hire.planId)) {
+                return java.util.OptionalLong.of(Math.max(0, System.currentTimeMillis() - hire.lastActivityMs) / 1000);
+            }
+        }
+        return java.util.OptionalLong.empty();
     }
 }

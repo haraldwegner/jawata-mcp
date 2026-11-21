@@ -81,6 +81,29 @@ class HireWaitToolTest {
     }
 
     @Test
+    @DisplayName("28h z28: a running hire that has done nothing for longer than the stall ceiling is answered as stalled with the seconds it has been idle; one that has just acted is not")
+    void aQuietHireIsAnsweredAsStalled() throws Exception {
+        HireWaitTool strict = new HireWaitTool(hires, 1);
+        try (HireRegistry.Registration quiet = hires.begin("developer", "z28 quiet", "")) {
+            hires.planOpened("plan-z28-quiet");
+            ObjectNode args = JSON.createObjectNode().put("hireId", "plan-z28-quiet");
+
+            Map<String, Object> justStarted = dataOf(strict.execute(args));
+            Thread.sleep(1_200);
+            Map<String, Object> idle = dataOf(strict.execute(args));
+            hires.noteToolCall("a call the hire made");
+            Map<String, Object> acted = dataOf(strict.execute(args));
+
+            assertAll(
+                () -> assertEquals(Boolean.FALSE, justStarted.get("stalled"), "a hire that has just started was answered as stalled: " + justStarted),
+                () -> assertEquals("running", idle.get("state"), String.valueOf(idle)),
+                () -> assertEquals(Boolean.TRUE, idle.get("stalled"), "a hire idle past the ceiling was not answered as stalled: " + idle),
+                () -> assertTrue(((Number) idle.get("idleSeconds")).longValue() >= 1, "the answer does not say how long it has been idle: " + idle),
+                () -> assertEquals(Boolean.FALSE, acted.get("stalled"), "CONTROL: a hire that has just made a call was answered as stalled: " + acted));
+        }
+    }
+
+    @Test
     @DisplayName("28h z30: a finished hire's report is handed over, new the first time and marked read, so the chat does not hand it over again; asking again answers the same report as not new")
     void aFinishedReportIsHandedOverOnce() throws Exception {
         String plan = "plan-z30-finished";
