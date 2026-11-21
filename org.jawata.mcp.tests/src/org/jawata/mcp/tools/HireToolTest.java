@@ -692,7 +692,12 @@ class HireToolTest {
             HireTool strangersTool = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
 
             ToolResponse refused = org.jawata.mcp.models.CallerIdentity.supplied("plan-z25-tool").speaking(() -> developersTool.execute(claimed));
-            ToolResponse unknown = org.jawata.mcp.models.CallerIdentity.supplied("z25-nobody-registered").speaking(() -> strangersTool.execute(claimed));
+            ToolResponse guest = org.jawata.mcp.models.CallerIdentity.supplied("z25-nobody-registered").speaking(() -> strangersTool.execute(claimed));
+            ObjectNode asMain = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT.replace("name: cataloguer", "name: pm")), "pm");
+            asMain.put("hirer", "main").put("boardFile", dir.resolve("z25-guest-sprint-plan.md").toString());
+            HireTool mainTool = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+            ToolResponse guestAsMain = org.jawata.mcp.models.CallerIdentity.supplied("z25-nobody-registered").speaking(() -> mainTool.execute(asMain));
+            ToolResponse noIdentity = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(claimed);
 
             assertAll(
                 () -> assertFalse(refused.isSuccess(), "a developer's session was let hire as the chief engineer"),
@@ -700,7 +705,10 @@ class HireToolTest {
                 () -> assertTrue(refused.getError().getMessage().contains("developer") && refused.getError().getMessage().contains("chief-engineer"),
                     "the refusal names both seats: " + refused.getError().getMessage()),
                 () -> assertTrue(asTheDeveloper.asked().isEmpty(), "nothing was started: " + asTheDeveloper.asked()),
-                () -> assertTrue(unknown.isSuccess(), "CONTROL: a caller nobody registered keeps what it wrote: " + unknown.getError()));
+                () -> assertFalse(guest.isSuccess(), "a session nobody registered was let hire as the chief engineer"),
+                () -> assertEquals("PRECONDITION_NOT_MET", codeOf(guest)),
+                () -> assertTrue(guestAsMain.isSuccess(), "CONTROL: a session nobody registered, saying it is main, was refused: " + guestAsMain.getError()),
+                () -> assertTrue(noIdentity.isSuccess(), "CONTROL: a call with no session at all, such as the person's own script, was refused: " + noIdentity.getError()));
         }
     }
 
@@ -2070,7 +2078,11 @@ class HireToolTest {
         args.put("instructionsFrom", issuerPlan);
         args.put("observerSeatFile", seatFile(CATALOGUER_SEAT).toString());
 
-        org.jawata.mcp.models.CallerIdentity.supplied("principal-f7-judge-issuer").speaking(() -> hire.execute(args));
+        // The issuer is a chief engineer's own session, as in production (28h z25: a session that is no seat's may not hire as one).
+        try (HireRegistry.Registration chief = HireRegistry.shared().begin("chief-engineer", "f7 judge issuer", "")) {
+            HireRegistry.shared().planOpened("principal-f7-judge-issuer");
+            org.jawata.mcp.models.CallerIdentity.supplied("principal-f7-judge-issuer").speaking(() -> hire.execute(args));
+        }
 
         assertAll(
             () -> assertTrue(!issuerSees.isEmpty(), "the judge's gate never ran, so nothing was observed"),
@@ -2354,7 +2366,11 @@ class HireToolTest {
         org.jawata.mcp.models.CallerIdentity issuer = org.jawata.mcp.models.CallerIdentity.supplied("principal-f7-issuer");
         JsonNode arguments = hireArgs(seatFile(CATALOGUER_SEAT));
 
-        dataOf(issuer.speaking(() -> hire.execute(arguments)));
+        // The issuer is a chief engineer's own session, as in production (28h z25: a session that is no seat's may not hire as one).
+        try (HireRegistry.Registration chief = HireRegistry.shared().begin("chief-engineer", "f7 issuer", "")) {
+            HireRegistry.shared().planOpened("principal-f7-issuer");
+            dataOf(issuer.speaking(() -> hire.execute(arguments)));
+        }
 
         assertAll(
             () -> assertTrue(!issuerSees.isEmpty(), "the gate never ran, so nothing was observed"),

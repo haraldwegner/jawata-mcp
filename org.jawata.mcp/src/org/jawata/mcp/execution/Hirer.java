@@ -188,11 +188,23 @@ public final class Hirer {
     /**
      * Refuses a hirer the caller wrote that is not the seat the engine knows the caller to be (28h Stage 27, z25): {@code hirer} is free text on
      * the hire call, and {@link #refuseKnown} lets a name through that the tree does not know, so without this any caller could name any hirer.
-     * Where the engine does not know the caller's seat ({@code actual} empty) the caller keeps what it wrote, since a brain that does not present
-     * its plan id as its session cannot be told from a guest.
+     * Where the engine does not know the caller's seat ({@code actual} empty) and a session made the call, the caller is a guest: a hired brain is
+     * given its plan id as its session, in a header and in the URL, so a session that is no hire's and no principal's is a plain client, and it may
+     * say it is main and no other seat. A call with no session at all, such as the person's own script, keeps what it wrote.
+     *
+     * @param aSessionCalled whether the call came on a session of its own (the caller's identity is known, even when no seat is)
      */
-    public Optional<String> refuseClaim(String claimed, Optional<String> actual) {
-        if (claimed == null || actual.isEmpty() || claimed.equalsIgnoreCase(actual.get())) {
+    public Optional<String> refuseClaim(String claimed, Optional<String> actual, boolean aSessionCalled) {
+        if (claimed == null) {
+            return Optional.empty();
+        }
+        if (actual.isEmpty()) {
+            return aSessionCalled && !"main".equalsIgnoreCase(claimed)
+                ? Optional.of("the call says it is hired by " + claimed + ", but it is made from a session that is no seat's; only a hire's own session "
+                    + "is a seat, and a client that is no hire hires as main")
+                : Optional.empty();
+        }
+        if (claimed.equalsIgnoreCase(actual.get())) {
             return Optional.empty();
         }
         return Optional.of("the call says it is hired by " + claimed + ", but it is made by " + actual.get() + "; a hire is made as the seat that makes it");

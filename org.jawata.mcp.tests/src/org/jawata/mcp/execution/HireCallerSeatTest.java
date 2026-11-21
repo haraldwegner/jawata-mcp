@@ -41,14 +41,28 @@ class HireCallerSeatTest {
     @Test
     @DisplayName("a hirer that names a seat other than the caller's own is refused, naming both; the seat the caller really is passes, and an unknown caller keeps what it wrote")
     void aClaimThatDisagreesWithTheCallerIsRefused() {
-        Optional<String> refused = HIRER.refuseClaim("chief-engineer", Optional.of("developer"));
+        Optional<String> refused = HIRER.refuseClaim("chief-engineer", Optional.of("developer"), false);
 
         assertAll(
             () -> assertTrue(refused.isPresent(), "a developer was let say it is the chief engineer"),
             () -> assertTrue(refused.orElse("").contains("chief-engineer") && refused.orElse("").contains("developer"), "the refusal names neither seat: " + refused),
-            () -> assertEquals(Optional.empty(), HIRER.refuseClaim("developer", Optional.of("developer")), "CONTROL: the caller's own seat was refused"),
-            () -> assertEquals(Optional.empty(), HIRER.refuseClaim("Main", Optional.of("main")), "CONTROL: a spelling that differs only in case was refused"),
-            () -> assertEquals(Optional.empty(), HIRER.refuseClaim("chief-engineer", Optional.empty()), "CONTROL: a caller the registry does not know was refused"));
+            () -> assertEquals(Optional.empty(), HIRER.refuseClaim("developer", Optional.of("developer"), false), "CONTROL: the caller's own seat was refused"),
+            () -> assertEquals(Optional.empty(), HIRER.refuseClaim("Main", Optional.of("main"), false), "CONTROL: a spelling that differs only in case was refused"),
+            () -> assertEquals(Optional.empty(), HIRER.refuseClaim("chief-engineer", Optional.empty(), false), "CONTROL: a call with no session at all, such as the person's own script, was refused"));
+    }
+
+    @Test
+    @DisplayName("28h z25: a session the engine cannot place may not say it is a seat other than main: a guest that names the pm or the chief engineer is refused, naming what it claimed; main passes, and so does a call with no session")
+    void aGuestSessionMayNotClaimASeat() {
+        Optional<String> asChief = HIRER.refuseClaim("chief-engineer", Optional.empty(), true);
+        Optional<String> asPm = HIRER.refuseClaim("pm", Optional.empty(), true);
+
+        assertAll(
+            () -> assertTrue(asChief.orElse("").contains("chief-engineer"), "a guest session was let say it is the chief engineer: " + asChief),
+            () -> assertTrue(asPm.isPresent(), "a guest session was let say it is the pm"),
+            () -> assertEquals(Optional.empty(), HIRER.refuseClaim("main", Optional.empty(), true), "CONTROL: a guest that says it is main was refused"),
+            () -> assertEquals(Optional.empty(), HIRER.refuseClaim("Main", Optional.empty(), true), "CONTROL: main in another case was refused"),
+            () -> assertEquals(Optional.empty(), HIRER.refuseClaim("chief-engineer", Optional.empty(), false), "CONTROL: a call with no session was refused"));
     }
 
     @Test

@@ -659,7 +659,7 @@ public class HireTool extends NeutralTool {
         // 28h Stage 27 (z25): `hirer` is free text, so the seat the engine knows the caller to be is checked against it first; a caller the registry does
         // not know keeps what it wrote.
         Optional<String> notHirable = deciding.refuseClaim(hirer, org.jawata.mcp.models.CallerIdentity.serving()
-            .flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id())));
+            .flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id())), org.jawata.mcp.models.CallerIdentity.serving().isPresent());
         if (notHirable.isEmpty()) {
             notHirable = deciding.refuseKnown(hirer, hired);
         }
