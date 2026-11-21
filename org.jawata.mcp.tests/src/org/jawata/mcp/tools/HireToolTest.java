@@ -2617,6 +2617,16 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h Stage 27 (z21): the hire's answer names the PATH the engine, and so the brain it started, has, so a tool the hire could not find can be read against it")
+    void theAnswerNamesThePathTheBrainWasStartedWith() throws Exception {
+        Map<String, Object> answer = dataOf(toolWithSettings(new StandsIn(host, aBrainThatAnswers()), Map.of())
+            .execute(hireArgs(seatFile(DEVELOPER_SEAT_ON_CURSOR), "developer")));
+
+        // the runner's own environment may hold no PATH, so the answer says so in words and the check cannot pass on two nulls
+        assertEquals(java.util.Optional.ofNullable(System.getenv("PATH")).orElse("NOT SET"), answer.get("brainPath"), String.valueOf(answer.keySet()));
+    }
+
+    @Test
     @DisplayName("z14 rule 1 (d): a brain stored for the seat that is not a brain a hire can start refuses the hire INVALID_PARAMETER and starts nothing")
     void aStoredBrainNoHireCanStartIsRefusedOnAnUnsealedEngine() throws Exception {
         ToolResponse refused = toolWithSettings(aHostThatMustNotSpawn(), Map.of(SettingKeys.SEATS_BRAINS.name(), "developer=nonsense"))

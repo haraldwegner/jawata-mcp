@@ -997,6 +997,8 @@ public class HireTool extends NeutralTool {
         // C16's own clause: a brain that cannot be told which tools to attach is REPORTED here
         // rather than quietly left out of the count.
         data.put("toolAttachment", dialect.toolAttachment().report());
+        // 28h Stage 27 (z21): the PATH the brain started with is the engine's, so a tool the hire could not find ("mvn: not found") can be read against it
+        data.put("brainPath", java.util.Optional.ofNullable(System.getenv("PATH")).orElse("NOT SET"));
         // WHAT STOPS THIS BRAIN WRITING, and whether this run's own log bears it out.
         data.put("writeContainment", containment.report());
         data.put("writeContainmentBasis", containment.basis().name());
