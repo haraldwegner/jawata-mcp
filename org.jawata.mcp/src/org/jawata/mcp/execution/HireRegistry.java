@@ -51,6 +51,8 @@ public final class HireRegistry {
         volatile long lastActivityMs = System.currentTimeMillis();
         /** How many seconds this hire had been quiet when the engine stopped it for that (28h Stage 27, z28, the second ceiling); negative while it was not. */
         volatile long stalledForSeconds = -1;
+        /** The sign-of-life time at which the subscribers were told this hire had gone quiet, so one stretch of quiet is told once; 0 until told. */
+        volatile long quietToldAtMs;
         final Thread thread;
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
@@ -150,6 +152,18 @@ public final class HireRegistry {
      * asks {@code hire_wait} is told and the card of the hire says so. The second, past which the engine stops the hire, is a host setting.
      */
     public static final long STALLED_AFTER_SECONDS = 300;
+
+    private volatile long quietCeilingSeconds = STALLED_AFTER_SECONDS;
+
+    /** How many seconds a running hire may show no sign of life before it is told as stalled (the first ceiling): the host's setting when it set one, else {@value #STALLED_AFTER_SECONDS}. */
+    public long quietCeiling() {
+        return quietCeilingSeconds;
+    }
+
+    /** Sets the first ceiling, which the hire tool reads from the host's settings on every hire; a value of zero or less puts back the default. */
+    public void quietCeiling(long seconds) {
+        quietCeilingSeconds = seconds > 0 ? seconds : STALLED_AFTER_SECONDS;
+    }
 
     private static final HireRegistry SHARED = new HireRegistry();
 
@@ -915,6 +929,28 @@ public final class HireRegistry {
             }
         }
         return java.util.OptionalLong.empty();
+    }
+
+    /**
+     * Tells the subscribers, once for each stretch of quiet, of every running hire that has shown no sign of life for this many seconds or more
+     * (28h Stage 27, z28, the first ceiling): the event {@code stalled}, so a card and a lead are told without anything having to ask. A hire that
+     * acts and goes quiet again is told again. Answers who was told, as first name and seat.
+     */
+    public List<String> noteQuiet(long ceilingSeconds) {
+        List<Event> told = new java.util.ArrayList<>();
+        synchronized (this) {
+            long now = System.currentTimeMillis();
+            for (Running hire : running) {
+                long idle = Math.max(0, now - hire.lastActivityMs) / 1000;
+                if (!hire.planId.isEmpty() && idle >= ceilingSeconds && hire.quietToldAtMs != hire.lastActivityMs) {
+                    hire.quietToldAtMs = hire.lastActivityMs;
+                    told.add(new Event("stalled", hire.planId, hire.name, hire.seat, hire.brief, hire.leadId, null, hire.background));
+                }
+            }
+        }
+        // Told outside the lock: a subscriber answers a host and takes locks of its own.
+        told.forEach(this::tell);
+        return told.stream().map(event -> event.name() + " · " + event.seat()).toList();
     }
 
     /**

@@ -370,6 +370,25 @@ public class HireTool extends NeutralTool {
 
     private static final long DEFAULT_STALL_STOP_SECONDS = 1200;
 
+    /**
+     * The host setting that names how many seconds a running hire may show no sign of life before it is told as stalled (28h Stage 27, z28, the
+     * first ceiling): its card says stalled and the brain that started it is told. It comes before the stop ceiling; absent, not a number or not
+     * above zero, it is {@value HireRegistry#STALLED_AFTER_SECONDS} seconds.
+     */
+    public static final String STALL_SETTING = "jawata.hire.stallSeconds";
+
+    /** The first ceiling the host's setting names, or the default when it names none that can be used. */
+    static long quietCeilingOf(java.util.Optional<String> setting) {
+        return setting.map(text -> {
+            try {
+                long seconds = Long.parseLong(text.strip());
+                return seconds > 0 ? seconds : HireRegistry.STALLED_AFTER_SECONDS;
+            } catch (NumberFormatException notANumber) {
+                return HireRegistry.STALLED_AFTER_SECONDS;
+            }
+        }).orElse(HireRegistry.STALLED_AFTER_SECONDS);
+    }
+
     private static final java.util.concurrent.atomic.AtomicLong STALL_CEILING = new java.util.concurrent.atomic.AtomicLong(0);
 
     private static final java.util.concurrent.atomic.AtomicBoolean WATCHING = new java.util.concurrent.atomic.AtomicBoolean();
@@ -397,9 +416,14 @@ public class HireTool extends NeutralTool {
         }
     }
 
-    /** One tick of the watchdog: stops every running hire quiet past the ceiling and answers who was stopped; nothing when the ceiling is off. */
+    /**
+     * One tick of the watchdog: tells that every running hire quiet past the first ceiling is stalled (the card and the lead hear it), then stops
+     * every one quiet past the second and answers who was stopped; nothing is stopped when the second ceiling is off.
+     */
     static java.util.List<String> stopQuietHires() {
         long ceiling = STALL_CEILING.get();
+        long first = HireRegistry.shared().quietCeiling();
+        HireRegistry.shared().noteQuiet(ceiling > 0 ? Math.min(first, ceiling) : first);
         return ceiling > 0 ? HireRegistry.shared().stopStalled(ceiling) : java.util.List.of();
     }
 
@@ -470,6 +494,7 @@ public class HireTool extends NeutralTool {
                 "wait for a hire to end, close what else uses the memory, or lower the floor, which is the setting " + MIN_FREE_MEMORY_SETTING);
         }
         // THE SECOND CEILING (28h Stage 27, z28): a hire quiet for this long is stopped by the engine's watchdog, which reads the ceiling the host sets.
+        HireRegistry.shared().quietCeiling(quietCeilingOf(settings.get().get(STALL_SETTING)));
         watchForStalls(settings.get().get(STALL_STOP_SETTING).map(text -> {
             try {
                 return Long.parseLong(text.strip());

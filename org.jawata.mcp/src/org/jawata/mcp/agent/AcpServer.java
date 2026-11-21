@@ -639,7 +639,7 @@ public final class AcpServer {
         // A hire the session's own brain started in the background reports back to that brain as a new turn. A hire of a lead that is still running
         // is that lead's to receive; a hire of a lead that has ended has nobody above it to read its report but the chat, so it comes to the
         // principal, with a line saying whose hire it was (Stage 24, M14).
-        if ("finished".equals(event.kind()) && event.background()) {
+        if (("finished".equals(event.kind()) || "stalled".equals(event.kind())) && event.background()) {
             boolean own = session.id().equals(event.leadId()) || HireRegistry.shared().isRoot(event.leadId());
             if (own || !HireRegistry.shared().isRunningPlan(event.leadId())) {
                 deliver(session, event, own ? ""
@@ -673,16 +673,21 @@ public final class AcpServer {
      * message waits for it.
      */
     private void deliver(PrincipalSession session, HireRegistry.Event event, String note) {
-        // This connection has taken the report, so the registry no longer keeps it for a connection opened later.
-        HireRegistry.shared().markDelivered(event);
+        // This connection has taken the report, so the registry no longer keeps it for a connection opened later; a hire that has only gone
+        // quiet has no report yet and keeps nothing (28h Stage 27, z28).
+        boolean quiet = "stalled".equals(event.kind());
+        if (!quiet) {
+            HireRegistry.shared().markDelivered(event);
+        }
         deliveries.execute(() -> {
             java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());
             if (!takeTheTurnAfterThePersons(turn, session.id())) {
                 return;
             }
             try {
-                conductTurn(JSON.createObjectNode(), session, "msg_" + UUID.randomUUID(), "[report of " + event.name() + " · " + event.seat() + "]",
-                    note + reportOf(session, event));
+                conductTurn(JSON.createObjectNode(), session, "msg_" + UUID.randomUUID(),
+                    quiet ? "[" + event.name() + " · " + event.seat() + " has gone quiet]" : "[report of " + event.name() + " · " + event.seat() + "]",
+                    note + (quiet ? quietNotice(event) : reportOf(session, event)));
             } catch (RuntimeException failed) {
                 java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.WARNING, "the report of a hire could not be delivered", failed);
             } finally {
@@ -706,6 +711,14 @@ public final class AcpServer {
             Thread.currentThread().interrupt();
             return false;
         }
+    }
+
+    /** What the brain is told when a hire it started has gone quiet: who, for how long, that it still runs, and what can be done (28h Stage 27, z28). */
+    private String quietNotice(HireRegistry.Event event) {
+        return "A hire you started has gone quiet: " + event.name() + " · " + event.seat() + " has shown no sign of life for "
+            + HireRegistry.shared().quietCeiling() + " seconds. It is still running, and this is information from the engine, not an instruction. "
+            + "The engine stops it if it stays quiet much longer, and its report then comes to you as usual; you can also stop it yourself from the "
+            + "Agent Control panel, or leave it.";
     }
 
     /**

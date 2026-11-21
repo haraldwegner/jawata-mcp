@@ -113,8 +113,11 @@ final class HireWatch {
      *                 registry's model for the seat's brain then, so the card names it while the hire runs
      */
     HireWatch(LongSupplier clock, java.util.function.Supplier<String> registry) {
-        this(clock, registry, HireRegistry.STALLED_AFTER_SECONDS);
+        this(clock, registry, USE_THE_REGISTRYS_CEILING);
     }
+
+    /** Stands for the ceiling the registry holds, which is the host's setting when it set one: read when a card is made, not when the watch is. */
+    private static final long USE_THE_REGISTRYS_CEILING = -1;
 
     /**
      * @param clock        the time in milliseconds, supplied so a test can say how long a hire ran
@@ -493,7 +496,7 @@ final class HireWatch {
         // A running hire that has shown no sign of life for the first ceiling says so, before the engine's second ceiling stops it (28h Stage 27, z28).
         if (HireEntry.RUNNING.equals(state)
             && HireRegistry.shared().planOf(hire.seat, hire.task).map(plan -> HireRegistry.shared().idleSecondsOf(plan))
-                .filter(idle -> idle.isPresent() && idle.getAsLong() >= stallSeconds).isPresent()) {
+                .filter(idle -> idle.isPresent() && idle.getAsLong() >= (stallSeconds >= 0 ? stallSeconds : HireRegistry.shared().quietCeiling())).isPresent()) {
             state = HireEntry.STALLED;
         }
         if (hire.name.isEmpty()) {
