@@ -145,6 +145,12 @@ public final class HireRegistry {
     public record Replacement(SeatHire.Brain brain, String model) {
     }
 
+    /**
+     * How long a running hire may show no sign of life before it is called stalled (28h Stage 27, z28): the first ceiling, at which a client that
+     * asks {@code hire_wait} is told and the card of the hire says so. The second, past which the engine stops the hire, is a host setting.
+     */
+    public static final long STALLED_AFTER_SECONDS = 300;
+
     private static final HireRegistry SHARED = new HireRegistry();
 
     private final List<Running> running = new CopyOnWriteArrayList<>();

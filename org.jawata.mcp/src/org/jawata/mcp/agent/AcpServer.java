@@ -630,7 +630,8 @@ public final class AcpServer {
             // turn's own line holds the card as that turn last saw it, which a session loaded later replays as failed (28h-C27-7).
             HireEntry ended = seen.entry();
             // Once per plan: a report held for a lead that ended is told again then, and its hire ended once (28h-C27-18).
-            if (!HireEntry.RUNNING.equals(ended.state()) && !HireEntry.COMPACTING.equals(ended.state()) && endedRecorded.add(ended.planId())) {
+            if (!HireEntry.RUNNING.equals(ended.state()) && !HireEntry.COMPACTING.equals(ended.state()) && !HireEntry.STALLED.equals(ended.state())
+                && endedRecorded.add(ended.planId())) {
                 // Nobody said anything: the line is the card alone, so a session loaded later shows no words as the person's or the agent's.
                 recorder.record(AgentRecorder.Level.HIRED, session, "ended_" + ended.planId(), "", "", List.of(ended.cardLine()));
             }
@@ -727,7 +728,7 @@ public final class AcpServer {
         if (seen.created()) {
             shown.put("kind", "execute");
         }
-        boolean working = HireEntry.RUNNING.equals(entry.state()) || HireEntry.COMPACTING.equals(entry.state());
+        boolean working = HireEntry.RUNNING.equals(entry.state()) || HireEntry.COMPACTING.equals(entry.state()) || HireEntry.STALLED.equals(entry.state());
         shown.put("status", working ? "in_progress" : HireEntry.FAILED.equals(entry.state()) ? "failed" : "completed");
         shown.putObject("_meta").set("jawata/hire", entry.toMeta());
         update(session.id(), shown);
@@ -1027,7 +1028,7 @@ public final class AcpServer {
      */
     private void replayCard(String sessionId, ObjectNode card, java.util.Set<String> shownBefore) {
         String state = card.path("state").asText("");
-        if (HireEntry.RUNNING.equals(state) || HireEntry.COMPACTING.equals(state)) {
+        if (HireEntry.RUNNING.equals(state) || HireEntry.COMPACTING.equals(state) || HireEntry.STALLED.equals(state)) {
             card.put("state", HireEntry.FAILED);
             state = HireEntry.FAILED;
         }

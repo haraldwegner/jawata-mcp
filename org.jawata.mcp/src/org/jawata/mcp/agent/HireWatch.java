@@ -93,6 +93,8 @@ final class HireWatch {
     private static final String NO_MODEL_NAMED = "THE BRAIN'S OWN DEFAULT";
 
     private final LongSupplier clock;
+    /** How long a running hire may show no sign of life before its card says stalled. */
+    private final long stallSeconds;
     private final java.util.function.Supplier<String> registry;
     private final Map<String, Live> hires = new LinkedHashMap<>();
     /** The ids of hire calls the engine refused and whose refusal has not been taken yet. */
@@ -111,6 +113,16 @@ final class HireWatch {
      *                 registry's model for the seat's brain then, so the card names it while the hire runs
      */
     HireWatch(LongSupplier clock, java.util.function.Supplier<String> registry) {
+        this(clock, registry, HireRegistry.STALLED_AFTER_SECONDS);
+    }
+
+    /**
+     * @param clock        the time in milliseconds, supplied so a test can say how long a hire ran
+     * @param registry     the text of the model registry setting, read each time a seat file names no model
+     * @param stallSeconds how long a running hire may show no sign of life before its card says it has stalled (28h Stage 27, z28)
+     */
+    HireWatch(LongSupplier clock, java.util.function.Supplier<String> registry, long stallSeconds) {
+        this.stallSeconds = stallSeconds;
         this.clock = clock;
         this.registry = registry;
     }
@@ -478,6 +490,12 @@ final class HireWatch {
         // A hire whose brain is compacting its context is still running; its card says what it is doing.
         String state = HireEntry.RUNNING.equals(hire.state) && HireRegistry.shared().compacting(hire.seat, hire.task)
             ? HireEntry.COMPACTING : hire.state;
+        // A running hire that has shown no sign of life for the first ceiling says so, before the engine's second ceiling stops it (28h Stage 27, z28).
+        if (HireEntry.RUNNING.equals(state)
+            && HireRegistry.shared().planOf(hire.seat, hire.task).map(plan -> HireRegistry.shared().idleSecondsOf(plan))
+                .filter(idle -> idle.isPresent() && idle.getAsLong() >= stallSeconds).isPresent()) {
+            state = HireEntry.STALLED;
+        }
         if (hire.name.isEmpty()) {
             hire.name = HireRegistry.shared().nameOf(hire.seat, hire.task);
         }

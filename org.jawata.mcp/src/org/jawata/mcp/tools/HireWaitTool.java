@@ -17,7 +17,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 public final class HireWaitTool implements Tool {
 
     /** How long a running hire may do nothing before it is answered as stalled, when no other ceiling is given (28h Stage 27, z28). */
-    static final long DEFAULT_STALL_SECONDS = 300;
+    static final long DEFAULT_STALL_SECONDS = HireRegistry.STALLED_AFTER_SECONDS;
 
     private final HireRegistry hires;
     private final long stallSeconds;
