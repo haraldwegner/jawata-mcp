@@ -308,7 +308,7 @@ public final class Instructions {
             for (int i = 0; i < made.size(); i++) {
                 if (instruction.tool().equals(made.get(i).bareName())) {
                     sameTool.add(i);
-                    if (equalArguments(instruction.arguments(), withoutSpelledOutDefaults(instruction, made.get(i).arguments()))
+                    if (equalArguments(instruction.arguments(), withoutGuardBracket(instruction, withoutSpelledOutDefaults(instruction, made.get(i).arguments())))
                             || sameEditAsItsDiff(instruction, made.get(i).arguments())) {
                         exact.add(i);
                     }
@@ -364,6 +364,24 @@ public final class Instructions {
             return false;
         }
         return made.get("newText").asText().equals(before.substring(0, at) + newString + before.substring(at + oldString.length()));
+    }
+
+    /**
+     * 28h Stage 27 (z24): a shell instruction's command, when the worker ran it through the guard's bracket
+     * ({@code jawata-hook-guard bracket --cd D --out F -- <command>}, which the guard requires of a long run), is the command after the
+     * {@code --}: the bracket keeps the run's output and says where it ran, and is no difference in what was run.
+     */
+    private static JsonNode withoutGuardBracket(Instruction instruction, JsonNode made) {
+        if (!"Bash".equals(instruction.tool()) || made == null || !made.path("command").isTextual()) {
+            return made;
+        }
+        String command = made.get("command").asText();
+        int bracket = command.indexOf("jawata-hook-guard bracket ");
+        int separator = bracket < 0 ? -1 : command.indexOf(" -- ", bracket);
+        if (separator < 0) {
+            return made;
+        }
+        return ((ObjectNode) made).deepCopy().put("command", command.substring(separator + 4).strip());
     }
 
     /** The call's arguments less every default of {@link #EDITOR_DEFAULTS} it spells out that the instruction did not name. */

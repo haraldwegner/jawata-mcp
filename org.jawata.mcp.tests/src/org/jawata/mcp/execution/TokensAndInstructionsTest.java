@@ -301,4 +301,18 @@ class TokensAndInstructionsTest {
             () -> assertTrue(back.get(2).path("arguments").isNull()),
             () -> assertFalse(back.get(0).path("number").isMissingNode()));
     }
+
+    @Test
+    @DisplayName("28h Stage 27 (z24): a Bash instruction ran as written when the worker ran its command through the guard's bracket, which the guard requires of a long run; another command through the bracket did not")
+    void aShellCommandRunThroughTheGuardsBracketRanAsWritten() throws Exception {
+        List<Instructions.Instruction> issued = List.of(new Instructions.Instruction(1, "Bash",
+            MAPPER.readTree("{\"command\":\"cargo test -p jawata-hook -- dogfood_\"}")));
+        Instructions.Score bracketed = Instructions.score(issued, List.of(call("Bash",
+            "{\"command\":\"/home/h/.claude/jawata-studio/jawata-hook-guard bracket --cd /p/src-tauri --out /tmp/run.txt -- cargo test -p jawata-hook -- dogfood_\"}")), ENGINE);
+        Instructions.Score otherCommand = Instructions.score(issued, List.of(call("Bash",
+            "{\"command\":\"/home/h/.claude/jawata-studio/jawata-hook-guard bracket --cd /p/src-tauri --out /tmp/run.txt -- cargo test -p jawata-hook -- other_\"}")), ENGINE);
+        assertAll(
+            () -> assertEquals(1, bracketed.ranAsWritten(), String.valueOf(bracketed.notAsWritten())),
+            () -> assertEquals(0, otherCommand.ranAsWritten(), "a different command ran as written because it went through the bracket"));
+    }
 }
