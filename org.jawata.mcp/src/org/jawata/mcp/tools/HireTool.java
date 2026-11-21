@@ -613,7 +613,13 @@ public class HireTool extends NeutralTool {
         if (brainOffered.isPresent()) {
             deciding = deciding.withBrain(hired, brainOffered.get());
         }
-        Optional<String> notHirable = deciding.refuseKnown(hirer, hired);
+        // 28h Stage 27 (z25): `hirer` is free text, so the seat the engine knows the caller to be is checked against it first; a caller the registry does
+        // not know keeps what it wrote.
+        Optional<String> notHirable = deciding.refuseClaim(hirer, org.jawata.mcp.models.CallerIdentity.serving()
+            .flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id())));
+        if (notHirable.isEmpty()) {
+            notHirable = deciding.refuseKnown(hirer, hired);
+        }
         if (notHirable.isPresent()) {
             return ToolResponse.error("PRECONDITION_NOT_MET", notHirable.get(),
                 "a seat is hired by its own parent in the signed tree, and the consultant runs on another vendor than main: the reason above names which; hire through the seat that does hire it, or set the vendors in the host settings");

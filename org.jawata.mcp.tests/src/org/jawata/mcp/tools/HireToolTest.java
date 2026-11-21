@@ -19,6 +19,7 @@ import org.jawata.core.host.HostOS;
 import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.engine.SettingKeys;
+import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.SelfEndpoint;
 import org.jawata.mcp.knowledge.ExperienceRetrieval.AreaMap;
@@ -675,6 +676,32 @@ class HireToolTest {
             () -> assertTrue(response.getError().getMessage().contains("chief-engineer"),
                 "the refusal names the seat that does hire it: " + response.getError().getMessage()),
             () -> assertTrue(processes.asked().isEmpty(), "nothing was started: " + processes.asked()));
+    }
+
+    @Test
+    @DisplayName("28h z25: a hire made from a running developer's own session that names the chief engineer as its hirer is refused before any brain starts; the same call from a caller nobody registered is judged as before")
+    void aHirerThatIsNotTheCallerIsRefused() throws Exception {
+        HireRegistry hires = HireRegistry.shared();
+        try (HireRegistry.Registration developer = hires.begin("developer", "z25-tool-brief", "")) {
+            hires.planOpened("plan-z25-tool");
+            StandsIn asTheDeveloper = new StandsIn(host, aBrainThatAnswers());
+            ObjectNode claimed = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+            claimed.put("hirer", "chief-engineer");
+
+            HireTool developersTool = toolWith(asTheDeveloper, events, aRegistryWithACleanGate());
+            HireTool strangersTool = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+
+            ToolResponse refused = org.jawata.mcp.models.CallerIdentity.supplied("plan-z25-tool").speaking(() -> developersTool.execute(claimed));
+            ToolResponse unknown = org.jawata.mcp.models.CallerIdentity.supplied("z25-nobody-registered").speaking(() -> strangersTool.execute(claimed));
+
+            assertAll(
+                () -> assertFalse(refused.isSuccess(), "a developer's session was let hire as the chief engineer"),
+                () -> assertEquals("PRECONDITION_NOT_MET", refused.getError().getCode()),
+                () -> assertTrue(refused.getError().getMessage().contains("developer") && refused.getError().getMessage().contains("chief-engineer"),
+                    "the refusal names both seats: " + refused.getError().getMessage()),
+                () -> assertTrue(asTheDeveloper.asked().isEmpty(), "nothing was started: " + asTheDeveloper.asked()),
+                () -> assertTrue(unknown.isSuccess(), "CONTROL: a caller nobody registered keeps what it wrote: " + unknown.getError()));
+        }
     }
 
     @Test

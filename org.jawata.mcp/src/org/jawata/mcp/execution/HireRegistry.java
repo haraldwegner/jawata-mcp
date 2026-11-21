@@ -845,4 +845,21 @@ public final class HireRegistry {
     private static String normal(String brief) {
         return brief == null ? "" : brief.strip();
     }
+
+    /**
+     * The seat this caller really is (28h Stage 27, z25), so a hire path does not take the caller's word for it: a hired brain's tool calls carry
+     * its own plan id as the session, so the caller is the running hire with that plan id and its seat is that hire's; a principal brain's key is
+     * main. None for a caller the registry knows nothing about, which is not guessed at.
+     */
+    public Optional<String> seatOfCaller(String callerId) {
+        if (callerId == null || callerId.isEmpty()) {
+            return Optional.empty();
+        }
+        for (Running hire : running) {
+            if (callerId.equals(hire.planId)) {
+                return Optional.of(hire.seat);
+            }
+        }
+        return isRoot(callerId) ? Optional.of(SeatTree.TOP) : Optional.empty();
+    }
 }

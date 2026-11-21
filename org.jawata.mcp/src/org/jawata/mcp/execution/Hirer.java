@@ -184,4 +184,17 @@ public final class Hirer {
         }
         return allowed;
     }
+
+    /**
+     * Refuses a hirer the caller wrote that is not the seat the engine knows the caller to be (28h Stage 27, z25): {@code hirer} is free text on
+     * the hire call, and {@link #refuseKnown} lets a name through that the tree does not know, so without this any caller could name any hirer.
+     * Where the engine does not know the caller's seat ({@code actual} empty) the caller keeps what it wrote, since a brain that does not present
+     * its plan id as its session cannot be told from a guest.
+     */
+    public Optional<String> refuseClaim(String claimed, Optional<String> actual) {
+        if (claimed == null || actual.isEmpty() || claimed.equalsIgnoreCase(actual.get())) {
+            return Optional.empty();
+        }
+        return Optional.of("the call says it is hired by " + claimed + ", but it is made by " + actual.get() + "; a hire is made as the seat that makes it");
+    }
 }
