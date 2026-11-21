@@ -414,6 +414,18 @@ public final class AcpBrainSession {
             return environment;
         }
 
+        /**
+         * The PATH a brain is started with (28h z21): the one in the environment {@link #environmentOf} builds (an adapter's folder first, from the
+         * program), otherwise the engine's own, and "NOT SET" where the site starts the brain with a clean environment that names none.
+         */
+        public static String pathOf(HireSite base, Program program) {
+            String own = environmentOf(base, program).get("PATH");
+            if (own != null) {
+                return own;
+            }
+            return base.cleanEnvironment() ? "NOT SET" : java.util.Optional.ofNullable(System.getenv("PATH")).orElse("NOT SET");
+        }
+
         private static Conversation open(HostProcesses host, Program program, HireSite base, SelfEndpoint mcp, List<String> allowedTools,
                 Optional<String> resume, HiredBrain.Ceilings ceilings, OwnTools ownTools) throws IOException {
             Map<String, String> environment = environmentOf(base, program);

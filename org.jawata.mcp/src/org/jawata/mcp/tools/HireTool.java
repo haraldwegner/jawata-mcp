@@ -735,6 +735,8 @@ public class HireTool extends NeutralTool {
             .fixing(getStringParam(call.getArguments(), "fixes"))
             .issuedFrom(getStringParam(call.getArguments(), "instructionsFrom"));
         HiredRun.Proposal proposal;
+        // The ACP program the brain was started through, kept to say which PATH it had (28h z21).
+        Optional<AcpBrainSession.Program> brainProgram = Optional.empty();
         boolean stoppedByPerson = false;
         Optional<HireRegistry.Replacement> replacement = Optional.empty();
         // The registration keeps the brief the principal gave, so the panel still finds this hire; the brain is also told what was said before it took over.
@@ -748,6 +750,7 @@ public class HireTool extends NeutralTool {
             Optional<AcpBrainSession.Program> acp = brainsRegistry
                 .flatMap(registryText -> AcpBrainSession.programFor(registryText, productName)
                     .or(() -> AcpBrainSession.programFor(registryText, dialect.name())));
+            brainProgram = acp;
             proposal = run.issue(seat, base, briefToBrain, steps, new ToolGateRunner(registry.get()),
                 hiddenTools, acp);
         } catch (IOException e) {
@@ -997,8 +1000,10 @@ public class HireTool extends NeutralTool {
         // C16's own clause: a brain that cannot be told which tools to attach is REPORTED here
         // rather than quietly left out of the count.
         data.put("toolAttachment", dialect.toolAttachment().report());
-        // 28h Stage 27 (z21): the PATH the brain started with is the engine's, so a tool the hire could not find ("mvn: not found") can be read against it
-        data.put("brainPath", java.util.Optional.ofNullable(System.getenv("PATH")).orElse("NOT SET"));
+        // 28h Stage 27 (z21): the PATH the brain was started with (an ACP program's own environment first, otherwise the engine's), so a tool the
+        // hire could not find ("mvn: not found") can be read against it
+        data.put("brainPath", brainProgram.map(program -> AcpBrainSession.Conversation.pathOf(base, program))
+            .orElse(java.util.Optional.ofNullable(System.getenv("PATH")).orElse("NOT SET")));
         // WHAT STOPS THIS BRAIN WRITING, and whether this run's own log bears it out.
         data.put("writeContainment", containment.report());
         data.put("writeContainmentBasis", containment.basis().name());

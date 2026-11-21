@@ -447,6 +447,18 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h z21: the PATH a brain is started with is the one its program's own environment sets (an adapter's folder first) and otherwise the engine's, so a tool the brain could not find can be read against the PATH it really had")
+    void theBrainsPathIsTheOneItIsStartedWith() {
+        AcpBrainSession.Program withItsOwn = new AcpBrainSession.Program(List.of("brain"), Map.of("PATH", "/adapter/bin:/usr/bin"));
+        AcpBrainSession.Program withNone = new AcpBrainSession.Program(List.of("brain"), Map.of());
+
+        assertEquals("/adapter/bin:/usr/bin", AcpBrainSession.Conversation.pathOf(HireSite.in(dir), withItsOwn),
+            "the PATH of the program's own environment is the brain's, not the engine's");
+        assertEquals(java.util.Optional.ofNullable(System.getenv("PATH")).orElse("NOT SET"), AcpBrainSession.Conversation.pathOf(HireSite.in(dir), withNone),
+            "CONTROL: a program that sets none leaves the brain the engine's own PATH");
+    }
+
+    @Test
     @DisplayName("a brain the engine starts is marked machine-made, whatever the program's own environment says, so History leaves its session out")
     void aBrainTheEngineStartsIsMarkedMachineMade() {
         AcpBrainSession.Program program = new AcpBrainSession.Program(List.of("brain"), Map.of("KEPT", "yes", "JAWATA_MACHINE_SESSION", "0"));
