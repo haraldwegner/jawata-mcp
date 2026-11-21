@@ -163,14 +163,14 @@ class LanguagePublisherTest {
 
         assertEquals(ProjectLoadingState.LOADING, state.loading(), "no Java provider yet: the engine says it is loading");
         assertEquals(names(neutral), names(latest()), "only the tools that name no language are published");
-        assertTrue(names(latest()).size() < 50,"the Java tools are not there yet: " + names(latest()).size());
+        assertTrue(names(latest()).size() < 51,"the Java tools are not there yet: " + names(latest()).size());
         assertEquals(0, surfaceChecks.get(), "the published surface is not checked before the language it needs is there");
 
         JavaProvider java = InertShippedTools.javaProvider();
         board.bindProvider(java);
 
-        assertEquals(InertShippedTools.names(), names(latest()), "the same 50 tools the product ships");
-        assertEquals(50, latest().tools().size());
+        assertEquals(InertShippedTools.names(), names(latest()), "the same 51 tools the product ships");
+        assertEquals(51, latest().tools().size());
         assertEquals(1, surfaceChecks.get(), "checked once, after the Java tools were published");
         assertNotEquals(ProjectLoadingState.LOADING, state.loading(), "bound: no longer loading");
         assertNotNull(latest().quality(), "the quality tool the watch engine binds to arrives with the Java tools");
