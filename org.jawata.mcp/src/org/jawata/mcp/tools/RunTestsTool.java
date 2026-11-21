@@ -126,7 +126,19 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
                     "run the class or the method your change reaches, or ask the test-manager to run the package");
             }
         }
-        return super.execute(arguments);
+        ToolResponse run = super.execute(arguments);
+        return arguments != null && arguments.path("fullRun").asBoolean(false) ? repeatingReason(run, getStringParam(arguments, "reason")) : run;
+    }
+
+    /** The run's answer with the reason the test manager gave for a full run repeated in it, for the pm that reads the answer (28h Stage 27, z27). */
+    public static ToolResponse repeatingReason(ToolResponse run, String reason) {
+        if (run.isSuccess() && reason != null && !reason.isBlank() && run.getData() instanceof Map<?, ?> figures) {
+            Map<String, Object> stamped = new java.util.LinkedHashMap<>();
+            figures.forEach((key, value) -> stamped.put(String.valueOf(key), value));
+            stamped.put("fullRunReason", reason.strip());
+            return ToolResponse.success(stamped, run.getMeta());
+        }
+        return run;
     }
 
     /**

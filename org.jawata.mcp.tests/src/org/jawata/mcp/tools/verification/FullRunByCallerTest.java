@@ -100,6 +100,22 @@ class FullRunByCallerTest {
         }
     }
 
+    @Test
+    @DisplayName("28h z27: the reason the test manager gave for a full run is repeated in the run's answer, so the pm that reads the answer sees what it was argued for; an answer with no reason, a refusal and a data-less answer are left as they were")
+    void theReasonIsRepeatedInTheRunsAnswer() {
+        ToolResponse run = ToolResponse.success(new java.util.LinkedHashMap<>(java.util.Map.of("passed", 3)));
+        ToolResponse stamped = RunTestsTool.repeatingReason(run, "the checkpoint C27 gate");
+        ToolResponse blank = RunTestsTool.repeatingReason(ToolResponse.success(new java.util.LinkedHashMap<>(java.util.Map.of("passed", 3))), "  ");
+        ToolResponse refusal = ToolResponse.error("FULL_RUN_NOT_ALLOWED", "no", "hint");
+        ToolResponse noData = ToolResponse.success("plain text");
+        assertAll(
+            () -> assertTrue(stamped.getData() instanceof java.util.Map<?, ?> m && "the checkpoint C27 gate".equals(m.get("fullRunReason")), "the reason is not in the answer: " + stamped.getData()),
+            () -> assertTrue(stamped.getData() instanceof java.util.Map<?, ?> m && Integer.valueOf(3).equals(m.get("passed")), "CONTROL: the run's own figures were lost"),
+            () -> assertFalse(blank.getData() instanceof java.util.Map<?, ?> m && m.containsKey("fullRunReason"), "CONTROL: a blank reason was written into the answer"),
+            () -> assertFalse(RunTestsTool.repeatingReason(refusal, "any").isSuccess(), "CONTROL: a refusal was turned into something else"),
+            () -> assertTrue("plain text".equals(RunTestsTool.repeatingReason(noData, "any").getData()), "CONTROL: an answer that is not a map was changed"));
+    }
+
     private ObjectNode scoped(String kind) {
         ObjectNode args = JSON.createObjectNode();
         ObjectNode scope = args.putObject("scope");
