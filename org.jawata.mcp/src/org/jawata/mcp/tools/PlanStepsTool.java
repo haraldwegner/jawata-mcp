@@ -33,7 +33,10 @@ public final class PlanStepsTool implements Tool {
         return """
             The steps still waiting for their gate, read from the plan ledger and changing nothing.
 
-            USAGE: plan_steps()
+            USAGE: plan_steps() or plan_steps(all=true)
+
+            A caller is told of the plans it opened and of those nobody was recorded for; all=true tells of every session's plans, for a
+            caller that sends no session id and so owns none.
 
             Answers {pending: [{planId, passedStep, owner, inFlight, step: {index, tool, arguments}}]}, oldest plan first. owner is the
             session that opened the plan, empty when none was recorded. inFlight is true
@@ -45,7 +48,9 @@ public final class PlanStepsTool implements Tool {
 
     @Override
     public Map<String, Object> getInputSchema() {
-        return Map.of("type", "object", "properties", Map.of(), "required", List.of());
+        return Map.of("type", "object",
+            "properties", Map.of("all", Map.of("type", "boolean", "description", "Tell of the plans of every session, not only the caller's.")),
+            "required", List.of());
     }
 
     @Override
@@ -53,7 +58,10 @@ public final class PlanStepsTool implements Tool {
         List<Map<String, Object>> pending = new ArrayList<>();
         // A caller answers for the plans it opened and for those nobody was recorded for: a hire another caller is running does not hold this
         // caller's turn (S10). A call made outside the registry has no caller to answer for and sees every plan.
-        List<PlanLedger.Pending> mine = org.jawata.mcp.models.CallerIdentity.serving()
+        // A caller that asks for all plans (28h z20: the stop hook sends no session id, so as itself it would see only the plans nobody owns)
+        // is told of every session's.
+        boolean everyones = arguments != null && arguments.path("all").asBoolean(false);
+        List<PlanLedger.Pending> mine = everyones ? plans.pending() : org.jawata.mcp.models.CallerIdentity.serving()
             .map(caller -> plans.pendingFor(caller.id()))
             .orElseGet(plans::pending);
         for (PlanLedger.Pending open : mine) {

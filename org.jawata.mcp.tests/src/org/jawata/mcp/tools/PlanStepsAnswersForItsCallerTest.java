@@ -92,6 +92,21 @@ class PlanStepsAnswersForItsCallerTest {
     }
 
     @Test
+    @DisplayName("28h z20: a call that asks for all plans sees the plans of every session, which the stop hook needs because it sends no session id; without the ask a caller still sees only its own")
+    void aCallThatAsksForAllPlansSeesEverySessionsPlans() throws Exception {
+        PlanId theirs = openedFor("someone-else");
+        PlanId mine = openedFor("principal-1");
+        CallerIdentity hook = CallerIdentity.minted("http");
+
+        List<String> asking = idsIn(hook.speaking(() -> tool.execute(JSON.createObjectNode().put("all", true))));
+        List<String> notAsking = idsIn(hook.speaking(() -> tool.execute(JSON.createObjectNode())));
+
+        assertAll(
+            () -> assertEquals(List.of(theirs.toString(), mine.toString()), asking, "asking for all plans did not list every session's plans"),
+            () -> assertEquals(List.of(), notAsking, "CONTROL: without the ask a caller that owns none sees plans that belong to other sessions"));
+    }
+
+    @Test
     @DisplayName("a call made outside the registry has no caller to answer for and sees every plan")
     void aCallWithNoCallerSeesEveryPlan() throws Exception {
         PlanId mine = openedFor("principal-1");
