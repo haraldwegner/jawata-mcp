@@ -2266,6 +2266,17 @@ class HireToolTest {
                 "the registry entry for \"cursor\" was not used, so the dialect's own command line ran: " + started));
     }
 
+    /**
+     * Runs one call as the session of a chief engineer's own hire, as in production (28h z25: a session that is no seat's may not hire as one):
+     * the caller's id is registered as the plan id of a running chief-engineer hire for as long as the call lasts.
+     */
+    private static <T> T asAChiefEngineersSession(org.jawata.mcp.models.CallerIdentity who, java.util.function.Supplier<T> call) {
+        try (HireRegistry.Registration chief = HireRegistry.shared().begin("chief-engineer", "d4 session " + who.id(), "")) {
+            HireRegistry.shared().planOpened(who.id());
+            return who.speaking(call);
+        }
+    }
+
     /** The same hire as {@link #hireArgs(Path)} with the brief the test needs. */
     private JsonNode hireWithBrief(Path seat, String brief) {
         return ((com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seat)).put("brief", brief);
@@ -2279,8 +2290,8 @@ class HireToolTest {
         org.jawata.mcp.models.CallerIdentity principal = org.jawata.mcp.models.CallerIdentity.supplied("principal-d4-same");
         Path seat = seatFile(CATALOGUER_SEAT);
 
-        Map<String, Object> first = dataOf(principal.speaking(() -> hire.execute(hireWithBrief(seat, "HIREREMEMBER:bluebird"))));
-        Map<String, Object> second = dataOf(principal.speaking(() -> hire.execute(hireWithBrief(seat, "HIRERECALL"))));
+        Map<String, Object> first = dataOf(asAChiefEngineersSession(principal, () -> hire.execute(hireWithBrief(seat, "HIREREMEMBER:bluebird"))));
+        Map<String, Object> second = dataOf(asAChiefEngineersSession(principal, () -> hire.execute(hireWithBrief(seat, "HIRERECALL"))));
 
         assertAll(
             () -> assertEquals("noted", first.get("answer"), String.valueOf(first)),
@@ -2300,9 +2311,9 @@ class HireToolTest {
         worker.put("brief", PM_ANSWER);
         worker.put("observerSeatFile", seatFile(CATALOGUER_SEAT).toString());
 
-        principal.speaking(() -> hire.execute(worker));
+        asAChiefEngineersSession(principal, () -> hire.execute(worker));
         java.util.Optional<String> afterTheFirst = org.jawata.mcp.execution.SeatBrainSessions.shared().recall(issuer, "observer");
-        principal.speaking(() -> hire.execute(worker));
+        asAChiefEngineersSession(principal, () -> hire.execute(worker));
         java.util.Optional<String> afterTheSecond = org.jawata.mcp.execution.SeatBrainSessions.shared().recall(issuer, "observer");
 
         assertAll(
@@ -2317,9 +2328,9 @@ class HireToolTest {
         HireTool hire = toolWithBrainsSetting(host, JSON.writeValueAsString(Map.of("claude-code", program)));
         Path seat = seatFile(CATALOGUER_SEAT);
 
-        org.jawata.mcp.models.CallerIdentity.supplied("principal-d4-one").speaking(() -> hire.execute(hireWithBrief(seat, "HIREREMEMBER:bluebird")));
-        Map<String, Object> other = dataOf(org.jawata.mcp.models.CallerIdentity.supplied("principal-d4-two")
-            .speaking(() -> hire.execute(hireWithBrief(seat, "HIRERECALL"))));
+        asAChiefEngineersSession(org.jawata.mcp.models.CallerIdentity.supplied("principal-d4-one"), () -> hire.execute(hireWithBrief(seat, "HIREREMEMBER:bluebird")));
+        Map<String, Object> other = dataOf(asAChiefEngineersSession(org.jawata.mcp.models.CallerIdentity.supplied("principal-d4-two"),
+            () -> hire.execute(hireWithBrief(seat, "HIRERECALL"))));
 
         assertEquals("nothing", other.get("answer"), "another principal session's hire was handed the first one's conversation: " + other);
     }
@@ -2332,8 +2343,8 @@ class HireToolTest {
         org.jawata.mcp.models.CallerIdentity anonymous = org.jawata.mcp.models.CallerIdentity.minted("http");
         Path seat = seatFile(CATALOGUER_SEAT);
 
-        anonymous.speaking(() -> hire.execute(hireWithBrief(seat, "HIREREMEMBER:bluebird")));
-        Map<String, Object> later = dataOf(anonymous.speaking(() -> hire.execute(hireWithBrief(seat, "HIRERECALL"))));
+        asAChiefEngineersSession(anonymous, () -> hire.execute(hireWithBrief(seat, "HIREREMEMBER:bluebird")));
+        Map<String, Object> later = dataOf(asAChiefEngineersSession(anonymous, () -> hire.execute(hireWithBrief(seat, "HIRERECALL"))));
 
         assertEquals("nothing", later.get("answer"), "an anonymous caller's hire continued an earlier one: " + later);
     }
