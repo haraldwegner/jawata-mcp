@@ -3809,20 +3809,26 @@
      "enum": [
       "models",
       "status",
-      "probe"
+      "probe",
+      "choices",
+      "set"
      ],
      "type": "string"
     },
     "brain": {
-     "description": "The brain's id (e.g. claude-code, cursor). models: omit for every ready chat brain; probe: required.",
+     "description": "The brain's id (e.g. claude-code, cursor). models: omit for every ready chat brain; probe and set: required.",
      "type": "string"
     },
     "model": {
-     "description": "probe: the model to run on, as a Brain list shows it; omit for the brain's own default.",
+     "description": "probe and set: the model, as a Brain list shows it; omit for the brain's own default.",
      "type": "string"
     },
     "precedentOverride": {
      "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "type": "string"
+    },
+    "seat": {
+     "description": "set: the seat whose stored choice is replaced.",
      "type": "string"
     }
    },
