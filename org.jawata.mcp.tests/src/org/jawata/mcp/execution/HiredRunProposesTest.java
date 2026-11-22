@@ -314,6 +314,7 @@ class HiredRunProposesTest {
         SeatHire seat = SeatHire.read("""
             ---
             name: cataloguer
+            brain: claude-code
             tools: [search_symbols, inspect]
             ttl_secs: 30
             ---
@@ -359,6 +360,7 @@ class HiredRunProposesTest {
         SeatHire seat = SeatHire.read("""
             ---
             name: cataloguer
+            brain: claude-code
             tools: [inspect]
             ttl_secs: 30
             ---
@@ -388,7 +390,7 @@ class HiredRunProposesTest {
         // without an endpoint is held only by an instruction): this case is about the ARGV the
         // dialect builds with none, not about whether the hire is allowed.
         run.issue(SeatHire.read(
-                "---\nname: c\naccepts_uncontained_writes: true\ntools: [inspect]\nttl_secs: 30\n---\n"),
+                "---\nname: c\nbrain: claude-code\naccepts_uncontained_writes: true\ntools: [inspect]\nttl_secs: 30\n---\n"),
             site(standIn), "Catalogue it.", twoSteps(), HiredRunProposesTest::passed, List.of());
         List<String> argv = spy.asked();
 
