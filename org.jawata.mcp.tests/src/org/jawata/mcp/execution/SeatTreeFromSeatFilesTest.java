@@ -77,17 +77,25 @@ class SeatTreeFromSeatFilesTest {
     }
 
     @Test
-    @DisplayName("his ruling 2026-11-19 (1 C): the lead above a lead may also hire that lead's workers, so an easy task needs no chief engineer; nothing else widens")
-    void shouldTheLeadAboveAlsoHireTheWorkersOfItsSubLead() {
+    @DisplayName("his ruling of 2026-11-22 withdraws the 2026-11-19 widening: only a seat's parent hires it, and no seat name is written into the check")
+    void onlyTheParentHiresASeat() {
         SeatTree tree = SeatTree.standard();
 
-        assertTrue(tree.mayHire("pm", "developer"), "the pm may hire the chief engineer's worker for an easy task");
-        assertTrue(tree.mayHire("chief-engineer", "developer"), "the chief engineer still hires it");
-        assertTrue(tree.mayHire("pm", "test-writer"), "the same rule for the test manager's worker");
-        assertFalse(tree.mayHire("main", "developer"), "main is two leads above the developer, not one");
+        assertFalse(tree.mayHire("pm", "developer"), "the pm is not the developer's parent");
+        assertFalse(tree.mayHire("pm", "senior-developer"));
+        assertFalse(tree.mayHire("pm", "javadoc-writer"));
+        assertFalse(tree.mayHire("pm", "test-writer"), "nor the test writer's");
+        assertFalse(tree.mayHire("pm", "cataloguer"), "nor a reviewer under a lead");
+        assertFalse(tree.mayHire("main", "developer"), "main is two levels above the developer");
         assertFalse(tree.mayHire("test-manager", "developer"), "a lead beside the chief engineer does not hire its worker");
         assertFalse(tree.mayHire("chief-engineer", "test-writer"), "nor the other way round");
-        assertFalse(tree.mayHire("pm", "cataloguer"), "only workers: a reviewer under a lead is still the lead's alone");
+        assertTrue(tree.mayHire("chief-engineer", "developer"));
+        assertTrue(tree.mayHire("chief-engineer", "senior-developer"));
+        assertTrue(tree.mayHire("chief-engineer", "javadoc-writer"));
+        assertTrue(tree.mayHire("chief-engineer", "cataloguer"));
+        assertTrue(tree.mayHire("test-manager", "test-writer"));
+        assertTrue(tree.mayHire("pm", "chief-engineer"));
+        assertTrue(tree.mayHire("pm", "test-manager"));
     }
 
     @Test

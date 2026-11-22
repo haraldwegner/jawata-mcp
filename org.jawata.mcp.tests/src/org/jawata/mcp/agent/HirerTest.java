@@ -48,6 +48,21 @@ class HirerTest {
     }
 
     @Test
+    @DisplayName("his ruling of 2026-11-22: the pm hires only the two leads, and the parent hires each worker; the pm's hire of any worker is refused naming the parent")
+    void thePmHiresOnlyTheLeadsAndTheParentHiresTheWorker() {
+        Hirer hirer = new Hirer(SeatTree.standard(), Map.of(), Set.of());
+
+        assertEquals(Optional.of("pm does not hire developer; its hirer is chief-engineer"), hirer.refuse("pm", "developer"));
+        assertEquals(Optional.of("pm does not hire senior-developer; its hirer is chief-engineer"), hirer.refuse("pm", "senior-developer"));
+        assertEquals(Optional.of("pm does not hire javadoc-writer; its hirer is chief-engineer"), hirer.refuse("pm", "javadoc-writer"));
+        assertEquals(Optional.of("pm does not hire test-writer; its hirer is test-manager"), hirer.refuse("pm", "test-writer"));
+        assertEquals(Optional.empty(), hirer.refuse("chief-engineer", "developer"));
+        assertEquals(Optional.empty(), hirer.refuse("test-manager", "test-writer"));
+        assertEquals(Optional.empty(), hirer.refuse("pm", "chief-engineer"));
+        assertEquals(Optional.empty(), hirer.refuse("pm", "test-manager"));
+    }
+
+    @Test
     @DisplayName("D48: a consultant on main's own vendor is refused, and one on another vendor is not")
     void aSameVendorConsultantIsRefused() {
         Hirer same = hirer(Map.of("main", CLAUDE, "consultant", CHEAP));

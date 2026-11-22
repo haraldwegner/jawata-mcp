@@ -276,16 +276,16 @@ public final class SeatTree {
     }
 
     /**
-     * Whether {@code hirer} may hire {@code seat}: it is the seat's parent, or the seat is a worker whose parent is a lead and {@code hirer} is
-     * that lead's own parent (his ruling 2026-11-19: an easy task needs no chief engineer, so the pm may hire the developer too).
+     * Whether {@code hirer} may hire {@code seat}: a seat is hired by its parent in the tree and by nobody else. No seat name is written into
+     * the check. The widening of 2026-11-19 (the lead above a worker's lead may hire the worker) is withdrawn by his ruling of 2026-11-22: a pm
+     * only delegates and cannot slice, so the pm hires the chief engineer and the test manager, and they hire their own workers.
      */
     public boolean mayHire(String hirer, String seat) {
         Declaration d = seats.get(seat);
         if (hirer == null || d == null) {
             return false;
         }
-        return hirer.equals(d.parent())
-            || d.role() == Role.WORKER && isLead(d.parent()) && parentOf(d.parent()).filter(hirer::equals).isPresent();
+        return hirer.equals(d.parent());
     }
 
     /** The seat that hires {@code seat}, or none for main and for a seat the tree does not know. */
