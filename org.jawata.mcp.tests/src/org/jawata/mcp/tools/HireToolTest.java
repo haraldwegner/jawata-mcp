@@ -1212,6 +1212,73 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h z39: a hire the signed tree refuses is kept as refused by the engine and names the seat to hire through, beside the cleanExit and error it always carried")
+    void aHireRefusedByTheTreeIsKeptAsRefusedByTheEngineNamingItsParent() throws Exception {
+        HireTool hire = new Finishing(aHostThatMustNotSpawn(), artifacts, plans, () -> events, () -> aRegistryWithACleanGate());
+        ObjectNode args = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT.replace("name: cataloguer", "name: test-manager")), "test-manager");
+        args.put("hirer", "main").put("brief", "z39 (a) main hires the test manager");
+
+        ToolResponse response = hire.execute(args);
+
+        JsonNode kept = HireRegistry.shared().answerOf("test-manager", args.path("brief").asText()).orElse(null);
+        assertFalse(response.isSuccess());
+        assertTrue(response.getError().getMessage().contains("its hirer is pm"), response.getError().getMessage());
+        assertTrue(kept != null, "the refused hire's answer was not kept");
+        assertAll(
+            () -> assertTrue(kept.path("refusedByEngine").asBoolean(false), kept.toString()),
+            () -> assertEquals("pm", kept.path("hireThrough").asText(""), kept.toString()),
+            () -> assertFalse(kept.path("cleanExit").asBoolean(true), kept.toString()),
+            () -> assertEquals(response.getError().getMessage(), kept.path("error").asText(), kept.toString()));
+    }
+
+    @Test
+    @DisplayName("28h z39: a hire refused for another reason before any brain started is kept as refused by the engine and names no parent")
+    void aHireRefusedForAnotherReasonBeforeABrainIsKeptAsRefusedWithNoParent() throws Exception {
+        HireTool hire = new Finishing(aHostThatMustNotSpawn(), artifacts, plans, () -> events, () -> aRegistryWithACleanGate());
+        ObjectNode args = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("brief", "z39 (b) a claude hire with no endpoint");
+
+        ToolResponse response = hire.execute(args);
+
+        JsonNode kept = HireRegistry.shared().answerOf("cataloguer", args.path("brief").asText()).orElse(null);
+        assertFalse(response.isSuccess());
+        assertTrue(response.getError().getMessage().contains("endpoint"), response.getError().getMessage());
+        assertTrue(kept != null, "the refused hire's answer was not kept");
+        assertAll(
+            () -> assertTrue(kept.path("refusedByEngine").asBoolean(false), kept.toString()),
+            () -> assertFalse(kept.has("hireThrough"), "a refusal that is not the tree's names no parent: " + kept),
+            () -> assertFalse(kept.path("cleanExit").asBoolean(true), kept.toString()));
+    }
+
+    @Test
+    @DisplayName("28h z39, the control: a hire whose brain started and then ended in an error is kept as failed and is not marked refused by the engine")
+    void aHireWhoseBrainStartedAndFailedIsKeptWithoutBeingMarkedRefused() throws Exception {
+        String brief = "z39 (c) a brain that started and was stopped";
+        Path started = dir.resolve("brain-started-z39");
+        HireTool background = plainToolWithSettings(new StandsIn(host, aBrainThatBlocks(started)), Map.of());
+        Map<String, Object> opened = dataOf(background.execute(hireWithBrief(seatFile(CATALOGUER_SEAT), brief)));
+        for (int i = 0; i < 200 && !Files.exists(started); i++) {
+            Thread.sleep(50);
+        }
+        assertTrue(Files.exists(started), "the brain never started");
+
+        HireRegistry.shared().stopTree(String.valueOf(opened.get("hireId")));
+
+        JsonNode kept = null;
+        for (int i = 0; i < 200 && kept == null; i++) {
+            kept = HireRegistry.shared().answerOf("cataloguer", brief).orElse(null);
+            if (kept == null) {
+                Thread.sleep(100);
+            }
+        }
+        JsonNode answer = kept;
+        assertTrue(answer != null, "the stopped hire's answer was not kept");
+        assertAll(
+            () -> assertFalse(answer.path("cleanExit").asBoolean(true), answer.toString()),
+            () -> assertFalse(answer.has("refusedByEngine"), "a hire whose brain started was marked refused: " + answer));
+    }
+
+    @Test
     @DisplayName("architect F1: a brain whose writes are held only by an INSTRUCTION is refused before it spawns, unless the seat opts in")
     void anInstructionOnlyBrainIsRefusedUnlessTheSeatOptsIn() throws Exception {
         HireTool hire = new Finishing(aHostThatMustNotSpawn(), artifacts, plans,
@@ -2048,6 +2115,64 @@ class HireToolTest {
             () -> assertTrue(said.contains("Foo.java") && said.contains("Made.java") && !said.contains("plan.md"), "the answer does not say what was put back: " + said));
     }
 
+    /** A lead whose brain writes one code file by shell while a hire it started, if the test stands one in, names that file as changed (28h z53). */
+    private Map<String, Object> aLeadWhoWrote(String codeFile, boolean developerNamesIt) throws Exception {
+        Files.writeString(dir.resolve("observer.md"), CATALOGUER_SEAT);
+        Path work = Files.createDirectories(dir.resolve("work"));
+        Files.writeString(work.resolve("Foo.java"), "class Foo {}\n");
+        gitIn(work, "init", "-q");
+        gitIn(work, "add", "Foo.java");
+        gitIn(work, "commit", "-q", "-m", "base");
+        String byShell = "  echo 'class " + codeFile.replace(".java", "") + " {}' > '" + work.resolve(codeFile) + "'\n";
+        HireTool hire = toolWith(new StandsIn(host, aBrainWritingThenCallingThenAnObserverWhoHalts(byShell, "Edit",
+            "{\"file_path\":\"/w/docs/plan.md\",\"old_string\":\"a\",\"new_string\":\"b\"}").withSeparateStderr()), events, aRegistryWithACleanGate());
+        com.fasterxml.jackson.databind.node.ObjectNode args =
+            (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "chief-engineer");
+        args.put("hirer", "pm");
+        args.put("brief", "Plan the change and hire a developer.");
+        args.put("workingDirectory", work.toString());
+        String childPlan = "plan-z53-developer";
+        Runnable unsubscribe = HireRegistry.shared().subscribe(event -> {
+            if (developerNamesIt && "started".equals(event.kind()) && "chief-engineer".equals(event.seat())) {
+                HireRegistry.shared().startedBy(childPlan, event.planId());
+                com.fasterxml.jackson.databind.node.ObjectNode answer = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+                answer.put("plan", childPlan);
+                answer.put("name", "Dev z53");
+                answer.putArray("changedFiles").add(codeFile);
+                HireRegistry.shared().record("developer", "z53 the developer's brief", answer);
+            }
+        });
+        try {
+            return dataOf(hire.execute(args));
+        } finally {
+            unsubscribe.run();
+        }
+    }
+
+    @Test
+    @DisplayName("28h z53: a code file a hire the lead started changed is not put back at the lead's end, and the lead's answer holds no ownCodePutBack")
+    void aDevelopersCodeSurvivesTheEndOfItsLead() throws Exception {
+        Map<String, Object> lead = aLeadWhoWrote("Dev.java", true);
+
+        Path dev = dir.resolve("work").resolve("Dev.java");
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertTrue(Files.exists(dev), "the developer's code file was taken away at the end of its lead"),
+            () -> assertEquals("class Dev {}\n", Files.exists(dev) ? Files.readString(dev) : "", "the developer's code file does not hold what it was written with"),
+            () -> org.junit.jupiter.api.Assertions.assertFalse(lead.containsKey("ownCodePutBack"), "the lead's answer says it put back code: " + lead.get("ownCodePutBack")));
+    }
+
+    @Test
+    @DisplayName("28h z53: a code file only the lead wrote, that no hire of its own names, is still put back at its end and named")
+    void aLeadsOwnCodeIsStillPutBack() throws Exception {
+        Map<String, Object> lead = aLeadWhoWrote("Own.java", false);
+
+        Path own = dir.resolve("work").resolve("Own.java");
+        String said = String.valueOf(lead.get("ownCodePutBack"));
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> org.junit.jupiter.api.Assertions.assertFalse(Files.exists(own), "the code file the lead wrote was left on disk"),
+            () -> assertTrue(said.contains("Own.java"), "the answer does not name what was put back: " + said));
+    }
+
     @Test
     @DisplayName("S10 (F7): the plan of the observer-judge hire belongs to the caller that issued the worker, so no other caller's turn waits on it")
     void aJudgesHirePlanBelongsToTheCallerThatIssuedTheWorker() throws Exception {
@@ -2185,7 +2310,7 @@ class HireToolTest {
     private HireTool toolWithBrainsSetting(HostProcesses processes, String registryJson) {
         return new Finishing(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
-            () -> key -> HireTool.BRAINS_SETTING.equals(key) && registryJson != null ? java.util.Optional.of(registryJson) : java.util.Optional.empty(),
+            () -> held(registryJson == null ? java.util.Map.of() : java.util.Map.of(HireTool.BRAINS_SETTING, registryJson)),
             null);
     }
 
@@ -2204,6 +2329,29 @@ class HireToolTest {
             () -> assertEquals(program.get("command"), started.get(0), "the brain started was not the ACP program: " + started),
             () -> assertTrue(data.get("brainSessionId") instanceof String id && !id.isBlank(),
                 "the brain's own session id is not in the hire's answer: " + data));
+    }
+
+    @Test
+    @DisplayName("a stored Haiku 5.5 moves the ACP session to haiku, and the answer and the journal record Haiku 5.5")
+    void aStoredHaikuIsWhatTheAcpSessionStartsOn() throws Exception {
+        Map<String, Object> program = new java.util.LinkedHashMap<>(theStandInAcpProgram());
+        Map<String, String> env = new java.util.LinkedHashMap<>((Map<String, String>) program.get("env"));
+        env.put("FAKE_ACP_MODELS", "default=Default,haiku=Haiku 5.5");
+        program.put("env", env);
+        String registry = JSON.writeValueAsString(Map.of("claude-code", program));
+        com.fasterxml.jackson.databind.node.ObjectNode args = (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("brief", "WHICHMODEL");
+        Map<String, Object> data = dataOf(toolWithSettings(host, Map.of(
+            SettingKeys.SEATS_BRAINS.name(), "cataloguer=claude-code/Haiku 5.5",
+            HireTool.BRAINS_SETTING, registry)).execute(args));
+        String plan = (String) data.get("plan");
+        JsonNode detail = JSON.readTree(events.eventsOfSession(plan).orElseThrow().get(0).detailJson());
+
+        assertAll(
+            () -> assertEquals("haiku", String.valueOf(data.get("answer")).strip(), "the session was not moved to the value Haiku 5.5 is offered as: " + data.get("answer")),
+            () -> assertEquals("claude-code", brainFieldOf(data, "brain"), String.valueOf(data)),
+            () -> assertEquals("Haiku 5.5", brainFieldOf(data, "model"), String.valueOf(data)),
+            () -> assertEquals("Haiku 5.5", detail.path("model").asText(), "the journal recorded another model: " + detail));
     }
 
     @Test
@@ -2232,7 +2380,7 @@ class HireToolTest {
         String brains = JSON.writeValueAsString(Map.of("claude-code", theStandInAcpProgram()));
         HireTool overAcp = new Finishing(host, artifacts, plans, () -> events, () -> registry,
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
-            () -> key -> HireTool.BRAINS_SETTING.equals(key) ? java.util.Optional.of(brains) : java.util.Optional.empty(), null);
+            () -> held(java.util.Map.of(HireTool.BRAINS_SETTING, brains)), null);
         dataOf(overAcp.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
         int afterTheAcpHire = seen.size();
         HireTool byDialect = toolWith(new StandsIn(host, aBrainThatAnswers()), events, registry);
@@ -2491,7 +2639,7 @@ class HireToolTest {
             // THE CONTROL: a tool that waits for the hire, the brain takes four seconds, and the caller's own request gives up after one. The call
             // is still waiting then: this is the failure the long hire showed under Cursor's agent, a call that outlives its caller's patience.
             HireTool foreground = new Finishing(new StandsIn(host, aBrainThatTakes(4)), artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
-                () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null, () -> key -> java.util.Optional.empty(), null);
+                () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null, () -> held(java.util.Map.of()), null);
             java.util.concurrent.Future<ToolResponse> waiting = caller.submit(() -> foreground.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
             org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.TimeoutException.class, () -> waiting.get(1, java.util.concurrent.TimeUnit.SECONDS),
                 "a call that waits for the hire was expected to still be running after a second");
@@ -2608,16 +2756,43 @@ class HireToolTest {
      * A hire tool that runs the hire on the calling thread and answers with its finished result, which is what {@code execute} did before a hire
      * answered at once. The cases that read gates, journals and brains in the answer use it; the at-once answer has its own cases, on the plain tool.
      */
+    /** The choice the fixtures hire under. Production has no such fill-in; a test that sets the key itself is left alone. */
+    private static final String FIXTURE_CHOICES = "cataloguer=claude-code/claude-sonnet-5;developer=claude-code/claude-sonnet-5;"
+        + "pm=claude-code/claude-sonnet-5;consultant=claude-code/claude-sonnet-5;test-manager=claude-code/claude-sonnet-5;"
+        + "observer=claude-code/claude-sonnet-5;chief-engineer=claude-code/claude-sonnet-5;senior-developer=claude-code/claude-sonnet-5";
+    private static final String FIXTURE_REGISTRY = "{\"claude-code\":{\"vendor\":\"anthropic\",\"model\":\"claude-sonnet-5\"},"
+        + "\"cursor\":{\"vendor\":\"cursor\",\"model\":\"Sonnet\"},\"codex\":{\"vendor\":\"openai\",\"model\":\"codex\"},"
+        + "\"copilot\":{\"vendor\":\"github\",\"model\":\"copilot\"}}";
+
+    /** The choice for the seat this thread is hiring, taken from the seat file the test named, so a cursor fixture is stored as cursor. */
+    private static final ThreadLocal<String> FILE_CHOICE = new ThreadLocal<>();
+
+    private static org.jawata.spi.host.EngineSettings held(java.util.Map<String, String> given) {
+        return key -> {
+            if (given != null && given.containsKey(key)) {
+                return java.util.Optional.ofNullable(given.get(key));
+            }
+            if (SettingKeys.SEATS_BRAINS.name().equals(key)) {
+                String fromFile = FILE_CHOICE.get();
+                return java.util.Optional.of(fromFile != null ? fromFile : FIXTURE_CHOICES);
+            }
+            if (HireTool.BRAINS_SETTING.equals(key)) {
+                return java.util.Optional.of(FIXTURE_REGISTRY);
+            }
+            return java.util.Optional.empty();
+        };
+    }
+
     private static final class Finishing extends HireTool {
 
         Finishing(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans, java.util.function.Supplier<LearnerEventStore> journal,
                   java.util.function.Supplier<ToolRegistry> registry) {
-            super(host, artifacts, plans, journal, registry);
+            this(host, artifacts, plans, journal, registry, () -> null);
         }
 
         Finishing(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans, java.util.function.Supplier<LearnerEventStore> journal,
                   java.util.function.Supplier<ToolRegistry> registry, java.util.function.Supplier<SelfEndpoint> self) {
-            super(host, artifacts, plans, journal, registry, self);
+            super(host, artifacts, plans, journal, registry, self, () -> null, () -> held(java.util.Map.of()), null, () -> null);
         }
 
         Finishing(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans, java.util.function.Supplier<LearnerEventStore> journal,
@@ -2630,12 +2805,36 @@ class HireToolTest {
         Finishing(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans, java.util.function.Supplier<LearnerEventStore> journal,
                   java.util.function.Supplier<ToolRegistry> registry, java.util.function.Supplier<SelfEndpoint> self,
                   java.util.function.Supplier<org.jawata.spi.lang.SourceUnits> sourceUnits) {
-            super(host, artifacts, plans, journal, registry, self, null, null, null, sourceUnits);
+            super(host, artifacts, plans, journal, registry, self, null, () -> held(java.util.Map.of()), null, sourceUnits);
         }
 
         @Override
         public ToolResponse execute(JsonNode arguments) {
-            return runAndKeep(arguments, new HireCall(arguments, null, "", org.jawata.mcp.models.CallerIdentity.serving()));
+            String seat = arguments.path("seat").asText("cataloguer");
+            String brain = "claude-code";
+            String model = null;
+            String file = arguments.path("seatFile").asText("");
+            if (!file.isBlank()) {
+                try {
+                    String body = java.nio.file.Files.readString(java.nio.file.Path.of(file));
+                    java.util.regex.Matcher brains = java.util.regex.Pattern.compile("(?m)^brain:\\s*(\\S+)").matcher(body);
+                    if (brains.find()) {
+                        brain = brains.group(1);
+                    }
+                    java.util.regex.Matcher models = java.util.regex.Pattern.compile("(?m)^model:\\s*(.+)$").matcher(body);
+                    if (models.find() && !models.group(1).isBlank()) {
+                        model = models.group(1).strip();
+                    }
+                } catch (java.io.IOException ignored) {
+                    // a missing file is the hire tool's own refusal
+                }
+            }
+            FILE_CHOICE.set(seat + "=" + brain + (model == null ? "" : "/" + model));
+            try {
+                return runAndKeep(arguments, new HireCall(arguments, null, "", org.jawata.mcp.models.CallerIdentity.serving()));
+            } finally {
+                FILE_CHOICE.remove();
+            }
         }
     }
 
@@ -2746,12 +2945,18 @@ class HireToolTest {
     @Test
     @DisplayName("z14 rule 1 (a): on an engine whose seats are not sealed, the brain and model the Seats page stores for a seat are the ones a hire of a seat file that names none runs on")
     void anUnsealedHireRunsOnTheBrainAndModelTheSeatSettingsStore() throws Exception {
-        Map<String, Object> answer = dataOf(toolWithSettings(new StandsIn(host, aBrainThatAnswers()),
+        StandsIn started = new StandsIn(host, aBrainThatAnswers());
+        Map<String, Object> answer = dataOf(toolWithSettings(started,
             Map.of(SettingKeys.SEATS_BRAINS.name(), "developer=claude-code/Haiku 5.5")).execute(hireArgs(seatFile(DEVELOPER_SEAT_WITHOUT_BRAIN_OR_MODEL), "developer")));
+        int flag = started.asked().indexOf("--model");
+        String plan = (String) answer.get("plan");
+        JsonNode detail = JSON.readTree(events.eventsOfSession(plan).orElseThrow().get(0).detailJson());
 
         assertAll(
             () -> assertEquals("claude-code", brainFieldOf(answer, "brain"), String.valueOf(answer)),
-            () -> assertEquals("Haiku 5.5", brainFieldOf(answer, "model"), String.valueOf(answer)));
+            () -> assertEquals("Haiku 5.5", brainFieldOf(answer, "model"), String.valueOf(answer)),
+            () -> assertTrue(flag >= 0 && "Haiku 5.5".equals(started.asked().get(flag + 1)), "the dialect was not started on the stored model: " + started.asked()),
+            () -> assertEquals("Haiku 5.5", detail.path("model").asText(), "the journal recorded another model: " + detail));
     }
 
     @Test
@@ -2766,14 +2971,15 @@ class HireToolTest {
     }
 
     @Test
-    @DisplayName("z14 rule 1 (c), the control: with nothing stored a hire runs on exactly what its seat file names")
-    void withNothingStoredAnUnsealedHireRunsOnItsSeatFile() throws Exception {
-        Map<String, Object> answer = dataOf(toolWithSettings(new StandsIn(host, aBrainThatAnswers()), Map.of())
-            .execute(hireArgs(seatFile(DEVELOPER_SEAT_ON_CURSOR), "developer")));
-
+    @DisplayName("with nothing stored the hire is refused, names the seat and where to set it, and starts no process")
+    void withNothingStoredTheHireIsRefused() throws Exception {
+        // Old assertion: the file's cursor and Sonnet were the hire. The file is not a choice.
+        ToolResponse refused = toolWithSettings(aHostThatMustNotSpawn(), Map.of(SettingKeys.SEATS_BRAINS.name(), ""))
+            .execute(hireArgs(seatFile(DEVELOPER_SEAT_ON_CURSOR), "developer"));
         assertAll(
-            () -> assertEquals("cursor-agent", brainFieldOf(answer, "brain"), String.valueOf(answer)),
-            () -> assertEquals("Sonnet", brainFieldOf(answer, "model"), String.valueOf(answer)));
+            () -> assertFalse(refused.isSuccess(), "a hire with nothing stored was started"),
+            () -> assertTrue(String.valueOf(refused.getError()).contains("developer"), String.valueOf(refused.getError())),
+            () -> assertTrue(String.valueOf(refused.getError()).contains("Seats page"), String.valueOf(refused.getError())));
     }
 
     @Test
@@ -2794,7 +3000,7 @@ class HireToolTest {
 
         assertAll(
             () -> assertFalse(refused.isSuccess(), "a hire ran on a brain the settings store that no hire can start"),
-            () -> assertTrue(String.valueOf(refused.getError()).contains("INVALID_PARAMETER"), String.valueOf(refused.getError())),
+            () -> assertTrue(String.valueOf(refused.getError()).contains("PRECONDITION_NOT_MET"), String.valueOf(refused.getError())),
             () -> assertTrue(String.valueOf(refused.getError()).contains("nonsense"), String.valueOf(refused.getError())));
     }
 
@@ -2802,14 +3008,14 @@ class HireToolTest {
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new Finishing(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
-            () -> key -> java.util.Optional.ofNullable(settings.get(key)), null);
+            () -> held(settings), null);
     }
 
     /** The plain hire tool, which answers at once with who the hire is, whose host settings are exactly these, by key. */
     private HireTool plainToolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new HireTool(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
-            () -> key -> java.util.Optional.ofNullable(settings.get(key)), null, () -> null);
+            () -> held(settings), null, () -> null);
     }
 
     private static final String SEAT_WITHOUT_A_MODEL = CATALOGUER_SEAT.replace("model: claude-sonnet-5\n", "");
@@ -2907,7 +3113,9 @@ class HireToolTest {
         assertAll(
             () -> assertEquals("model-one", modelOf(first.asked()), String.valueOf(first.asked())),
             () -> assertEquals("model-two", modelOf(second.asked()), "the registry changed and the seat's next hire did not: " + second.asked()),
-            () -> assertEquals(Map.of("brain", "claude-code", "vendor", "anthropic", "model", "model-one"), one.get("brain"), String.valueOf(one)));
+            () -> assertEquals("model-one", ((Map<?, ?>) one.get("brain")).get("model"), String.valueOf(one)),
+            () -> assertEquals("the registry names this model; the stored entry named the brain and no model",
+                ((Map<?, ?>) one.get("brain")).get("modelFromRegistry"), String.valueOf(one)));
     }
 
     @Test
@@ -2915,13 +3123,16 @@ class HireToolTest {
     void aSeatsOwnModelWinsOverTheRegistry() throws Exception {
         StandsIn own = new StandsIn(host, aBrainThatAnswers());
         toolWithSettings(own, Map.of(HireTool.BRAINS_SETTING, registryOf("anthropic", "registry-model"))).execute(hireArgs(seatFile(CATALOGUER_SEAT)));
-        StandsIn none = new StandsIn(host, aBrainThatAnswers());
-        Map<String, Object> data = dataOf(toolWithSettings(none, Map.of()).execute(hireArgs(seatFile(SEAT_WITHOUT_A_MODEL))));
+        ToolResponse none = toolWithSettings(aHostThatMustNotSpawn(),
+            java.util.Map.of(SettingKeys.SEATS_BRAINS.name(), "cataloguer=claude-code", HireTool.BRAINS_SETTING, registryOf("anthropic", null)))
+            .execute(hireArgs(seatFile(SEAT_WITHOUT_A_MODEL)));
 
         assertAll(
             () -> assertEquals("claude-sonnet-5", modelOf(own.asked()), String.valueOf(own.asked())),
-            () -> assertEquals(null, modelOf(none.asked()), "a model was invented with no registry and no seat model: " + none.asked()),
-            () -> assertEquals("THE BRAIN'S OWN DEFAULT", ((Map<?, ?>) data.get("brain")).get("model")));
+            // Old assertion: null model and THE BRAIN'S OWN DEFAULT when the file and the registry named none.
+            // A stored brain with no model and a registry that names none is a refusal.
+            () -> assertFalse(none.isSuccess(), "a hire with no model started: " + none),
+            () -> assertTrue(String.valueOf(none.getError()).contains("no model"), String.valueOf(none.getError())));
     }
 
     @Test
@@ -2962,8 +3173,8 @@ class HireToolTest {
             assertAll(
                 () -> assertEquals(1, replaced),
                 () -> assertTrue(String.valueOf(data.get("replaced")).contains("hired again"), String.valueOf(data)),
-                () -> assertEquals("replaced-model", ((Map<?, ?>) data.get("brain")).get("model"), String.valueOf(data)),
-                () -> assertTrue(String.valueOf(processes.asked()).contains("replaced-model"), "the second hire was not on the new brain: " + processes.asked()),
+                () -> assertEquals("claude-sonnet-5", ((Map<?, ?>) data.get("brain")).get("model"), String.valueOf(data)),
+                () -> assertFalse(String.valueOf(processes.asked()).contains("replaced-model"), "a running hire was moved onto the picked model: " + processes.asked()),
                 () -> assertTrue(String.valueOf(processes.asked()).contains("half way through the package"), "the new brain was not told what was said: " + processes.asked()));
 
             StandsIn next = new StandsIn(host, aBrainThatAnswers());

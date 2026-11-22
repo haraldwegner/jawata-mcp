@@ -77,7 +77,7 @@ import org.jawata.mcp.access.LookupDriver;
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
                        HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script,
-                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command) {
+                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command, String launchModel) {
 
     /** The brains this product has a dialect for. A seat may name no other. */
     public enum Brain {
@@ -260,7 +260,8 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             writesStore,
             // The slash command a person types for this seat (architect is /refactor), written once in the seat's own file so that the
             // studio's command table and the Agent Control panel read the same word. A seat with no command of its own leaves it out.
-            Frontmatter.emptyToNull(front.get("command")));
+            Frontmatter.emptyToNull(front.get("command")),
+            null);
     }
 
     /**
@@ -328,12 +329,40 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
      * The model the registry setting offers for this seat's brain, used only where the seat file names none: a model the seat file writes is
      * the seat's own word and wins over the studio's default for the brain.
      */
+
+    /**
+     * The same seat on the stored brain and model. {@code shown} is what the record and the journal say;
+     * {@code launched} is what the program's command line is given (the engine's existing name-to-value translation).
+     */
+    public SeatHire apply(Brain picked, String shown, String launched) {
+        if (picked == null) {
+            throw new IllegalArgumentException("a hire has no brain");
+        }
+        if (picked == Brain.SCRIPT && (script == null || script.isBlank())) {
+            throw new IllegalArgumentException("seat '" + seat + "' is set to run on 'script' and names no script to run");
+        }
+        if (changesCode && picked != Brain.CLAUDE_CODE && picked != Brain.CURSOR) {
+            throw new IllegalArgumentException("seat '" + seat + "' is set to run on '" + picked.label()
+                + "', which cannot carry changes_code");
+        }
+        if (readsFiles && picked != Brain.CLAUDE_CODE) {
+            throw new IllegalArgumentException("seat '" + seat + "' is set to run on '" + picked.label()
+                + "', which cannot carry reads_files");
+        }
+        if (writesStore && picked != Brain.CLAUDE_CODE && picked != Brain.CURSOR) {
+            throw new IllegalArgumentException("seat '" + seat + "' is set to run on '" + picked.label()
+                + "', which cannot carry writes_store");
+        }
+        return new SeatHire(seat, picked, shown, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
+            changesCode, readsFiles, activities, writesStore, command, launched);
+    }
+
     public SeatHire withRegistryModel(Hirer.Brain offered) {
         if (model != null || offered == null || offered.model().isBlank()) {
             return this;
         }
         return new SeatHire(seat, brain, offered.model(), tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
-            changesCode, readsFiles, activities, writesStore, command);
+            changesCode, readsFiles, activities, writesStore, command, launchModel);
     }
 
     /**
@@ -345,7 +374,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         boolean named = pickedModel != null && !pickedModel.isBlank();
         String next = named && picked.takesAModel() ? pickedModel.strip() : (picked == brain ? model : null);
         return new SeatHire(seat, picked, next, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
-            changesCode, readsFiles, activities, writesStore, command);
+            changesCode, readsFiles, activities, writesStore, command, launchModel);
     }
 
     /**
@@ -360,10 +389,11 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         if (brain == null) {
             throw new IllegalStateException("this seat has no brain yet, so there is no dialect to start");
         }
+        String flag = launchModel != null && !launchModel.isBlank() ? launchModel : model;
         return switch (brain) {
-            case CLAUDE_CODE -> new ClaudeCodeDialect("claude", maxTurns(), model, !(changesCode || writesStore), self,
+            case CLAUDE_CODE -> new ClaudeCodeDialect("claude", maxTurns(), flag, !(changesCode || writesStore), self,
                 hiddenTools, readsFiles ? ClaudeCodeDialect.READ_ONLY_BUILT_INS : List.of());
-            case CURSOR -> new CursorDialect("cursor-agent", !(changesCode || writesStore), model);
+            case CURSOR -> new CursorDialect("cursor-agent", !(changesCode || writesStore), flag);
             // Neither of these takes a model from this product: copilot ROUTES its own (its
             // auto_mode_resolved event reports which it chose and why), and codex's is set in its
             // config, out of band. Passing one would be a flag invented rather than measured.
@@ -445,6 +475,6 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
     }
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore) {
-        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, activities, writesStore, null);
+        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, activities, writesStore, null, null);
     }
 }

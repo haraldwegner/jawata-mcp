@@ -550,6 +550,12 @@ public class HireTool extends NeutralTool {
         // A hire that opened its plan and then failed or was stopped is announced under that plan and name, or no card and no lead can tell it ended.
         if (!response.isSuccess() && outcome instanceof com.fasterxml.jackson.databind.node.ObjectNode failed) {
             ended.ifPresent(end -> failed.put("plan", end.planId()).put("name", end.name()));
+            // 28h z39: a hire that ended before its plan opened never started a brain, so the engine refused it: the answer says so, and a card
+            // must not show the program as failing. A hire whose plan opened and then failed is not marked.
+            if (ended.isEmpty()) {
+                failed.put("refusedByEngine", true);
+                call.getHireThrough().ifPresent(parent -> failed.put("hireThrough", parent));
+            }
         }
         HireRegistry.shared().record(arguments.path("seat").asText(""), arguments.path("brief").asText(""), outcome);
         return response;
@@ -565,6 +571,7 @@ public class HireTool extends NeutralTool {
         private final Replacement replacing;
         private final String saidBefore;
         private final Optional<org.jawata.mcp.models.CallerIdentity> serving;
+        private Optional<String> hireThrough = Optional.empty();
 
         public HireCall(JsonNode arguments, Replacement replacing, String saidBefore, Optional<org.jawata.mcp.models.CallerIdentity> serving) {
             this.arguments = arguments;
@@ -588,6 +595,15 @@ public class HireTool extends NeutralTool {
         /** The caller this hire serves, captured when the call was made; empty when none was identified. */
         public Optional<org.jawata.mcp.models.CallerIdentity> getServing() {
             return serving;
+        }
+
+        /** The seat a refused hire must go through: set when the signed tree refused it, empty otherwise. */
+        public Optional<String> getHireThrough() {
+            return hireThrough;
+        }
+
+        public void setHireThrough(Optional<String> parent) {
+            this.hireThrough = parent;
         }
     }
 
@@ -675,51 +691,31 @@ public class HireTool extends NeutralTool {
                 "check its brain: field — an unknown brain is refused rather than defaulted");
         }
 
-        // THE SEAT SETTINGS' BRAIN (D15): on a sealed engine the brain and model stored for the seat are the seat's own, the file's default
-        // when nothing is stored; the person's replace below still wins for this one hire.
-        if (sealedRow != null) {
-            Optional<SeatHire.Brain> stored = SeatHire.Brain.named(sealedRow.brain());
-            if (stored.isEmpty()) {
-                // as the seat-file path refuses an unknown brain rather than defaulting to one: hiring the wrong brain would run and report a result
-                return ToolResponse.error("INVALID_PARAMETER", "seat '" + hired + "' is set to run on '" + sealedRow.brain() + "', which is not a brain a hire can start",
-                    "choose its brain again in Preferences > jawata > Seats");
-            }
-            seat = seat.withBrain(stored.get(), sealedRow.model().orElse(null));
-        } else {
-            // 28h Stage 27 (z14): on an engine whose seats are not sealed the Seats page's choice for the seat is the seat's brain and model too,
-            // whichever seat file is named; the file's own brain and model are the default beneath it, never above it.
-            Optional<String[]> page = SeatSettingsService.storedBrainOf(settings.get(), hired);
-            if (page.isPresent()) {
-                Optional<SeatHire.Brain> chosen = SeatHire.Brain.named(page.get()[0]);
-                if (chosen.isEmpty()) {
-                    return ToolResponse.error("INVALID_PARAMETER", "seat '" + hired + "' is set to run on '" + page.get()[0] + "', which is not a brain a hire can start",
-                        "choose its brain again on the Seats page");
-                }
-                seat = seat.withBrain(chosen.get(), page.get()[1]);
-            }
-        }
-
-        // THE PERSON'S REPLACE (D53 (i)): a hire moved onto another brain in the Agent Control panel runs on that brain this once; the seat file, its
-        // default, is not touched. It comes before the registry fills a model the seat names none of, so the person's choice wins over the registry's default.
-        if (call.getReplacing() != null) {
-            seat = seat.withBrain(call.getReplacing().brain(), call.getReplacing().model());
-        }
-
-        if (seat.brain() == null) {
-            // No stored choice and the seat file named none. Claude is not filled in, and nothing is started.
-            return ToolResponse.error("PRECONDITION_NOT_MET",
-                "seat '" + hired + "' has no brain yet",
-                "nothing fills a brain in when none is stored");
-        }
-
-        // THE MODEL REGISTRY AND THE VENDOR RULE (S12, D11, D48). The registry setting offers each brain with its vendor and model; the seat file's own
-        // model wins over the registry's. The hirer decides with what is known of main's brain (its setting) and of this seat's: a hire between two
-        // seats of the signed tree is refused unless the hirer is the seat's parent, and the consultant is refused on main's own vendor. This is after
-        // the seat file is read because the vendor of the seat is the vendor of its brain, and before anything is started.
+        // THE STORED CHOICE, read once. The seat file's brain and model are not a choice, and a running hire is not moved.
         Optional<String> brainsRegistry = settings.get().get(BRAINS_SETTING);
+        String registryText = brainsRegistry.orElse("");
+        String storedText = org.jawata.mcp.execution.SeatBrains.installed()
+            .map(org.jawata.mcp.execution.SeatBrains.Store::text)
+            .orElseGet(() -> settings.get().get(org.jawata.mcp.engine.SettingKeys.SEATS_BRAINS.name()).orElse(""));
+        org.jawata.mcp.execution.SeatBrains.Choice choice;
+        try {
+            choice = org.jawata.mcp.execution.SeatBrains.choose(storedText, registryText, hired);
+        } catch (IllegalArgumentException refused) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", refused.getMessage(), org.jawata.mcp.execution.SeatBrains.WHERE);
+        }
+        SeatHire.Brain chosenBrain = SeatHire.Brain.named(choice.brain()).orElseThrow();
+        String launch = org.jawata.mcp.execution.AcpBrainSession.commandLineModelIn(registryText, choice.brain(), choice.model());
+        try {
+            seat = seat.apply(chosenBrain, choice.model(), launch);
+        } catch (IllegalArgumentException refused) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", refused.getMessage(),
+                "the stored brain cannot carry what this seat declares");
+        }
+        boolean modelFromRegistry = choice.modelTakenFromRegistry();
+
+        // THE VENDOR RULE (S12, D11, D48). The hirer decides with what is known of main's brain and of this seat's.
         String brainLabel = seat.brain().label();
-        Optional<Hirer.Brain> brainOffered = brainsRegistry.flatMap(text -> Hirer.brainIn(text, brainLabel));
-        seat = seat.withRegistryModel(brainOffered.orElse(null));
+        Optional<Hirer.Brain> brainOffered = brainsRegistry.flatMap(reg -> Hirer.brainIn(reg, brainLabel));
         // D51: who hires whom is what the seat files of the hired seat's folder declare, laid over the signed tree; a tree that breaks a rule is
         // refused as a whole, the signed tree is used in its place and the hire's answer says which rules it broke.
         ToolRegistry known = registry.get();
@@ -738,6 +734,10 @@ public class HireTool extends NeutralTool {
             .flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id())), org.jawata.mcp.models.CallerIdentity.serving().isPresent());
         if (notHirable.isEmpty()) {
             notHirable = deciding.refuseKnown(hirer, hired);
+            // 28h z39: when the tree is what refused, the seat to hire through is told with the refusal, so a card can say it and not show a failure.
+            if (notHirable.isPresent() && !declaredTree.tree().mayHire(hirer, hired)) {
+                call.setHireThrough(declaredTree.tree().parentOf(hired));
+            }
         }
         if (notHirable.isPresent()) {
             return ToolResponse.error("PRECONDITION_NOT_MET", notHirable.get(),
@@ -880,14 +880,17 @@ public class HireTool extends NeutralTool {
         // The registration keeps the brief the principal gave, so the panel still finds this hire; the brain is also told what was said before it took over.
         String briefToBrain = call.getSaidBefore().isBlank() ? brief
             : brief + "\n\nYou are taking over this work from another brain, which was stopped. What it had said so far:\n\n" + call.getSaidBefore();
+        // 28h Stage 27 (z53): the hires that end while this run is on, kept so a lead's end can tell the code its own hires wrote from its own.
+        List<HireRegistry.Event> hiresThatEnded = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Runnable stopListening = listeningForEndedHires(hiresThatEnded);
         try {
             // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
             // The registry names a brain by its product name, as the panel's choices and the vendor rule do ("cursor"); the dialect names itself
             // otherwise ("cursor-agent"), so the product name is tried first and the dialect's after.
             String productName = seat.brain().label();
             Optional<AcpBrainSession.Program> acp = brainsRegistry
-                .flatMap(registryText -> AcpBrainSession.programFor(registryText, productName)
-                    .or(() -> AcpBrainSession.programFor(registryText, dialect.name())));
+                .flatMap(registryJson -> AcpBrainSession.programFor(registryJson, productName)
+                    .or(() -> AcpBrainSession.programFor(registryJson, dialect.name())));
             brainProgram = acp;
             proposal = run.issue(seat, base, briefToBrain, steps, new ToolGateRunner(registry.get()),
                 hiddenTools, acp);
@@ -913,6 +916,7 @@ public class HireTool extends NeutralTool {
                 "the hire was interrupted while the brain was running",
                 "the child process is reaped; nothing is left running");
         } finally {
+            stopListening.run();
             // A killed process ends the read normally and no interrupt exception follows, so the stop is looked for here as well.
             replacement = replacement.or(running::replacement);
             stoppedByPerson = running.wasStopped() || stoppedByPerson;
@@ -948,7 +952,10 @@ public class HireTool extends NeutralTool {
         Map<String, Object> brainRow = new LinkedHashMap<>();
         brainRow.put("brain", dialect.name());
         brainRow.put("vendor", deciding.brainFor(hired).map(Hirer.Brain::vendor).filter(v -> !v.isBlank()).orElse("NOT NAMED IN THE REGISTRY SETTING"));
-        brainRow.put("model", seat.model() == null ? "THE BRAIN'S OWN DEFAULT" : seat.model());
+        brainRow.put("model", seat.model());
+        if (modelFromRegistry) {
+            brainRow.put("modelFromRegistry", "the registry names this model; the stored entry named the brain and no model");
+        }
         data.put("brain", brainRow);
         data.put("plan", proposal.plan().value());
         // The file a human reads, and the artifact it was stored as. The RUN writes both; this call
@@ -1104,8 +1111,10 @@ public class HireTool extends NeutralTool {
             }
             // C27-22, his word that it must not be possible: the code it wrote is put back, whatever way it wrote it (the folder is read, not the
             // stream, so a shell or a patch is seen too), and a file that held the person's own changes before the run is kept and named.
+            // 28h Stage 27 (z53): only what the lead itself wrote. A file a hire it started changed is that hire's code and stays.
             String putBack = base.workingDirectory() == null ? ""
-                : org.jawata.mcp.agent.OwnCodeTakeBack.of(host, base.workingDirectory().toString(), proposal.changed());
+                : org.jawata.mcp.agent.OwnCodeTakeBack.of(host, base.workingDirectory().toString(),
+                    withoutPaths(proposal.changed(), pathsChangedByHiresOf(proposal.plan().value(), hiresThatEnded)));
             if (!putBack.isEmpty()) {
                 data.put("ownCodePutBack", putBack);
             }
@@ -1169,6 +1178,49 @@ public class HireTool extends NeutralTool {
      * {@code <next>.md} beside the failed seat's own, so the caller names no second file; when there is none the answer says so and nothing
      * is hired. The second hire is itself answered by this tool, so it carries its own record and, being the top rung, no escalation.
      */
+    /** Collects every hire the registry reports finished until the returned action is run (28h Stage 27, z53). */
+    private static Runnable listeningForEndedHires(List<HireRegistry.Event> into) {
+        return HireRegistry.shared().subscribe(event -> {
+            if ("finished".equals(event.kind())) {
+                into.add(event);
+            }
+        });
+    }
+
+    /**
+     * The files named as changed by the answers of the hires this lead started, directly or through other hires: an event belongs to the lead when its
+     * lead id is the lead's plan id or the plan id of a hire already shown to belong to it (28h Stage 27, z53).
+     */
+    private static Set<String> pathsChangedByHiresOf(String leadPlan, List<HireRegistry.Event> ended) {
+        Set<String> owners = new java.util.HashSet<>(Set.of(leadPlan));
+        Set<String> paths = new java.util.HashSet<>();
+        boolean grew = true;
+        while (grew) {
+            grew = false;
+            for (HireRegistry.Event event : ended) {
+                if (owners.contains(event.leadId()) && owners.add(event.planId())) {
+                    grew = true;
+                    if (event.answer() != null) {
+                        event.answer().path("changedFiles").forEach(file -> paths.add(file.asText()));
+                    }
+                }
+            }
+        }
+        return paths;
+    }
+
+    /** What the run changed without the named paths: the shown rows and the changed list lose them, the omitted names and the basis are kept. */
+    private static org.jawata.mcp.execution.TreeAttribution.Attribution withoutPaths(org.jawata.mcp.execution.TreeAttribution.Attribution changed, Set<String> paths) {
+        if (paths.isEmpty()) {
+            return changed;
+        }
+        return new org.jawata.mcp.execution.TreeAttribution.Attribution(
+            changed.changed().map(files -> files.stream().filter(file -> !paths.contains(file)).toList()),
+            changed.basis(),
+            changed.changes().map(changes -> new org.jawata.mcp.execution.TreeAttribution.Changes(
+                changes.shown().stream().filter(row -> !paths.contains(row.path())).toList(), changes.omitted())));
+    }
+
     private Map<String, Object> escalate(JsonNode arguments, String next, String failedPlan) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("escalatedFrom", failedPlan);
