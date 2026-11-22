@@ -115,6 +115,21 @@ class HireToolTest {
 
     @AfterEach
     void tearDown() throws Exception {
+        // A plain hire returns when its plan opens and finishes on the engine's own thread. Closing this test's store
+        // under that thread makes the journal retry for several seconds while the hire stays registered, and a later
+        // stop of cataloguer for this brief counts the leftover hire as well as its own.
+        String brief = "Describe every member of org.jawata.mcp.execution.";
+        long until = System.nanoTime() + 8_000_000_000L;
+        while (System.nanoTime() < until && HireRegistry.shared().nameOf("cataloguer", brief).isPresent()) {
+            Thread.sleep(20);
+        }
+        if (HireRegistry.shared().nameOf("cataloguer", brief).isPresent()) {
+            HireRegistry.shared().stop("cataloguer", brief);
+            until = System.nanoTime() + 3_000_000_000L;
+            while (System.nanoTime() < until && HireRegistry.shared().nameOf("cataloguer", brief).isPresent()) {
+                Thread.sleep(20);
+            }
+        }
         if (store != null) {
             store.close();
         }
