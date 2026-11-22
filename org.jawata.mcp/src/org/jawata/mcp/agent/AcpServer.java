@@ -97,7 +97,9 @@ public final class AcpServer {
         JsonRpcMessage response = answer(message, from);
         out.accept(response);
         if ("session/new".equals(message.getMethod()) && response.getError() == null && !isSide(message.getParams())) {
-            advertiseCommands(((ObjectNode) response.getResult()).get("sessionId").asText());
+            String opened = ((ObjectNode) response.getResult()).get("sessionId").asText();
+            advertiseCommands(opened);
+            readModelsInTheBackground(sessions.get(opened));
         }
         // A chat opened again is told what finished while it was closed (Stage 24, M14, ND4), after its load has been answered.
         if ("session/load".equals(message.getMethod()) && response.getError() == null) {
@@ -105,6 +107,7 @@ public final class AcpServer {
             // 28h D57 (h): a chat opened again after a restart or from History holds the commands of its session like a new one, or its / list is empty.
             if (loaded != null && !loaded.side()) {
                 advertiseCommands(loaded.id());
+                readModelsInTheBackground(loaded);
             }
             if (loaded != null) {
                 HireRegistry.shared().undeliveredFor(loaded.id()).forEach(late -> deliver(loaded, late,
@@ -117,6 +120,7 @@ public final class AcpServer {
     public void closed() {
         endSubscription.run();
         deliveries.shutdownNow();
+        modelReads.shutdownNow();
         brain.close();
         sideBrainOf.values().forEach(AgentBrain::close);
     }
@@ -198,6 +202,39 @@ public final class AcpServer {
     /** Installs what lists a brain's models (application wiring), so the Agent Control menu can offer each one. */
     void offerModels(java.util.function.Function<String, List<String>> models) {
         this.modelsOf = models == null ? brain -> List.of() : models;
+    }
+
+    /** The most rows of the principal's brain option that stay a flat list; more than this the option carries {@value #GROUP_BY_FIELD}. */
+    static final int LONG_MENU_ROWS = 12;
+
+    /** The field of every row of the principal's brain option that holds the registry name of the agent the row belongs to. */
+    static final String AGENT_FIELD = "agent";
+
+    /** The field of the principal's brain option, present only on a long list, that names the row field the chat groups by. */
+    static final String GROUP_BY_FIELD = "groupBy";
+
+    /**
+     * What lists the models of an agent that is not running; none offered lists none. It may open that agent's session and wait for it, so it is
+     * asked only by the background read of {@link #readModelsInTheBackground}, never while the menu is built.
+     */
+    private volatile java.util.function.Function<String, List<AcpBrainSession.Model>> modelChoicesOf = brain -> List.of();
+
+    /** The last answer the background read held for each agent that is not running: what the next menu build shows for it. */
+    private final Map<String, List<AcpBrainSession.Model>> modelsHeld = new ConcurrentHashMap<>();
+
+    /** The threads that read the models of the agents that are not running, one task per agent for each time the menu is opened; they end with the connection. */
+    private final java.util.concurrent.ExecutorService modelReads = java.util.concurrent.Executors.newCachedThreadPool(job -> {
+        Thread thread = new Thread(job, "jawata-models");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    /**
+     * Installs what lists the models an agent that is not running offers, read from that agent's own session (application wiring). It is asked
+     * in the background, on a thread of its own, once per agent each time a chat opens its menu; the menu build never asks it and never waits for it.
+     */
+    void offerModelChoices(java.util.function.Function<String, List<AcpBrainSession.Model>> models) {
+        this.modelChoicesOf = models == null ? brain -> List.of() : models;
     }
 
     /** Installs the source of the seat brains the Seats page stores, which a running hire's card shows above its seat file's own (application wiring). */
@@ -435,10 +472,35 @@ public final class AcpServer {
         offered.forEach((name, offeredBrain) -> {
             if (name.equals(current)) {
                 addChoices(values, name, running, models);
-            } else {
-                values.addObject().put("value", name).put("name", offeredBrain.model().isBlank() ? name : name + " · " + offeredBrain.model());
+                return;
             }
+            // 28h Stage 27 (z49): the agent that is not running shows what the background read last held for it and is never asked here, because
+            // asking opens its session and waits; with nothing held it has its one row
+            List<AcpBrainSession.Model> choices = modelsHeld.get(name);
+            if (choices == null || choices.isEmpty()) {
+                values.addObject().put("value", name).put("name", offeredBrain.model().isBlank() ? name : name + " · " + offeredBrain.model())
+                    .put(AGENT_FIELD, name);
+                return;
+            }
+            choices.forEach(choice -> addOfferedModel(values, name, choice));
         });
+        if (values.size() > LONG_MENU_ROWS) {
+            option.put(GROUP_BY_FIELD, AGENT_FIELD);
+        }
+    }
+
+    /**
+     * One row of an agent that is not running for a model it offers: {@code claude-code|sonnet[effort=high,fast=true]} named
+     * {@code claude-code · Sonnet (effort=high, fast=true)}, so what the model's value says about fast, effort and context shows on the row.
+     */
+    private static void addOfferedModel(ArrayNode values, String agent, AcpBrainSession.Model model) {
+        String value = model.value();
+        int open = value.lastIndexOf('[');
+        String name = agent + " · " + model.name();
+        if (open >= 0 && value.endsWith("]") && open < value.length() - 2) {
+            name += " (" + value.substring(open + 1, value.length() - 1).replace(",", ", ") + ")";
+        }
+        values.addObject().put("value", agent + MODEL_SEPARATOR + value).put("name", name).put(AGENT_FIELD, agent);
     }
 
     /** What separates a brain from a model in a choice of the principal's brain option: {@code cursor|grok-4.5[effort=high]}. */
@@ -447,11 +509,11 @@ public final class AcpServer {
     /** The choices for the brain that is running: one per model it offers, or the brain alone, named with the model it is on when it has said. */
     private static void addChoices(ArrayNode values, String name, java.util.Optional<String> running, java.util.List<AcpBrainSession.Model> models) {
         if (models.isEmpty()) {
-            values.addObject().put("value", name).put("name", running.map(model -> name + " · " + model).orElse(name));
+            values.addObject().put("value", name).put("name", running.map(model -> name + " · " + model).orElse(name)).put(AGENT_FIELD, name);
             return;
         }
         for (AcpBrainSession.Model model : models) {
-            values.addObject().put("value", name + MODEL_SEPARATOR + model.value()).put("name", name + " · " + model.name());
+            values.addObject().put("value", name + MODEL_SEPARATOR + model.value()).put("name", name + " · " + model.name()).put(AGENT_FIELD, name);
         }
     }
 
@@ -845,7 +907,9 @@ public final class AcpServer {
                 forwarded.put("kind", "execute");
                 forwarded.put("title", entry.title());
                 if (HireEntry.FAILED.equals(entry.state())) {
-                    forwarded.put("status", "failed"); // the call itself returned, and what it says is that the hire failed
+                    // The wire's call status has only pending, in_progress, completed and failed: a refused hire is not a failed brain, so it
+                    // stays completed (the title and the card's state and refusal say it was refused), and an unchanged in_progress would spin.
+                    forwarded.put("status", "failed");
                 }
             });
             if (seen.isEmpty() && hires.takeRefused(call.path("toolCallId").asText(""))) {
@@ -1064,6 +1128,39 @@ public final class AcpServer {
 
     private static String textField(JsonNode params, String name) {
         return params != null && params.hasNonNull(name) ? params.get(name).asText() : null;
+    }
+
+    /**
+     * Reads, in the background, the models of every agent of the registry that is not running (28h Stage 27, z49): one task per agent, on a
+     * thread that is not the connection's worker, because asking opens that agent's session and waits for it. An answer that differs from the
+     * one held is held for the next build and sent to the chat as the config-option update; a read that throws or answers nothing changes
+     * nothing and sends nothing, so that agent keeps its one row.
+     */
+    private void readModelsInTheBackground(PrincipalSession session) {
+        String running = brain.currentBrain().orElse(null);
+        for (String name : Hirer.brainsIn(brainRegistry.get()).keySet()) {
+            if (name.equals(running)) {
+                continue;
+            }
+            try {
+                modelReads.execute(() -> {
+                    try {
+                        List<AcpBrainSession.Model> answer = modelChoicesOf.apply(name);
+                        if (answer == null || answer.isEmpty() || List.copyOf(answer).equals(modelsHeld.put(name, List.copyOf(answer)))) {
+                            return;
+                        }
+                        update(session.id(), configOptionUpdate(session));
+                    } catch (RuntimeException failed) {
+                        java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.WARNING,
+                            "the models of " + name + " could not be read or sent", failed);
+                    }
+                });
+            } catch (java.util.concurrent.RejectedExecutionException closed) {
+                java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.FINE,
+                    "the models of " + name + " are not read: the server is closed", closed);
+                return;
+            }
+        }
     }
 
     private void advertiseCommands(String sessionId) {

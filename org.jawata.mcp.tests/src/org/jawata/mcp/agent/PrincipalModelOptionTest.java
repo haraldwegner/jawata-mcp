@@ -432,6 +432,16 @@ class PrincipalModelOptionTest {
     }
 
     @Test
+    @DisplayName("a session/new that arrives after the server is closed does not throw: the background read of the models is not started")
+    void aMenuReadAfterTheServerIsClosedDoesNotThrow() {
+        List<JsonNode> received = new CopyOnWriteArrayList<>();
+        AcpServer server = serverOver(new Offering("cursor", "default[]", "Auto"), agent -> claudeModelsOffered(), received);
+        server.closed();
+
+        server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/workspace")));
+    }
+
+    @Test
     @DisplayName("the running brain's rows keep their value and name, and every row names its agent")
     void theRunningBrainsRowsKeepTheirNamesAndEveryRowNamesItsAgent() throws Exception {
         JsonNode option = principalOptionOfTheUpdate(new Offering("cursor", "default[]", "Auto", "grok-4.5", "grok-4.5"), agent -> claudeModelsOffered(),
