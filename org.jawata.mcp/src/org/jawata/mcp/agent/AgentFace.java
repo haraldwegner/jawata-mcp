@@ -6,6 +6,7 @@ import java.util.function.Supplier;
 
 import org.jawata.mcp.engine.EngineApi;
 import org.jawata.mcp.engine.RoutedFace;
+import org.jawata.mcp.execution.AcpBrainSession.Model;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.ScheduledHires;
 import org.jawata.mcp.execution.SeatPrompts;
@@ -209,8 +210,14 @@ public final class AgentFace implements RoutedFace {
         server.offerSeatBrains(() -> attached.settings() == null ? "" : attached.settings().get(org.jawata.mcp.engine.SettingKeys.SEATS_BRAINS.name()).orElse(""));
         server.offerModels(offeredBrain -> attached.settings() == null ? java.util.List.of()
             : org.jawata.mcp.execution.SeatSettingsService.sealed(attached.settings(), attached.tools()).conversationModels(offeredBrain));
+        server.offerModelChoices(brainName -> modelsOfferedBy(attached, brainName));
         server.offerCommandTexts(name -> commandText(attached, name));
         return server;
+    }
+
+    static List<Model> modelsOfferedBy(EngineApi attached, String brainName) {
+        return attached.settings() == null ? java.util.List.of()
+            : org.jawata.mcp.execution.AcpBrainSession.modelsOfferedIn(attached.settings().get(Hirer.BRAINS_SETTING).orElse(""), brainName);
     }
 
     /** A setting's text as a whole number above zero; empty for anything else, which leaves the default. */
