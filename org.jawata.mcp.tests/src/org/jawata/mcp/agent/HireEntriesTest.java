@@ -583,4 +583,131 @@ class HireEntriesTest {
         HireEntry afterTheAnswer = watch.observe(answered(hireCall("tool_call_update", "echo1", "completed"), "{\"success\":true}")).orElseThrow();
         assertEquals(HireEntry.DONE, afterTheAnswer.state());
     }
+
+    @Test
+    @DisplayName("28h z39: a hire entry built with a refusal carries it on the wire under refusal, one built without carries no such key, and the refused state is the text refused")
+    void aRefusalIsOnTheWireOnlyWhenTheEntryHasOne() {
+        HireEntry refused = new HireEntry("z1", "test-manager", Optional.empty(), Optional.empty(), HireEntry.REFUSED, 0, 0,
+            java.util.OptionalDouble.empty(), "run the suite", Optional.empty(), Optional.empty(), Optional.empty(), 0, 0,
+            java.util.OptionalLong.empty(), Optional.empty(), Optional.empty(), Optional.empty(), java.util.OptionalInt.empty(),
+            Optional.empty(), Optional.of("hire the test-manager through the pm"));
+        HireEntry plain = new HireEntry("z2", "test-manager", Optional.empty(), Optional.empty(), HireEntry.RUNNING, 0, 0,
+            java.util.OptionalDouble.empty(), "run the suite", Optional.empty(), Optional.empty(), Optional.empty(), 0, 0,
+            java.util.OptionalLong.empty(), Optional.empty(), Optional.empty(), Optional.empty(), java.util.OptionalInt.empty(),
+            Optional.empty());
+
+        assertEquals("hire the test-manager through the pm", refused.toMeta().path("refusal").asText(), "the refusal was not on the wire: " + refused.toMeta());
+        assertEquals(Optional.of("hire the test-manager through the pm"), refused.refusal());
+        assertFalse(plain.toMeta().has("refusal"), "CONTROL: an entry with no refusal was given one: " + plain.toMeta());
+        assertTrue(plain.refusal().isEmpty());
+        assertEquals("refused", HireEntry.REFUSED);
+    }
+
+    /** A seat file with this text, in a temp folder that goes when the test run ends. */
+    private static java.nio.file.Path seatFile(String text) throws java.io.IOException {
+        java.nio.file.Path dir = Files.createTempDirectory("hire-entries-seat");
+        java.nio.file.Path file = Files.writeString(dir.resolve("test-manager.md"), text);
+        file.toFile().deleteOnExit();
+        dir.toFile().deleteOnExit();
+        return file;
+    }
+
+    /** The call a brain streams for a hire the engine answered with this refusal (no plan opened, success false). */
+    private static ObjectNode refusedCall(String id, String brief, String seatFile) {
+        ObjectNode call = withInput(hireCall("tool_call", id, "pending"), "main", "test-manager", brief);
+        ((ObjectNode) call.get("rawInput")).put("seatFile", seatFile);
+        return call;
+    }
+
+    private static ObjectNode refusalAnswer(String id) {
+        return answered(hireCall("tool_call_update", id, "completed"),
+            "{\"success\":false,\"error\":{\"code\":\"INVALID_PARAMETER\",\"message\":\"a test-manager is hired through the pm\"}}");
+    }
+
+    /** The answer the engine keeps for a hire it refused before any brain started. */
+    private static void theEngineKeepsARefusal(String brief) {
+        ObjectNode kept = JSON.createObjectNode();
+        kept.put("cleanExit", false).put("refusedByEngine", true).put("error", "a test-manager is hired through the pm").put("hireThrough", "pm");
+        org.jawata.mcp.execution.HireRegistry.shared().record("test-manager", brief, kept);
+    }
+
+    /** What the host is told, last, of the call with this id when a brain streams these updates through the running server. */
+    private static JsonNode lastForwarded(String id, ObjectNode... calls) {
+        List<JsonNode> said = new ArrayList<>();
+        AgentBrain brain = new AgentBrain() {
+            @Override
+            public void answer(String prompt, Consumer<String> chunks) {
+                answer(prompt, chunks, call -> { });
+            }
+
+            @Override
+            public void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls) {
+                for (ObjectNode call : calls) {
+                    toolCalls.accept(call);
+                }
+                chunks.accept("ok");
+            }
+        };
+        AcpServer server = new AcpServer(brain, List::of, m -> said.add(JSON.valueToTree(m)), TurnBoundary.open(), AgentRecorder.off(), null);
+        server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+        String session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
+        ObjectNode params = JSON.createObjectNode().put("sessionId", session);
+        params.putArray("prompt").addObject().put("type", "text").put("text", "go");
+        said.clear();
+
+        server.receive(JsonRpcMessage.request(2, "session/prompt", params));
+
+        return said.stream().map(m -> m.path("params").path("update"))
+            .filter(u -> id.equals(u.path("toolCallId").asText()) && !u.path("sessionUpdate").asText().isEmpty())
+            .reduce((first, second) -> second).orElseThrow();
+    }
+
+    @Test
+    @DisplayName("28h z39: the card of a hire the engine refused before any brain started is refused, names no brain and no model though the seat file names them, and says to hire through the pm")
+    void aHireTheEngineRefusedIsACardNamingWhyAndWhomToHireThrough() throws Exception {
+        String brief = "run the whole suite, refused card";
+        java.nio.file.Path file = seatFile("---\nname: test-manager\nbrain: cursor\nmodel: gpt-5\n---\n\nbody\n");
+        watch.observe(refusedCall("z1", brief, file.toString()));
+        assertEquals(Optional.of("cursor"), watch.entry("z1").orElseThrow().brain(), "CONTROL: the seat file names a brain, so an empty one below is the refusal's doing");
+        theEngineKeepsARefusal(brief);
+
+        HireEntry card = watch.observe(refusalAnswer("z1")).orElseThrow();
+
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertEquals(HireEntry.REFUSED, card.state()),
+            () -> assertTrue(card.brain().isEmpty(), "a refused hire was shown with a brain: " + card.brain()),
+            () -> assertTrue(card.model().isEmpty(), "a refused hire was shown with a model: " + card.model()),
+            () -> assertTrue(card.refusal().orElseThrow().contains("hire it through pm"), "the refusal does not name the seat to hire through: " + card.refusal()),
+            () -> assertTrue(card.toMeta().path("refusal").asText().contains("a test-manager is hired through the pm"), "the engine's reason is not on the wire: " + card.toMeta()));
+    }
+
+    @Test
+    @DisplayName("28h z39: on the running server a refused hire reaches the host as a completed call, not a failed one, with the state refused and the reason on its card")
+    void aRefusedHireIsForwardedAsACompletedCallNotAFailedOne() throws Exception {
+        String brief = "run the whole suite, refused on the wire";
+        java.nio.file.Path file = seatFile("---\nname: test-manager\nbrain: cursor\nmodel: gpt-5\n---\n\nbody\n");
+        theEngineKeepsARefusal(brief);
+
+        JsonNode last = lastForwarded("z2", refusedCall("z2", brief, file.toString()), refusalAnswer("z2"));
+
+        assertEquals("completed", last.path("status").asText(), "a refused hire was forwarded as a failed call: " + last);
+        assertEquals("refused", last.path("_meta").path("jawata/hire").path("state").asText(), last.toString());
+        assertTrue(last.path("_meta").path("jawata/hire").path("refusal").asText().contains("hire it through pm"), last.toString());
+    }
+
+    @Test
+    @DisplayName("28h z39, CONTROL: a hire whose brain started and failed is still failed, with its brain on the card, and the host is told the call failed")
+    void aHireWhoseBrainStartedAndFailedIsStillFailedOnTheCardAndTheWire() throws Exception {
+        String brief = "run the whole suite, brain failed";
+        java.nio.file.Path file = seatFile("---\nname: test-manager\nbrain: cursor\n---\n\nbody\n");
+        ObjectNode failedAnswer = answered(hireCall("tool_call_update", "z3", "completed"),
+            "{\"data\":{\"cleanExit\":false,\"brain\":{\"brain\":\"claude-code\",\"vendor\":\"anthropic\",\"model\":\"sonnet\"}}}");
+
+        JsonNode last = lastForwarded("z3", refusedCall("z3", brief, file.toString()), failedAnswer);
+
+        assertEquals("failed", last.path("status").asText(), last.toString());
+        assertEquals("failed", last.path("_meta").path("jawata/hire").path("state").asText(), last.toString());
+        assertEquals("claude-code", last.path("_meta").path("jawata/hire").path("brain").asText(), "the failed hire lost its brain: " + last);
+        assertFalse(last.path("_meta").path("jawata/hire").has("refusal"), "a failed brain was given a refusal: " + last);
+    }
 }

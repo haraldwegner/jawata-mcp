@@ -79,6 +79,8 @@ final class HireWatch {
         boolean instructed;
         /** The engine answered the call with a refusal that opened no plan: no hire exists for it. */
         boolean refused;
+        /** Why the engine refused the hire before any brain started (28h z39); absent for every other hire. */
+        Optional<String> refusal = Optional.empty();
 
         Live(String id, long startedMs) {
             this.id = id;
@@ -373,6 +375,13 @@ final class HireWatch {
         if (answer.path("success").isBoolean() && !answer.get("success").asBoolean() && !answer.hasNonNull("hireId")) {
             // 28h D57 (i): a hire call the engine refused (the access policy, a refused seat, a bad argument) opened no plan, so no engine
             // event will ever end its card; it ends here, and Agent Control, which shows only working hires, shows nothing for a hire that never ran.
+            // 28h z39: unless the engine kept its own answer saying it refused this very hire before any brain started: then the card stays,
+            // as refused, and says why, where taking it back would leave nothing to say it.
+            Optional<JsonNode> keptRefusal = HireRegistry.shared().answerOf(hire.seat, hire.task).filter(kept -> kept.path("refusedByEngine").asBoolean(false));
+            if (keptRefusal.isPresent()) {
+                applyAnswer(hire, keptRefusal.get());
+                return;
+            }
             hire.refused = true;
             return;
         }
@@ -389,6 +398,16 @@ final class HireWatch {
     }
 
     private void applyAnswer(Live hire, JsonNode answer) {
+        if (answer.path("refusedByEngine").asBoolean(false)) {
+            // 28h z39: the engine refused the hire before any brain started, so no program failed: the card ends as refused and names no
+            // brain and no model, though the seat file names them, and carries the reason.
+            finish(hire, HireEntry.REFUSED);
+            hire.brain = Optional.empty();
+            hire.model = Optional.empty();
+            hire.refusal = Optional.of("the engine refused this hire before any brain started: " + answer.path("error").asText("")
+                + (answer.hasNonNull("hireThrough") ? "; hire it through " + answer.get("hireThrough").asText() : ""));
+            return;
+        }
         boolean clean = answer.isMissingNode() || !(answer.path("cleanExit").asText("true").equals("false")
             || answer.path("timedOut").asBoolean(false));
         finish(hire, clean ? HireEntry.DONE : HireEntry.FAILED);
@@ -515,7 +534,7 @@ final class HireWatch {
             .findFirst().ifPresent(lead -> hire.parent = Optional.of(lead.id)));
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, state, end - hire.startedMs, hire.tokens, cost,
             hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand,
-            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan), hire.name, hire.changedCount, hire.toolUse);
+            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan), hire.name, hire.changedCount, hire.toolUse, hire.refusal);
     }
 
     /** How many hires the agent saw above this one, so a root is level 0, the chief engineer it hires 1, and the developer under that 2. */

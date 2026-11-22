@@ -25,10 +25,16 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * @param parentPlanId the hire of the seat that hired this one, when that hire is one the agent saw; absent for a root
  * @param brainSessionId the brain's own session id for this hire, from the hire's answer; absent while it runs and for a brain that has none
  * @param verdict      the person's answer to the hire's proposal, {@value #ACCEPTED} or {@value #REJECTED}; absent until the person has answered
+ * @param refusal      why the engine refused the hire before any brain started; absent for every other hire
  */
 public record HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
         long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId,
-        Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles, java.util.Optional<com.fasterxml.jackson.databind.JsonNode> toolUse) {
+        Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles, java.util.Optional<com.fasterxml.jackson.databind.JsonNode> toolUse, Optional<String> refusal) {
+
+    /** An entry the engine did not refuse: the twenty components every hire has, and no refusal. */
+    public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs, long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId, Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles, java.util.Optional<com.fasterxml.jackson.databind.JsonNode> toolUse) {
+        this(planId, seat, brain, model, state, elapsedMs, tokens, costUsd, task, parentPlanId, brainSessionId, verdict, level, toolSteps, contextTokens, seatCommand, enginePlan, name, changedFiles, toolUse, Optional.empty());
+    }
 
     /** An entry at the top of the hierarchy (level 0), whatever else it knows. */
     public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
@@ -52,6 +58,8 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
     public static final String RUNNING = "running";
     public static final String DONE = "done";
     public static final String FAILED = "failed";
+    /** The engine refused the hire before any brain started, so no brain failed: the card names why and the seat to hire through and no brain program (28h z39). */
+    public static final String REFUSED = "refused";
     /** The hired brain is compacting its own context, read off its stream while it does; the hire is still running and says so (D6, D40). */
     public static final String COMPACTING = "compacting";
     /** The hire has shown no sign of life for the first ceiling (28h Stage 27, z28); it is still running, and the engine stops it at the second. */
@@ -120,6 +128,7 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
         name.ifPresent(n -> meta.put("name", n));
         changedFiles.ifPresent(n -> meta.put("changedFileCount", n));
         toolUse.ifPresent(u -> meta.set("toolUse", u));
+        refusal.ifPresent(r -> meta.put("refusal", r));
         return meta;
     }
 
