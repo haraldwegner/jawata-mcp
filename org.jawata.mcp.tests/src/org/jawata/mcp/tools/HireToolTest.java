@@ -2943,6 +2943,22 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("a stored display name is not what the command line is given: Haiku 5.5 starts as haiku, and the record keeps the display name")
+    void aStoredDisplayNameIsNotTheCommandLineFlag() throws Exception {
+        StandsIn started = new StandsIn(host, aBrainThatAnswers());
+        Map<String, Object> answer = dataOf(toolWithSettings(started,
+            Map.of(SettingKeys.SEATS_BRAINS.name(), "developer=claude-code/Haiku 5.5")).execute(hireArgs(seatFile(DEVELOPER_SEAT_WITHOUT_BRAIN_OR_MODEL), "developer")));
+        int flag = started.asked().indexOf("--model");
+        String launched = flag < 0 ? "" : started.asked().get(flag + 1);
+
+        assertAll(
+            () -> assertEquals("Haiku 5.5", brainFieldOf(answer, "model"), "the record must keep the display name: " + answer),
+            () -> assertTrue(flag >= 0, "no --model was passed: " + started.asked()),
+            () -> assertFalse(launched.contains(" "), "the program was given the display name, which it refuses: " + started.asked()),
+            () -> assertTrue(launched.equals("haiku") || launched.startsWith("claude-haiku"), "the program value was not haiku: " + started.asked()));
+    }
+
+    @Test
     @DisplayName("z14 rule 1 (a): on an engine whose seats are not sealed, the brain and model the Seats page stores for a seat are the ones a hire of a seat file that names none runs on")
     void anUnsealedHireRunsOnTheBrainAndModelTheSeatSettingsStore() throws Exception {
         StandsIn started = new StandsIn(host, aBrainThatAnswers());
@@ -2955,7 +2971,8 @@ class HireToolTest {
         assertAll(
             () -> assertEquals("claude-code", brainFieldOf(answer, "brain"), String.valueOf(answer)),
             () -> assertEquals("Haiku 5.5", brainFieldOf(answer, "model"), String.valueOf(answer)),
-            () -> assertTrue(flag >= 0 && "Haiku 5.5".equals(started.asked().get(flag + 1)), "the dialect was not started on the stored model: " + started.asked()),
+            // Old assertion: the flag equalled "Haiku 5.5", the display name. Claude refuses that name. The flag is the program value; the record above keeps the display name.
+            () -> assertTrue(flag >= 0 && "haiku".equals(started.asked().get(flag + 1)), "the dialect was not started on the program value: " + started.asked()),
             () -> assertEquals("Haiku 5.5", detail.path("model").asText(), "the journal recorded another model: " + detail));
     }
 

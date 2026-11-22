@@ -129,10 +129,24 @@ public final class AcpBrainSession {
         if (model == null || model.isBlank()) {
             return model;
         }
-        return programFor(registry, brain).flatMap(AcpBrainSession::offeredBy)
-            .flatMap(offered -> offered.stream().filter(one -> one.name().equalsIgnoreCase(model.strip())).findFirst())
+        String named = model.strip();
+        String fromCatalogue = programFor(registry, brain).flatMap(AcpBrainSession::offeredBy)
+            .flatMap(offered -> offered.stream().filter(one -> one.name().equalsIgnoreCase(named)).findFirst())
             .map(Model::value)
-            .orElse(model);
+            .orElse(null);
+        if (fromCatalogue != null) {
+            return fromCatalogue;
+        }
+        // Claude's own command line refuses a display name (measured: "Haiku 5.5" is unrecognized_model; "haiku" is accepted).
+        // A session catalogue's value wins when one is held. With none held, the value is the first word of that name.
+        // Cursor's command line accepts the name as shown, so it is not rewritten here.
+        if ("claude-code".equalsIgnoreCase(brain)) {
+            int space = named.indexOf(' ');
+            if (space > 0) {
+                return named.substring(0, space).toLowerCase(java.util.Locale.ROOT);
+            }
+        }
+        return named;
     }
 
     /**
