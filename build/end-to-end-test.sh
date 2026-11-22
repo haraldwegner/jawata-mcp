@@ -92,7 +92,7 @@ java --add-modules jdk.incubator.vector -version >/dev/null 2>&1 \
 start_resident() {   # start_resident [extra JVM args...]
     LOG="$WS/resident-$((PASSED + FAILED)).log"
     # shellcheck disable=SC2086
-    java $VECTOR "$@" -Djawata.experience.shared.dir="$STORE" \
+    java $VECTOR "$@" -Djawata.experience.shared.dir="$STORE" ${SEATS_BRAINS_FILE:+-Djawata.seats.brains.file="$SEATS_BRAINS_FILE"} \
          -jar "$JAR" -data "$WS/ws" -port "$PORT" -token "$TOKEN" > "$LOG" 2>&1 &
     RESIDENT_PID=$!
     for _ in $(seq 1 120); do
@@ -210,7 +210,12 @@ export PATH="$GROUND_BIN:$PATH"
 # brain name `cursor` (the name the seat below declares), so the hire is started through the engine's ACP client and its plan carries the
 # seat's tool list; the seats of the checks above name `claude-code` and are unaffected. The marker HIREHANG keeps the hire open.
 cp "$(cd "$(dirname "$0")/.." && pwd)/org.jawata.mcp.tests/test-resources/acp/FakeAcpAgent.java.txt" "$WS/FakeAcpAgent.java"
-export JAWATA_AGENT_HIRE_BRAINS="{\"cursor\":{\"command\":[\"$(command -v java)\",\"$WS/FakeAcpAgent.java\"],\"env\":{\"FAKE_ACP_STATE\":\"$WS\"},\"vendor\":\"Standin\",\"model\":\"\"}}"
+export JAWATA_AGENT_HIRE_BRAINS="{\"cursor\":{\"command\":[\"$(command -v java)\",\"$WS/FakeAcpAgent.java\"],\"env\":{\"FAKE_ACP_STATE\":\"$WS\"},\"vendor\":\"Standin\",\"model\":\"\"},\"claude-code\":{\"vendor\":\"anthropic\",\"model\":\"Haiku 5.5\"},\"script\":{\"vendor\":\"standin\",\"model\":\"script\"}}"
+
+# Sprint 28h z53: a hire runs on the brain and model STORED for its seat and is refused when none is stored; a seat file is not a choice. The
+# seats below that the checks hire each get their stored choice here, in the file the resident is told to keep it in.
+printf '%s' 'e2e-ground-code=claude-code/Haiku 5.5;e2e-ground-read=claude-code/Haiku 5.5;e2e-allow=cursor/standin;e2e-scheduled=script/script;e2e-adhoc=script/script;worker=claude-code/Haiku 5.5' > "$WS/seats-brains"
+export SEATS_BRAINS_FILE="$WS/seats-brains"
 
 # ============================ lifecycle 1 ====================================
 start_resident
