@@ -113,23 +113,31 @@ class HireToolTest {
         host = HostProcesses.system();
     }
 
-    @AfterEach
-    void tearDown() throws Exception {
-        // A plain hire returns when its plan opens and finishes on the engine's own thread. Closing this test's store
-        // under that thread makes the journal retry for several seconds while the hire stays registered, and a later
-        // stop of cataloguer for this brief counts the leftover hire as well as its own.
-        String brief = "Describe every member of org.jawata.mcp.execution.";
+    /** The brief every plain cataloguer hire in this class is given. */
+    private static final String PANEL_BRIEF = "Describe every member of org.jawata.mcp.execution.";
+
+    /**
+     * A plain hire returns while it is still registered and finishes on the engine's thread. Wait for that cataloguer
+     * hire to leave before the store is closed: closing it under the hire makes the journal retry for seconds, and the
+     * hire stays registered for a later stop of the same seat and brief to count.
+     */
+    private static void untilThatHireHasLeft() throws InterruptedException {
         long until = System.nanoTime() + 8_000_000_000L;
-        while (System.nanoTime() < until && HireRegistry.shared().nameOf("cataloguer", brief).isPresent()) {
+        while (System.nanoTime() < until && HireRegistry.shared().nameOf("cataloguer", PANEL_BRIEF).isPresent()) {
             Thread.sleep(20);
         }
-        if (HireRegistry.shared().nameOf("cataloguer", brief).isPresent()) {
-            HireRegistry.shared().stop("cataloguer", brief);
+        if (HireRegistry.shared().nameOf("cataloguer", PANEL_BRIEF).isPresent()) {
+            HireRegistry.shared().stop("cataloguer", PANEL_BRIEF);
             until = System.nanoTime() + 3_000_000_000L;
-            while (System.nanoTime() < until && HireRegistry.shared().nameOf("cataloguer", brief).isPresent()) {
+            while (System.nanoTime() < until && HireRegistry.shared().nameOf("cataloguer", PANEL_BRIEF).isPresent()) {
                 Thread.sleep(20);
             }
         }
+    }
+
+    @AfterEach
+    void tearDown() throws Exception {
+        untilThatHireHasLeft();
         if (store != null) {
             store.close();
         }
@@ -2764,6 +2772,7 @@ class HireToolTest {
         } finally {
             release.countDown();
             running.join(5_000);
+            untilThatHireHasLeft();
         }
     }
 
@@ -3088,6 +3097,7 @@ class HireToolTest {
             () -> assertTrue(!machineSaysHowMuchIsFree || refusedProcesses.asked().isEmpty(), "nothing was started where the hire was refused: " + refusedProcesses.asked()),
             () -> assertFalse("TOO_LITTLE_MEMORY".equals(codeOf(lowFloor)), "CONTROL: a floor of 1 MB refused a hire on a machine that has more"),
             () -> assertFalse("TOO_LITTLE_MEMORY".equals(codeOf(switchedOff)), "CONTROL: a floor of zero, which switches the check off, refused a hire"));
+        untilThatHireHasLeft();
     }
 
     @Test
@@ -3100,6 +3110,7 @@ class HireToolTest {
             () -> assertTrue(response.isSuccess(), String.valueOf(response.getError())),
             () -> assertTrue(String.valueOf(answer.get("next")).contains("hire_wait") && String.valueOf(answer.get("next")).contains(String.valueOf(answer.get("hireId"))),
                 "the answer does not say to call hire_wait with the hireId: " + answer));
+        untilThatHireHasLeft();
     }
 
     @Test
@@ -3122,6 +3133,7 @@ class HireToolTest {
                 () -> assertTrue(hireThread.get() != null && hireThread.get().isVirtual(), "the hire ran on a platform thread: " + hireThread.get()));
         } finally {
             unsubscribe.run();
+            untilThatHireHasLeft();
         }
     }
 
