@@ -123,3 +123,20 @@ Commands:
 Not committed, because the diff also holds earlier unfinished edits: `HireWatch.java`, `HireEntry.java`, `Hirer.java`, `SeatTree.java`, `pm.md`, `HireEntriesTest.java`, `HirerTest.java`, `SeatTreeFromSeatFilesTest.java`, `AcpBrainSession.java`, `AcpBrainSessionTest.java` (that file holds `noteOffered`'s test and the earlier model-menu tests), `manager_service.rs` (the engine write, the seed, and the plans-per-workspace edits), `Agents.tsx` (the menu sentence, and also a change to `UseFigures` and `PrincipalCalls`), `InputArea.tsx`, `styles.ts`, the keystroke test, `input-lines.test.mjs`. `HireTool.java` and `HireToolTest.java` are committed with 3b; they also contain the z39 `hireThrough` hunks and the z53 lead-file attribution that were already in those files.
 
 Part 3 was not started. The whole suite was not run.
+
+## Commits
+
+jawata-mcp, on top of 3a `81fdba61`:
+
+- `4d95651d` A hire reads one stored brain and model, and refuses when that seat has none. Files: `SeatBrains.java`, `SeatBrainsTest.java`, `SeatHire.java`, `HireTool.java`, `HireToolTest.java`. This is 3b, 3c and 3e, and the semicolon and unreadable-file fixes. `HireTool.java` and `HireToolTest.java` also contain the z39 `hireThrough` hunks and the z53 lead-file attribution that were already in those files.
+- `e0f6905e` The brains tool stores one seat's choice and the engine opens that file at start. Files: `BrainsTool.java`, `SeatSettings.java`, `SeatSettingsService.java`, `JawataApplication.java`. This is 4a.
+- `e6388303` A drop-down stores the next hire of that seat and tells every open chat. Files: `AcpServer.java`, `AgentContractLevel1Test.java`. This is 4b, 4c and 4d on the engine side.
+- `e6ed235b` The btw and rottenmeier seat files no longer name a brain or a model. Files: the two seat files and this report. This is 3d for the engine copies.
+
+jawata-studio `30eeb35` A seat file is not a brain, and a blank seat is not Claude. Files: `seats/btw.md`, `seats/rottenmeier.md`, `seat_file.rs`, `seat_settings.rs`, `SeatsView.svelte`. The studio's call into the engine (`manager_service.rs`) is not in this commit. That file already held the plans-per-workspace edits.
+
+jawata-chat `bcdb245` A brain pick is stored for the next hire and the card keeps what this run started on. The controller, the view contract, the screens page, the goldens and the tests. `Agents.tsx` is not in this commit. Its diff also removes `UseFigures` and edits `PrincipalCalls`.
+
+jawata-enterprise `40a6a55` Rows z53 and z14 record the one stored choice and what was measured.
+
+nothing pushed.
