@@ -331,12 +331,18 @@ final class HireWatch {
     private void readSeatFile(Live hire) {
         try {
             SeatHire file = SeatHire.read(Files.readString(Path.of(hire.seatFile)));
-            hire.brain = Optional.of(file.brain().label());
-            // The seat file's own word first, then the registry's model for its brain: the order the hire tool runs the hire in.
-            hire.model = file.model() == null || file.model().isBlank()
-                ? org.jawata.mcp.execution.Hirer.brainIn(registry.get(), file.brain().label())
-                    .map(org.jawata.mcp.execution.Hirer.Brain::model).filter(offered -> !offered.isBlank())
-                : Optional.of(file.model());
+            // A seat file that names no brain does not become Claude on the card.
+            if (file.brain() == null) {
+                hire.brain = Optional.empty();
+                hire.model = Optional.empty();
+            } else {
+                hire.brain = Optional.of(file.brain().label());
+                // The seat file's own word first, then the registry's model for its brain: the order the hire tool runs the hire in.
+                hire.model = file.model() == null || file.model().isBlank()
+                    ? org.jawata.mcp.execution.Hirer.brainIn(registry.get(), file.brain().label())
+                        .map(org.jawata.mcp.execution.Hirer.Brain::model).filter(offered -> !offered.isBlank())
+                    : Optional.of(file.model());
+            }
             hire.seatCommand = Optional.ofNullable(file.command()).map(command -> "/" + command);
             // 28h Stage 27 (z14) rule 2: the Seats page's choice for the seat is what the hire runs on, so it is what its card shows while it runs
             org.jawata.mcp.execution.SeatSettingsService.storedBrainOf(key -> Optional.of(seatBrains.get()), hire.seat).ifPresent(page ->

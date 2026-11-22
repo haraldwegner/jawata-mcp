@@ -53,7 +53,7 @@ class AHiredClaudeDoesNotSeeTheEnginesCodeChangingToolsTest {
     @Test
     @DisplayName("a seat reaches the flag through SeatHire, and a brain that does not attach the resident is untouched")
     void theSeatPlumbingReachesTheDialect() {
-        SeatHire claude = SeatHire.read("---\nname: a\n---\n");
+        SeatHire claude = SeatHire.read("---\nname: a\nbrain: claude-code\n---\n");
         SeatHire cursor = SeatHire.read("---\nname: a\nbrain: cursor\n---\n");
 
         assertAll(

@@ -705,6 +705,13 @@ public class HireTool extends NeutralTool {
             seat = seat.withBrain(call.getReplacing().brain(), call.getReplacing().model());
         }
 
+        if (seat.brain() == null) {
+            // No stored choice and the seat file named none. Claude is not filled in, and nothing is started.
+            return ToolResponse.error("PRECONDITION_NOT_MET",
+                "seat '" + hired + "' has no brain yet",
+                "nothing fills a brain in when none is stored");
+        }
+
         // THE MODEL REGISTRY AND THE VENDOR RULE (S12, D11, D48). The registry setting offers each brain with its vendor and model; the seat file's own
         // model wins over the registry's. The hirer decides with what is known of main's brain (its setting) and of this seat's: a hire between two
         // seats of the signed tree is refused unless the hirer is the seat's parent, and the consultant is refused on main's own vendor. This is after

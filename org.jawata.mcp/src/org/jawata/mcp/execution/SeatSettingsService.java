@@ -263,8 +263,9 @@ public final class SeatSettingsService implements SeatSettings {
         boolean on = !overrides.off().contains(name) && declaredOn(name, front, errors);
         String[] picked = overrides.brains().get(name);
         String declaredBrain = Frontmatter.emptyToNull(Frontmatter.unquote(front.getOrDefault("brain", "")));
+        // Nothing stored and no brain line is "not set". Claude is not filled in for a blank.
         String brain = picked != null ? picked[0]
-            : declaredBrain == null ? SeatHire.Brain.CLAUDE_CODE.label() : SeatHire.Brain.named(declaredBrain).map(SeatHire.Brain::label).orElse(declaredBrain);
+            : declaredBrain == null ? "" : SeatHire.Brain.named(declaredBrain).map(SeatHire.Brain::label).orElse(declaredBrain);
         Optional<String> model = picked != null ? Optional.ofNullable(picked[1]) : textOf(front, "model");
         return new Seat(name, textOf(front, "command"), textOf(front, "purpose").orElse(""), on, brain, model, tree.parentOf(name),
             tree.roleOf(name).map(SeatTree.Role::spelling).orElse(""), tree.escalatesTo(name), textOf(front, "fires").orElse(""),

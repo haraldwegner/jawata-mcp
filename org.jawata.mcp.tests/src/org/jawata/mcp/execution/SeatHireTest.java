@@ -190,9 +190,10 @@ class SeatHireTest {
             () -> assertTrue(seats.stream().allMatch(s ->
                 !s.ceilings().wallClock().isZero() && s.ceilings().maxToolSteps() > 0),
                 "every seat carries a wall clock and a step ceiling"),
-            // Every shipped seat is a Claude Code seat today, by omission rather than by saying so.
-            () -> assertTrue(seats.stream().allMatch(s -> s.brain() == SeatHire.Brain.CLAUDE_CODE),
-                "none of them declares a brain, and claude-code is what they all mean"),
+            // Old assertion, withdrawn: allMatch brain == CLAUDE_CODE, "none of them declares a brain, and claude-code is what they all mean".
+            // A missing line is no brain yet. These four fixtures name none, so none is Claude.
+            () -> assertTrue(seats.stream().allMatch(s -> s.brain() == null),
+                "none of them declares a brain, and a missing line is not filled in as claude-code"),
             // The architect's quoted cron sits in the same frontmatter and must not disturb it.
             () -> assertEquals(80, seats.get(2).ceilings().maxToolSteps()));
     }
@@ -226,6 +227,19 @@ class SeatHireTest {
                 .contains("claude-haiku-4.5"),
                 "but it does not reach the argv: " + copilotSeat.dialect(null, List.of()).command("brief",
                     List.of())));
+    }
+
+    @Test
+    @DisplayName("a missing or blank brain line is no brain yet, never claude-code")
+    void aMissingOrBlankBrainLineIsNotClaude() {
+        SeatHire missing = SeatHire.read("---\nname: developer\n---\n\nbody\n");
+        SeatHire blank = SeatHire.read("---\nname: developer\nbrain:\n---\n\nbody\n");
+        SeatHire spaces = SeatHire.read("---\nname: developer\nbrain:   \n---\n\nbody\n");
+
+        assertAll(
+            () -> assertNull(missing.brain(), "a missing brain line was filled in as " + missing.brain()),
+            () -> assertNull(blank.brain(), "a blank brain line was filled in as " + blank.brain()),
+            () -> assertNull(spaces.brain(), "a whitespace brain line was filled in as " + spaces.brain()));
     }
 
     @Test
@@ -511,15 +525,15 @@ class SeatHireTest {
     @Test
     @DisplayName("S10-8: a seat that says it changes code is hired in a mode that can, every other seat stays read-only, and a misspelling is refused")
     void aSeatThatChangesCodeIsTheOnlyOneNotHiredReadOnly() {
-        String worker = "---\nname: worker\nchanges_code: true\n---\n";
+        String worker = "---\nname: worker\nbrain: claude-code\nchanges_code: true\n---\n";
         assertAll(
-            () -> assertEquals("plan", permissionModeOf("---\nname: pm\n---\n"),
+            () -> assertEquals("plan", permissionModeOf("---\nname: pm\nbrain: claude-code\n---\n"),
                 "no declaration is read-only: the hire path's contract is that an unattended run proposes"),
-            () -> assertEquals("plan", permissionModeOf("---\nname: pm\nchanges_code: false\n---\n")),
+            () -> assertEquals("plan", permissionModeOf("---\nname: pm\nbrain: claude-code\nchanges_code: false\n---\n")),
             () -> assertEquals("manual", permissionModeOf(worker),
                 "a worker that must change code through the engine's tools cannot be hired in plan mode"),
             () -> assertTrue(SeatHire.read(worker).changesCode()),
-            () -> assertFalse(SeatHire.read("---\nname: pm\n---\n").changesCode()),
+            () -> assertFalse(SeatHire.read("---\nname: pm\nbrain: claude-code\n---\n").changesCode()),
             () -> assertThrows(IllegalArgumentException.class,
                 () -> SeatHire.read("---\nname: worker\nchanges_code: yes\n---\n"),
                 "a switch that grants writes is read strictly, not guessed"));
@@ -528,7 +542,7 @@ class SeatHireTest {
     @Test
     @DisplayName("S24 R4: a seat that writes only the store is hired outside plan mode, which blocks the experience tool wholesale, and keeps no code-changing tool and no built-in one")
     void aSeatThatWritesOnlyTheStoreIsNotHiredInPlanModeAndStillChangesNoCode() {
-        String governess = "---\nname: rottenmeier\nwrites_store: true\ntools: [experience, rename_symbol]\n---\n";
+        String governess = "---\nname: rottenmeier\nbrain: claude-code\nwrites_store: true\ntools: [experience, rename_symbol]\n---\n";
         List<String> engineChanges = List.of("rename_symbol", "extract");
         assertAll(
             () -> assertEquals("manual", permissionModeOf(governess),
@@ -540,7 +554,7 @@ class SeatHireTest {
             () -> assertEquals(List.of("extract", "rename_symbol"), SeatHire.read(governess).toolsToHide(engineChanges),
                 "every code-changing tool is still taken away, the one the seat names included"),
             () -> assertEquals("", builtInsOf(governess), "and no built-in tool of the CLI's own is offered"),
-            () -> assertEquals("plan", permissionModeOf("---\nname: pm\nwrites_store: false\n---\n"),
+            () -> assertEquals("plan", permissionModeOf("---\nname: pm\nbrain: claude-code\nwrites_store: false\n---\n"),
                 "THE CONTROL: without the switch the seat is still hired in plan mode"),
             () -> assertThrows(IllegalArgumentException.class,
                 () -> SeatHire.read("---\nname: s\nwrites_store: yes\n---\n"), "read strictly, not guessed"),
@@ -563,25 +577,25 @@ class SeatHireTest {
     @DisplayName("S10-12: a seat that says reads_files is offered the three read-only built-ins and no writing one; every other seat still gets none")
     void aSeatThatReadsFilesIsOfferedOnlyTheReadOnlyBuiltIns() {
         assertAll(
-            () -> assertEquals("Read,Glob,Grep", builtInsOf("---\nname: ux\nreads_files: true\n---\n"),
+            () -> assertEquals("Read,Glob,Grep", builtInsOf("---\nname: ux\nbrain: claude-code\nreads_files: true\n---\n"),
                 "the UX seat must open the component it is asked about"),
-            () -> assertEquals("", builtInsOf("---\nname: pm\n---\n"),
+            () -> assertEquals("", builtInsOf("---\nname: pm\nbrain: claude-code\n---\n"),
                 "a seat that does not say it reads is still offered none"),
-            () -> assertEquals("", builtInsOf("---\nname: pm\nreads_files: false\n---\n")),
-            () -> assertEquals("", builtInsOf("---\nname: worker\nchanges_code: true\n---\n"),
+            () -> assertEquals("", builtInsOf("---\nname: pm\nbrain: claude-code\nreads_files: false\n---\n")),
+            () -> assertEquals("", builtInsOf("---\nname: worker\nbrain: claude-code\nchanges_code: true\n---\n"),
                 "and a seat that changes code through the engine is not handed the CLI's editors either"),
-            () -> assertFalse(builtInsOf("---\nname: ux\nreads_files: true\n---\n").contains("Bash"),
+            () -> assertFalse(builtInsOf("---\nname: ux\nbrain: claude-code\nreads_files: true\n---\n").contains("Bash"),
                 "reading is not the cut: Bash is not a reader"),
-            () -> assertFalse(builtInsOf("---\nname: ux\nreads_files: true\n---\n").contains("Write")),
-            () -> assertFalse(builtInsOf("---\nname: ux\nreads_files: true\n---\n").contains("Edit")));
+            () -> assertFalse(builtInsOf("---\nname: ux\nbrain: claude-code\nreads_files: true\n---\n").contains("Write")),
+            () -> assertFalse(builtInsOf("---\nname: ux\nbrain: claude-code\nreads_files: true\n---\n").contains("Edit")));
     }
 
     @Test
     @DisplayName("S10-12: reads_files is read strictly and refused where the brain cannot carry it or where it would sit beside changes_code")
     void readsFilesIsStrictAndRefusedWhereItCannotBeHonoured() {
         assertAll(
-            () -> assertTrue(SeatHire.read("---\nname: ux\nreads_files: true\n---\n").readsFiles()),
-            () -> assertFalse(SeatHire.read("---\nname: pm\n---\n").readsFiles()),
+            () -> assertTrue(SeatHire.read("---\nname: ux\nbrain: claude-code\nreads_files: true\n---\n").readsFiles()),
+            () -> assertFalse(SeatHire.read("---\nname: pm\nbrain: claude-code\n---\n").readsFiles()),
             () -> assertThrows(IllegalArgumentException.class,
                 () -> SeatHire.read("---\nname: ux\nreads_files: yes\n---\n"),
                 "a switch that widens what a brain holds is not guessed from a misspelling"),
@@ -618,15 +632,15 @@ class SeatHireTest {
     @Test
     @DisplayName("S10-12: a seat that reads files is given as many turns as its declared step ceiling (the 12-turn default cut the first real UX hire off before its census); every other seat keeps the default")
     void aSeatThatReadsFilesIsGivenTurnsToMatchItsStepCeiling() {
-        String reading = "---\nname: ux\nreads_files: true\nmax_tool_steps: 60\n---\n";
+        String reading = "---\nname: ux\nbrain: claude-code\nreads_files: true\nmax_tool_steps: 60\n---\n";
         assertAll(
             () -> assertEquals("60", maxTurnsOf(reading),
                 "the engine's own ceiling is the bound, not a second tighter undeclared one"),
-            () -> assertEquals("12", maxTurnsOf("---\nname: ux\nreads_files: true\nmax_tool_steps: 5\n---\n"),
+            () -> assertEquals("12", maxTurnsOf("---\nname: ux\nbrain: claude-code\nreads_files: true\nmax_tool_steps: 5\n---\n"),
                 "a ceiling below the default never lowers it"),
-            () -> assertEquals("12", maxTurnsOf("---\nname: ux\nreads_files: true\n---\n"),
+            () -> assertEquals("12", maxTurnsOf("---\nname: ux\nbrain: claude-code\nreads_files: true\n---\n"),
                 "no declared ceiling, no change"),
-            () -> assertEquals("12", maxTurnsOf("---\nname: pm\nmax_tool_steps: 60\n---\n"),
+            () -> assertEquals("12", maxTurnsOf("---\nname: pm\nbrain: claude-code\nmax_tool_steps: 60\n---\n"),
                 "a seat that does not read keeps the default however many steps it may take"));
     }
 

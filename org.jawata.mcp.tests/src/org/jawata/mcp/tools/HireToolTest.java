@@ -67,6 +67,7 @@ class HireToolTest {
     private static final String CATALOGUER_SEAT = """
         ---
         name: cataloguer
+        brain: claude-code
         model: claude-sonnet-5
         kind: code
         # tier justification (the product is a JUDGEMENT repeated many times — "what is this
@@ -86,7 +87,7 @@ class HireToolTest {
     /** The same seat, switched to the brain that CANNOT be told which tools to attach. */
     /** A brain whose writes are held only by an instruction: refused unless the seat opts in. */
     private static final String CURSOR_SEAT_WITHOUT_OPT_IN = CATALOGUER_SEAT
-        .replace("name: cataloguer", "name: cataloguer\nbrain: cursor");
+        .replace("brain: claude-code", "brain: cursor");
 
     private static final String CURSOR_SEAT = CURSOR_SEAT_WITHOUT_OPT_IN
         .replace("brain: cursor", "brain: cursor\naccepts_uncontained_writes: true");
@@ -1307,7 +1308,7 @@ class HireToolTest {
             aRegistryWithACleanGate());
 
         Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(
-            CATALOGUER_SEAT.replace("name: cataloguer", "name: cataloguer\nbrain: codex")))));
+            CATALOGUER_SEAT.replace("brain: claude-code", "brain: codex")))));
 
         assertEquals("MECHANISM", data.get("writeContainmentBasis"));
     }
@@ -2649,7 +2650,8 @@ class HireToolTest {
     @DisplayName("28k D15: an engine whose seats are sealed hires a seat by its name alone, from the seat sealed in it")
     void aSealedEngineHiresASeatByName() throws Exception {
         StandsIn processes = new StandsIn(host, aBrainThatAnswers());
-        ToolResponse response = toolWithSettings(processes, Map.of(SettingKeys.SEATS_SEALED.name(), "true")).execute(sealedHireArgs("cataloguer"));
+        ToolResponse response = toolWithSettings(processes, Map.of(SettingKeys.SEATS_SEALED.name(), "true",
+            SettingKeys.SEATS_BRAINS.name(), "cataloguer=claude-code/claude-sonnet-5")).execute(sealedHireArgs("cataloguer"));
 
         assertAll(
             () -> assertTrue(response.isSuccess(), String.valueOf(response.getError())),
@@ -2679,7 +2681,8 @@ class HireToolTest {
             Map.of(SettingKeys.SEATS_SEALED.name(), "true", SettingKeys.SEATS_OFF.name(), "cataloguer")).execute(sealedHireArgs("cataloguer"));
         StandsIn on = new StandsIn(host, aBrainThatAnswers());
         ToolResponse control = toolWithSettings(on,
-            Map.of(SettingKeys.SEATS_SEALED.name(), "true", SettingKeys.SEATS_OFF.name(), "pm")).execute(sealedHireArgs("cataloguer"));
+            Map.of(SettingKeys.SEATS_SEALED.name(), "true", SettingKeys.SEATS_OFF.name(), "pm",
+                SettingKeys.SEATS_BRAINS.name(), "cataloguer=claude-code/claude-sonnet-5")).execute(sealedHireArgs("cataloguer"));
 
         assertAll(
             () -> assertFalse(off.isSuccess(), "a switched-off sealed seat was hired"),
@@ -2705,7 +2708,8 @@ class HireToolTest {
     @Test
     @DisplayName("28k D15: on a sealed engine a seat moved in the stored workflow is hired only by the parent it was moved under")
     void aSealedSeatIsHiredOnlyByTheParentItsStoredWorkflowGivesIt() throws Exception {
-        Map<String, String> moved = Map.of(SettingKeys.SEATS_SEALED.name(), "true", SettingKeys.SEATS_WORKFLOW.name(), "cataloguer=pm,worker");
+        Map<String, String> moved = Map.of(SettingKeys.SEATS_SEALED.name(), "true", SettingKeys.SEATS_WORKFLOW.name(), "cataloguer=pm,worker",
+            SettingKeys.SEATS_BRAINS.name(), "cataloguer=claude-code/claude-sonnet-5");
         ToolResponse byOldParent = toolWithSettings(aHostThatMustNotSpawn(), moved).execute(sealedHireArgs("cataloguer"));
         ObjectNode byNewParent = sealedHireArgs("cataloguer");
         byNewParent.put("hirer", "pm");
@@ -2729,10 +2733,10 @@ class HireToolTest {
     }
 
     /** The seat of a developer whose file names no brain and no model: the shipped default under whatever the Seats page stores. */
-    private static final String DEVELOPER_SEAT_WITHOUT_BRAIN_OR_MODEL = CATALOGUER_SEAT.replace("model: claude-sonnet-5\n", "").replace("name: cataloguer", "name: developer");
+    private static final String DEVELOPER_SEAT_WITHOUT_BRAIN_OR_MODEL = CATALOGUER_SEAT.replace("brain: claude-code\n", "").replace("model: claude-sonnet-5\n", "").replace("name: cataloguer", "name: developer");
 
     /** The same developer, whose file names the cursor brain (opted in to its writes) and the model Sonnet. */
-    private static final String DEVELOPER_SEAT_ON_CURSOR = CATALOGUER_SEAT.replace("name: cataloguer", "name: developer\nbrain: cursor\naccepts_uncontained_writes: true")
+    private static final String DEVELOPER_SEAT_ON_CURSOR = CATALOGUER_SEAT.replace("name: cataloguer", "name: developer").replace("brain: claude-code", "brain: cursor\naccepts_uncontained_writes: true")
         .replace("model: claude-sonnet-5", "model: Sonnet");
 
     private static Object brainFieldOf(Map<String, Object> answer, String field) {

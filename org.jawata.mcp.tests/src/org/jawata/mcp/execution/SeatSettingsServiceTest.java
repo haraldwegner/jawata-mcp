@@ -191,7 +191,8 @@ class SeatSettingsServiceTest {
         stored.put(SettingKeys.SEATS_BRAINS.name(), "architect=cursor/gpt-x");
         assertEquals("cursor", seat("architect").brain());
         assertEquals(Optional.of("gpt-x"), seat("architect").model());
-        assertEquals("claude-code", seat("developer").brain());
+        // Old assertion: assertEquals("claude-code", seat("developer").brain()). The file names no brain and nothing is stored, so the row is not set.
+        assertEquals("", seat("developer").brain());
     }
 
     @Test

@@ -29,10 +29,9 @@ import org.jawata.mcp.access.LookupDriver;
  * routed to {@link ClaudeCodeDialect} and spawned the wrong CLI. The model is which weights answer;
  * the brain is whose process we start, and they are not the same question.</p>
  *
- * <p>Absent, the brain defaults to Claude Code, because that is what every seat in the tree means
- * today — they were written for it and name its flags nowhere else. An UNKNOWN brain is REFUSED
- * rather than defaulted: a seat asking for a brain this product has no dialect for must not quietly
- * be hired as a different one, which is the failure the default is otherwise one typo away from.</p>
+ * <p>Absent or blank, the brain is none: the hire reads the stored choice for the seat and does not
+ * fill a brain in. An UNKNOWN brain is REFUSED rather than replaced: a seat asking for a brain this
+ * product has no dialect for must not quietly be hired as a different one.</p>
  *
  * <h2>A DECLARED COST BUDGET IS NOT NECESSARILY AN ENFORCEABLE ONE, and this says which</h2>
  *
@@ -141,11 +140,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         if (seat == null || seat.isBlank()) {
             throw new IllegalArgumentException("a seat with no name cannot be reported on");
         }
-        if (brain == null) {
-            throw new IllegalArgumentException("a hire must say which brain it starts: a run whose"
-                + " brain is unknown cannot be given a dialect, and a dialect guessed from the"
-                + " model name is how a copilot seat gets spawned as claude");
-        }
+        // Null is "no brain yet". It is not Claude and not any other dialect. A hire binds the
+        // stored choice before it asks for a dialect; guessing one here is the default this path refuses.
+
         tools = tools == null ? List.of() : List.copyOf(tools);
         stance = stance == null ? "" : stance.strip();
         answerGates = answerGates == null ? List.of() : List.copyOf(answerGates);
@@ -167,8 +164,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         Map<String, String> front = Frontmatter.frontmatter(markdown);
 
         String declared = front.get("brain");
+        // A missing or blank line is no brain yet. It is not Claude Code and not any other dialect.
         Brain brain = declared == null || declared.isBlank()
-            ? Brain.CLAUDE_CODE
+            ? null
             : Brain.named(declared).orElseThrow(() -> new IllegalArgumentException(
                 "seat declares brain '" + declared + "', which this product has no dialect for."
                     + " Known: claude-code, cursor, copilot, codex, script. NOT defaulted on purpose"
@@ -180,20 +178,26 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         // brain with nothing to run cannot start, and a script line on another brain would be
         // IGNORED — the inert-input shape that ran the real claude when a stand-in was meant.
         String script = Frontmatter.emptyToNull(front.get("script"));
+        if (brain == null && script != null) {
+            throw new IllegalArgumentException("seat declares script '" + script + "' and names no brain,"
+                + " which would ignore it — set brain: script to run it, or remove the line");
+        }
         if (brain == Brain.SCRIPT && script == null) {
             throw new IllegalArgumentException("seat declares brain 'script' and no 'script:' line"
                 + " naming the executable to run, so there is nothing to start");
         }
-        if (brain != Brain.SCRIPT && script != null) {
+        if (brain != null && brain != Brain.SCRIPT && script != null) {
             throw new IllegalArgumentException("seat declares script '" + script + "' on brain '"
                 + brain.spellings.get(0) + "', which would ignore it — set brain: script to run it,"
                 + " or remove the line");
         }
 
         // A switch a dialect cannot carry is refused, as a script line on another brain is: the seat
-        // would be told its job is to change code and meet a brain that never heard of it.
+        // would be told its job is to change code and meet a brain that never heard of it. A seat
+        // that names no brain yet is not checked here: the stored choice is not known, and treating
+        // the blank as Claude would accept a switch that brain cannot carry.
         boolean changesCode = Frontmatter.readSwitch("changes_code", front.get("changes_code"), false);
-        if (changesCode && brain != Brain.CLAUDE_CODE && brain != Brain.CURSOR) {
+        if (brain != null && changesCode && brain != Brain.CLAUDE_CODE && brain != Brain.CURSOR) {
             throw new IllegalArgumentException("seat declares changes_code: true on brain '"
                 + brain.spellings.get(0) + "', whose dialect has no write-capable mode to select, so the"
                 + " declaration would be IGNORED. Only claude-code and cursor carry it");
@@ -201,7 +205,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         // The same refusal for the same reason: the read-only built-ins are a claude start-up
         // choice, and a seat on another brain would be told it can read and never be offered it.
         boolean readsFiles = Frontmatter.readSwitch("reads_files", front.get("reads_files"), false);
-        if (readsFiles && brain != Brain.CLAUDE_CODE) {
+        if (brain != null && readsFiles && brain != Brain.CLAUDE_CODE) {
             throw new IllegalArgumentException("seat declares reads_files: true on brain '"
                 + brain.spellings.get(0) + "', whose dialect has no built-in file reader to offer, so"
                 + " the declaration would be IGNORED. Only claude-code carries it");
@@ -218,7 +222,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         // bound on the CLI's own file tools is that none are offered. So this seat is hired outside
         // plan mode, with every code-changing tool still hidden and no built-in tool offered.
         boolean writesStore = Frontmatter.readSwitch("writes_store", front.get("writes_store"), false);
-        if (writesStore && brain != Brain.CLAUDE_CODE && brain != Brain.CURSOR) {
+        if (brain != null && writesStore && brain != Brain.CLAUDE_CODE && brain != Brain.CURSOR) {
             throw new IllegalArgumentException("seat declares writes_store: true on brain '"
                 + brain.spellings.get(0) + "', whose dialect has no mode outside plan mode to select, so"
                 + " the declaration would be IGNORED. Only claude-code and cursor carry it");
@@ -353,6 +357,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
      *     does not attach the resident has nothing to hide from and ignores it.
      */
     public BrainDialect dialect(SelfEndpoint self, List<String> hiddenTools) {
+        if (brain == null) {
+            throw new IllegalStateException("this seat has no brain yet, so there is no dialect to start");
+        }
         return switch (brain) {
             case CLAUDE_CODE -> new ClaudeCodeDialect("claude", maxTurns(), model, !(changesCode || writesStore), self,
                 hiddenTools, readsFiles ? ClaudeCodeDialect.READ_ONLY_BUILT_INS : List.of());
@@ -388,6 +395,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         Double budget = ceilings.maxCostUsd();
         if (budget == null) {
             return Optional.empty();
+        }
+        if (brain == null) {
+            return Optional.of("cost budget $" + budget + " is not applied until a brain is stored for this seat");
         }
         if (brain == Brain.SCRIPT) {
             // A script publishes a dollar cost only if it prints one — ScriptDialect reads a
