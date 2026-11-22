@@ -77,6 +77,7 @@ public final class AcpServer {
         this.recorder = recorder;
         this.sideBrains = sideBrains;
         this.endSubscription = HireRegistry.shared().subscribe(this::registryEvent);
+        org.jawata.mcp.execution.SeatBrains.installed().ifPresent(store -> store.listen(this::tellSeatChoice));
     }
 
     /** Takes one message from the host, on the person's channel. A request is answered through the sink; a notification needs no answer. */
@@ -290,11 +291,10 @@ public final class AcpServer {
     }
 
     /**
-     * The Agent Control panel's brain control (D53 (i)), which is a Replace: the running hire is stopped and the same seat and task are hired again
-     * on the new brain with what was said so far; the principal is told it was a replacement, and the seat's default is untouched. The answer is
-     * the agent's hire entry as it will be. The method name is provisional until the chat's recording R12 carries it. A hire the agent never saw or
-     * that has ended, a brain this product has no dialect for, and the script brain (which needs a program of its own) are bad requests. A model
-     * named for a brain whose command line takes none is not applied and is not echoed.
+     * The Agent Control panel's brain control: stores the brain and model for the next hire of this seat. The hire on the card is not stopped
+     * and its card keeps the brain it was started with. The answer is the choice that was stored, and it says that it applies from the next hire.
+     * A hire the agent never saw, a brain this product has no dialect for, and the script brain are bad requests. A brain or model the registry
+     * does not offer is refused and not stored.
      */
     private JsonRpcMessage hireBrain(Object id, JsonNode params) {
         String planId = textField(params, "planId");
@@ -308,22 +308,24 @@ public final class AcpServer {
                 "brain must be one of claude-code, cursor, copilot, codex; the script brain needs a program of its own and cannot be picked", null);
         }
         String model = textField(params, "model");
-        String applied = model != null && !model.isBlank() && brain.get().takesAModel() ? model.strip() : "";
-        if (!HireEntry.RUNNING.equals(entry.get().state())) {
-            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "hire " + planId + " has already " + entry.get().state() + "; there is nothing to replace", null);
+        org.jawata.mcp.execution.SeatBrains.Store store = org.jawata.mcp.execution.SeatBrains.installed().orElse(null);
+        if (store == null) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "no seat-choice store is open. " + org.jawata.mcp.execution.SeatBrains.WHERE, null);
         }
-        if (HireRegistry.shared().replace(entry.get().seat(), entry.get().task(), brain.get(), applied) == 0) {
-            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
-                "this engine is not running a hire of " + entry.get().seat() + " for that brief, so there is nothing here to replace", null);
+        org.jawata.mcp.execution.SeatBrains.Notice notice;
+        try {
+            notice = store.save(entry.get().seat(), brain.get().label(), model == null ? "" : model.strip(), brainRegistry.get());
+        } catch (IllegalArgumentException refused) {
+            return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, refused.getMessage(), null);
         }
-        ObjectNode meta = entry.get().toMeta();
-        meta.put("brain", brain.get().label());
-        if (applied.isEmpty()) {
-            meta.remove("model");
-        } else {
-            meta.put("model", applied);
-        }
-        return JsonRpcMessage.successResponse(id, meta);
+        tellSeatChoice(notice);
+        ObjectNode result = JSON.createObjectNode();
+        result.put("seat", notice.seat());
+        result.put("brain", notice.brain());
+        result.put("model", notice.model());
+        result.put("planId", planId);
+        result.put("applies", "applies from the next hire of this seat");
+        return JsonRpcMessage.successResponse(id, result);
     }
 
     /**
@@ -580,6 +582,14 @@ public final class AcpServer {
         if (!model.isEmpty() && !brain.useModel(model)) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, picked + " does not offer the model " + model, null);
         }
+        org.jawata.mcp.execution.SeatBrains.installed().ifPresent(store -> {
+            try {
+                tellSeatChoice(store.save("main", picked, model, brainRegistry.get()));
+            } catch (RuntimeException failed) {
+                java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.WARNING,
+                    "the principal's pick was not stored for the next hire of main", failed);
+            }
+        });
         ObjectNode result = JSON.createObjectNode();
         result.set("configOptions", configOptions(session));
         return JsonRpcMessage.successResponse(id, result);
@@ -1216,6 +1226,21 @@ public final class AcpServer {
         update.putObject("content").put("type", "text").put("text", text);
         update.put("messageId", messageId);
         return update;
+    }
+
+    /** Tells every open chat the choice that was stored, so a menu shows it without the person asking again. */
+    private void tellSeatChoice(org.jawata.mcp.execution.SeatBrains.Notice notice) {
+        ObjectNode update = JSON.createObjectNode();
+        update.put("sessionUpdate", "jawata_seat_choice");
+        update.put("seat", notice.seat());
+        update.put("brain", notice.brain());
+        update.put("model", notice.model());
+        update.put("applies", "applies from the next hire of this seat");
+        for (PrincipalSession session : sessions.values()) {
+            if (!session.side()) {
+                this.update(session.id(), update);
+            }
+        }
     }
 
     private void update(String sessionId, ObjectNode update) {

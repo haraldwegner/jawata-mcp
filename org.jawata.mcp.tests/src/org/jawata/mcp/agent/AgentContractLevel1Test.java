@@ -21,6 +21,7 @@ import java.util.function.Consumer;
 
 import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.protocol.JsonRpcMessage;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -40,6 +41,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * where the recording's cannot exist, and compares what the engine answers by the checker's rules and by the fields the recording carries.</p>
  */
 class AgentContractLevel1Test {
+
+    @AfterEach
+    void dropTheProcessStore() {
+        org.jawata.mcp.execution.SeatBrains.uninstall();
+    }
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -115,6 +121,16 @@ class AgentContractLevel1Test {
             return out;
         }
         if ("_jawata/hire/brain".equals(method)) {
+            // A stored choice answers with the seat, brain, model and that it applies from the next hire.
+            // A recording made when the reply was the hire itself still passes the hire shape.
+            if (result.path("applies").isTextual()) {
+                for (String field : List.of("seat", "brain", "model", "applies", "planId")) {
+                    if (!result.path(field).isTextual()) {
+                        out.add("brain reply: " + field + " is not a string");
+                    }
+                }
+                return out;
+            }
             hireViolations(result).forEach(v -> out.add("brain reply: " + v));
             return out;
         }
@@ -408,31 +424,39 @@ class AgentContractLevel1Test {
         JsonNode brains = wire.send(JSON.convertValue(brainsRequest, JsonRpcMessage.class));
         ObjectNode pick = sentRequest(r12, "_jawata/hire/brain").msg().deepCopy();
         ((ObjectNode) pick.get("params")).put("planId", "p-pm").put("brain", "claude-code").put("model", "sonnet");
-        // The Replace ends the brain process of a hire the engine is running, so the hire stands on a thread of its own, waiting for that end.
+        // Old assertions, when a pick was a Replace: assertFalse(hire.isAlive(), "the Replace did not stop the hire");
+        // and the reply was the hire, including seatCommand "/pm". A pick now stores the choice for the next hire and leaves the running one.
+        Path storeFile = dir.resolve("seats-brains");
+        org.jawata.mcp.execution.SeatBrains.install(storeFile);
         java.util.concurrent.CountDownLatch registered = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
         Thread hire = new Thread(() -> {
             try (var running = org.jawata.mcp.execution.HireRegistry.shared().begin("pm", "Run sprint 28i.", "")) {
-                java.util.concurrent.CountDownLatch brainEnded = new java.util.concurrent.CountDownLatch(1);
-                org.jawata.mcp.execution.HireRegistry.shared().onStop(brainEnded::countDown);
                 registered.countDown();
-                brainEnded.await(20, java.util.concurrent.TimeUnit.SECONDS);
+                release.await(20, java.util.concurrent.TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         });
         hire.setDaemon(true);
         hire.start();
-        registered.await();
-        JsonNode picked = wire.send(JSON.convertValue(pick, JsonRpcMessage.class));
-        hire.join(5_000);
-        assertFalse(hire.isAlive(), "the Replace did not stop the hire");
-
-        assertEquals(List.of(), violations(wire.lines));
-        assertEquals(2, brains.path("result").path("brains").size(), brains.toString());
-        assertEquals("p-pm", picked.path("result").path("planId").asText(), picked.toString());
-        assertEquals("claude-code", picked.path("result").path("brain").asText(), picked.toString());
-        assertEquals("sonnet", picked.path("result").path("model").asText(), picked.toString());
-        assertEquals("/pm", picked.path("result").path("seatCommand").asText(), picked.toString());
+        try {
+            registered.await();
+            JsonNode picked = wire.send(JSON.convertValue(pick, JsonRpcMessage.class));
+            assertTrue(hire.isAlive(), "the pick stopped the hire that was running");
+            assertEquals(List.of(), violations(wire.lines));
+            assertEquals(2, brains.path("result").path("brains").size(), brains.toString());
+            assertEquals("p-pm", picked.path("result").path("planId").asText(), picked.toString());
+            assertEquals("pm", picked.path("result").path("seat").asText(), picked.toString());
+            assertEquals("claude-code", picked.path("result").path("brain").asText(), picked.toString());
+            assertEquals("sonnet", picked.path("result").path("model").asText(), picked.toString());
+            assertEquals("applies from the next hire of this seat", picked.path("result").path("applies").asText(), picked.toString());
+            assertTrue(Files.readString(storeFile).contains("pm=claude-code/sonnet"), Files.readString(storeFile));
+        } finally {
+            release.countDown();
+            hire.join(5_000);
+            org.jawata.mcp.execution.SeatBrains.uninstall();
+        }
     }
 
     @Test
