@@ -444,4 +444,35 @@ public final class SeatSettingsService implements SeatSettings {
             return workflow;
         }
     }
+
+    @Override
+    public Map<String, String> storedSeatChoice(String seat, String brain, String model) {
+        String registry = settings.get(Hirer.BRAINS_SETTING).orElse("");
+        SeatBrains.Store store = SeatBrains.installed()
+            .orElseThrow(() -> new IllegalStateException("no seat-choice store is open. " + SeatBrains.WHERE));
+        SeatBrains.Notice notice = store.save(seat, brain, model, registry);
+        Map<String, String> row = new LinkedHashMap<>();
+        row.put("seat", notice.seat());
+        row.put("brain", notice.brain());
+        row.put("model", notice.model());
+        row.put("applies", "applies from the next hire of this seat");
+        return row;
+    }
+
+    @Override
+    public List<Map<String, String>> storedSeatChoices() {
+        SeatBrains.Store store = SeatBrains.installed().orElse(null);
+        if (store == null) {
+            return List.of();
+        }
+        List<Map<String, String>> rows = new ArrayList<>();
+        for (SeatBrains.Notice notice : SeatBrains.listed(store.text())) {
+            Map<String, String> row = new LinkedHashMap<>();
+            row.put("seat", notice.seat());
+            row.put("brain", notice.brain());
+            row.put("model", notice.model());
+            rows.add(row);
+        }
+        return rows;
+    }
 }

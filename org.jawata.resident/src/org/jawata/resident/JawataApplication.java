@@ -83,6 +83,7 @@ public class JawataApplication implements IApplication {
             // Sprint 28a (D11): the engine says who it is BEFORE the message loop, from what the directories declare, which is the
             // same workspace.json the async load reads — the initialize handshake must never race the project load. Faces attach once
             // the engine runs and detach before it stops (E19).
+            org.jawata.mcp.execution.SeatBrains.install(org.jawata.mcp.execution.SeatBrains.fileIn(null));
             jawataEngine.start();
 
             // Sprint 10 v1.4.0: prefer workspace.json in the JDT data dir as the

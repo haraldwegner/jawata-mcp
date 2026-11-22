@@ -257,4 +257,26 @@ public interface SeatSettings {
      * @return the engine's refusal in words, or nothing when the values can be stored
      */
     Optional<String> check(Map<String, String> proposed);
+
+    /**
+     * Stores one seat's brain and model in the engine's one choice, after checking both against the brain registry.
+     * A wrong brain or model is not stored. The map is the seat, brain and model that were stored, and {@code applies}.
+     *
+     * @param seat  the seat
+     * @param brain the brain
+     * @param model the model, or blank when the entry names only the brain
+     * @return what was stored
+     */
+    default Map<String, String> storedSeatChoice(String seat, String brain, String model) {
+        throw new UnsupportedOperationException("no seat-choice store is open");
+    }
+
+    /**
+     * Every stored choice, one row per seat. Empty when nothing is stored. A store that cannot be read is refused.
+     *
+     * @return the rows, each with seat, brain and model
+     */
+    default List<Map<String, String>> storedSeatChoices() {
+        return List.of();
+    }
 }

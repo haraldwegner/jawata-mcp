@@ -42,21 +42,26 @@ public final class BrainsTool implements Tool {
                    brains(action="models")                        — every ready chat brain's; what a deploy runs to discover them
                    brains(action="status")                        — every program this machine has: installed, logged in, its models
                    brains(action="probe", brain="claude-code", model="Haiku 5.5") — a one-word run through it (Claude: under a cent)
+                   brains(action="choices")                       — the stored brain and model of every seat
+                   brains(action="set", seat="pm", brain="claude-code", model="Haiku 5.5") — store one seat's choice
 
             models answers {brains: [{brain, label, models}]}, the brain's own default left out; with no brain named, a brain whose session could
             not be opened carries {error} instead. status answers {brains: [{id, label, installed, login, reason, loginCommand, models, hirable,
             takesModel, writesHeldByInstruction}]}. probe answers {brain, ok, answer, modelsUsed, costUsd, seconds, error, loginCommand}; a model is
             named as a Brain list shows it, and the engine gives the program's command line what it takes. A brain or model the engine does not know
-            is refused by name, never answered with an empty list.
+            is refused by name, never answered with an empty list. choices answers {seats: [{seat, brain, model}]}. set checks the brain and
+            model against the registry and answers {seat, brain, model, applies}; a wrong one is refused and not stored. The stored choice is
+            what the next hire of that seat starts on. A hire that is already running is not moved.
             """;
     }
 
     @Override
     public Map<String, Object> getInputSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("action", Map.of("type", "string", "enum", List.of("models", "status", "probe"), "description", "What to ask (default models)."));
-        properties.put("brain", Map.of("type", "string", "description", "The brain's id (e.g. claude-code, cursor). models: omit for every ready chat brain; probe: required."));
-        properties.put("model", Map.of("type", "string", "description", "probe: the model to run on, as a Brain list shows it; omit for the brain's own default."));
+        properties.put("action", Map.of("type", "string", "enum", List.of("models", "status", "probe", "choices", "set"), "description", "What to ask (default models)."));
+        properties.put("brain", Map.of("type", "string", "description", "The brain's id (e.g. claude-code, cursor). models: omit for every ready chat brain; probe and set: required."));
+        properties.put("model", Map.of("type", "string", "description", "probe and set: the model, as a Brain list shows it; omit for the brain's own default."));
+        properties.put("seat", Map.of("type", "string", "description", "set: the seat whose stored choice is replaced."));
         return Map.of("type", "object", "properties", properties);
     }
 
@@ -69,7 +74,9 @@ public final class BrainsTool implements Tool {
             case "models" -> models(door, brain);
             case "status" -> status(door);
             case "probe" -> probe(door, brain, arguments.path("model").asText(""));
-            default -> ToolResponse.invalidParameter("action", "action must be models, status or probe, not '" + action + "'");
+            case "choices" -> choices(door);
+            case "set" -> set(door, arguments.path("seat").asText(""), brain, arguments.path("model").asText(""));
+            default -> ToolResponse.invalidParameter("action", "action must be models, status, probe, choices or set, not '" + action + "'");
         };
     }
 
@@ -151,6 +158,32 @@ public final class BrainsTool implements Tool {
         row.put("label", label);
         row.put("models", models);
         return row;
+    }
+
+    private static ToolResponse choices(SeatSettings door) {
+        try {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("seats", door.storedSeatChoices());
+            return ToolResponse.success(data);
+        } catch (IllegalArgumentException refused) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", refused.getMessage(), org.jawata.mcp.execution.SeatBrains.WHERE);
+        }
+    }
+
+    private static ToolResponse set(SeatSettings door, String seat, String brain, String model) {
+        if (seat.isBlank()) {
+            return ToolResponse.invalidParameter("seat", "a stored choice names the seat");
+        }
+        if (brain.isBlank()) {
+            return ToolResponse.invalidParameter("brain", "a stored choice names the brain");
+        }
+        try {
+            return ToolResponse.success(new LinkedHashMap<>(door.storedSeatChoice(seat, brain, model)));
+        } catch (IllegalArgumentException refused) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", refused.getMessage(), org.jawata.mcp.execution.SeatBrains.WHERE);
+        } catch (IllegalStateException closed) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", closed.getMessage(), org.jawata.mcp.execution.SeatBrains.WHERE);
+        }
     }
 
     private static ToolResponse answer(List<Map<String, Object>> rows) {
