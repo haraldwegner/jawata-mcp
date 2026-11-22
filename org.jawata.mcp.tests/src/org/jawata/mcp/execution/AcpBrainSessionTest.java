@@ -239,6 +239,47 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h z37: main's brain, whose own tools are withheld, is allowed its web search through the allowlist the hirer builds for main")
+    void aWebSearchPermissionIsAllowedForMain() throws Exception {
+        Hirer hirer = new Hirer(SeatTree.standard(), Map.of(), Set.of("rename_symbol"));
+
+        assertEquals("permission:allow_once", converse("CALL:WebSearch", hirer.allowlist("main", List.of("inspect", "rename_symbol")), AcpBrainSession.OwnTools.WITHHELD),
+            "main's web search was refused");
+    }
+
+    @Test
+    @DisplayName("28h z37: main's brain, whose own tools are withheld, is allowed its page fetch through the allowlist the hirer builds for main")
+    void aWebFetchPermissionIsAllowedForMain() throws Exception {
+        Hirer hirer = new Hirer(SeatTree.standard(), Map.of(), Set.of("rename_symbol"));
+
+        assertEquals("permission:allow_once", converse("CALL:WebFetch", hirer.allowlist("main", List.of("inspect", "rename_symbol")), AcpBrainSession.OwnTools.WITHHELD),
+            "main's page fetch was refused");
+    }
+
+    @Test
+    @DisplayName("28h z37: main is still refused its shell with the list the hirer builds for it, and no other seat's list names the web tools")
+    void mainIsStillRefusedItsShellAndOnlyMainHasTheWebTools() throws Exception {
+        List<String> engineTools = List.of("inspect", "rename_symbol");
+        Hirer hirer = new Hirer(SeatTree.standard(), Map.of(), Set.of("rename_symbol"));
+
+        assertEquals("permission:reject_once", converse("SHELL:ls", hirer.allowlist("main", engineTools), AcpBrainSession.OwnTools.WITHHELD),
+            "main's shell was allowed");
+        for (String seat : List.of("developer", "chief-engineer", "pm", "test-manager")) {
+            List<String> list = hirer.allowlist(seat, engineTools);
+            assertFalse(list.contains("WebSearch") || list.contains("WebFetch"), seat + " was given a web tool: " + list);
+        }
+    }
+
+    @Test
+    @DisplayName("28h z37: a web search is rejected for the developer through the allowlist the hirer builds for the developer, so the web tools are main's alone")
+    void aWebSearchPermissionIsRejectedForTheDeveloper() throws Exception {
+        Hirer hirer = new Hirer(SeatTree.standard(), Map.of(), Set.of("rename_symbol"));
+
+        assertEquals("permission:reject_once", converse("CALL:WebSearch", hirer.allowlist("developer", List.of("inspect", "rename_symbol")), AcpBrainSession.OwnTools.WITHHELD),
+            "the developer's web search was allowed");
+    }
+
+    @Test
     @DisplayName("S7a: a tool the brain titles in Cursor's form 'jawata-<tool>: <tool>' is judged by the allowlist as that tool, and the same tool of another server is not")
     void theAllowlistReadsCursorsTitleForTheResidentsToolsOnly() throws Exception {
         HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(Duration.ofSeconds(60));
@@ -446,6 +487,72 @@ class AcpBrainSessionTest {
             "the refusal names the model asked for and the ones offered: " + refused.getMessage());
     }
 
+    /** What asking a session for a model answered, and the value the session answered when asked which model it is on. */
+    private record Asked(AcpBrainSession.ModelChoice choice, String which) {
+    }
+
+    /** One conversation with a brain offering {@code models} ("value=Name,..." with the first as its default), asked for {@code wanted}. */
+    private Asked asked(String models, String wanted) throws Exception {
+        AcpBrainSession.Program withModels = new AcpBrainSession.Program(agent.command(),
+            Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_MODELS", models));
+        HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(Duration.ofSeconds(60));
+        try (AcpBrainSession.Conversation chat = AcpBrainSession.Conversation.start(host, withModels, HireSite.in(dir), null, List.of(),
+                Optional.empty(), ceilings, AcpBrainSession.OwnTools.KEPT)) {
+            AcpBrainSession.ModelChoice choice = chat.chooseModel(wanted);
+            return new Asked(choice, chat.prompt("WHICHMODEL", List.of(), ceilings, piece -> { }, null, null).text().strip());
+        }
+    }
+
+    @Test
+    @DisplayName("z38: a brain asked for \"latest:grok\" is moved to the offered model of that family with the highest version, whatever order the brain lists them in")
+    void theLatestOfAFamilyIsTheOneWithTheHighestVersion() throws Exception {
+        AcpBrainSession.Model newest = new AcpBrainSession.Model("grok-9.2", "Grok 9.2");
+        for (String order : List.of("default=Default,grok-4.5=Grok 4.5,grok-9.2=Grok 9.2", "grok-9.2=Grok 9.2,default=Default,grok-4.5=Grok 4.5",
+                "grok-4.5=Grok 4.5,grok-9.2=Grok 9.2,default=Default")) {
+            Asked asked = asked(order, "latest:grok");
+            assertTrue(asked.choice().moved(), "the session was not moved with the models listed as " + order + ": " + asked.choice());
+            assertEquals(Optional.of(newest), asked.choice().now(), "the session is not on the newest Grok with the models listed as " + order);
+            assertEquals("grok-9.2", asked.which(), "the brain itself is not on the newest Grok with the models listed as " + order);
+        }
+
+        Asked tens = asked("default=Default,grok-9.2=Grok 9.2,grok-10.1=Grok 10.1", "LATEST: Grok");
+        assertEquals("grok-10.1", tens.which(), "versions were compared as text, not group by group as numbers: " + tens.choice());
+    }
+
+    @Test
+    @DisplayName("z38: a brain that offers no model of the family asked for stays on its default, and says which family and which models it offers")
+    void aFamilyTheBrainDoesNotOfferLeavesTheSessionOnItsDefault() throws Exception {
+        Asked asked = asked("default=Default,haiku=Haiku 5.5,opus=Opus 5.5", "latest:grok");
+
+        assertFalse(asked.choice().moved(), "a session was moved to a model of a family it does not offer: " + asked.choice());
+        assertEquals("default", asked.which(), "the session did not stay on its default");
+        assertTrue(asked.choice().said().toLowerCase().contains("grok"), "the answer does not name the family: " + asked.choice().said());
+        assertTrue(asked.choice().said().contains("Haiku 5.5") && asked.choice().said().contains("Opus 5.5"),
+            "the answer does not mention the models offered: " + asked.choice().said());
+        assertEquals(List.of(new AcpBrainSession.Model("default", "Default"), new AcpBrainSession.Model("haiku", "Haiku 5.5"),
+            new AcpBrainSession.Model("opus", "Opus 5.5")), asked.choice().offered(), "the list of models offered was not kept with the answer");
+    }
+
+    @Test
+    @DisplayName("z38: a brain offering one Grok, of a version written nowhere in the engine, is moved to exactly it, and the named way of asking for a model still moves the session as before")
+    void theOneModelOfAFamilyIsChosenWhateverItsVersionAndTheNamedWayIsUnchanged() throws Exception {
+        String offers = "default=Default,grok-7.3=Grok 7.3,haiku=Haiku 5.5";
+
+        Asked latest = asked(offers, "latest:grok");
+        assertTrue(latest.choice().moved(), "the only Grok was not chosen: " + latest.choice());
+        assertEquals(Optional.of(new AcpBrainSession.Model("grok-7.3", "Grok 7.3")), latest.choice().now());
+        assertEquals("grok-7.3", latest.which());
+
+        AcpBrainSession.Program withModels = new AcpBrainSession.Program(agent.command(), Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_MODELS", offers));
+        HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(Duration.ofSeconds(60));
+        try (AcpBrainSession.Conversation chat = AcpBrainSession.Conversation.start(host, withModels, HireSite.in(dir), null, List.of(), Optional.empty(),
+                ceilings, AcpBrainSession.OwnTools.KEPT)) {
+            assertTrue(chat.selectModel("grok 7.3"), "the named way of asking did not move the session");
+            assertEquals("grok-7.3", chat.prompt("WHICHMODEL", List.of(), ceilings, piece -> { }, null, null).text().strip());
+            assertFalse(chat.selectModel("grok 8"), "a model the brain does not offer moved the session");
+        }
+    }
+
     @Test
     @DisplayName("28h z21: the PATH a brain is started with is the one its program's own environment sets (an adapter's folder first) and otherwise the engine's, so a tool the brain could not find can be read against the PATH it really had")
     void theBrainsPathIsTheOneItIsStartedWith() {
@@ -513,5 +620,19 @@ class AcpBrainSessionTest {
         assertEquals(List.of("Bash"), outcome.toolNames(), "the call kept the description the adapter opened it with: " + outcome.toolNames());
         assertEquals("xvfb-run -a mvn -B verify", outcome.toolCalls().get(0).arguments().path("command").asText(),
             "the call was kept without the command it ran");
+    }
+
+    @Test
+    @DisplayName("a shown model the catalogue holds is the value the command line is given")
+    void aShownModelBecomesTheProgramsValue() {
+        String registry = "{\"claude-code\":{\"command\":[\"claude\"],\"vendor\":\"anthropic\",\"model\":\"sonnet\"}}";
+        AcpBrainSession.Program program = AcpBrainSession.programFor(registry, "claude-code").orElseThrow();
+        AcpBrainSession.noteOffered(program, List.of(new AcpBrainSession.Model("haiku", "Haiku 5.5")));
+        try {
+            assertEquals("haiku", AcpBrainSession.commandLineModelIn(registry, "claude-code", "Haiku 5.5"));
+            assertEquals("not-in-the-catalogue", AcpBrainSession.commandLineModelIn(registry, "claude-code", "not-in-the-catalogue"));
+        } finally {
+            AcpBrainSession.noteOffered(program, List.of());
+        }
     }
 }

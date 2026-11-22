@@ -67,6 +67,21 @@ public final class AcpBrainSession {
     }
 
     /**
+     * Remembers the models a brain's session offered, so a later command line can use the program's value for a shown name.
+     * An empty list forgets them. The session that lists models records the same catalogue.
+     */
+    public static void noteOffered(Program program, List<Model> models) {
+        if (program == null) {
+            return;
+        }
+        if (models == null || models.isEmpty()) {
+            OFFERED.remove(program);
+        } else {
+            OFFERED.put(program, List.copyOf(models));
+        }
+    }
+
+    /**
      * The program a setting names: {@code {"command":[...],"env":{...}}}. None when the text is not a command line (a setting that is wrong
      * names no brain). The one reader of that form, for the principal's brain, the reviewer's and every hired seat's.
      */
@@ -201,6 +216,13 @@ public final class AcpBrainSession {
      * differ (Cursor's agent offers {@code grok-4.5[effort=high,fast=true]} as "grok-4.5"), and the value is the one that is sent back.
      */
     public record Model(String value, String name) {
+    }
+
+    /**
+     * What asking a session for a model came to: whether it was {@code moved}, the model it is on {@code now} (none when the brain offers no
+     * models), the models the brain {@code offered}, and one sentence {@code said} for a person about what happened and why.
+     */
+    public record ModelChoice(boolean moved, Optional<Model> now, List<Model> offered, String said) {
     }
 
     /**
@@ -596,16 +618,101 @@ public final class AcpBrainSession {
          * model it was on: a model the account does not have is never an error that ends a conversation.
          */
         public boolean selectModel(String wanted) {
+            return chooseModel(wanted).moved();
+        }
+
+        /** The prefix of a request for the newest model of a family ({@code latest:<family>}); the only model text this class holds. */
+        private static final String LATEST = "latest:";
+
+        /** The digit groups of a version: a number inside a text, its groups separated by dots or dashes. */
+        private static final java.util.regex.Pattern VERSION = java.util.regex.Pattern.compile("\\d+(?:[.-]\\d+)*");
+
+        /**
+         * Asks the session for a model and says what came of it. {@code wanted} is a model's value or name (matched ignoring case, value first),
+         * or {@code latest:<family>}: the offered model whose name or value holds the family, ignoring case, with the highest version (the
+         * numbers inside its name, or inside its value when the name holds none; compared group by group as numbers, a missing group lower, a
+         * model with no number lowest, the one listed first on a tie). The session is moved through the brain's own model option; when no
+         * offered model fits, or the brain does not accept the change, nothing is sent or changed and the answer says what the brain offers.
+         */
+        public ModelChoice chooseModel(String wanted) {
             if (sessionId == null || wanted == null || wanted.isBlank()) {
-                return false;
+                return answered(false, "No model was asked for" + (sessionId == null ? " and the brain has no open session" : "")
+                    + "; the session stays on " + onNow() + ".");
             }
-            Optional<Model> found = models.stream().filter(model -> model.value().equalsIgnoreCase(wanted.strip())).findFirst()
-                .or(() -> models.stream().filter(model -> model.name().equalsIgnoreCase(wanted.strip())).findFirst());
+            String asked = wanted.strip();
+            boolean newest = asked.regionMatches(true, 0, LATEST, 0, LATEST.length());
+            String family = newest ? asked.substring(LATEST.length()).strip() : "";
+            Optional<Model> found = newest ? newestOf(family) : models.stream().filter(model -> model.value().equalsIgnoreCase(asked)).findFirst()
+                .or(() -> models.stream().filter(model -> model.name().equalsIgnoreCase(asked)).findFirst());
             if (found.isEmpty()) {
-                return false;
+                return answered(false, "The brain offers no " + (newest ? "model of the family \"" + family + "\"" : "model \"" + asked + "\"")
+                    + "; the session stays on " + onNow() + ". It offers " + models.stream().map(Model::name).toList() + ".");
             }
-            String id = sessionId;
-            String value = found.get().value();
+            if (!move(sessionId, found.get().value())) {
+                return answered(false, "The brain would not move to " + found.get().name() + "; the session stays on " + onNow() + ".");
+            }
+            return answered(true, "Moved the session to " + found.get().name() + (newest ? ", the newest of \"" + family + "\" it offers" : "") + ".");
+        }
+
+        /** The offered model of {@code family} with the highest version, the first listed on a tie; none when the family is blank or none fits. */
+        private Optional<Model> newestOf(String family) {
+            String wantedFamily = family.toLowerCase(java.util.Locale.ROOT);
+            if (wantedFamily.isEmpty()) {
+                return Optional.empty();
+            }
+            Model best = null;
+            List<java.math.BigInteger> bestVersion = List.of();
+            for (Model model : models) {
+                if (!model.name().toLowerCase(java.util.Locale.ROOT).contains(wantedFamily)
+                    && !model.value().toLowerCase(java.util.Locale.ROOT).contains(wantedFamily)) {
+                    continue;
+                }
+                List<java.math.BigInteger> version = versionOf(model);
+                if (best == null || compareVersions(version, bestVersion) > 0) {
+                    best = model;
+                    bestVersion = version;
+                }
+            }
+            return Optional.ofNullable(best);
+        }
+
+        /** The groups of the first version number in a model's name, or in its value when the name holds none; empty when neither does. */
+        private static List<java.math.BigInteger> versionOf(Model model) {
+            for (String text : List.of(model.name(), model.value())) {
+                java.util.regex.Matcher found = VERSION.matcher(text);
+                if (found.find()) {
+                    return java.util.Arrays.stream(found.group().split("[.-]")).map(java.math.BigInteger::new).toList();
+                }
+            }
+            return List.of();
+        }
+
+        /** Compares two versions group by group as numbers; a group one has and the other lacks counts for the one that has it. */
+        private static int compareVersions(List<java.math.BigInteger> a, List<java.math.BigInteger> b) {
+            for (int group = 0; group < Math.max(a.size(), b.size()); group++) {
+                if (group >= a.size()) {
+                    return -1;
+                }
+                if (group >= b.size()) {
+                    return 1;
+                }
+                int order = a.get(group).compareTo(b.get(group));
+                if (order != 0) {
+                    return order;
+                }
+            }
+            return 0;
+        }
+
+        private ModelChoice answered(boolean moved, String said) {
+            return new ModelChoice(moved, currentModel(), models, said);
+        }
+
+        private String onNow() {
+            return currentModel().map(Model::name).orElse("its default model");
+        }
+
+        private boolean move(String id, String value) {
             try {
                 if (wire.call(promptId++, "session/set_config_option", params -> {
                     params.put("sessionId", id);

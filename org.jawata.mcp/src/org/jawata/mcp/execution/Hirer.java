@@ -98,6 +98,9 @@ public final class Hirer {
 
     private static final Set<String> BRAIN_EDITORS = Set.of("Edit", "Write", "MultiEdit");
 
+    /** The web tools only main, the principal seat, is allowed besides the engine's tools: a web search and a page fetch, never a shell. */
+    private static final Set<String> MAIN_WEB_TOOLS = Set.of("WebSearch", "WebFetch");
+
     private final SeatTree tree;
     private final Map<String, Brain> brains;
     private final Set<String> engineCodeChangingTools;
@@ -181,6 +184,9 @@ public final class Hirer {
         }
         if (edits) {
             allowed.addAll(BRAIN_EDITORS);
+        }
+        if ("main".equals(seat)) {
+            allowed.addAll(MAIN_WEB_TOOLS);
         }
         return allowed;
     }
