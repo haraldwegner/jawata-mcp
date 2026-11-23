@@ -106,7 +106,8 @@ public final class BrainRoster {
         new Adapter("claude-code", "claude-agent-acp", List.of(), "npm install -g @agentclientprotocol/claude-agent-acp"),
         new Adapter("claude-code", "claude-code-acp", List.of(), "npm install -g @zed-industries/claude-code-acp"),
         new Adapter("codex", "codex-acp", List.of(), "npm install -g @zed-industries/codex-acp"),
-        new Adapter("copilot", "copilot", List.of("--acp"), "npm install -g @github/copilot"));
+        new Adapter("copilot", "copilot", List.of("--acp"), "npm install -g @github/copilot"),
+        new Adapter("antigravity", "agy", List.of("acp"), "curl -fsSL https://antigravity.google/cli/install.sh | bash"));
 
     private record Spec(String id, String label, String program, String loginCommand) {
     }
@@ -116,12 +117,15 @@ public final class BrainRoster {
 
     private static final List<Spec> SPECS = List.of(new Spec("claude-code", "Claude Code", "claude", "claude auth login"),
         new Spec("codex", "Codex", "codex", "codex login"), new Spec("cursor", "Cursor", "cursor-agent", "cursor-agent login"),
-        new Spec("copilot", "Copilot", "copilot", "copilot login"), new Spec("grok", "Grok", "grok", "grok login"));
+        new Spec("copilot", "Copilot", "copilot", "copilot login"), new Spec("antigravity", "Antigravity", "agy", "agy acp --login"));
     /** What a hire can start and which of those take a model are the engine's own answers, not a second list. */
     private static final List<String> HIRABLE = Arrays.stream(SeatHire.Brain.values()).filter(brain -> brain != SeatHire.Brain.SCRIPT).map(SeatHire.Brain::label).toList();
     private static final List<String> TAKES_MODEL = Arrays.stream(SeatHire.Brain.values()).filter(SeatHire.Brain::takesAModel).map(SeatHire.Brain::label).toList();
-    /** Each dialect holds this answer, which needs a running resident's address to ask; BrainRosterTest pins this line to it. */
-    private static final List<String> HELD_BY_AN_INSTRUCTION = List.of("cursor");
+    /**
+     * The brains whose writes no mechanism refuses: Cursor's are held by an instruction to the model, Antigravity's by nothing usable (measured
+     * 2026-11-23). Each dialect holds this answer, which needs a running resident's address to ask; BrainRosterTest pins this line to it.
+     */
+    private static final List<String> HELD_BY_AN_INSTRUCTION = List.of("cursor", "antigravity");
     private static final ExecutorService WORK = Executors.newVirtualThreadPerTaskExecutor();
     /** The one place a process is launched and an executable is spelled for this operating system. */
     private static final HostProcesses HOST = HostProcesses.system();
@@ -207,15 +211,13 @@ public final class BrainRoster {
                     reason = in ? Optional.empty() : firstLine(answer.get().text());
                 }
             }
-            case "grok" -> {
+            // Measured 2026-11-23 with agy 1.5.15: `agy models` ends 0 and lists one model per line when the account is signed in. Its models are
+            // what its ACP session offers, the engine's one catalogue, so none are taken here.
+            case "antigravity" -> {
                 Optional<Outcome> answer = run(spec.program(), List.of("models"), null, checkTimeout);
-                if (answer.isPresent() && answer.get().text().contains("You are logged in")) {
-                    login = Login.LOGGED_IN;
-                    models = Optional.of(answer.get().text().lines().map(String::strip).filter(line -> line.startsWith("* ") || line.startsWith("- "))
-                        .map(line -> line.substring(2).replace("(default)", "").strip()).filter(name -> !name.isEmpty()).toList());
-                } else if (answer.isPresent()) {
-                    login = Login.NOT_LOGGED_IN;
-                    reason = firstLine(answer.get().text());
+                if (answer.isPresent()) {
+                    login = answer.get().success() ? Login.LOGGED_IN : Login.NOT_LOGGED_IN;
+                    reason = answer.get().success() ? Optional.empty() : firstLine(answer.get().text());
                 }
             }
             default -> reason = Optional.of(spec.label() + " has no command that reports its login without starting a session.");

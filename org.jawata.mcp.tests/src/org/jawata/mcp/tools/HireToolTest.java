@@ -1302,23 +1302,18 @@ class HireToolTest {
     }
 
     @Test
-    @DisplayName("architect F1: a brain whose writes are held only by an INSTRUCTION is refused before it spawns, unless the seat opts in")
-    void anInstructionOnlyBrainIsRefusedUnlessTheSeatOptsIn() throws Exception {
-        HireTool hire = new Finishing(aHostThatMustNotSpawn(), artifacts, plans,
-            () -> events, () -> aRegistryWithACleanGate());
+    @DisplayName("28h z56: a seat with no opt-in line, stored on a brain whose writes are held only by an INSTRUCTION, is hired: the person's stored choice is the consent")
+    void aStoredChoiceOfAnInstructionOnlyBrainIsTheConsent() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
 
         ToolResponse response = hire.execute(hireArgs(seatFile(CURSOR_SEAT_WITHOUT_OPT_IN)));
+        Map<String, Object> data = dataOf(response);
 
         assertAll(
-            () -> assertFalse(response.isSuccess()),
-            () -> assertEquals("PRECONDITION_NOT_MET", response.getError().getCode()),
-            () -> assertTrue(response.getError().getMessage().contains("INSTRUCTION"),
-                response.getError().getMessage()),
-            () -> assertTrue(String.valueOf(response.getError().getHint())
-                    .contains("accepts_uncontained_writes"),
-                "the way out is named: " + response.getError().getHint()),
-            () -> assertEquals(0L, events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L),
-                "and nothing was journalled, because nothing ran"));
+            () -> assertTrue(response.isSuccess(), "a stored choice of Cursor was refused for a missing opt-in line: " + response.getError()),
+            () -> assertEquals("INSTRUCTION", data.get("writeContainmentBasis"),
+                "the answer still says the writes were held only by an instruction, so the record does not claim a bound that is not there"),
+            () -> assertEquals(1L, events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L), "and the hire ran and was journalled"));
     }
 
     @Test

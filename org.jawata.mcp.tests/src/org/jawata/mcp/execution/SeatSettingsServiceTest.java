@@ -221,7 +221,7 @@ class SeatSettingsServiceTest {
     @Test
     void aBrainNoHireCanStartIsRefused() {
         Optional<String> refusal = door().check(Map.of(SettingKeys.SEATS_BRAINS.name(), "architect=eliza"));
-        assertEquals(Optional.of("'eliza' is not a brain a hire can start (known: claude-code, cursor, copilot, codex)"), refusal);
+        assertEquals(Optional.of("'eliza' is not a brain a hire can start (known: claude-code, cursor, copilot, codex, antigravity)"), refusal);
         assertTrue(door().check(Map.of(SettingKeys.SEATS_BRAINS.name(), "architect=script")).isPresent(), "a script brain needs a line only a seat file can give");
     }
 

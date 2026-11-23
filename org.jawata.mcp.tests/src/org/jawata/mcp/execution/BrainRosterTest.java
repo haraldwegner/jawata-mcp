@@ -83,11 +83,13 @@ class BrainRosterTest {
 
     @Test
     void everyKnownBrainIsReportedWithWhatAHireCanDoWithIt() {
-        assertEquals(List.of("claude-code", "codex", "cursor", "copilot", "grok"), roster().statuses().stream().map(BrainRoster.Status::id).toList());
+        assertEquals(List.of("claude-code", "codex", "cursor", "copilot", "antigravity"), roster().statuses().stream().map(BrainRoster.Status::id).toList());
         assertTrue(status("cursor").writesHeldByInstruction());
         assertTrue(status("cursor").takesModel());
         assertFalse(status("codex").takesModel());
-        assertFalse(status("grok").hirable());
+        assertTrue(status("antigravity").hirable());
+        assertTrue(status("antigravity").takesModel());
+        assertTrue(status("antigravity").writesHeldByInstruction(), "agy's writes are refused by no mechanism, so it is listed with the brains a person is warned about");
         assertTrue(status("copilot").hirable());
     }
 
@@ -100,7 +102,7 @@ class BrainRosterTest {
             .filter(brain -> !SeatHire.read("---\nname: probe\nbrain: " + brain.id() + "\n---\n").dialect(self, List.of()).writeContainment().isContained())
             .map(BrainRoster.Status::id).toList();
 
-        assertEquals(List.of("claude-code", "codex", "cursor", "copilot"), hirable.stream().map(BrainRoster.Status::id).toList(), "the brains asked about");
+        assertEquals(List.of("claude-code", "codex", "cursor", "copilot", "antigravity"), hirable.stream().map(BrainRoster.Status::id).toList(), "the brains asked about");
         assertEquals(dialects, roster, "the roster's brains held only by an instruction are the dialects' own answer");
     }
 
@@ -166,19 +168,25 @@ class BrainRosterTest {
     }
 
     @Test
-    void grokListsItsModels() throws IOException {
-        program("grok", "case \"$1\" in --version) echo 1;; models) printf 'You are logged in with x\\n* grok-1 (default)\\n- grok-2\\n';; esac");
-        assertEquals(BrainRoster.Login.LOGGED_IN, status("grok").login());
-        assertEquals(Optional.of(List.of("grok-1", "grok-2")), status("grok").models());
+    void anAntigravityWhoseModelsCommandAnswersIsSignedIn() throws IOException {
+        program("agy", "case \"$1\" in --version) echo 1.5.15;; models) printf 'Fetching available models...\\ngemini-4-neon-high\\tGemini 4 Neon (High)\\n';; esac");
+        BrainRoster.Status agy = status("antigravity");
+        assertEquals(BrainRoster.Login.LOGGED_IN, agy.login());
+        assertEquals("agy acp --login", agy.loginCommand());
+        assertEquals(Optional.empty(), agy.models(), "its models are what its ACP session offers, so none are taken here");
     }
 
     @Test
-    void aGrokThatIsNotSignedInSaysSoAndNamesNoModels() throws IOException {
-        program("grok", "case \"$1\" in --version) echo 1;; models) echo 'Please sign in.';; esac");
-        BrainRoster.Status grok = status("grok");
-        assertEquals(BrainRoster.Login.NOT_LOGGED_IN, grok.login());
-        assertEquals(Optional.of("Please sign in."), grok.reason());
-        assertEquals(Optional.empty(), grok.models());
+    void anAntigravityThatCannotListModelsIsNotSignedInAndSaysWhy() throws IOException {
+        program("agy", "case \"$1\" in --version) echo 1.5.15;; models) echo 'Please sign in.'; exit 1;; esac");
+        BrainRoster.Status agy = status("antigravity");
+        assertEquals(BrainRoster.Login.NOT_LOGGED_IN, agy.login());
+        assertEquals(Optional.of("Please sign in."), agy.reason());
+    }
+
+    @Test
+    void grokIsNoLongerABrainTheRosterKnows() {
+        assertEquals(List.of(), roster().statuses().stream().map(BrainRoster.Status::id).filter("grok"::equals).toList());
     }
 
     @Test
@@ -265,7 +273,7 @@ class BrainRosterTest {
     @Test
     void aTestRunIsRefusedWhereAHireCouldNotDoIt() {
         assertEquals("no brain named 'eliza'", assertThrows(IllegalArgumentException.class, () -> roster().probe("eliza", null)).getMessage());
-        assertEquals("'grok' is not a brain a hire can start", assertThrows(IllegalArgumentException.class, () -> roster().probe("grok", null)).getMessage());
+        assertEquals("no brain named 'grok'", assertThrows(IllegalArgumentException.class, () -> roster().probe("grok", null)).getMessage());
         assertEquals("Codex chooses its own model; a hire cannot pass one to it", assertThrows(IllegalArgumentException.class, () -> roster().probe("codex", "x")).getMessage());
     }
 
@@ -353,14 +361,16 @@ class BrainRosterTest {
         assertEquals(bin + java.io.File.pathSeparator + "/elsewhere", AcpBrainSession.programFor(longer, "copilot").orElseThrow().environment().get("PATH"),
             "with more folders on the path, the adapter's folder moves to the front and the rest keep their order");
         assertEquals(Optional.empty(), AcpBrainSession.programFor(registry, "codex"), "codex-acp is not on the path: " + registry);
-        assertEquals(List.of(new BrainRoster.MissingAdapter("codex", "npm install -g @zed-industries/codex-acp")), roster().missingAdapters());
+        assertEquals(List.of(new BrainRoster.MissingAdapter("codex", "npm install -g @zed-industries/codex-acp"),
+            new BrainRoster.MissingAdapter("antigravity", "curl -fsSL https://antigravity.google/cli/install.sh | bash")), roster().missingAdapters());
     }
 
     @Test
     void aBrainWithNoAdapterIsMissingOnceWithItsFirstInstallLine() {
         assertEquals(List.of(new BrainRoster.MissingAdapter("claude-code", "npm install -g @agentclientprotocol/claude-agent-acp"),
             new BrainRoster.MissingAdapter("codex", "npm install -g @zed-industries/codex-acp"),
-            new BrainRoster.MissingAdapter("copilot", "npm install -g @github/copilot")), roster().missingAdapters());
+            new BrainRoster.MissingAdapter("copilot", "npm install -g @github/copilot"),
+            new BrainRoster.MissingAdapter("antigravity", "curl -fsSL https://antigravity.google/cli/install.sh | bash")), roster().missingAdapters());
     }
 
     @Test

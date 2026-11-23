@@ -85,6 +85,8 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         CURSOR("cursor", "cursor-agent"),
         COPILOT("copilot"),
         CODEX("codex"),
+        /** Google's Antigravity command-line agent, started over ACP as {@code agy acp}, or in print mode through {@link AntigravityDialect} (28h z54). */
+        ANTIGRAVITY("antigravity", "agy"),
         /**
          * Any executable, named by the seat's {@code script:} line — {@link ScriptDialect}, the
          * escape hatch for a CLI with no dialect of its own (S16-6).
@@ -107,7 +109,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
          * codex's is set in its config out of band, so a model named for either would be a flag invented and is not applied.
          */
         public boolean takesAModel() {
-            return this == CLAUDE_CODE || this == CURSOR;
+            return this == CLAUDE_CODE || this == CURSOR || this == ANTIGRAVITY;
         }
 
         /**
@@ -169,7 +171,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             ? null
             : Brain.named(declared).orElseThrow(() -> new IllegalArgumentException(
                 "seat declares brain '" + declared + "', which this product has no dialect for."
-                    + " Known: claude-code, cursor, copilot, codex, script. NOT defaulted on purpose"
+                    + " Known: claude-code, cursor, copilot, codex, antigravity, script. NOT defaulted on purpose"
                     + " — a seat hired as a brain it did not ask for is worse than one that refuses"
                     + " to start"));
 
@@ -353,7 +355,10 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             throw new IllegalArgumentException("seat '" + seat + "' is set to run on '" + picked.label()
                 + "', which cannot carry writes_store");
         }
-        return new SeatHire(seat, picked, shown, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
+        // The stored choice is the person's own word, and it is also the consent a brain held only by an instruction needs: the Seats page used
+        // to write accepts_uncontained_writes into the seat file when a person chose such a brain, and a seat file is no longer where the brain
+        // is chosen. Without this, a person who chose Cursor for a seat was refused at the hire, by a rule they had just answered.
+        return new SeatHire(seat, picked, shown, tools, ceilings, stance, answerGates, enabled, script, true,
             changesCode, readsFiles, activities, writesStore, command, launched);
     }
 
@@ -399,6 +404,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             // config, out of band. Passing one would be a flag invented rather than measured.
             case COPILOT -> new CopilotDialect();
             case CODEX -> new CodexDialect();
+            case ANTIGRAVITY -> new AntigravityDialect("agy", flag);
             case SCRIPT -> new ScriptDialect(script, List.of());
         };
     }
