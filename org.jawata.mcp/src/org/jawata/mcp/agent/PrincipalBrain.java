@@ -13,6 +13,7 @@ import java.util.function.Consumer;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.engine.EngineApi;
 import org.jawata.mcp.execution.AcpBrainSession;
+import org.jawata.mcp.execution.BrainRoster;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.Hirer;
@@ -272,7 +273,10 @@ public final class PrincipalBrain implements AgentBrain {
         }
         if (outcome.brainSessionId().isEmpty()) {
             // Most often a brain that wants its user signed in: the panel says so instead of staying silent (D53 (b)).
-            chunks.accept("The brain did not open a session" + (refusal.isBlank() ? ". Is it installed and signed in?" : ": " + refusal));
+            // 28h z55, his word: a brain that is not connected is said, with the way to connect it, and never met with silence.
+            String name = vendorOf(program.get().command()).map(BrainRoster::labelOf).orElse("The brain");
+            chunks.accept(name + " did not open a session" + (refusal.isBlank() ? "" : ": " + refusal)
+                + ". If it is not connected: open jawata studio, Seats, and press Connect beside it (its own login opens your browser).");
         }
         remember(prompt, outcome.text());
         // 28h Stage 27 (z2): the main seat edits no code. Its brain keeps an editor of its own (Cursor's agent runs in its normal mode, which keeps
