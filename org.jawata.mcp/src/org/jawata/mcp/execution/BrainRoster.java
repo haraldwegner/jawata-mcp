@@ -116,7 +116,7 @@ public final class BrainRoster {
     }
 
     private static final List<Spec> SPECS = List.of(new Spec("claude-code", "Claude Code", "claude", "claude auth login"),
-        new Spec("codex", "Codex", "codex", "codex login"), new Spec("cursor", "Cursor", "cursor-agent", "cursor-agent login"),
+        new Spec("codex", "Codex", "codex", "codex login"), new Spec("cursor", "Cursor-Grok", "cursor-agent", "cursor-agent login"),
         new Spec("copilot", "Copilot", "copilot", "copilot login"), new Spec("antigravity", "Antigravity", "agy", "agy acp --login"));
     /** What a hire can start and which of those take a model are the engine's own answers, not a second list. */
     private static final List<String> HIRABLE = Arrays.stream(SeatHire.Brain.values()).filter(brain -> brain != SeatHire.Brain.SCRIPT).map(SeatHire.Brain::label).toList();
