@@ -84,7 +84,8 @@ public class FakeAcpAgent {
                     + (System.getenv("FAKE_ACP_IMAGES") != null) + "}}"
                     + (loginRequired ? ",\"authMethods\":[{\"id\":\"fake_login\",\"name\":\"Fake login\"}]" : "") + "}");
                 case "authenticate" -> {
-                    authenticated = "fake_login".equals(field(line, "methodId"));
+                    // FAKE_ACP_LOGIN=never: the login is accepted and changes nothing, as a brain whose account is not connected behaves
+                    authenticated = !"never".equals(System.getenv("FAKE_ACP_LOGIN")) && "fake_login".equals(field(line, "methodId"));
                     reply(id, "{}");
                 }
                 case "session/new" -> {

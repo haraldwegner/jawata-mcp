@@ -377,6 +377,21 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("28h z55: a turn on a brain that opens no session reaches the host as the no-session sentence, never as silence")
+    void aTurnOnABrainThatOpensNoSessionIsAnsweredWithTheNoSessionSentence() {
+        AcpBrainSession.Program notConnected = new AcpBrainSession.Program(fake.command(),
+            Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_LOGIN", "never"));
+        PrincipalBrain brain = brain(Optional.of(notConnected));
+        try {
+            String said = ask(brain, "hello", new ArrayList<>());
+            assertTrue(said.contains("did not open a session"), "the host was told nothing: [" + said + "]");
+            assertTrue(said.contains("press Connect beside it in jawata studio"), said);
+        } finally {
+            brain.close();
+        }
+    }
+
+    @Test
     @DisplayName("a brain that opened no session is named with what it said and how to connect it (28h z55); agy is the Antigravity brain (z54)")
     void aBrainThatOpenedNoSessionIsNamedAndToldHowToConnect() {
         assertEquals(Optional.of("antigravity"), PrincipalBrain.vendorOf(List.of("/home/h/.local/bin/agy", "acp")));
