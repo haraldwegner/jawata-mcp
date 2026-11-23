@@ -377,6 +377,16 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("a brain that opened no session is named with what it said and how to connect it (28h z55); agy is the Antigravity brain (z54)")
+    void aBrainThatOpenedNoSessionIsNamedAndToldHowToConnect() {
+        assertEquals(Optional.of("antigravity"), PrincipalBrain.vendorOf(List.of("/home/h/.local/bin/agy", "acp")));
+        String said = PrincipalBrain.noSession(Optional.of("Cursor-Grok"), "Authentication required");
+        assertTrue(said.startsWith("Cursor-Grok did not open a session: Authentication required."), said);
+        assertTrue(said.contains("press Connect beside it in jawata studio"), said);
+        assertTrue(PrincipalBrain.noSession(Optional.empty(), "").startsWith("The brain did not open a session. If it is not connected"));
+    }
+
+    @Test
     @DisplayName("the vendor of a brain is read from the command line that starts it: Cursor's agent, Copilot, the Claude and Codex adapters; a program that is none of them names no vendor")
     void aCommandLineNamesTheBrainsVendor() {
         assertEquals(Optional.of("cursor"), PrincipalBrain.vendorOf(List.of("agent", "acp")));

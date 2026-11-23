@@ -27,10 +27,12 @@ public interface SeatSettings {
      * @param customised  whether the person switched it off or gave it a brain: what a screen's Reset takes back
      * @param placed      whether the person gave it a place in the workflow: what a screen's Back to default takes back
      * @param acceptsUncontainedWrites whether the seat's file accepts a brain whose writes are held only by an instruction to the model;
-     *                    a hire of a seat that does not refuses such a brain, so a screen does not offer it
+     *                    the seat file's own word, read when a brain is picked per run; a stored choice of such a brain is taken as the consent (28h z56)
+     * @param changesCode whether the seat's file says the seat changes code: a screen warns that a brain whose writes only an instruction holds
+     *                    cannot be kept from writing, on a seat for which this is false, and offers the brain all the same
      */
     record Seat(String name, Optional<String> command, String purpose, boolean on, String brain, Optional<String> model, Optional<String> parent,
-        String role, Optional<String> escalatesTo, String when, boolean customised, boolean placed, boolean acceptsUncontainedWrites) {
+        String role, Optional<String> escalatesTo, String when, boolean customised, boolean placed, boolean acceptsUncontainedWrites, boolean changesCode) {
     }
 
     /**

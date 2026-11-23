@@ -260,6 +260,13 @@ class SeatSettingsServiceTest {
     }
 
     @Test
+    void aSeatFileSaysWhetherTheSeatChangesCodeSoAScreenWarnsOnlyForTheOthers() throws IOException {
+        Files.writeString(folder.resolve("developer.md"), "---\nname: developer\nchanges_code: true\n---\nbody\n");
+        assertTrue(seat("developer").changesCode());
+        assertFalse(seat("architect").changesCode(), "a file that says nothing does not change code");
+    }
+
+    @Test
     void aChangeTouchesOnlyItsSeatsEntryAndKeepsEveryOtherAsWritten() {
         Map<String, String> held = Map.of(SettingKeys.SEATS_OFF.name(), "developer", SettingKeys.SEATS_BRAINS.name(), "developer=codex",
             SettingKeys.SEATS_WORKFLOW.name(), "");

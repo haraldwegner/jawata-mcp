@@ -274,9 +274,7 @@ public final class PrincipalBrain implements AgentBrain {
         if (outcome.brainSessionId().isEmpty()) {
             // Most often a brain that wants its user signed in: the panel says so instead of staying silent (D53 (b)).
             // 28h z55, his word: a brain that is not connected is said, with the way to connect it, and never met with silence.
-            String name = vendorOf(program.get().command()).map(BrainRoster::labelOf).orElse("The brain");
-            chunks.accept(name + " did not open a session" + (refusal.isBlank() ? "" : ": " + refusal)
-                + ". If it is not connected: open jawata studio, Seats, and press Connect beside it (its own login opens your browser).");
+            chunks.accept(noSession(vendorOf(program.get().command()).map(BrainRoster::labelOf), refusal));
         }
         remember(prompt, outcome.text());
         // 28h Stage 27 (z2): the main seat edits no code. Its brain keeps an editor of its own (Cursor's agent runs in its normal mode, which keeps
@@ -294,6 +292,12 @@ public final class PrincipalBrain implements AgentBrain {
             records.add(new HireRecord("main", program.get().command(), outcome.brainSessionId(), outcome.toolSteps(), outcome.clean(),
                 outcome.stoppedBy(), Duration.ofNanos(System.nanoTime() - started), vendorOf(program.get().command())));
         }
+    }
+
+    /** What the person is told when the brain opened no session: which brain, what it said, and how to connect it if that is the reason. */
+    static String noSession(Optional<String> brainLabel, String refusal) {
+        return brainLabel.orElse("The brain") + " did not open a session" + (refusal.isBlank() ? "" : ": " + refusal)
+            + ". If it is not connected: press Connect beside it in jawata studio, Seats (its own login opens your browser), or run its own login in a terminal.";
     }
 
     /** The state of the working folder before a turn, to read afterwards what the brain wrote there by any means; null when there is no folder. */

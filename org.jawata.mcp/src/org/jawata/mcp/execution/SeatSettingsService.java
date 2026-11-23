@@ -270,7 +270,16 @@ public final class SeatSettingsService implements SeatSettings {
         return new Seat(name, textOf(front, "command"), textOf(front, "purpose").orElse(""), on, brain, model, tree.parentOf(name),
             tree.roleOf(name).map(SeatTree.Role::spelling).orElse(""), tree.escalatesTo(name), textOf(front, "fires").orElse(""),
             overrides.off().contains(name) || overrides.brains().containsKey(name), overrides.workflow().containsKey(name),
-            acceptsUncontained(name, front, errors));
+            acceptsUncontained(name, front, errors), changesCode(front));
+    }
+
+    /** Whether the seat's file says the seat changes code, which is what decides that a screen warns about a brain that cannot be kept from writing. */
+    private static boolean changesCode(Map<String, String> front) {
+        try {
+            return Frontmatter.readSwitch("changes_code", front.get("changes_code"), false);
+        } catch (IllegalArgumentException misspelled) {
+            return false; // a hire of the seat refuses the misspelling by name; a screen only needs to know it does not say yes
+        }
     }
 
     /** The seat file's own word on a brain whose writes only an instruction holds, as a hire reads it ({@code SeatHire}). */
