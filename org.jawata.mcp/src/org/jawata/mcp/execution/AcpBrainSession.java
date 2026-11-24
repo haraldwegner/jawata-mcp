@@ -992,6 +992,18 @@ public final class AcpBrainSession {
         return antigravity.matches() ? antigravity.group(1) : null;
     }
 
+    /**
+     * The tool of the resident a permission request names in its raw input, or null: Antigravity's agent titles a call of a server configured in its
+     * own files only "MCP Tool experience", with no server in the title, and puts the server and the tool in the raw input as
+     * {@code {"ServerName": "jawata-javata-dev", "ToolName": "experience", "Arguments": {...}}} (measured against agy 1.5.15 on 2026-11-24, 28h z64).
+     * A server whose name does not begin with ours is never taken for the resident.
+     */
+    static String residentToolOf(JsonNode rawInput) {
+        String server = rawInput.path("ServerName").asText("");
+        String tool = rawInput.path("ToolName").asText("");
+        return server.startsWith(SelfEndpoint.SERVER_NAME) && !tool.isEmpty() ? tool : null;
+    }
+
     /** The resident as the brain's one tool server, or none when there is no endpoint or the brain cannot attach an HTTP one. */
     private static ArrayNode mcpServers(SelfEndpoint mcp, boolean brainCanAttachHttp) {
         ArrayNode servers = JSON.createArrayNode();
@@ -1243,11 +1255,15 @@ public final class AcpBrainSession {
                 JsonNode tool = request.path("params").path("toolCall");
                 String name = tool.path("title").asText(tool.path("kind").asText(""));
                 String ofTheResident = residentToolIn(name);
+                if (ofTheResident == null) {
+                    ofTheResident = residentToolOf(tool.path("rawInput"));
+                }
                 // D22, the loop for lookups: a seat that may use the shell is still refused a text search over Java source
                 boolean listed = allowed.contains(name) || allowed.contains(RunEffects.bareName(name))
                     || ofTheResident != null && allowed.contains(ofTheResident);
-                String wanted = listed && !withheld(tool) && LookupDriver.refusal(tool.path("rawInput")).isEmpty() ? "allow" : "reject";
-                String chosen = null;
+                // A call of the resident is never "a command of the brain's own", whatever kind the brain files it under (agy files a tool of an MCP
+                // server as kind execute, which a brain whose own tools are withheld is refused).
+                String wanted = listed && (ofTheResident != null || !withheld(tool)) && LookupDriver.refusal(tool.path("rawInput")).isEmpty() ? "allow" : "reject";                String chosen = null;
                 for (JsonNode option : request.path("params").path("options")) {
                     if (option.path("kind").asText("").startsWith(wanted)) {
                         chosen = option.path("optionId").asText();

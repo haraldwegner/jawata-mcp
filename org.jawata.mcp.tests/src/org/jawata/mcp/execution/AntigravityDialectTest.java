@@ -43,6 +43,17 @@ class AntigravityDialectTest {
     }
 
     @Test
+    @DisplayName("28h z64: a call of a server of agy's own configuration, titled only \"MCP Tool experience\", is read as the resident's tool from its raw input; another server's tool is not")
+    void aToolOfAServerInAgysOwnConfigurationIsReadFromItsRawInput() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper json = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertEquals("experience", AcpBrainSession.residentToolOf(json.readTree(
+            "{\"Arguments\":{\"kind\":\"stats\"},\"ServerName\":\"jawata-javata-dev\",\"ToolName\":\"experience\"}")), "the resident's tool was not read");
+        assertEquals(null, AcpBrainSession.residentToolOf(json.readTree("{\"ServerName\":\"someone-else\",\"ToolName\":\"experience\"}")),
+            "a foreign server's tool of the same bare name was taken for the resident's");
+        assertEquals(null, AcpBrainSession.residentToolOf(json.readTree("{\"command\":\"ls\"}")), "a call with no server named was taken for the resident's");
+    }
+
+    @Test
     @DisplayName("28h z54: the answer is the result's response and carries the tokens, and no dollar cost is invented")
     void theResultIsTheAnswerAndCarriesTheTokens() {
         BrainLine line = new AntigravityDialect("agy", null).read(RESULT);
