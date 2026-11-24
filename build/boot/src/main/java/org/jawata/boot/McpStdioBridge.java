@@ -38,8 +38,8 @@ final class McpStdioBridge {
     /** The most characters of tool definitions one page of the list carries. */
     static final int PAGE_CHARS = 30_000;
     /**
-     * The most characters of one tool definition asked of the engine, which lowers it for a list that is too long together (see {@link #TOOLS_CHARS}).
-     * With the eleven or so tools of one seat it stays at this, a whole definition for each; with all 51 it ends near 1 200.
+     * The most characters of one tool definition asked of the engine. A definition is first made as small as it can be without leaving a parameter
+     * out, and what is left of {@link #TOOLS_CHARS} is spent on the tools a chat's principal works with first, up to this many characters each.
      */
     static final int TOOL_CHARS = 3_500;
     /**
@@ -156,8 +156,9 @@ final class McpStdioBridge {
     }
 
     private static HttpResponse<String> post(HttpClient http, String url, String key, String line) throws IOException, InterruptedException {
-        // longer than the longest a tool waits for (hire_wait: 50 seconds), so a resident that never answers ends the call and does not hold the program
-        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url)).timeout(java.time.Duration.ofSeconds(180))
+        // longer than the longest a tool runs (run_tests and coverage_mutation: up to 600 seconds), so a resident that never answers ends the call and
+        // does not hold the program for ever
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url)).timeout(java.time.Duration.ofSeconds(720))
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
             .POST(HttpRequest.BodyPublishers.ofString(line));
