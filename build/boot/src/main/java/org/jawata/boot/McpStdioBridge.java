@@ -44,8 +44,9 @@ final class McpStdioBridge {
     static final int TOOL_CHARS = 3_500;
     /**
      * The most characters of all the definitions together. Measured against agy 1.5.15 (28h z67): it offers its model the smallest definitions first
-     * until their sum reaches about 62 000 characters (36 of the 51 at 2 000 each, 29 of 51 uncut), and answers "not enabled" for the rest, so
-     * 55 000 keeps all of them under it.
+     * until their sum reaches about 62 000 characters, and answers "not enabled" for the rest, so 55 000 keeps all of them under it. What the runs
+     * showed was how many tools were offered at a given definition size (36 of the 51 at 2 000 each); that 29 of 51 would be offered uncut is
+     * inferred from the rule, not shown.
      */
     static final int TOOLS_CHARS = 55_000;
     /** The longest line sent to the brain, below the 64 KB its reader takes. */
