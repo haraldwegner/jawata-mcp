@@ -983,7 +983,7 @@ public final class AcpBrainSession {
     private static final java.util.regex.Pattern ANTIGRAVITY_TITLE =
         java.util.regex.Pattern.compile("^Run mcp_" + SelfEndpoint.SERVER_NAME + "[^_]*_(\\w+)$");
 
-    static String residentToolIn(String title) {
+    public static String residentToolIn(String title) {
         java.util.regex.Matcher matched = RESIDENT_TITLE.matcher(title);
         if (matched.matches()) {
             return matched.group(1);
@@ -998,7 +998,7 @@ public final class AcpBrainSession {
      * {@code {"ServerName": "jawata-javata-dev", "ToolName": "experience", "Arguments": {...}}} (measured against agy 1.5.15 on 2026-11-24, 28h z64).
      * A server whose name does not begin with ours is never taken for the resident.
      */
-    static String residentToolOf(JsonNode rawInput) {
+    public static String residentToolOf(JsonNode rawInput) {
         String server = rawInput.path("ServerName").asText("");
         String tool = rawInput.path("ToolName").asText("");
         return server.startsWith(SelfEndpoint.SERVER_NAME) && !tool.isEmpty() ? tool : null;

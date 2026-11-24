@@ -148,7 +148,9 @@ final class HireWatch {
         }
         JsonNode rawInput = update.path("rawInput");
         // Cursor wraps a tool's arguments: {providerIdentifier, toolName, args}; Claude sends the arguments themselves.
-        readInput(hire, rawInput.has("toolName") && rawInput.path("args").isObject() ? rawInput.get("args") : rawInput);
+        // Antigravity wraps the arguments of a call of a server in its own configuration: {ServerName, ToolName, Arguments}.
+        readInput(hire, rawInput.has("toolName") && rawInput.path("args").isObject() ? rawInput.get("args")
+            : rawInput.has("ToolName") && rawInput.path("Arguments").isObject() ? rawInput.get("Arguments") : rawInput);
         String status = update.path("status").asText("");
         if ("failed".equals(status)) {
             // A hire call that came back failed was refused or went out empty: no hire exists for it, so it leaves no card (28h D57 (i)). A hire
@@ -290,7 +292,10 @@ final class HireWatch {
                 return true;
             }
         }
-        return false;
+        // 28h z64/z67: Antigravity titles a call of the engine's stdio server "Run mcp_jawata-engine_hire", and one of a server in its own
+        // configuration "MCP Tool hire" with the server and the tool in the raw input; a server that is not ours is never taken for the engine.
+        return "hire".equals(org.jawata.mcp.execution.AcpBrainSession.residentToolIn(update.path("title").asText("")))
+            || "hire".equals(org.jawata.mcp.execution.AcpBrainSession.residentToolOf(update.path("rawInput")));
     }
 
     private void readInput(Live hire, JsonNode input) {
