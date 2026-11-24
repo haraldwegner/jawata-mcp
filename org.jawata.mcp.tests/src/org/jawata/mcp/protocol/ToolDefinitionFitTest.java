@@ -68,12 +68,32 @@ class ToolDefinitionFitTest {
     }
 
     @Test
+    void aListThatIsStillTooLongTogetherIsCutShorterUntilTheWholeFitsTheTotal() throws Exception {
+        List<Map<String, Object>> published = new java.util.ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            published.add(JSON.convertValue(tool(1_500, 6, 200), new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { }));
+        }
+        int eachAt2000 = 0;
+        for (Object definition : ToolDefinitionFit.fitAll(published, 2_000, 0)) {
+            eachAt2000 += ToolDefinitionFit.size((JsonNode) definition);
+        }
+        assertTrue(eachAt2000 > 30_000, "cut to 2 000 each the list is still long: " + eachAt2000);
+
+        int together = 0;
+        for (Object definition : ToolDefinitionFit.fitAll(published, 2_000, 30_000)) {
+            together += ToolDefinitionFit.size((JsonNode) definition);
+        }
+
+        assertTrue(together <= 30_000, "the whole fits the total: " + together);
+    }
+
+    @Test
     void aClientThatNamesNoLimitIsGivenTheDefinitionsAsPublished() throws Exception {
         List<Map<String, Object>> published = List.of(Map.of("name", "t", "description", "x".repeat(10_000)));
 
-        assertSame(published.get(0), ToolDefinitionFit.fitAll(published, 0).get(0));
-        assertEquals(0, ToolDefinitionFit.limitOf(JSON.readTree("{}")));
-        assertEquals(0, ToolDefinitionFit.limitOf(null));
-        assertEquals(2_000, ToolDefinitionFit.limitOf(JSON.readTree("{\"_meta\":{\"" + ToolDefinitionFit.META_KEY + "\":2000}}")));
+        assertSame(published.get(0), ToolDefinitionFit.fitAll(published, 0, 0).get(0));
+        assertEquals(0, ToolDefinitionFit.limitOf(JSON.readTree("{}"), ToolDefinitionFit.META_KEY));
+        assertEquals(0, ToolDefinitionFit.limitOf(null, ToolDefinitionFit.META_KEY));
+        assertEquals(2_000, ToolDefinitionFit.limitOf(JSON.readTree("{\"_meta\":{\"" + ToolDefinitionFit.META_KEY + "\":2000}}"), ToolDefinitionFit.META_KEY));
     }
 }

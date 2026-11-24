@@ -87,6 +87,7 @@ class McpStdioBridgeTest {
             String first = "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\",\"params\":{}}";
             List<String> answers = lines(engine, first);
             assertTrue(engine.requests().get(0).contains("\"jawata/maxToolChars\":" + McpStdioBridge.TOOL_CHARS), "the engine is asked for short definitions: " + engine.requests().get(0));
+            assertTrue(engine.requests().get(0).contains("\"jawata/maxToolsChars\":" + McpStdioBridge.TOOLS_CHARS), "and for all of them together: " + engine.requests().get(0));
             assertEquals(1, answers.size());
             String page = answers.get(0);
             assertTrue(page.length() <= McpStdioBridge.PAGE_CHARS + 4_200, "a page is a line the brain reads: " + page.length());

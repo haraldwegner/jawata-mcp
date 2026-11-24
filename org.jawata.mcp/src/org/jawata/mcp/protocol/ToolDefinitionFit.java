@@ -24,6 +24,10 @@ public final class ToolDefinitionFit {
     /** The member of a {@code tools/list} request's {@code _meta} that names the limit. */
     public static final String META_KEY = "jawata/maxToolChars";
 
+    /** The member of a {@code tools/list} request's {@code _meta} that names the most characters all the definitions may take together. */
+    public static final String META_TOTAL_KEY = "jawata/maxToolsChars";
+
+    private static final int MIN_EACH = 600;
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TOOL_DESCRIPTION = 700;
     private static final int SHORT_TOOL_DESCRIPTION = 250;
@@ -32,19 +36,43 @@ public final class ToolDefinitionFit {
     private ToolDefinitionFit() {
     }
 
-    /** The limit a {@code tools/list} request asks for, or 0 when it asks for none. */
-    public static int limitOf(JsonNode params) {
-        JsonNode limit = params == null ? null : params.path("_meta").path(META_KEY);
+    /**
+     * The limit a {@code tools/list} request asks for, or 0 when it asks for none.
+     *
+     * @param params the request's parameters
+     * @param key    the member of their {@code _meta} that names the limit: {@link #META_KEY} for one definition, {@link #META_TOTAL_KEY} for all
+     */
+    public static int limitOf(JsonNode params, String key) {
+        JsonNode limit = params == null ? null : params.path("_meta").path(key);
         return limit != null && limit.isInt() && limit.asInt() > 0 ? limit.asInt() : 0;
     }
 
-    /** The definitions as given when {@code maxChars} is 0, else each cut to fit it as far as the order above can. */
-    public static List<Object> fitAll(List<Map<String, Object>> definitions, int maxChars) {
-        List<Object> fitted = new ArrayList<>();
-        for (Map<String, Object> definition : definitions) {
-            fitted.add(maxChars <= 0 ? definition : fit(MAPPER.valueToTree(definition), maxChars));
+    /**
+     * The definitions as given when {@code maxChars} is 0, else each cut to fit it as far as the order above can. When {@code totalChars} is above 0
+     * and the cut definitions together are longer, the limit of each is lowered by 100 characters at a time, to no less than 600, until they are not:
+     * Antigravity (agy 1.5.15) offers its model the smallest definitions first until their sum reaches about 62 000 characters, and the rest answer
+     * "tool X is not enabled for server Y".
+     *
+     * @param totalChars the most characters all the definitions may take together, 0 for no such limit
+     */
+    public static List<Object> fitAll(List<Map<String, Object>> definitions, int maxChars, int totalChars) {
+        if (maxChars <= 0) {
+            return new ArrayList<>(definitions);
         }
-        return fitted;
+        int each = maxChars;
+        while (true) {
+            List<Object> fitted = new ArrayList<>();
+            int total = 0;
+            for (Map<String, Object> definition : definitions) {
+                ObjectNode cut = fit(MAPPER.valueToTree(definition), each);
+                total += size(cut);
+                fitted.add(cut);
+            }
+            if (totalChars <= 0 || total <= totalChars || each <= MIN_EACH) {
+                return fitted;
+            }
+            each -= 100;
+        }
     }
 
     /** One definition cut to {@code maxChars} compact characters, or as near as the order above gets; the given node is not changed. */

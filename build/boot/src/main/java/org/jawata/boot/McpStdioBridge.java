@@ -42,6 +42,12 @@ final class McpStdioBridge {
      * and one of 3 153 is not (a call to it ends "tool X is not enabled for server Y"), so 2 800 leaves room.
      */
     static final int TOOL_CHARS = 2_000;
+    /**
+     * The most characters of all the definitions together. Measured against agy 1.5.15 (28h z67): it offers its model the smallest definitions first
+     * until their sum reaches about 62 000 characters (36 of the 51 at 2 000 each, 29 of 51 uncut), and answers "not enabled" for the rest, so
+     * 55 000 keeps all of them under it.
+     */
+    static final int TOOLS_CHARS = 55_000;
     /** The longest line sent to the brain, below the 64 KB its reader takes. */
     static final int LINE_CHARS = 60_000;
     /** How much of a cut answer's text is kept. */
@@ -86,7 +92,7 @@ final class McpStdioBridge {
             HttpResponse<String> answer;
             try {
                 answer = post(http, url, key, listing
-                    ? "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"method\":\"tools/list\",\"params\":{\"_meta\":{\"jawata/maxToolChars\":" + TOOL_CHARS + "}}}"
+                    ? "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"method\":\"tools/list\",\"params\":{\"_meta\":{\"jawata/maxToolChars\":" + TOOL_CHARS + ",\"jawata/maxToolsChars\":" + TOOLS_CHARS + "}}}"
                     : line);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
