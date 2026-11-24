@@ -204,7 +204,7 @@ final class Bridge {
         }
     }
 
-    private static int skipSpace(String json, int from) {
+    static int skipSpace(String json, int from) {
         int at = from;
         while (at < json.length() && Character.isWhitespace(json.charAt(at))) {
             at++;
@@ -213,7 +213,7 @@ final class Bridge {
     }
 
     /** The index of the quote that closes the string opened at {@code open}, or -1. */
-    private static int endOfString(String json, int open) {
+    static int endOfString(String json, int open) {
         for (int at = open + 1; at < json.length(); at++) {
             char c = json.charAt(at);
             if (c == '\\') {
@@ -226,7 +226,7 @@ final class Bridge {
     }
 
     /** The index just after the value that starts at {@code start}, or -1 when it does not end. */
-    private static int endOfValue(String json, int start) {
+    static int endOfValue(String json, int start) {
         if (start >= json.length()) {
             return -1;
         }

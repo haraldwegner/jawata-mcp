@@ -126,7 +126,7 @@ public class McpProtocolHandler {
             Object result = switch (method) {
                 case "initialize" -> handleInitialize(params, caller);
                 case "initialized" -> handleInitialized();
-                case "tools/list" -> handleToolsList();
+                case "tools/list" -> handleToolsList(params);
                 case "tools/call" -> handleToolsCall(params, caller);
                 case "prompts/list" -> handlePromptsList();
                 case "prompts/get" -> handlePromptsGet(params);
@@ -321,10 +321,12 @@ public class McpProtocolHandler {
 
     /**
      * Handle tools/list - return available tools.
+     * @param params the request's parameters; a client that names a limit in their {@code _meta} is given definitions cut to it (28h z67,
+     *               see {@link ToolDefinitionFit})
      */
-    private Object handleToolsList() {
+    private Object handleToolsList(JsonNode params) {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("tools", tools.getToolDefinitions());
+        result.put("tools", ToolDefinitionFit.fitAll(tools.getToolDefinitions(), ToolDefinitionFit.limitOf(params)));
         return result;
     }
 

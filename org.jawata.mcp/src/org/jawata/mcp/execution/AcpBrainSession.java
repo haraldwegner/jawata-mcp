@@ -1004,7 +1004,7 @@ public final class AcpBrainSession {
         return server.startsWith(SelfEndpoint.SERVER_NAME) && !tool.isEmpty() ? tool : null;
     }
 
-    /** The resident as the brain's one tool server, or none when there is no endpoint or the brain cannot attach an HTTP one. */
+    /** The resident as the brain's one tool server: over HTTP where the brain can attach one, else as a stdio program; none when there is no endpoint. */
     private static ArrayNode mcpServers(SelfEndpoint mcp, boolean brainCanAttachHttp) {
         ArrayNode servers = JSON.createArrayNode();
         if (mcp != null && brainCanAttachHttp) {
@@ -1022,8 +1022,38 @@ public final class AcpBrainSession {
                 session.put("name", SelfEndpoint.SESSION_HEADER);
                 session.put("value", mcp.sessionId());
             }
+        } else if (mcp != null) {
+            // 28h z67: a brain that cannot attach an HTTP server (Antigravity: mcpCapabilities.http false) is given the same endpoint as a stdio program
+            // that carries each message to it, so its calls reach THIS engine, under this session, and its hires are seen by the chat.
+            stdioServerFor(mcp).ifPresent(servers::add);
         }
         return servers;
+    }
+
+    /**
+     * The resident as a stdio server (the program {@code jawata.jar --mcp} of the dist this engine runs from), or none when the dist's boot jar
+     * cannot be found. Every ACP agent must accept a stdio server, which is why this is the way in for a brain that takes no HTTP one.
+     */
+    static Optional<ObjectNode> stdioServerFor(SelfEndpoint mcp) {
+        String dist = System.getProperty("jawata.dist.root");
+        if (dist == null || dist.isBlank()) {
+            return Optional.empty();
+        }
+        java.nio.file.Path jar = java.nio.file.Path.of(dist, "jawata.jar");
+        if (!java.nio.file.Files.isRegularFile(jar)) {
+            return Optional.empty();
+        }
+        ObjectNode server = JSON.createObjectNode();
+        server.put("name", SelfEndpoint.SERVER_NAME + "-engine");
+        server.put("command", java.nio.file.Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        ArrayNode args = server.putArray("args");
+        args.add("-jar");
+        args.add(jar.toString());
+        args.add("--mcp");
+        ArrayNode env = server.putArray("env");
+        env.addObject().put("name", "JAWATA_MCP_URL").put("value", mcp.urlWithSession());
+        env.addObject().put("name", "JAWATA_KEY").put("value", mcp.token());
+        return Optional.of(server);
     }
 
     private static Thread drain(Process child, StringBuilder tail) {

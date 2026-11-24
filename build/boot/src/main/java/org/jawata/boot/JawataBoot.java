@@ -58,6 +58,10 @@ public final class JawataBoot {
         if (List.of(args).contains("--dap")) {
             System.exit(Bridge.runDap(args, System.in, System.out, System.err));
         }
+        // 28h z67: --mcp is the engine's MCP server as a stdio program, for a brain that cannot attach an HTTP one.
+        if (List.of(args).contains("--mcp")) {
+            System.exit(McpStdioBridge.run(args, System.in, System.out, System.err));
+        }
         Path home = Path.of(System.getProperty("jawata.boot.home",
             Path.of(JawataBoot.class.getProtectionDomain().getCodeSource()
                 .getLocation().toURI()).getParent().toString()));
