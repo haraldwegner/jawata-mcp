@@ -89,7 +89,10 @@ class McpStdioBridgeTest {
             String first = "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/list\",\"params\":{}}";
             List<String> answers = lines(engine, first);
             assertTrue(engine.requests().get(0).contains("\"jawata/maxToolChars\":" + McpStdioBridge.TOOL_CHARS), "the engine is asked for short definitions: " + engine.requests().get(0));
-            assertTrue(engine.requests().get(0).contains("\"jawata/maxToolsChars\":" + McpStdioBridge.TOOLS_CHARS), "and for all of them together: " + engine.requests().get(0));
+            java.util.regex.Matcher total = java.util.regex.Pattern.compile("\"jawata/maxToolsChars\":(\\d+)").matcher(engine.requests().get(0));
+            assertTrue(total.find(), "and for all of them together: " + engine.requests().get(0));
+            // agy 1.5.15 offers its model about 60 000 to 62 000 characters of definitions in all (28h z67): what is asked must stay under that
+            assertTrue(Integer.parseInt(total.group(1)) >= 30_000 && Integer.parseInt(total.group(1)) <= 60_000, "a total the brain accepts: " + total.group(1));
             assertEquals(1, answers.size());
             String page = answers.get(0);
             assertTrue(page.length() <= McpStdioBridge.PAGE_CHARS + 4_200, "a page is a line the brain reads: " + page.length());
@@ -101,12 +104,17 @@ class McpStdioBridgeTest {
             for (int cursor = 1; cursor <= 12; cursor++) {
                 requests.add("{\"jsonrpc\":\"2.0\",\"id\":" + (10 + cursor) + ",\"method\":\"tools/list\",\"params\":{\"cursor\":\"" + (cursor * 3) + "\"}}");
             }
-            int named = 0;
+            java.util.Set<String> named = new java.util.TreeSet<>();
+            java.util.regex.Pattern name = java.util.regex.Pattern.compile("\"name\":\"([^\"]+)\"");
             for (String each : lines(engine, requests.toArray(new String[0]))) {
                 assertTrue(each.length() <= McpStdioBridge.PAGE_CHARS + 4_200, "every page is readable: " + each.length());
-                named += each.split("\"name\":\"", -1).length - 1;
+                java.util.regex.Matcher found = name.matcher(each);
+                while (found.find()) {
+                    named.add(found.group(1));
+                }
             }
-            assertTrue(named >= 40, "the pages carry the tools: " + named);
+            assertEquals(40, named.size(), "the pages together name each of the 39 tools and hire, and no other: " + named);
+            assertTrue(named.contains("hire") && named.contains("tool0") && named.contains("tool38"), "the first, the last and hire are among them: " + named);
         } finally {
             engine.server().stop(0);
         }
