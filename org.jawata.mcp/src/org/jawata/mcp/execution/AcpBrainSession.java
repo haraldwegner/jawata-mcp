@@ -975,9 +975,21 @@ public final class AcpBrainSession {
         return "completed".equals(status) || "failed".equals(status) ? Optional.of(false) : Optional.empty();
     }
 
+    /**
+     * How Antigravity's agent titles a permission request for a tool of an MCP server: "Run mcp_fake_dummy_fake_0" for the tool dummy_fake_0 of the
+     * server fake (measured against agy 1.5.15 on 2026-11-24, 28h z64). A server of ours has no underscore in its name, so the tool is what follows the
+     * first underscore after the server name.
+     */
+    private static final java.util.regex.Pattern ANTIGRAVITY_TITLE =
+        java.util.regex.Pattern.compile("^Run mcp_" + SelfEndpoint.SERVER_NAME + "[^_]*_(\\w+)$");
+
     static String residentToolIn(String title) {
         java.util.regex.Matcher matched = RESIDENT_TITLE.matcher(title);
-        return matched.matches() ? matched.group(1) : null;
+        if (matched.matches()) {
+            return matched.group(1);
+        }
+        java.util.regex.Matcher antigravity = ANTIGRAVITY_TITLE.matcher(title);
+        return antigravity.matches() ? antigravity.group(1) : null;
     }
 
     /** The resident as the brain's one tool server, or none when there is no endpoint or the brain cannot attach an HTTP one. */

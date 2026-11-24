@@ -34,6 +34,15 @@ class AntigravityDialectTest {
     }
 
     @Test
+    @DisplayName("28h z64: Antigravity's permission title for a tool of the resident names that tool, so the seat's list answers it; a foreign server's tool and Cursor's form are told apart")
+    void aPermissionTitleInAgysFormNamesTheResidentTool() {
+        assertEquals("experience", AcpBrainSession.residentToolIn("Run mcp_jawata-javata-dev_experience"), "a resident tool in agy's form was not read");
+        assertEquals("find_references", AcpBrainSession.residentToolIn("Run mcp_jawata_find_references"), "a tool whose name holds underscores lost the rest of it");
+        assertEquals(null, AcpBrainSession.residentToolIn("Run mcp_fake_experience"), "a foreign server's tool was taken for one of ours");
+        assertEquals("health_check", AcpBrainSession.residentToolIn("jawata-health_check: health_check"), "CONTROL: Cursor's form stopped being read");
+    }
+
+    @Test
     @DisplayName("28h z54: the answer is the result's response and carries the tokens, and no dollar cost is invented")
     void theResultIsTheAnswerAndCarriesTheTokens() {
         BrainLine line = new AntigravityDialect("agy", null).read(RESULT);
