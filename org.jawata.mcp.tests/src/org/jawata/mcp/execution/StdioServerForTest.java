@@ -12,8 +12,8 @@ import org.junit.jupiter.api.Test;
 /**
  * Sprint 28h, z67: what a brain that cannot attach an HTTP tool server (Antigravity: mcpCapabilities.http false) is given instead. Measured against
  * agy 1.5.15 on 2026-11-24: the stdio server is started by the brain, and its calls then reach this engine under the chat's session. The name is not
- * the engine's own, {@code jawata}, because a person's own configuration of that brain may name a server so, and the brain then answers for the
- * configured one.
+ * the engine's own, {@code jawata}, so that it cannot be taken for a server a person's own configuration of that brain may name so; that this is
+ * needed was not shown (a run under the plain name failed the same way, for another reason).
  */
 class StdioServerForTest {
 
