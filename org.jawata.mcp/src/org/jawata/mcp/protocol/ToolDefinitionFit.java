@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Sprint 28h, z67: a tool definition cut to a character limit a client names, for the brains that do not offer a tool to their model when its
@@ -27,7 +28,8 @@ public final class ToolDefinitionFit {
     /** The member of a {@code tools/list} request's {@code _meta} that names the most characters all the definitions may take together. */
     public static final String META_TOTAL_KEY = "jawata/maxToolsChars";
 
-    private static final int MIN_EACH = 600;
+    /** The tools a chat's principal works with, which are given what is left of a total before the others (the bridge puts them first the same way). */
+    private static final List<String> PRIORITY = List.of("hire", "hire_wait", "experience", "files", "lookup", "git", "plan_steps", "plan_board", "brains", "health_check");
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final int TOOL_DESCRIPTION = 700;
     private static final int SHORT_TOOL_DESCRIPTION = 250;
@@ -47,32 +49,73 @@ public final class ToolDefinitionFit {
         return limit != null && limit.isInt() && limit.asInt() > 0 ? limit.asInt() : 0;
     }
 
+    /** The member of a {@code tools/list} request's {@code _meta} that lists the names of the only tools wanted. */
+    public static final String META_ONLY_KEY = "jawata/onlyTools";
+
+    /** The names of the only tools a {@code tools/list} request wants, none when it names none. */
+    public static Set<String> onlyOf(JsonNode params) {
+        Set<String> names = new java.util.LinkedHashSet<>();
+        JsonNode listed = params == null ? null : params.path("_meta").path(META_ONLY_KEY);
+        if (listed != null && listed.isArray()) {
+            listed.forEach(name -> names.add(name.asText()));
+        }
+        return names;
+    }
+
     /**
      * The definitions as given when {@code maxChars} is 0, else each cut to fit it as far as the order above can. When {@code totalChars} is above 0
-     * and the cut definitions together are longer, the limit of each is lowered by 100 characters at a time, to no less than 600, until they are not:
-     * Antigravity (agy 1.5.15) offers its model the smallest definitions first until their sum reaches about 62 000 characters, and the rest answer
-     * "tool X is not enabled for server Y".
+     * every definition is first made as small as it can be made, and what is left of the total is then spent, up to {@code maxChars} each, on the
+     * tools of {@link #PRIORITY} first and the others after them: Antigravity (agy 1.5.15) offers its model the smallest definitions first until
+     * their sum reaches about 62 000 characters, and the rest answer "tool X is not enabled for server Y". A parameter is never left out: that
+     * brain checks a call against the schema it was given and refuses an argument the schema does not name (measured: "additional properties 'lane'
+     * not allowed"), so a list whose smallest forms are together longer than the total is given as those forms and is not shortened further.
      *
      * @param totalChars the most characters all the definitions may take together, 0 for no such limit
+     * @param only       the names of the only tools wanted, none for all of them: a brain refuses every tool its seat may not call, so offering it only
+     *                   those leaves each of them room for a whole definition
      */
-    public static List<Object> fitAll(List<Map<String, Object>> definitions, int maxChars, int totalChars) {
+    public static List<Object> fitAll(List<Map<String, Object>> definitions, int maxChars, int totalChars, Set<String> only) {
+        List<Map<String, Object>> wanted = only.isEmpty() ? definitions
+            : definitions.stream().filter(definition -> only.contains(String.valueOf(definition.get("name")))).toList();
         if (maxChars <= 0) {
-            return new ArrayList<>(definitions);
+            return new ArrayList<>(wanted);
         }
-        int each = maxChars;
-        while (true) {
-            List<Object> fitted = new ArrayList<>();
-            int total = 0;
-            for (Map<String, Object> definition : definitions) {
-                ObjectNode cut = fit(MAPPER.valueToTree(definition), each);
-                total += size(cut);
-                fitted.add(cut);
-            }
-            if (totalChars <= 0 || total <= totalChars || each <= MIN_EACH) {
-                return fitted;
-            }
-            each -= 100;
+        List<ObjectNode> nodes = new ArrayList<>();
+        for (Map<String, Object> definition : wanted) {
+            nodes.add(MAPPER.valueToTree(definition));
         }
+        List<Object> fitted = new ArrayList<>();
+        if (totalChars <= 0) {
+            nodes.forEach(node -> fitted.add(fit(node, maxChars)));
+            return fitted;
+        }
+        List<ObjectNode> smallest = new ArrayList<>();
+        int spare = totalChars;
+        for (ObjectNode node : nodes) {
+            ObjectNode small = fit(node, 1);
+            smallest.add(small);
+            spare -= size(small);
+        }
+        ObjectNode[] result = smallest.toArray(new ObjectNode[0]);
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < nodes.size(); i++) {
+            order.add(i);
+        }
+        order.sort(Comparator.comparingInt(i -> {
+            int at = PRIORITY.indexOf(nodes.get(i).path("name").asText());
+            return at < 0 ? PRIORITY.size() : at;
+        }));
+        for (int i : order) {
+            if (spare <= 0) {
+                break;
+            }
+            int smallSize = size(smallest.get(i));
+            ObjectNode grown = fit(nodes.get(i), Math.min(maxChars, smallSize + spare));
+            spare -= Math.max(0, size(grown) - smallSize);
+            result[i] = grown;
+        }
+        fitted.addAll(List.of(result));
+        return fitted;
     }
 
     /** One definition cut to {@code maxChars} compact characters, or as near as the order above gets; the given node is not changed. */
@@ -106,29 +149,7 @@ public final class ToolDefinitionFit {
         for (int i = 0; i < parents.size() && size(tool) > maxChars; i++) {
             parents.get(i).set(plainNames.get(i), MAPPER.createObjectNode());
         }
-        dropLastOptionalParameters(tool, maxChars);
         return tool;
-    }
-
-    /**
-     * Last resort for a tool that stays too long however little is left of its text: the parameters declared last are left out of the schema until
-     * it fits, except {@code kind}, {@code action} and the required ones. The tool still accepts a call that carries them, because the engine reads
-     * the call's arguments and not this definition; the model is only no longer told of them.
-     */
-    private static void dropLastOptionalParameters(ObjectNode tool, int maxChars) {
-        if (!(tool.path("inputSchema").path("properties") instanceof ObjectNode parameters)) {
-            return;
-        }
-        List<String> required = new ArrayList<>();
-        tool.path("inputSchema").path("required").forEach(name -> required.add(name.asText()));
-        List<String> names = new ArrayList<>();
-        parameters.fieldNames().forEachRemaining(names::add);
-        for (int i = names.size() - 1; i >= 0 && size(tool) > maxChars; i--) {
-            String name = names.get(i);
-            if (!required.contains(name) && !"kind".equals(name) && !"action".equals(name)) {
-                parameters.remove(name);
-            }
-        }
     }
 
     /** The length of the node written compactly, which is what a brain counts. */

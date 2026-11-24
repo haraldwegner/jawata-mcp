@@ -5,9 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
+
+import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.junit.jupiter.api.Test;
 
 /**
  * Sprint 28h, z67: what a brain that cannot attach an HTTP tool server (Antigravity: mcpCapabilities.http false) is given instead. Measured against
@@ -25,7 +27,7 @@ class StdioServerForTest {
             Files.writeString(dist.resolve("jawata.jar"), "not a jar: the entry names it, it does not start it");
             System.setProperty("jawata.dist.root", dist.toString());
 
-            ObjectNode server = AcpBrainSession.stdioServerFor(new SelfEndpoint("http://127.0.0.1:9/mcp", "the-key", "the-session")).orElseThrow();
+            ObjectNode server = AcpBrainSession.stdioServerFor(new SelfEndpoint("http://127.0.0.1:9/mcp", "the-key", "the-session"), Set.of()).orElseThrow();
 
             assertEquals(SelfEndpoint.SERVER_NAME + "-engine", server.path("name").asText());
             assertEquals("--mcp", server.path("args").get(2).asText());
@@ -40,13 +42,32 @@ class StdioServerForTest {
     }
 
     @Test
+    void theProgramIsToldTheToolsTheBrainsSeatMayCallAndNotAnythingThatIsNotAToolName() throws Exception {
+        Path dist = Files.createTempDirectory("jawata-stdio-tools-");
+        String before = System.getProperty("jawata.dist.root");
+        try {
+            Files.writeString(dist.resolve("jawata.jar"), "x");
+            System.setProperty("jawata.dist.root", dist.toString());
+
+            ObjectNode server = AcpBrainSession.stdioServerFor(new SelfEndpoint("http://127.0.0.1:9/mcp", "k", "s"),
+                Set.of("hire", "experience", "Bash(git status)", "mcp__other__tool")).orElseThrow();
+
+            assertTrue(server.path("env").toString().contains("\"value\":\"experience,hire\""), server.path("env").toString());
+        } finally {
+            restore(before);
+            Files.deleteIfExists(dist.resolve("jawata.jar"));
+            Files.deleteIfExists(dist);
+        }
+    }
+
+    @Test
     void noProgramIsOfferedWhenTheRunningInstallHasNoBootJar() throws Exception {
         Path dist = Files.createTempDirectory("jawata-stdio-empty-");
         String before = System.getProperty("jawata.dist.root");
         try {
             System.setProperty("jawata.dist.root", dist.toString());
 
-            assertTrue(AcpBrainSession.stdioServerFor(new SelfEndpoint("http://127.0.0.1:9/mcp", "k")).isEmpty());
+            assertTrue(AcpBrainSession.stdioServerFor(new SelfEndpoint("http://127.0.0.1:9/mcp", "k"), Set.of()).isEmpty());
         } finally {
             restore(before);
             Files.deleteIfExists(dist);

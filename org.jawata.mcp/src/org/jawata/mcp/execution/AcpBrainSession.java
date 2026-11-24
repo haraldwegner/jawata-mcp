@@ -517,7 +517,7 @@ public final class AcpBrainSession {
             JsonNode capabilities = init.path("agentCapabilities");
             takesImages = capabilities.path("promptCapabilities").path("image").asBoolean(false);
             String cwd = base.workingDirectory() == null ? "" : base.workingDirectory().toString();
-            ArrayNode servers = mcpServers(mcp, capabilities.path("mcpCapabilities").path("http").asBoolean(false));
+            ArrayNode servers = mcpServers(mcp, capabilities.path("mcpCapabilities").path("http").asBoolean(false), wire.allowed);
             JsonNode opened = null;
             if (resume.isPresent() && capabilities.path("loadSession").asBoolean(false)) {
                 String earlier = resume.get();
@@ -1004,8 +1004,9 @@ public final class AcpBrainSession {
         return server.startsWith(SelfEndpoint.SERVER_NAME) && !tool.isEmpty() ? tool : null;
     }
 
-    /** The resident as the brain's one tool server: over HTTP where the brain can attach one, else as a stdio program; none when there is no endpoint. */
-    private static ArrayNode mcpServers(SelfEndpoint mcp, boolean brainCanAttachHttp) {
+    /** The resident as the brain's one tool server: over HTTP where the brain can attach one, else as a stdio program; none when there is no endpoint. 
+     * @param allowed TODO*/
+    private static ArrayNode mcpServers(SelfEndpoint mcp, boolean brainCanAttachHttp, Set<String> allowed) {
         ArrayNode servers = JSON.createArrayNode();
         if (mcp != null && brainCanAttachHttp) {
             ObjectNode server = servers.addObject();
@@ -1025,7 +1026,7 @@ public final class AcpBrainSession {
         } else if (mcp != null) {
             // 28h z67: a brain that cannot attach an HTTP server (Antigravity: mcpCapabilities.http false) is given the same endpoint as a stdio program
             // that carries each message to it, so its calls reach THIS engine, under this session, and its hires are seen by the chat.
-            stdioServerFor(mcp).ifPresent(servers::add);
+            stdioServerFor(mcp, allowed).ifPresent(servers::add);
         }
         return servers;
     }
@@ -1033,8 +1034,9 @@ public final class AcpBrainSession {
     /**
      * The resident as a stdio server (the program {@code jawata.jar --mcp} of the dist this engine runs from), or none when the dist's boot jar
      * cannot be found. Every ACP agent must accept a stdio server, which is why this is the way in for a brain that takes no HTTP one.
+     * @param allowed TODO
      */
-    static Optional<ObjectNode> stdioServerFor(SelfEndpoint mcp) {
+    static Optional<ObjectNode> stdioServerFor(SelfEndpoint mcp, Set<String> allowed) {
         String dist = System.getProperty("jawata.dist.root");
         if (dist == null || dist.isBlank()) {
             return Optional.empty();
@@ -1053,6 +1055,12 @@ public final class AcpBrainSession {
         ArrayNode env = server.putArray("env");
         env.addObject().put("name", "JAWATA_MCP_URL").put("value", mcp.urlWithSession());
         env.addObject().put("name", "JAWATA_KEY").put("value", mcp.token());
+        // The brain is refused every tool its seat may not call, so the program asks the engine for those alone: that leaves each of them the room
+        // for a whole definition in the list the brain can take (28h z67).
+        List<String> names = allowed.stream().filter(name -> name.matches("[a-z][a-z0-9_]*") && !name.startsWith("mcp_")).sorted().toList();
+        if (!names.isEmpty()) {
+            env.addObject().put("name", "JAWATA_MCP_TOOLS").put("value", String.join(",", names));
+        }
         return Optional.of(server);
     }
 

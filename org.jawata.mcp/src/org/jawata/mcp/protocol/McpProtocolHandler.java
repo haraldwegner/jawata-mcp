@@ -327,7 +327,7 @@ public class McpProtocolHandler {
     private Object handleToolsList(JsonNode params) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("tools", ToolDefinitionFit.fitAll(tools.getToolDefinitions(), ToolDefinitionFit.limitOf(params, ToolDefinitionFit.META_KEY),
-            ToolDefinitionFit.limitOf(params, ToolDefinitionFit.META_TOTAL_KEY)));
+            ToolDefinitionFit.limitOf(params, ToolDefinitionFit.META_TOTAL_KEY), ToolDefinitionFit.onlyOf(params)));
         return result;
     }
 

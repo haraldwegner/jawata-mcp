@@ -56,15 +56,16 @@ class ToolDefinitionFitTest {
     }
 
     @Test
-    void aToolWithTooManyParametersLosesTheOnesDeclaredLastAndNeverKindOrTheRequiredOnes() throws Exception {
+    void aToolWithTooManyParametersKeepsEveryOneOfThemAndMayStayLongerThanTheLimit() throws Exception {
         ObjectNode many = tool(100, 80, 0);
 
         ObjectNode fitted = ToolDefinitionFit.fit(many, 1_200);
 
         JsonNode properties = fitted.path("inputSchema").path("properties");
-        assertTrue(ToolDefinitionFit.size(fitted) <= 1_200, "it fits: " + ToolDefinitionFit.size(fitted));
-        assertTrue(properties.has("p0") && properties.has("kind"), "the required parameter and kind stay");
-        assertTrue(!properties.has("p79"), "a parameter declared late is left out");
+        for (int i = 0; i < 80; i++) {
+            assertTrue(properties.has("p" + i), "p" + i + " is still named: the brain refuses an argument the schema does not name");
+        }
+        assertTrue(properties.has("kind"));
     }
 
     @Test
@@ -74,13 +75,13 @@ class ToolDefinitionFitTest {
             published.add(JSON.convertValue(tool(1_500, 6, 200), new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { }));
         }
         int eachAt2000 = 0;
-        for (Object definition : ToolDefinitionFit.fitAll(published, 2_000, 0)) {
+        for (Object definition : ToolDefinitionFit.fitAll(published, 2_000, 0, java.util.Set.of())) {
             eachAt2000 += ToolDefinitionFit.size((JsonNode) definition);
         }
         assertTrue(eachAt2000 > 30_000, "cut to 2 000 each the list is still long: " + eachAt2000);
 
         int together = 0;
-        for (Object definition : ToolDefinitionFit.fitAll(published, 2_000, 30_000)) {
+        for (Object definition : ToolDefinitionFit.fitAll(published, 2_000, 30_000, java.util.Set.of())) {
             together += ToolDefinitionFit.size((JsonNode) definition);
         }
 
@@ -88,10 +89,30 @@ class ToolDefinitionFitTest {
     }
 
     @Test
+    void aClientThatNamesTheToolsItWantsIsOfferedThoseAloneEachWithRoomForAWholeDefinition() throws Exception {
+        List<Map<String, Object>> published = new java.util.ArrayList<>();
+        for (String name : List.of("hire", "experience", "rename_symbol", "debug")) {
+            Map<String, Object> definition = JSON.convertValue(tool(1_500, 8, 100), new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { });
+            definition.put("name", name);
+            published.add(definition);
+        }
+        JsonNode params = JSON.readTree("{\"_meta\":{\"" + ToolDefinitionFit.META_ONLY_KEY + "\":[\"hire\",\"experience\"]}}");
+
+        List<Object> offered = ToolDefinitionFit.fitAll(published, 3_500, 55_000, ToolDefinitionFit.onlyOf(params));
+
+        assertEquals(2, offered.size(), "only the two tools named");
+        assertEquals("hire", ((JsonNode) offered.get(0)).path("name").asText());
+        assertEquals("experience", ((JsonNode) offered.get(1)).path("name").asText());
+        assertEquals(ToolDefinitionFit.size(JSON.valueToTree(published.get(0))), ToolDefinitionFit.size((JsonNode) offered.get(0)),
+            "a definition that fits the limit is not cut at all");
+        assertTrue(ToolDefinitionFit.onlyOf(JSON.readTree("{}")).isEmpty(), "naming none is asking for all");
+    }
+
+    @Test
     void aClientThatNamesNoLimitIsGivenTheDefinitionsAsPublished() throws Exception {
         List<Map<String, Object>> published = List.of(Map.of("name", "t", "description", "x".repeat(10_000)));
 
-        assertSame(published.get(0), ToolDefinitionFit.fitAll(published, 0, 0).get(0));
+        assertSame(published.get(0), ToolDefinitionFit.fitAll(published, 0, 0, java.util.Set.of()).get(0));
         assertEquals(0, ToolDefinitionFit.limitOf(JSON.readTree("{}"), ToolDefinitionFit.META_KEY));
         assertEquals(0, ToolDefinitionFit.limitOf(null, ToolDefinitionFit.META_KEY));
         assertEquals(2_000, ToolDefinitionFit.limitOf(JSON.readTree("{\"_meta\":{\"" + ToolDefinitionFit.META_KEY + "\":2000}}"), ToolDefinitionFit.META_KEY));

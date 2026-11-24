@@ -38,10 +38,10 @@ final class McpStdioBridge {
     /** The most characters of tool definitions one page of the list carries. */
     static final int PAGE_CHARS = 30_000;
     /**
-     * The most characters of one tool definition asked of the engine. Measured against agy 1.5.15: a definition of 3 012 characters is offered to its model
-     * and one of 3 153 is not (a call to it ends "tool X is not enabled for server Y"), so 2 800 leaves room.
+     * The most characters of one tool definition asked of the engine, which lowers it for a list that is too long together (see {@link #TOOLS_CHARS}).
+     * With the eleven or so tools of one seat it stays at this, a whole definition for each; with all 51 it ends near 1 200.
      */
-    static final int TOOL_CHARS = 2_000;
+    static final int TOOL_CHARS = 3_500;
     /**
      * The most characters of all the definitions together. Measured against agy 1.5.15 (28h z67): it offers its model the smallest definitions first
      * until their sum reaches about 62 000 characters (36 of the 51 at 2 000 each, 29 of 51 uncut), and answers "not enabled" for the rest, so
@@ -92,7 +92,8 @@ final class McpStdioBridge {
             HttpResponse<String> answer;
             try {
                 answer = post(http, url, key, listing
-                    ? "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"method\":\"tools/list\",\"params\":{\"_meta\":{\"jawata/maxToolChars\":" + TOOL_CHARS + ",\"jawata/maxToolsChars\":" + TOOLS_CHARS + "}}}"
+                    ? "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"method\":\"tools/list\",\"params\":{\"_meta\":{\"jawata/maxToolChars\":" + TOOL_CHARS + ",\"jawata/maxToolsChars\":" + TOOLS_CHARS
+                        + onlyTools() + "}}}"
                     : line);
             } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
@@ -135,8 +136,28 @@ final class McpStdioBridge {
         return 0;
     }
 
+    /**
+     * The member of a tool-list request that asks for the tools named in {@code JAWATA_MCP_TOOLS} alone, comma-separated by the engine that started
+     * this program from the tools its brain's seat may call; empty when none are named. A name that is not a plain tool name is left out, so what is
+     * written needs no escaping.
+     */
+    static String onlyTools() {
+        String named = System.getenv("JAWATA_MCP_TOOLS");
+        if (named == null || named.isBlank()) {
+            return "";
+        }
+        List<String> names = new ArrayList<>();
+        for (String name : named.split(",")) {
+            if (name.matches("[a-z][a-z0-9_]*")) {
+                names.add("\"" + name + "\"");
+            }
+        }
+        return names.isEmpty() ? "" : ",\"jawata/onlyTools\":[" + String.join(",", names) + "]";
+    }
+
     private static HttpResponse<String> post(HttpClient http, String url, String key, String line) throws IOException, InterruptedException {
-        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
+        // longer than the longest a tool waits for (hire_wait: 50 seconds), so a resident that never answers ends the call and does not hold the program
+        HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url)).timeout(java.time.Duration.ofSeconds(180))
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
             .POST(HttpRequest.BodyPublishers.ofString(line));
@@ -250,7 +271,7 @@ final class McpStdioBridge {
 
     /** The answer as one line the brain can read: itself when short enough, else its first content text cut with a sentence that says so. */
     static String fit(String body, String id) {
-        if (body.length() <= LINE_CHARS) {
+        if (body.getBytes(StandardCharsets.UTF_8).length <= LINE_CHARS) {
             return body;
         }
         String result = Bridge.topLevelMembers(body).get("result");
@@ -261,22 +282,29 @@ final class McpStdioBridge {
             return errorLine(id, "the answer was " + body.length() + " characters and the brain reads at most 64 KB a line");
         }
         int keep = Math.min(text.length() - 1, KEPT_CHARS);
-        // never end inside an escape: an odd run of backslashes, or a \\u with fewer than four digits after it
-        String kept = text.substring(0, keep);
-        int slashes = 0;
-        while (slashes < kept.length() && kept.charAt(kept.length() - 1 - slashes) == '\\') {
-            slashes++;
-        }
-        if (slashes % 2 == 1) {
-            kept = kept.substring(0, kept.length() - 1);
-        }
-        int u = kept.lastIndexOf("\\u");
-        if (u >= 0 && kept.length() - u < 6) {
-            kept = kept.substring(0, u);
-        }
         String isError = Bridge.topLevelMembers(result).getOrDefault("isError", "false");
-        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":" + kept
-            + "\\n\\n[cut here: the answer was " + body.length() + " characters and the brain reads at most 64 KB a line]\"}],\"isError\":" + isError + "}}";
+        while (true) {
+            // never end inside an escape: an odd run of backslashes, or a \\u with fewer than four digits after it
+            String kept = text.substring(0, keep);
+            int slashes = 0;
+            while (slashes < kept.length() && kept.charAt(kept.length() - 1 - slashes) == '\\') {
+                slashes++;
+            }
+            if (slashes % 2 == 1) {
+                kept = kept.substring(0, kept.length() - 1);
+            }
+            int u = kept.lastIndexOf("\\u");
+            if (u >= 0 && kept.length() - u < 6) {
+                kept = kept.substring(0, u);
+            }
+            String line = "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":" + kept
+                + "\\n\\n[cut here: the answer was " + body.length() + " characters and the brain reads at most 64 KB a line]\"}],\"isError\":" + isError + "}}";
+            // the brain's reader counts bytes, and a character outside ASCII is up to three of them
+            if (line.getBytes(StandardCharsets.UTF_8).length <= LINE_CHARS || keep <= 1_000) {
+                return line;
+            }
+            keep = keep * 9 / 10;
+        }
     }
 
     /** One line to the file named by {@code JAWATA_MCP_TRACE}, when it is set: what the brain asked and how long each answer sent back was. */
@@ -293,7 +321,7 @@ final class McpStdioBridge {
     }
 
     private static String errorLine(String id, String reason) {
-        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":-32000,\"message\":\"" + reason.replace("\\", "\\\\").replace("\"", "'") + "\"}}";
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":-32000,\"message\":\"" + reason.replace("\\", "\\\\").replace("\"", "'").replaceAll("\\p{Cntrl}", " ") + "\"}}";
     }
 
     /** A request that got no answer from the resident is answered here, so the brain's call ends and does not wait for ever; a notification is not. */

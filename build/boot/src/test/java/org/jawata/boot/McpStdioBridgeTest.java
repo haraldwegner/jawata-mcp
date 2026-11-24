@@ -53,6 +53,8 @@ class McpStdioBridgeTest {
                 }
                 tools.add("{\"name\":\"hire\",\"description\":\"hires\",\"inputSchema\":{\"type\":\"object\"}}");
                 answer = "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"tools\":[" + String.join(",", tools) + "]}}";
+            } else if (body.contains("dashes")) {
+                answer = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + "—".repeat(40_000) + "\"}],\"isError\":false}}";
             } else {
                 answer = "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + BIG_TEXT + "\"}],\"isError\":false}}";
             }
@@ -119,6 +121,20 @@ class McpStdioBridgeTest {
             assertTrue(answers.get(0).length() <= McpStdioBridge.LINE_CHARS, "the line is one the brain reads: " + answers.get(0).length());
             assertTrue(answers.get(0).contains("[cut here: the answer was"), "the cut says so");
             assertTrue(answers.get(0).startsWith("{\"jsonrpc\":\"2.0\",\"id\":4,\"result\""), "and is still an answer to that call");
+        } finally {
+            engine.server().stop(0);
+        }
+    }
+
+    @Test
+    void anAnswerOfThreeByteCharactersIsCutToALineThatIsReadableInBytesNotOnlyInCharacters() throws Exception {
+        Engine engine = engine();
+        try {
+            List<String> answers = lines(engine, "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"tools/call\",\"params\":{\"name\":\"dashes\",\"arguments\":{}}}");
+            assertEquals(1, answers.size());
+            assertTrue(answers.get(0).getBytes(StandardCharsets.UTF_8).length <= McpStdioBridge.LINE_CHARS,
+                "the brain's reader counts bytes: " + answers.get(0).getBytes(StandardCharsets.UTF_8).length);
+            assertTrue(answers.get(0).contains("[cut here: the answer was"), "and the cut says so");
         } finally {
             engine.server().stop(0);
         }
