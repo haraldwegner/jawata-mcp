@@ -19,7 +19,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SHARDS="${1:-4}"
-TIMINGS="${TIMINGS:-$ROOT/docs/sprints/dossier-23-timings.txt}"
+TIMINGS="${TIMINGS:-$ROOT/build/suite-timings.txt}"
 DEFAULT_SECS="${DEFAULT_SECS:-15}"
 DIST="$ROOT/build/dist/target/dist"
 # S12a / D21 — SELECTION IS THE DEFAULT. `--full` pins the whole suite.

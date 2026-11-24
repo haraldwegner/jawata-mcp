@@ -112,7 +112,7 @@ no POSIX permissions here
 # instead; they now carry the same assumption, in the same words, as their siblings.
 #
 # Declared under Sprint 28h's entry "2026-10-12 — The host question: which process starts a
-# brain" (jawata-enterprise, docs/sprints/jawata-mcp/sprint-28h-jawata-is-the-agent.md): 28h
+# brain" (jawata-plans, sprint-28/mcp/sprint-28h-jawata-is-the-agent.md): 28h
 # decides which process starts a brain, and whichever does owns the Windows start, proved by
 # a hire that runs there. Until then these skips stay declared. (This block cited the 28g S2b
 # ruling until 4.4.1; that ruling was about studio's clients and does not cover the hire.)
