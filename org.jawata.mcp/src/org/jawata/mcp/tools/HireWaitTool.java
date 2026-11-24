@@ -71,6 +71,16 @@ public final class HireWaitTool implements Tool {
         if (hireId.isEmpty()) {
             return ToolResponse.invalidParameter("hireId", "name the hire to wait for: the hireId the hire tool answered");
         }
+        // The principal of the jawata chat has a turn its hire's report comes back in (28h z62): it never waits here, and the call answers at once, so
+        // the person's next message is not queued behind a poll of minutes.
+        if (hires.isRunningPlan(hireId) && hires.reportComesAsTurnForPlan(hireId)) {
+            Map<String, Object> now = new LinkedHashMap<>();
+            now.put("hireId", hireId);
+            now.put("state", "running");
+            now.put("reportComesAsTurn", true);
+            now.put("next", "end your turn now: this hire's report comes back to you as a new turn, and the person's messages are answered meanwhile; do not call hire_wait again");
+            return ToolResponse.success(now);
+        }
         int waitSeconds = Math.max(0, Math.min(MAX_WAIT_SECONDS, arguments.path("waitSeconds").asInt(0)));
         long deadline = System.nanoTime() + waitSeconds * 1_000_000_000L;
         while (hires.isRunningPlan(hireId) && System.nanoTime() < deadline) {

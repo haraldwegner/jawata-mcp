@@ -81,6 +81,43 @@ class HireWaitToolTest {
     }
 
     @Test
+    @DisplayName("28h z62: a hire of the chat's principal brain is answered at once even when asked to wait, and says its report comes back as a turn; the same call for a plain client's hire waits")
+    void aChatPrincipalsHireIsNotWaitedFor() throws Exception {
+        String brainKey = "z62-principal-brain-key";
+        hires.speaksFor(brainKey, "z62-chat-session");
+        CountDownLatch registered = new CountDownLatch(1);
+        CountDownLatch end = new CountDownLatch(1);
+        Thread thread = new Thread(() -> {
+            try (HireRegistry.Registration hire = hires.begin("pm", "z62 chat principal", brainKey)) {
+                hires.planOpened("plan-z62-chat");
+                registered.countDown();
+                end.await();
+            } catch (InterruptedException ended) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        thread.setDaemon(true);
+        thread.start();
+        assertTrue(registered.await(5, TimeUnit.SECONDS), "the hire did not register as running");
+        try {
+            long startedAt = System.nanoTime();
+            Map<String, Object> asked = dataOf(ask("plan-z62-chat", 5));
+            long tookMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+
+            assertAll(
+                () -> assertTrue(tookMs < 1_000, "hire_wait held the chat's principal for " + tookMs + " ms of a 5000 ms wait: " + asked),
+                () -> assertEquals("running", asked.get("state"), String.valueOf(asked)),
+                () -> assertEquals(Boolean.TRUE, asked.get("reportComesAsTurn"), String.valueOf(asked)),
+                () -> assertTrue(String.valueOf(asked.get("next")).contains("end your turn"), String.valueOf(asked)),
+                () -> assertTrue(hires.reportComesAsTurn(brainKey) && !hires.reportComesAsTurn("a-plain-client-key") && !hires.reportComesAsTurn(""),
+                    "CONTROL: only a caller that speaks for a chat has its report come back as a turn"));
+        } finally {
+            end.countDown();
+            thread.join(5_000);
+        }
+    }
+
+    @Test
     @DisplayName("28h z28: a running hire that has done nothing for longer than the stall ceiling is answered as stalled with the seconds it has been idle; one that has just acted is not")
     void aQuietHireIsAnsweredAsStalled() throws Exception {
         HireWaitTool strict = new HireWaitTool(hires, 1);

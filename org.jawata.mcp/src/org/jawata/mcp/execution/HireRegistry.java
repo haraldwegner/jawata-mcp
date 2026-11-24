@@ -540,6 +540,27 @@ public final class HireRegistry {
         return callerId != null && speakingKeys.contains(callerId);
     }
 
+    /**
+     * Whether the report of a hire this caller starts comes back to it as a new turn (28h z62): when the caller is a principal brain of the jawata chat, or
+     * a hire that traces back to one. Such a caller has nothing to wait for and ends its turn; any other caller is its own principal, nothing pushes the
+     * report into its turn, and it collects it with {@code hire_wait}.
+     */
+    public boolean reportComesAsTurn(String callerId) {
+        String current = callerId == null ? "" : callerId;
+        for (int steps = 0; steps < 16 && !current.isEmpty(); steps++) {
+            if (speakingKeys.contains(current)) {
+                return true;
+            }
+            current = issuedBy.getOrDefault(current, "");
+        }
+        return false;
+    }
+
+    /** {@link #reportComesAsTurn} for the hire of this plan, by whoever issued it; false for a plan this engine knows no issuer of. */
+    public boolean reportComesAsTurnForPlan(String planId) {
+        return reportComesAsTurn(issuedBy.getOrDefault(planId, ""));
+    }
+
     /** What the current thread asked to be told when the hire it is about to run opens its plan: the plan id and the hire's first name. */
     private final java.util.Map<Thread, java.util.function.BiConsumer<String, String>> planListeners = new ConcurrentHashMap<>();
 
