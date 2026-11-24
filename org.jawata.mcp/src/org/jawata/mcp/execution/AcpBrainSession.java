@@ -1034,7 +1034,7 @@ public final class AcpBrainSession {
     /**
      * The resident as a stdio server (the program {@code jawata.jar --mcp} of the dist this engine runs from), or none when the dist's boot jar
      * cannot be found. Every ACP agent must accept a stdio server, which is why this is the way in for a brain that takes no HTTP one.
-     * @param allowed TODO
+     * @param allowed the names of the tools the brain's seat may call; the program asks the engine for those alone, none for all of them
      */
     static Optional<ObjectNode> stdioServerFor(SelfEndpoint mcp, Set<String> allowed) {
         String dist = System.getProperty("jawata.dist.root");
@@ -1047,7 +1047,7 @@ public final class AcpBrainSession {
         }
         ObjectNode server = JSON.createObjectNode();
         server.put("name", SelfEndpoint.SERVER_NAME + "-engine");
-        server.put("command", java.nio.file.Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        server.put("command", org.jawata.mcp.runtime.ChildJvm.binary(null, "java").toString());
         ArrayNode args = server.putArray("args");
         args.add("-jar");
         args.add(jar.toString());
