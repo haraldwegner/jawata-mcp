@@ -18,12 +18,23 @@ import org.jawata.mcp.models.ToolResponse;
  */
 public final class CallOutcomes {
 
-    /** One call that failed or was refused: the tool and the error code it answered with. */
-    public record Failed(String tool, String code) {
+    /**
+     * One call that failed or was refused: the tool, the error code it answered with, and the engine's own message, on one line and cut at
+     * 200 characters, which is what tells two refusals with the same code apart.
+     */
+    public record Failed(String tool, String code, String said) {
+
+        /** A failure with no message. */
+        public Failed(String tool, String code) {
+            this(tool, code, "");
+        }
     }
 
     /** How many failures of one caller are kept; the latest ones. */
     static final int PER_CALLER = 100;
+
+    /** The longest message kept on a card. */
+    private static final int SAID_LIMIT = 200;
 
     private static final CallOutcomes SHARED = new CallOutcomes();
 
@@ -40,9 +51,12 @@ public final class CallOutcomes {
             return;
         }
         String code = response.getError() == null || response.getError().getCode() == null ? "ERROR" : response.getError().getCode();
+        String message = response.getError() == null || response.getError().getMessage() == null ? ""
+            : response.getError().getMessage().replaceAll("\\s+", " ").strip();
+        String said = message.length() > SAID_LIMIT ? message.substring(0, SAID_LIMIT) + "…" : message;
         Deque<Failed> kept = byCaller.computeIfAbsent(callerId, id -> new ArrayDeque<>());
         synchronized (kept) {
-            kept.addLast(new Failed(tool, code));
+            kept.addLast(new Failed(tool, code, said));
             while (kept.size() > PER_CALLER) {
                 kept.removeFirst();
             }

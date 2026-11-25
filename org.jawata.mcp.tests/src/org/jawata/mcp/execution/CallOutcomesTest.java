@@ -30,8 +30,22 @@ class CallOutcomesTest {
         List<CallOutcomes.Failed> taken = outcomes.take("plan-1");
 
         assertAll(
-            () -> assertEquals(List.of(new CallOutcomes.Failed("rename_symbol", "REFACTORING_FAILED"), new CallOutcomes.Failed("files", "ACCESS_DENIED")), taken),
+            () -> assertEquals(List.of(new CallOutcomes.Failed("rename_symbol", "REFACTORING_FAILED", "message"), new CallOutcomes.Failed("files", "ACCESS_DENIED", "message")), taken),
             () -> assertTrue(outcomes.take("plan-1").isEmpty(), "CONTROL: what was handed over was handed over again"));
+    }
+
+    @Test
+    @DisplayName("what the engine answered is kept on one line and cut, so the card can say which call it was without carrying a whole listing")
+    void whatTheEngineAnsweredIsKeptShort() {
+        CallOutcomes outcomes = new CallOutcomes();
+        outcomes.record("plan-1", "files", ToolResponse.error("ACCESS_DENIED", "Access denied:\n  /home/x/rules.md", "hint"));
+        outcomes.record("plan-1", "lookup", ToolResponse.error("INTERNAL_ERROR", "y".repeat(1000), "hint"));
+
+        List<CallOutcomes.Failed> taken = outcomes.take("plan-1");
+
+        assertAll(
+            () -> assertEquals("Access denied: /home/x/rules.md", taken.get(0).said()),
+            () -> assertEquals("y".repeat(200) + "…", taken.get(1).said()));
     }
 
     @Test

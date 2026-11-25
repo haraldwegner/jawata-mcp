@@ -83,6 +83,9 @@ public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava>
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("tool", f.tool());
             row.put("code", f.code());
+            if (!f.said().isEmpty()) {
+                row.put("said", f.said());
+            }
             failedRows.add(row);
         }
         if (!observed) {

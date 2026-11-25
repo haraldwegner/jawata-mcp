@@ -88,7 +88,7 @@ class ToolRegistryRecordsHireFailuresTest {
         failing.callTool("rename_symbol", none, CallerIdentity.supplied("not-a-hire-session"));
 
         assertAll(
-            () -> assertEquals(List.of(new CallOutcomes.Failed("rename_symbol", "REFACTORING_FAILED")), CallOutcomes.shared().take("plan-records-1"),
+            () -> assertEquals(List.of(new CallOutcomes.Failed("rename_symbol", "REFACTORING_FAILED", "no")), CallOutcomes.shared().take("plan-records-1"),
                 "THE CLAIM: the hire's failed call was not kept, or its success was"),
             () -> assertTrue(CallOutcomes.shared().take("not-a-hire-session").isEmpty(), "CONTROL: a session that is no running hire was kept"));
     }
