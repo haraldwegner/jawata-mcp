@@ -82,6 +82,27 @@ class FindQualityIssueExcludePathsTest {
 
     @SuppressWarnings("unchecked")
     @Test
+    @DisplayName("single kind: excludePaths applies to a scan that names its own result list too")
+    void excludePathsFiltersAScanThatNamesItsRows() {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", "reflection");
+        ToolResponse all = org.jawata.mcp.fixtures.Sweeps.run(tool, args.deepCopy());
+        assertTrue(all.isSuccess(), () -> "got: " + all.getError());
+        List<Map<String, Object>> before = (List<Map<String, Object>>) ((Map<String, Object>) all.getData()).get("reflectionCalls");
+        assertTrue(before.stream().anyMatch(c -> String.valueOf(c.get("filePath")).contains("DiAndReflectionPatterns")),
+            "CONTROL: the fixture's reflection calls must be found before they can be excluded");
+
+        args.putArray("excludePaths").add("DiAndReflectionPatterns");
+        ToolResponse filtered = org.jawata.mcp.fixtures.Sweeps.run(tool, args);
+
+        assertTrue(filtered.isSuccess(), () -> "got: " + filtered.getError());
+        List<Map<String, Object>> after = (List<Map<String, Object>>) ((Map<String, Object>) filtered.getData()).get("reflectionCalls");
+        assertTrue(after.stream().noneMatch(c -> String.valueOf(c.get("filePath")).contains("DiAndReflectionPatterns")),
+            "excluded path must not appear; got: " + after);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
     @DisplayName("single kind: excludePaths applies to a plain kind run too")
     void excludePathsFiltersSingleKind() {
         ObjectNode args = mapper.createObjectNode();

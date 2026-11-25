@@ -86,6 +86,12 @@ public final class FilesTool implements Tool {
     @Override
     public ToolResponse execute(JsonNode arguments) {
         String action = arguments.path("action").asText("");
+        String named = "search".equals(action) ? "folder" : "path";
+        String place = arguments.path(named).asText("");
+        // The access check judges a relative path in a workspace folder, and this tool would open it in the engine's own folder.
+        if (!place.isBlank() && !Path.of(place).isAbsolute()) {
+            return ToolResponse.invalidParameter(named, "'" + place + "' is not an absolute path; give the whole path from the root");
+        }
         try {
             return switch (action) {
                 case "read" -> read(arguments);

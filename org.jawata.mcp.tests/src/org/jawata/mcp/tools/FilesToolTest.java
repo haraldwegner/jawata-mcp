@@ -207,6 +207,42 @@ class FilesToolTest {
     }
 
     @Test
+    @DisplayName("28h second review: a relative path is refused, since the access check judges it in a workspace folder and this tool would open it in the engine's own folder")
+    void aRelativePathIsRefused() throws Exception {
+        Path stray = Path.of("jawata-relative-probe.md");
+        try {
+            ToolResponse written = call("write", Map.of("path", stray.toString(), "content", "x"));
+            ToolResponse read = call("read", Map.of("path", stray.toString()));
+            ToolResponse edited = call("edit", Map.of("path", stray.toString(), "oldText", "x", "newText", "y"));
+            ToolResponse searched = call("search", Map.of("folder", ".", "pattern", "x"));
+
+            org.junit.jupiter.api.Assertions.assertAll(
+                () -> assertFalse(Files.exists(stray), "a relative path was written into the engine's own folder"),
+                () -> assertEquals("INVALID_PARAMETER", written.isSuccess() ? "written" : written.getError().getCode(), "write"),
+                () -> assertEquals("INVALID_PARAMETER", read.isSuccess() ? "read" : read.getError().getCode(), "read"),
+                () -> assertEquals("INVALID_PARAMETER", edited.isSuccess() ? "edited" : edited.getError().getCode(), "edit"),
+                () -> assertEquals("INVALID_PARAMETER", searched.isSuccess() ? "searched" : searched.getError().getCode(), "search"));
+        } finally {
+            Files.deleteIfExists(stray);
+        }
+    }
+
+    @Test
+    @DisplayName("28h second review: a link named like a document that leads to code is code, so neither a write nor an edit changes it")
+    void aLinkNamedLikeADocumentDoesNotChangeCode(@TempDir Path folder) throws Exception {
+        Path source = Files.writeString(folder.resolve("Foo.java"), "class Foo {}\n");
+        Path link = Files.createSymbolicLink(folder.resolve("notes.md"), source);
+
+        ToolResponse written = call("write", Map.of("path", link.toString(), "content", "x"));
+        ToolResponse edited = call("edit", Map.of("path", link.toString(), "oldText", "class Foo", "newText", "class Bar"));
+
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertFalse(written.isSuccess(), "code was written through a link named notes.md"),
+            () -> assertFalse(edited.isSuccess(), "code was edited through a link named notes.md"),
+            () -> assertEquals("class Foo {}\n", Files.readString(source), "the source file changed"));
+    }
+
+    @Test
     @DisplayName("28h D57 (j): the tool says it changes no code, so a seat that changes none may carry it")
     void itChangesNoCode() {
         assertFalse(files.changesCode());

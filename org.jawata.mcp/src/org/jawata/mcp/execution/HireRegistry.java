@@ -311,6 +311,8 @@ public final class HireRegistry {
         private final java.util.concurrent.LinkedBlockingQueue<Event> reports = new java.util.concurrent.LinkedBlockingQueue<>();
         /** The plan ids of this lead's hires that are out. A set, so a report of a hire never counted takes nothing off. */
         private final java.util.Set<String> out = ConcurrentHashMap.newKeySet();
+        /** The plan ids whose report has come, so a "started" event told after the report does not count the hire as out again; guarded by this inbox. */
+        private final java.util.Set<String> reported = new java.util.HashSet<>();
         private final Runnable unsubscribe;
         /** The reports the lead's run has taken and not yet said were put in front of its brain; guarded by this inbox. */
         private final List<Event> taken = new java.util.ArrayList<>();
@@ -324,9 +326,16 @@ public final class HireRegistry {
             inboxes.put(leadId, this);
             this.unsubscribe = subscribe(event -> {
                 if (leadId.equals(event.leadId()) && event.background() && "started".equals(event.kind())) {
-                    out.add(event.planId());
+                    expect(event.planId());
                 }
             });
+        }
+
+        /** Counts this hire as out, unless its report has already come. */
+        private synchronized void expect(String planId) {
+            if (!reported.contains(planId)) {
+                out.add(planId);
+            }
         }
 
         /**
@@ -337,6 +346,7 @@ public final class HireRegistry {
             if (closed) {
                 return false;
             }
+            reported.add(finished.planId());
             out.remove(finished.planId());
             reports.add(finished);
             return true;
@@ -482,21 +492,24 @@ public final class HireRegistry {
         if (planId == null || planId.isEmpty() || sessionId == null || sessionId.isEmpty()) {
             return Optional.empty();
         }
-        String before = issuedBy.put(planId, sessionId);
-        if (before == null || before.equals(sessionId)) {
-            return Optional.empty();
-        }
-        List<Event> held = waiting.get(rootOf(before));
-        if (held == null) {
-            return Optional.empty();
-        }
-        for (Event kept : held) {
-            if (kept.planId().equals(planId) && held.remove(kept)) {
-                return Optional.of(new Event(kept.kind(), kept.planId(), kept.name(), kept.seat(), kept.brief(), sessionId, kept.answer(),
-                    kept.background()));
+        // Under the routing lock, so a report is either already kept when this looks, or is routed to this chat afterwards.
+        synchronized (routing) {
+            String before = issuedBy.put(planId, sessionId);
+            if (before == null || before.equals(sessionId)) {
+                return Optional.empty();
             }
+            List<Event> held = waiting.get(rootOf(before));
+            if (held == null) {
+                return Optional.empty();
+            }
+            for (Event kept : held) {
+                if (kept.planId().equals(planId) && held.remove(kept)) {
+                    return Optional.of(new Event(kept.kind(), kept.planId(), kept.name(), kept.seat(), kept.brief(), sessionId, kept.answer(),
+                        kept.background()));
+                }
+            }
+            return Optional.empty();
         }
-        return Optional.empty();
     }
 
     /**
@@ -539,7 +552,7 @@ public final class HireRegistry {
             // Closed and its report not yet kept: it is counted as out, so the lead waits for the report record() is about to bring.
             Inbox inbox = inboxes.get(leadId);
             if (toTell == null && inbox != null && backgroundPlans.contains(planId)) {
-                inbox.out.add(planId);
+                inbox.expect(planId);
             }
         }
         if (toTell != null) {

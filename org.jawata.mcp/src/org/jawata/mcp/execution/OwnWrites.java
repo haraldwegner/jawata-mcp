@@ -110,14 +110,18 @@ public final class OwnWrites {
         return false;
     }
 
-    /** Whether a path is a document, a data file or a picture, which the main seat and a lead may write, and not code. */
+    /**
+     * Whether a path is a document, a data file or a picture, which the main seat and a lead may write, and not code: judged as spelled and as
+     * the place it really is, so a link named notes.md that leads to code is code.
+     */
     public static boolean isDocument(String path) {
-        return DOCUMENT_ENDINGS.contains(endingOf(path)) && !tellsAnAgentWhatItMayDo(path);
+        return DOCUMENT_ENDINGS.contains(endingOf(path)) && DOCUMENT_ENDINGS.contains(endingOf(realPathOf(path).orElse(path)))
+            && !tellsAnAgentWhatItMayDo(path);
     }
 
     /** Whether a path is a document of the kinds above that is a text: the ones the files tool writes and edits. */
     public static boolean isTextDocument(String path) {
-        return isDocument(path) && !BINARY_ENDINGS.contains(endingOf(path));
+        return isDocument(path) && !BINARY_ENDINGS.contains(endingOf(path)) && !BINARY_ENDINGS.contains(endingOf(realPathOf(path).orElse(path)));
     }
 
     /** The ending of a file's name in lower case, or empty when it has none (a dot that starts the name is no ending). */

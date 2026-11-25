@@ -335,6 +335,36 @@ class LeadLoopTest {
     }
 
     @Test
+    @DisplayName("28h-C27-1: a hire that closes between the lead naming it and the lead's inbox hearing of it is not counted as out for ever")
+    void aHireClosingWhileTheLeadTakesItOverIsNotCountedForEver() {
+        String lead = "c27-lead-race";
+        HireRegistry.Registration[] hire = new HireRegistry.Registration[1];
+        // Subscribed before the inbox, so it hears the hire named first: the hire ends and its report is kept before the inbox hears the name.
+        Runnable ending = HireRegistry.shared().subscribe(event -> {
+            if (lead.equals(event.leadId()) && "started".equals(event.kind()) && hire[0] != null) {
+                HireRegistry.Registration closing = hire[0];
+                hire[0] = null;
+                closing.close();
+                HireRegistry.shared().record("developer", "race c27-child-r", JSON.createObjectNode().put("plan", "c27-child-r").put("name", "Joe"));
+            }
+        });
+        try (HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead)) {
+            HireRegistry.shared().nextHireIsBackground();
+            hire[0] = HireRegistry.shared().begin("developer", "race c27-child-r", "c27-server-session-r");
+            HireRegistry.shared().planOpened("c27-child-r");
+
+            HireRegistry.shared().startedBy("c27-child-r", lead);
+
+            assertAll(
+                () -> assertTrue(hire[0] == null, "CONTROL: the hire never ended while it was being taken over"),
+                () -> assertFalse(watching.isEmpty(), "the report did not reach the lead's inbox"),
+                () -> assertEquals(0, watching.outstanding(), "a reported hire is counted as out for ever, so the lead waits on nothing"));
+        } finally {
+            ending.run();
+        }
+    }
+
+    @Test
     @DisplayName("28h-C27-1: a hire that had already ended when the lead's brain named it still reaches that lead's brain")
     void aHireThatEndedBeforeTheLeadLearnedOfItIsStillReportedToIt() throws Exception {
         String lead = "c27-lead-late";

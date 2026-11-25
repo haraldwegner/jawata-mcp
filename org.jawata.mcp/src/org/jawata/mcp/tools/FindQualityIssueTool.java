@@ -664,14 +664,16 @@ public class FindQualityIssueTool extends AbstractTool {
     @SuppressWarnings("unchecked")
     private static ToolResponse filterExcludedPaths(ToolResponse r, JsonNode arguments) {
         List<String> excludes = excludePathsOf(arguments);
-        if (excludes.isEmpty() || r == null || !r.isSuccess()
-                || !(r.getData() instanceof Map<?, ?> raw)
-                || !(raw.get("findings") instanceof List<?> fs)) {
+        if (excludes.isEmpty() || r == null || !r.isSuccess() || !(r.getData() instanceof Map<?, ?> raw)) {
             return r;
         }
         Map<String, Object> data = new LinkedHashMap<>((Map<String, Object>) raw);
+        String listKey = resultListKey(data);
+        if (!(data.get(listKey) instanceof List<?> fs)) {
+            return r;
+        }
         List<Object> kept = keepUnexcluded((List<Object>) fs, excludes);
-        data.put("findings", kept);
+        data.put(listKey, kept);
         if (data.get("count") instanceof Number) {
             data.put("count", kept.size());
         }
