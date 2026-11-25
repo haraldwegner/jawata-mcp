@@ -153,6 +153,10 @@ public class SearchService {
      */
     public ReferenceSearch searchReferences(IJavaElement element, int limitTo, int maxResults)
             throws CoreException {
+        return referencesIn(scope, element, limitTo, maxResults);
+    }
+
+    private ReferenceSearch referencesIn(IJavaSearchScope in, IJavaElement element, int limitTo, int maxResults) throws CoreException {
         SearchPattern pattern = SearchPattern.createPattern(
             element,
             limitTo
@@ -168,7 +172,7 @@ public class SearchService {
         engine.search(
             pattern,
             new SearchParticipant[] { SearchEngine.getDefaultSearchParticipant() },
-            scope,
+            in,
             requestor,
             new NullProgressMonitor()
         );
@@ -176,6 +180,14 @@ public class SearchService {
         log.debug("Reference search for {} found {} results ({} kept)",
             element.getElementName(), requestor.getTotalSeen(), requestor.getMatches().size());
         return new ReferenceSearch(requestor.getMatches(), requestor.getTotalSeen());
+    }
+
+    /**
+     * The references to an element in the loaded projects' own sources; a use inside a jar or the JDK is not looked for, so the answer holds only
+     * code that can be changed, and the search does not walk every library.
+     */
+    public List<SearchMatch> findSourceReferences(IJavaElement element, int maxResults) throws CoreException {
+        return referencesIn(sourceScope, element, IJavaSearchConstants.REFERENCES, maxResults).matches();
     }
 
     /**

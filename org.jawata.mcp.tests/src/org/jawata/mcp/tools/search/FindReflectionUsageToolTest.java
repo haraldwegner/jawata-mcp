@@ -47,6 +47,16 @@ class FindReflectionUsageToolTest {
         Map<String, Object> data = getData(response);
         int totalCalls = (int) data.get("totalCalls");
         assertTrue(totalCalls > 0, "Should find reflection calls in DiAndReflectionPatterns.java");
+        assertNull(data.get("notSearched"), "CONTROL: a healthy project has a use that is never searched for: " + data.get("notSearched"));
+        // The fixture's own calls, each in its file. Searched by a signature that never matched, the project reported only hits inside jars.
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> calls = (List<Map<String, Object>>) data.get("reflectionCalls");
+        java.util.Set<String> inTheFixture = calls.stream()
+            .filter(call -> String.valueOf(call.get("filePath")).endsWith("DiAndReflectionPatterns.java"))
+            .map(call -> String.valueOf(call.get("reflectionMethod")))
+            .collect(java.util.stream.Collectors.toCollection(java.util.TreeSet::new));
+        assertEquals(new java.util.TreeSet<>(List.of("Class.forName", "Class.getDeclaredConstructor", "Class.getDeclaredField", "Class.getMethod",
+            "Constructor.newInstance", "Field.get", "Method.invoke")), inTheFixture);
     }
 
     @Test
@@ -61,10 +71,37 @@ class FindReflectionUsageToolTest {
         List<Map<String, Object>> calls = (List<Map<String, Object>>) getData(response).get("reflectionCalls");
         // REL44-22: asserted, not guarded — the fixture uses reflection, and an `if` let a scan
         // that found none pass the label check this test is named for.
-        assertFalse(calls.isEmpty(), "the fixture's reflection calls must be found");
+        assertFalse(calls.isEmpty(), "the fixture's reflection calls must be found; not searched: " + getData(response).get("notSearched"));
         Map<String, Object> firstCall = calls.get(0);
         assertNotNull(firstCall.get("reflectionMethod"), "Should include reflection method label");
         // filePath and line may be absent if match is in a binary JAR
+    }
+
+    @Test
+    @DisplayName("a use that could not be searched for is named with why, so nothing found is not read from a search that never ran")
+    void aScanThatCouldNotLookSaysSo() throws Exception {
+        org.jawata.core.IJdtService real = helper.loadProject("simple-maven");
+        org.jawata.core.IJdtService failing = (org.jawata.core.IJdtService) java.lang.reflect.Proxy.newProxyInstance(
+            org.jawata.core.IJdtService.class.getClassLoader(), new Class<?>[] { org.jawata.core.IJdtService.class }, (proxy, method, callArgs) -> {
+                if ("findType".equals(method.getName()) && "java.lang.Class".equals(callArgs[0])) {
+                    throw new IllegalStateException("the model did not answer");
+                }
+                if ("findType".equals(method.getName()) && "java.lang.reflect.Method".equals(callArgs[0])) {
+                    return null;
+                }
+                try {
+                    return method.invoke(real, callArgs);
+                } catch (java.lang.reflect.InvocationTargetException thrown) {
+                    throw thrown.getCause();
+                }
+            });
+
+        ToolResponse response = new FindReflectionUsageTool(() -> failing).execute(objectMapper.createObjectNode());
+
+        assertTrue(response.isSuccess());
+        String notSearched = String.valueOf(getData(response).get("notSearched"));
+        assertTrue(notSearched.contains("Class.forName") && notSearched.contains("the model did not answer"), notSearched);
+        assertTrue(notSearched.contains("Method.invoke") && notSearched.contains("not found"), notSearched);
     }
 
     // ========== Summary Tests ==========
