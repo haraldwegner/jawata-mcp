@@ -460,6 +460,28 @@ class AgentContractLevel1Test {
     }
 
     @Test
+    @DisplayName("28h z79: an agent set because a window reopens its last conversation is not stored as the person's default, which a pick of theirs is")
+    void aRestoredAgentIsNotStoredAsTheDefault(@TempDir Path dir) throws Exception {
+        Wire wire = new Wire(List.of());
+        Path storeFile = dir.resolve("seats-brains");
+        org.jawata.mcp.execution.SeatBrains.install(storeFile);
+        try {
+            ObjectNode restore = JSON.createObjectNode().put("sessionId", wire.session).put("configId", AcpServer.PRINCIPAL_BRAIN).put("value", "claude-code");
+            restore.putObject("_meta").put("jawata/restore", true);
+            JsonNode answered = wire.send(JsonRpcMessage.request(91, "session/set_config_option", restore));
+            String afterRestore = Files.exists(storeFile) ? Files.readString(storeFile) : "";
+            wire.send(JsonRpcMessage.request(92, "session/set_config_option",
+                JSON.createObjectNode().put("sessionId", wire.session).put("configId", AcpServer.PRINCIPAL_BRAIN).put("value", "claude-code")));
+
+            assertTrue(answered.has("result"), "CONTROL: the restoring set was refused: " + answered);
+            assertFalse(afterRestore.contains("main="), "reopening a conversation changed the person's default agent: " + afterRestore);
+            assertTrue(Files.exists(storeFile) && Files.readString(storeFile).contains("main=claude-code"), "CONTROL: the person's own pick was not stored");
+        } finally {
+            org.jawata.mcp.execution.SeatBrains.uninstall();
+        }
+    }
+
+    @Test
     @DisplayName("D53 (i): the principal's brain is one select option in the category model, no per-seat option is offered, and setting it is answered with the options as they now stand")
     void thePrincipalsBrainIsTheOnlyBrainOption() {
         Wire wire = new Wire(List.of());

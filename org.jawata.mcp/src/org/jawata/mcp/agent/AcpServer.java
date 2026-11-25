@@ -542,7 +542,7 @@ public final class AcpServer {
         }
         String configId = textField(params, "configId");
         if (PRINCIPAL_BRAIN.equals(configId)) {
-            return setPrincipalBrain(id, session, textField(params, "value"), from);
+            return setPrincipalBrain(id, session, textField(params, "value"), from, params.path("_meta").path("jawata/restore").asBoolean(false));
         }
         if (!AUTONOMY.equals(configId)) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Unknown config option: " + configId, null);
@@ -565,8 +565,10 @@ public final class AcpServer {
     /**
      * The person's choice of the principal's brain (D53 (i)): a brain the registry offers, from the next message. The answer carries the options
      * as they now stand, because a host that sets an option is answered in its own response.
+     * @param restoring set when a window reopens its last conversation (28h z79): the session goes onto that conversation's agent, and the
+     *                  person's stored default, which they did not change, is left alone
      */
-    private JsonRpcMessage setPrincipalBrain(Object id, PrincipalSession session, String value, Channel from) {
+    private JsonRpcMessage setPrincipalBrain(Object id, PrincipalSession session, String value, Channel from, boolean restoring) {
         if (from != Channel.HOST) {
             return JsonRpcMessage.errorResponse(id, NOT_PERMITTED,
                 "Only the person chooses the principal's brain; a message from a hired agent does not change it.", null);
@@ -584,7 +586,7 @@ public final class AcpServer {
         if (!model.isEmpty() && !brain.useModel(model)) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, picked + " does not offer the model " + model, null);
         }
-        org.jawata.mcp.execution.SeatBrains.installed().ifPresent(store -> {
+        org.jawata.mcp.execution.SeatBrains.installed().filter(store -> !restoring).ifPresent(store -> {
             try {
                 // 28h z78: a pick that names no model is kept too, or the next conversation starts the agent chosen before it.
                 tellSeatChoice(model.isEmpty() ? store.keepPick("main", picked, brainRegistry.get()) : store.save("main", picked, model, brainRegistry.get()));
