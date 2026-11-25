@@ -314,6 +314,22 @@ class LeadLoopTest {
     }
 
     @Test
+    @DisplayName("28h-C27-1: a hire that had already ended when the lead's brain named it still reaches that lead's brain")
+    void aHireThatEndedBeforeTheLeadLearnedOfItIsStillReportedToIt() throws Exception {
+        String lead = "c27-lead-late";
+        HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead);
+        aHireIsOut("c27-server-session-c", "c27-child-c", "the code is written", 0, null);
+        children.get(children.size() - 1).join(5_000);
+
+        HiredBrain.Outcome reported = runAsLead("STARTHIRE:c27-child-c", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, watching);
+
+        assertAll(
+            () -> assertTrue(reported.text().contains("report read: Hire: Joe · developer (c27-child-c)"),
+                "the report of a hire that ended first was lost: " + reported.text()),
+            () -> assertEquals(0, watching.outstanding(), "the count of hires out was left wrong, so a later hire would not be waited for"));
+    }
+
+    @Test
     @DisplayName("28h D57 (l): a hired lead's session is opened with its brain's own editors and shell withheld, as the principal's is, since a lead plans and hires and changes no code")
     void aLeadRunsWithItsOwnEditorsAndShellWithheld() throws Exception {
         String lead = "d57l-lead";

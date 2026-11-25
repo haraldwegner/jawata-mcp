@@ -529,7 +529,23 @@ public final class HireRegistry {
         }
         for (Event kept : held) {
             if (kept.planId().equals(planId) && held.remove(kept)) {
-                tell(new Event(kept.kind(), kept.planId(), kept.name(), kept.seat(), kept.brief(), leadId, kept.answer(), kept.background()));
+                Event ended = new Event(kept.kind(), kept.planId(), kept.name(), kept.seat(), kept.brief(), leadId, kept.answer(), kept.background());
+                // Telling is not giving: only an offer puts a report in front of the lead's brain, and without one the report of a hire that ended
+                // before the lead learned it was its own was lost. That hire was never counted as out under this lead, so it is counted just before
+                // the offer takes it off again. Where no inbox takes it, it is held as any report no lead read is.
+                Inbox inbox = inboxes.get(leadId);
+                if (inbox != null) {
+                    inbox.out.incrementAndGet();
+                }
+                if (inbox == null || !inbox.offer(ended)) {
+                    if (inbox != null) {
+                        inbox.out.decrementAndGet();
+                    }
+                    if (!heldForItsLead(leadId, List.of(ended))) {
+                        keepForItsChat(ended);
+                    }
+                }
+                tell(ended);
                 return;
             }
         }
