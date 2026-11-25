@@ -584,7 +584,8 @@ public final class AcpServer {
         }
         org.jawata.mcp.execution.SeatBrains.installed().ifPresent(store -> {
             try {
-                tellSeatChoice(store.save("main", picked, model, brainRegistry.get()));
+                // 28h z78: a pick that names no model is kept too, or the next conversation starts the agent chosen before it.
+                tellSeatChoice(model.isEmpty() ? store.keepPick("main", picked, brainRegistry.get()) : store.save("main", picked, model, brainRegistry.get()));
             } catch (RuntimeException failed) {
                 java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.WARNING,
                     "the principal's pick was not stored for the next hire of main", failed);

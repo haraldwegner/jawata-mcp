@@ -29,7 +29,8 @@ final class ToolPaths {
         "workingDirectory", "directory", "dir", "file", "root", "folder", "boardFile", "logFile", "alarmFile", "hsErrFile", "corePath",
         "execFile", "classFile", "launcherPath", "iniPath", "workspaceArea", "configArea");
     private static final Set<String> PATH_LIST_KEYS = Set.of("paths", "files", "filePaths", "extraClasspath");
-    private static final Set<String> SEAT_FILE_KEYS = Set.of("seatFile", "observerSeatFile");
+    /** A seat's file, or the folder of seat files a review sweep reads ({@code seats}): places the host's own seats folder may allow. */
+    private static final Set<String> SEAT_FILE_KEYS = Set.of("seatFile", "observerSeatFile", "seats");
 
     /**
      * What a call names.

@@ -770,6 +770,36 @@ class PrincipalBrainTest {
         side.close();
     }
 
+    @Test
+    @DisplayName("28h z78: a stored choice that cannot be read is said, and neither the seat file's agent nor the setting's is started in its place")
+    void anUnreadableStoredChoiceIsSaidNotReplaced() {
+        org.jawata.mcp.execution.SeatBrains.uninstall();
+        PrincipalBrain brain = PrincipalBrain.over(engineWith(Map.of(
+            Hirer.BRAINS_SETTING, "{\"cursor\":" + fakeOffering("x=Xray") + "}",
+            PrincipalBrain.SETTING, fakeOffering("x=Xray"),
+            org.jawata.mcp.engine.SettingKeys.SEATS_BRAINS.name(), "this is not a seat map")), dir);
+        List<String> said = new ArrayList<>();
+
+        brain.answer("hello", said::add);
+
+        String answer = String.join("", said);
+        assertTrue(answer.contains("could not be read") && answer.contains(org.jawata.mcp.execution.SeatBrains.WHERE), answer);
+        brain.close();
+    }
+
+    @Test
+    @DisplayName("28h z78: a stored choice that names no model starts on the model the brain registry names for that brain, as a hire does")
+    void aStoredChoiceWithNoModelTakesTheRegistrys() {
+        org.jawata.mcp.execution.SeatBrains.uninstall();
+        String offering = fakeOffering("x=Xray,y=Yankee");
+        PrincipalBrain brain = PrincipalBrain.over(engineWith(Map.of(
+            Hirer.BRAINS_SETTING, "{\"cursor\":" + offering.substring(0, offering.length() - 1) + ",\"model\":\"Yankee\"}}",
+            org.jawata.mcp.engine.SettingKeys.SEATS_BRAINS.name(), "main=cursor")), dir);
+
+        assertEquals("y", ask(brain, "WHICHMODEL", new ArrayList<>()));
+        brain.close();
+    }
+
     private static String inJson(String text) {
         return text.replace("\\", "\\\\");
     }

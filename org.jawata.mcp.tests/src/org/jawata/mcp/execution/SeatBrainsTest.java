@@ -182,6 +182,21 @@ class SeatBrainsTest {
     }
 
     @Test
+    @DisplayName("28h z78: the chat's pick of a brain with no model, where the registry names none, is kept for the next conversation; a hire of it is still refused")
+    void aPickWithNoModelIsKeptAndAHireOfItIsStillRefused() throws Exception {
+        Path dir = java.nio.file.Files.createTempDirectory("seat-brains-pick-");
+        SeatBrains.Store store = SeatBrains.Store.open(dir.resolve("choices"));
+        String noModel = "{\"claude-code\":{\"command\":[\"x\"]},\"cursor\":{\"command\":[\"y\"]}}";
+
+        SeatBrains.Notice notice = store.keepPick("main", "cursor", noModel);
+
+        assertEquals("cursor", SeatBrains.listed(store.text()).get(0).brain());
+        assertEquals("", notice.model());
+        assertThrows(IllegalArgumentException.class, () -> store.choose(noModel, "main"), "a hire with no model was let through");
+        assertThrows(IllegalArgumentException.class, () -> store.keepPick("main", "grok", noModel), "CONTROL: a brain the registry does not offer was kept");
+    }
+
+    @Test
     @DisplayName("a save tells each listener the pair that was stored")
     void aSaveTellsTheListener() throws Exception {
         Path dir = java.nio.file.Files.createTempDirectory("seat-brains-hear-");

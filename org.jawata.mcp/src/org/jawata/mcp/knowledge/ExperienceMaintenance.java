@@ -263,6 +263,13 @@ public final class ExperienceMaintenance {
                 skipped.add(Map.of("source", f.toString(), "reason", "max-files (" + maxFiles + ")"));
                 continue;
             }
+            // 28h z70: a note may link anywhere. A linked file outside the folders being loaded is read only where the access policy of the call
+            // allows it, or recall would return a file the agent may not open.
+            if (item.depth() > 0 && rootDirs.stream().noneMatch(root -> f.toAbsolutePath().normalize().startsWith(root.toAbsolutePath().normalize()))
+                    && !org.jawata.mcp.access.AccessCheck.openable().test(f)) {
+                skipped.add(Map.of("source", f.toString(), "reason", "access policy: a linked file outside the folders being loaded"));
+                continue;
+            }
             String content;
             try {
                 long size = Files.size(f);

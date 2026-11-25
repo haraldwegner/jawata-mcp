@@ -278,6 +278,10 @@ public final class SeatBrains {
          */
         public Notice save(String seat, String brain, String model, String registry) {
             Choice checked = SeatBrains.choose(encode(seat) + "=" + encode(brain) + (model == null || model.isBlank() ? "" : "/" + encode(model)), registry, seat);
+            return publish(seat, checked);
+        }
+
+        private Notice publish(String seat, Choice checked) {
             String next;
             synchronized (lock) {
                 // An unreadable file refuses a hire. A save replaces it: the old text could not be merged, so the new value starts from this seat.
@@ -313,6 +317,21 @@ public final class SeatBrains {
             } catch (IOException failed) {
                 throw new IllegalStateException("the seat choices could not be saved: " + failed.getMessage(), failed);
             }
+        }
+
+        /**
+         * Keeps the brain the person picked when no model is known for it (28h z78). Where the registry names a model this is {@link #save}; where
+         * it names none the brain is stored alone, so the next conversation starts on it, and a hire of such an entry is still refused for lack of a
+         * model. A brain the registry does not offer is not stored.
+         */
+        public Notice keepPick(String seat, String brain, String registry) {
+            Optional<String> label = SeatHire.Brain.named(brain).map(SeatHire.Brain::label);
+            Optional<Hirer.Brain> offered = label.flatMap(name -> Hirer.brainIn(registry == null ? "" : registry, name));
+            if (offered.isEmpty()) {
+                throw new IllegalArgumentException("'" + brain + "' is not a brain the registry offers. " + WHERE);
+            }
+            String named = offered.get().model();
+            return named != null && !named.isBlank() ? save(seat, brain, "", registry) : publish(seat, new Choice(label.get(), "", false));
         }
     }
 }

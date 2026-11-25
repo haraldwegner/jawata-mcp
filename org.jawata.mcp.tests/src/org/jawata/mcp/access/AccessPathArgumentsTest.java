@@ -96,6 +96,30 @@ class AccessPathArgumentsTest {
     }
 
     @Test
+    @DisplayName("the seats folder a review sweep reads is a place, and one the host's own seats folder may allow")
+    void theSeatsFolderArgumentIsChecked() {
+        ObjectNode arguments = new ObjectMapper().createObjectNode().put("kind", "review_sweep").put("seats", "/somewhere/seats");
+
+        ToolPaths.Named named = ToolPaths.of(arguments, List.of(), null);
+
+        assertEquals(List.of(Path.of("/somewhere/seats")), named.places());
+        assertEquals(Set.of(Path.of("/somewhere/seats")), named.seatFiles());
+    }
+
+    @Test
+    @DisplayName("a link followed by .. is judged where the operating system opens it, beside the link's target and not beside the link")
+    void aLinkFollowedByDotDotIsJudgedBesideItsTarget(@org.junit.jupiter.api.io.TempDir Path temp) throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeFalse(System.getProperty("os.name").startsWith("Windows"),
+            "Windows resolves .. before it follows a link");
+        Path root = temp.toRealPath();
+        Path inside = java.nio.file.Files.createDirectories(root.resolve("inside"));
+        Path target = java.nio.file.Files.createDirectories(root.resolve("outside/target"));
+        java.nio.file.Files.createSymbolicLink(inside.resolve("lnk"), target);
+
+        assertEquals(root.resolve("outside/x"), PlaceNames.normalise(inside.resolve("lnk/../x")));
+    }
+
+    @Test
     @DisplayName("a classpath is a list of places, and each of them is put to the policy")
     void eachPlaceOfAClasspathIsChecked() {
         ObjectNode arguments = new ObjectMapper().createObjectNode()

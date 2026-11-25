@@ -79,6 +79,33 @@ class ExperienceMaintenanceTest {
         assertEquals(2, ((List<?>) doc.get("links")).size());
     }
 
+    /** 28h z70: a note in an allowed folder linking out of it read a file the agent may not open, and recall then returned it. */
+    @Test
+    void load_does_not_follow_a_link_out_of_the_allowed_folders(@TempDir Path temp) throws IOException {
+        Path root = temp.toRealPath();
+        Path notes = Files.createDirectories(root.resolve("notes"));
+        Path secret = Files.createDirectories(root.resolve("secret"));
+        Files.writeString(secret.resolve("s.md"), "---\nname: s\ndescription: the secret body stays out of the store\ntype: reference\n---\nbody");
+        writeMemory(notes, "ok.md", "name: ok\ndescription: an allowed note is still loaded through the index\ntype: reference", "body");
+        Files.writeString(notes.resolve("MEMORY.md"), "# index\n\n- [secret](../secret/s.md)\n- [ok](ok.md)\n");
+        Path policy = root.resolve("access-policy.json");
+        Files.writeString(policy, "{\"allow\":[\"${workspace}\"],\"deny\":[]}");
+        org.jawata.mcp.access.AccessCheck access =
+            new org.jawata.mcp.access.AccessCheck(policy, session -> List.of(notes), root.resolve("home"), root.resolve("scratch"));
+
+        Map<String, Object> report = access.whileServing("s", () -> {
+            try {
+                return maint(fqn -> null).load(notes.resolve("MEMORY.md"));
+            } catch (Exception failed) {
+                throw new IllegalStateException(failed);
+            }
+        });
+
+        assertEquals(1, report.get("loaded"), String.valueOf(report));
+        assertTrue(String.valueOf(report.get("skipped")).contains("s.md") && String.valueOf(report.get("skipped")).contains("access policy"),
+            "the link out was not reported as refused: " + report);
+    }
+
     @Test
     void load_is_idempotent_per_source(@TempDir Path dir) throws IOException {
         writeMemory(dir, "a.md", "name: n\ndescription: this note carries a body worth keeping\ntype: reference", "body");

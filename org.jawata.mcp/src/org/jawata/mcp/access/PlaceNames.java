@@ -25,7 +25,9 @@ final class PlaceNames {
     }
 
     static Path normalise(Path place) {
-        Path absolute = place.toAbsolutePath().normalize();
+        // Not normalised first (28h z70): taking "lnk/.." out by its text judges a place beside the link, where the system opens one beside the
+        // link's target. The real-path call below follows the link before the "..", and what does not exist yet is normalised at the end.
+        Path absolute = place.toAbsolutePath();
         Path existing = absolute;
         Deque<Path> tail = new ArrayDeque<>();
         Path resolved = null;
@@ -48,6 +50,7 @@ final class PlaceNames {
                 out = out.resolve(name);
             }
         }
+        out = out.normalize();
         return foldsCase() ? Path.of(out.toString().toLowerCase(Locale.ROOT)) : out;
     }
 

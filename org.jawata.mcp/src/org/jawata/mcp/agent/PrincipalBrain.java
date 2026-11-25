@@ -133,14 +133,14 @@ public final class PrincipalBrain implements AgentBrain {
     public static PrincipalBrain over(EngineApi engine, Path workingDirectory) {
         // 28h z78: the choice the Seats page shows comes first, the one a hire reads. Only where nothing is stored do the seat file and then
         // the host setting decide; a stored brain that cannot be started is said, never replaced by another.
-        Optional<SeatBrains.Notice> stored = storedChoice(engine, "main");
+        Optional<Stored> stored = storedChoice(engine, "main");
         Optional<AcpBrainSession.Program> seatProgram = stored.isPresent() ? Optional.empty() : programOfSeat(engine, "main");
         Optional<AcpBrainSession.Program> program = stored.isPresent() ? programNamed(engine, stored.get().brain())
             : seatProgram.or(() -> engine.settings().get(SETTING).flatMap(AcpBrainSession::parseProgram));
         SeatPrompts seats = new SeatPrompts(() -> engine.settings().get(ScheduledHires.SEATS_SETTING).filter(folder -> !folder.isBlank()).map(Path::of));
         // The model the setting names beside its command line is the principal's own; a brain the seat file chose is not the one it describes,
         // so with a brain from the seat file the model is the one that file names beside it (D56 (f)), or the brain's own default.
-        Optional<String> model = stored.isPresent() ? stored.map(SeatBrains.Notice::model).filter(name -> !name.isBlank())
+        Optional<String> model = stored.isPresent() ? stored.map(Stored::model).filter(name -> !name.isBlank())
             : seatProgram.isPresent() ? seats.modelNamedBy("main")
             : engine.settings().get(SETTING).flatMap(Hirer::brainOf).map(Hirer.Brain::model).filter(name -> !name.isBlank());
         SelfEndpoint self = engine.mcp().map(PrincipalBrain::endpointOf).orElse(null);
@@ -153,7 +153,7 @@ public final class PrincipalBrain implements AgentBrain {
             HiredBrain.Ceilings.of(Duration.ofMinutes(30)), () -> seats.text("main"));
         principal.preferredModel = model;
         if (stored.isPresent() && program.isEmpty()) {
-            principal.noBrain = unavailable(stored.get());
+            principal.noBrain = stored.get().cannot();
         }
         return principal;
     }
@@ -164,25 +164,41 @@ public final class PrincipalBrain implements AgentBrain {
      */
     public static PrincipalBrain forSide(EngineApi engine, Path workingDirectory) {
         PrincipalBrain principal = over(engine, workingDirectory);
-        Optional<SeatBrains.Notice> stored = storedChoice(engine, SIDE_SEAT);
+        Optional<Stored> stored = storedChoice(engine, SIDE_SEAT);
         Optional<AcpBrainSession.Program> side = stored.isPresent() ? programNamed(engine, stored.get().brain())
             : programOfSeat(engine, SIDE_SEAT).or(() -> principal.program);
         PrincipalBrain discussion = new PrincipalBrain(principal.host, side, principal.site, principal.self, principal.engineTools, principal.hirer,
             principal.ceilings);
-        discussion.preferredModel = stored.map(SeatBrains.Notice::model).filter(name -> !name.isBlank());
-        discussion.noBrain = stored.isPresent() ? unavailable(stored.get()) : principal.noBrain;
+        discussion.preferredModel = stored.map(Stored::model).filter(name -> !name.isBlank());
+        discussion.noBrain = stored.isPresent() ? stored.get().cannot() : principal.noBrain;
         return discussion;
     }
 
-    /** The choice the Seats page shows for {@code seat}, the one a hire reads; none when nothing readable is stored for it. */
-    private static Optional<SeatBrains.Notice> storedChoice(EngineApi engine, String seat) {
-        String text = SeatBrains.installed().map(SeatBrains.Store::text)
-            .orElseGet(() -> engine.settings().get(SettingKeys.SEATS_BRAINS.name()).orElse(""));
+    /** What is stored for one seat: the brain and model to start, and what the person is told when that brain cannot be started. */
+    private record Stored(String brain, String model, String cannot) {
+    }
+
+    /**
+     * The choice the Seats page shows for {@code seat}, read as a hire reads it: the brain under its own name, and the registry's model where the
+     * entry names none. None only when nothing is stored for the seat. A choice that cannot be read is answered with no brain and the sentence
+     * saying so, so that no other agent is started in its place (28h z78).
+     */
+    private static Optional<Stored> storedChoice(EngineApi engine, String seat) {
+        Optional<SeatBrains.Store> store = SeatBrains.installed();
+        // An opened store whose file cannot be read answers null, which is unreadable and not "nothing stored".
+        String text = store.isPresent() ? store.get().text() : engine.settings().get(SettingKeys.SEATS_BRAINS.name()).orElse("");
+        List<SeatBrains.Notice> rows;
         try {
-            return SeatBrains.listed(text).stream().filter(row -> row.seat().equals(seat) && !row.brain().isBlank()).findFirst();
+            rows = SeatBrains.listed(text);
         } catch (IllegalArgumentException unreadable) {
-            return Optional.empty();
+            return Optional.of(new Stored("", "", AgentFace.NO_BRAIN + " The stored agent choices could not be read. " + SeatBrains.WHERE));
         }
+        return rows.stream().filter(row -> row.seat().equals(seat) && !row.brain().isBlank()).findFirst().map(row -> {
+            String brain = SeatHire.Brain.named(row.brain()).map(SeatHire.Brain::label).orElse(row.brain());
+            String model = !row.model().isBlank() ? row.model()
+                : engine.settings().get(Hirer.BRAINS_SETTING).flatMap(registry -> Hirer.brainIn(registry, brain)).map(Hirer.Brain::model).orElse("");
+            return new Stored(brain, model, unavailable(row));
+        });
     }
 
     /** The program the brain registry starts {@code brain} with; none when there is no registry or it does not offer that brain. */
