@@ -248,6 +248,32 @@ class FindQualityIssueSummaryTest {
     }
 
     /**
+     * Three scans name their rows themselves (reflectionCalls, throwsDeclarations, catchBlocks), and a front door that does not know a name
+     * reports a total of zero while it holds the rows.
+     */
+    @org.junit.jupiter.params.ParameterizedTest(name = "summary counts kind={0} through its own result list")
+    @org.junit.jupiter.params.provider.CsvSource({"reflection,", "throws,java.io.IOException", "catches,java.io.IOException"})
+    @DisplayName("a scan that names its rows itself is summarised with their true count")
+    void aScanThatNamesItsRowsItselfIsCounted(String kind, String query) {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("kind", kind);
+        if (query != null) {
+            args.put("query", query);
+        }
+        Map<String, Object> unbounded = run(args.deepCopy());
+        String listKey = resultKeyOf(unbounded);
+        assertNotNull(listKey, kind + " returned no result list: " + unbounded.keySet());
+        int rows = ((List<?>) unbounded.get(listKey)).size();
+        assertTrue(rows > 0, kind + " found nothing on the fixture, so a count of zero would pass");
+
+        args.put("summary", true);
+        Map<String, Object> data = run(args);
+
+        assertEquals(rows, ((Number) data.get("count")).intValue(), "the summary counts the scan's own rows: " + data.keySet());
+        assertFalse(data.containsKey(listKey), "summary omits the rows: " + data.keySet());
+    }
+
+    /**
      * Paging must follow the same key. Bounding that only ever pages {@code findings} would
      * hand back an unpaged list while reporting {@code truncated}/{@code returnedCount} for a
      * list it never touched — a response actively describing itself wrongly.

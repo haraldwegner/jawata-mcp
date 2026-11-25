@@ -737,9 +737,9 @@ public class FindQualityIssueTool extends AbstractTool {
                 .map(d -> attachCures(d.detect(service, arguments), k))
                 .orElse(null);
             // Sprint 28 C4 (audit finding 7) — this read data.get("findings")
-            // ONLY. FIVE keys other than `findings` are returned under
-            // (unusedItems, violations, issues, cycles, largeClasses), so
-            // they contributed NOTHING to any family sweep and said nothing
+            // ONLY. Other keys than `findings` are returned under
+            // (RESULT_LIST_KEYS), so those detectors
+            // contributed NOTHING to any family sweep and said nothing
             // about it: large_classes reported 101 violations when named by
             // kind and 0 through family="quality". A sweep that structurally
             // cannot hear from a third of its detectors while answering "489
@@ -878,7 +878,8 @@ public class FindQualityIssueTool extends AbstractTool {
      * instead of trusting the list, which is what caught the mistake.</p>
      */
     private static final List<String> RESULT_LIST_KEYS =
-        List.of("findings", "unusedItems", "violations", "issues", "cycles", "largeClasses");
+        List.of("findings", "unusedItems", "violations", "issues", "cycles", "largeClasses", "reflectionCalls", "throwsDeclarations",
+            "catchBlocks");
 
     /**
      * Ensure a merged entry names the detector it came from.
@@ -969,15 +970,12 @@ public class FindQualityIssueTool extends AbstractTool {
     /**
      * WHERE A DETECTOR PUT ITS ROWS — the product's own answer, so a caller need not guess.
      *
-     * <p>FIVE keys other than {@code findings} are answered under — {@code unusedItems},
-     * {@code violations}, {@code issues}, {@code cycles}, {@code largeClasses} — and a reader
-     * that assumes one key silently sees nothing from a third of the catalog. (The count said
-     * SIX above a list of five, in the javadoc of the very list that settles it; corrected at
-     * C8b round 6, where the same conflation was found in this file's family-sweep comment
-     * too.) That defect has now been found twice: once in the family sweep
-     * (C4, audit finding 7) and once in the cure join (C8b round 2), which is why this stopped
-     * being private — a gate that has to know where the rows are should ASK rather than carry
-     * a second copy of the list.</p>
+     * <p>Detectors answer under keys of their own besides {@code findings}; {@link #RESULT_LIST_KEYS}
+     * is the whole set, and a reader that assumes one key silently sees nothing from part of the
+     * catalog. That defect has been found in the family sweep (C4, audit finding 7), in the cure
+     * join (C8b round 2), and for the reflection, throws and catches scans, which were missing from
+     * the set (28h), which is why this stopped being private — a gate that has to know where the
+     * rows are should ASK rather than carry a second copy of the list.</p>
      */
     public static String resultListKeyOf(Map<String, Object> data) {
         for (String key : RESULT_LIST_KEYS) {
