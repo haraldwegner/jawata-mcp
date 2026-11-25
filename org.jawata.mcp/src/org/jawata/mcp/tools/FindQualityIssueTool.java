@@ -730,6 +730,9 @@ public class FindQualityIssueTool extends AbstractTool {
         // to say.
         String soleProject = owners.size() == 1 ? owners.get(0).getValue() : null;
         List<Object> merged = new ArrayList<>();
+        // 28h-C27-96 and -103: what a sweep did not look at is said, so the silence of a scan that never ran is not read as nothing found.
+        List<String> notRun = new ArrayList<>();
+        List<String> notSearched = new ArrayList<>();
         int done = 0;
         for (String k : kinds) {
             if (cancelRequested != null && cancelRequested.get()) {
@@ -760,6 +763,11 @@ public class FindQualityIssueTool extends AbstractTool {
                         merged.add(withProject(withKind(entry, k), owners, soleProject));
                     }
                 }
+                if (data.get("notSearched") instanceof List<?> missed) {
+                    missed.forEach(m -> notSearched.add(k + ": " + m));
+                }
+            } else if (r != null && !r.isSuccess()) {
+                notRun.add(k + ": " + (r.getError() == null ? "failed with no reason given" : r.getError().getMessage()));
             }
             done++;
             if (progress != null) {
@@ -775,6 +783,12 @@ public class FindQualityIssueTool extends AbstractTool {
         out.put("count", merged.size());
         out.put("findings", merged);
         out.put("conflicts", conflicts(merged));
+        if (!notRun.isEmpty()) {
+            out.put("notRun", notRun);
+        }
+        if (!notSearched.isEmpty()) {
+            out.put("notSearched", notSearched);
+        }
         return ToolResponse.success(out, ResponseMeta.builder()
             .totalCount(merged.size()).returnedCount(merged.size()).build());
     }

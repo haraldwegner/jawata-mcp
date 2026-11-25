@@ -195,8 +195,7 @@ public final class PrincipalBrain implements AgentBrain {
         }
         return rows.stream().filter(row -> row.seat().equals(seat) && !row.brain().isBlank()).findFirst().map(row -> {
             String brain = SeatHire.Brain.named(row.brain()).map(SeatHire.Brain::label).orElse(row.brain());
-            String model = !row.model().isBlank() ? row.model()
-                : engine.settings().get(Hirer.BRAINS_SETTING).flatMap(registry -> Hirer.brainIn(registry, brain)).map(Hirer.Brain::model).orElse("");
+            String model = SeatBrains.modelOf(row.model(), engine.settings().get(Hirer.BRAINS_SETTING).orElse(""), brain);
             return new Stored(brain, model, unavailable(row));
         });
     }

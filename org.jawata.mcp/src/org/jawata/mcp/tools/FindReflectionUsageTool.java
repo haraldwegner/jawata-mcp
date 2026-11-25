@@ -83,6 +83,11 @@ public class FindReflectionUsageTool extends AbstractTool {
         maxResults.put("description", "Maximum results per reflection method (default 100)");
         properties.put("maxResults", maxResults);
 
+        Map<String, Object> filePath = new LinkedHashMap<>();
+        filePath.put("type", "string");
+        filePath.put("description", "Optional: only the uses in this source file");
+        properties.put("filePath", filePath);
+
         schema.put("properties", properties);
         schema.put("required", List.of());
 
@@ -92,8 +97,17 @@ public class FindReflectionUsageTool extends AbstractTool {
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
         int maxResults = getIntParam(arguments, "maxResults", 100);
+        String filePath = getStringParam(arguments, "filePath");
+        boolean oneFile = filePath != null && !filePath.isBlank();
 
         try {
+            // The one file asked for; a path that names no source file of a loaded project has no uses.
+            org.eclipse.jdt.core.ICompilationUnit unit = oneFile ? service.getCompilationUnit(service.getPathUtils().resolve(filePath)) : null;
+            org.eclipse.core.resources.IResource wanted = unit == null ? null : unit.getResource();
+            // One more than is shown, so a list that was cut can be told from one that is whole; with one file asked for, everything, since the cap
+            // applies to that file's uses and not to the project's.
+            int searched = oneFile ? Integer.MAX_VALUE : (int) Math.min(Integer.MAX_VALUE, maxResults + 1L);
+            List<String> cut = new ArrayList<>();
             List<Map<String, Object>> allCalls = new ArrayList<>();
             Map<String, Integer> summary = new LinkedHashMap<>();
             // The uses this run could not search for, each with why: without them a search that never ran answers like one that found nothing.
@@ -116,12 +130,18 @@ public class FindReflectionUsageTool extends AbstractTool {
                     for (IMethod method : type.getMethods()) {
                         if (method.getElementName().equals(methodName)) {
                             declared = true;
-                            matches.addAll(service.getSearchService().findSourceReferences(method, maxResults));
+                            matches.addAll(service.getSearchService().findSourceReferences(method, searched));
                         }
                     }
                     if (!declared) {
                         notSearched.add(label + ": " + typeName + " has no such method here");
                         continue;
+                    }
+                    if (oneFile) {
+                        matches.removeIf(match -> wanted == null || !wanted.equals(match.getResource()));
+                    }
+                    if (matches.size() > maxResults) {
+                        cut.add(label);
                     }
                     List<Map<String, Object>> formatted = formatMatches(matches.subList(0, Math.min(maxResults, matches.size())), service);
 
@@ -145,6 +165,9 @@ public class FindReflectionUsageTool extends AbstractTool {
             data.put("reflectionCalls", allCalls);
             if (!notSearched.isEmpty()) {
                 data.put("notSearched", notSearched);
+            }
+            if (!cut.isEmpty()) {
+                data.put("cutAtMaxResults", cut);
             }
 
             return ToolResponse.success(data, ResponseMeta.builder()

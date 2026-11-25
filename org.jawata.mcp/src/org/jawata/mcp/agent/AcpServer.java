@@ -62,6 +62,8 @@ public final class AcpServer {
     private final Map<String, Thread> running = new ConcurrentHashMap<>();
     /** Sessions whose running prompt the person cancelled; read at each turn end so a cancelled prompt is not resumed. */
     private final java.util.Set<String> cancelled = ConcurrentHashMap.newKeySet();
+    /** Sessions already told that a turn of theirs was not saved, so one broken store is said once and not after every message. */
+    private final java.util.Set<String> toldNotSaved = ConcurrentHashMap.newKeySet();
     /** Ends this connection's subscription to the registry's hire events, which it holds from its start to its close (Stage 24, M8). */
     private final Runnable endSubscription;
 
@@ -958,7 +960,13 @@ public final class AcpServer {
             recorder.record(AgentRecorder.Level.PRINCIPAL, session, messageId, typed, said.toString(),
                 // A hire is kept as its card, so a session loaded later shows the hire's figures and state again; any other call as one finished line.
                 toolState.entrySet().stream()
-                    .map(call -> hires.entry(call.getKey()).map(HireEntry::cardLine).orElseGet(() -> toolLine(call.getValue()))).toList());
+                    .map(call -> hires.entry(call.getKey()).map(HireEntry::cardLine).orElseGet(() -> toolLine(call.getValue()))).toList(),
+                why -> {
+                    if (toldNotSaved.add(session.id())) {
+                        update(session.id(), messageChunk("agent_message_chunk", "\n\n[jawata] This conversation was not saved to History: " + why
+                            + "\n\n", messageId));
+                    }
+                });
         }
         return stopReason;
     }

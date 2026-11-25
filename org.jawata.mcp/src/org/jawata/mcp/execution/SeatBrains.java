@@ -83,18 +83,23 @@ public final class SeatBrains {
             throw new IllegalArgumentException("seat '" + name + "' is set to run on '" + brain
                 + "', which the brain registry does not offer. " + WHERE);
         }
-        String model = entry[1];
-        boolean fromRegistry = false;
-        if (model == null || model.isBlank()) {
-            String named = offered.get().model();
-            if (named == null || named.isBlank()) {
-                throw new IllegalArgumentException("seat '" + name + "' is set to run on '" + brain
-                    + "' with no model, and the brain registry names none for it. " + WHERE);
-            }
-            model = named;
-            fromRegistry = true;
+        String model = modelOf(entry[1], registry, brain);
+        if (model.isBlank()) {
+            throw new IllegalArgumentException("seat '" + name + "' is set to run on '" + brain
+                + "' with no model, and the brain registry names none for it. " + WHERE);
         }
-        return new Choice(brain, model, fromRegistry);
+        return new Choice(brain, model, entry[1] == null || entry[1].isBlank());
+    }
+
+    /**
+     * The model a stored entry runs on: its own, else the one the registry names for its brain; empty when neither names one. A hire refuses an
+     * empty answer, and the chat's principal then leaves the choice to the brain.
+     */
+    public static String modelOf(String entryModel, String registry, String brain) {
+        if (entryModel != null && !entryModel.isBlank()) {
+            return entryModel;
+        }
+        return Hirer.brainIn(registry == null ? "" : registry, brain).map(Hirer.Brain::model).orElse("");
     }
 
     /** The value with one seat replaced. Other seats are kept. */

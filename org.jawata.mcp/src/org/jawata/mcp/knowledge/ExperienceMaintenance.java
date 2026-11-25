@@ -266,6 +266,10 @@ public final class ExperienceMaintenance {
             // 28h z70: a note may link anywhere, by its text or as a symbolic link. A file that really lies outside the folders being loaded is read
             // only where the access policy of the call allows it, or recall would return a file the agent may not open.
             Path real = org.jawata.mcp.access.PlaceNames.realOf(f);
+            if (org.jawata.mcp.access.AccessCheck.denied().test(f)) {
+                skipped.add(Map.of("source", f.toString(), "reason", "access policy: the person denied this file"));
+                continue;
+            }
             if (rootDirs.stream().noneMatch(root -> real.startsWith(org.jawata.mcp.access.PlaceNames.realOf(root)))
                     && !org.jawata.mcp.access.AccessCheck.openable().test(f)) {
                 skipped.add(Map.of("source", f.toString(), "reason", "access policy: a linked file outside the folders being loaded"));

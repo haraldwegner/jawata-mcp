@@ -24,8 +24,8 @@ import com.fasterxml.jackson.databind.JsonNode;
  */
 public final class AccessCheck {
 
-    /** Which files the tool call served on this thread may open; none outside a call a check guards. */
-    private static final ThreadLocal<Predicate<Path>> OPENING = new ThreadLocal<>();
+    /** The policy of the tool call served on this thread, for the files the tool finds itself; none outside a call a check guards. */
+    private static final ThreadLocal<Supplier<AccessPolicy>> SERVING = new ThreadLocal<>();
 
     private final Path policyFile;
     private final Function<String, List<Path>> workspaceOf;
@@ -82,29 +82,38 @@ public final class AccessCheck {
      * policy is read only if the tool asks, and once for the call.
      */
     public <T> T whileServing(String sessionId, Supplier<T> call) {
-        Predicate<Path> before = OPENING.get();
+        Supplier<AccessPolicy> before = SERVING.get();
         AccessPolicy[] read = new AccessPolicy[1];
-        OPENING.set(place -> {
+        SERVING.set(() -> {
             if (read[0] == null) {
                 read[0] = policyFor(workspaceOf.apply(sessionId));
             }
-            return read[0].check(place).allowed();
+            return read[0];
         });
         try {
             return call.get();
         } finally {
             if (before == null) {
-                OPENING.remove();
+                SERVING.remove();
             } else {
-                OPENING.set(before);
+                SERVING.set(before);
             }
         }
     }
 
     /** Whether the tool call served on this thread may open a file it found; every file when no check guards the call. */
     public static Predicate<Path> openable() {
-        Predicate<Path> serving = OPENING.get();
-        return serving == null ? place -> true : serving;
+        Supplier<AccessPolicy> serving = SERVING.get();
+        return serving == null ? place -> true : place -> serving.get().check(place).allowed();
+    }
+
+    /**
+     * Whether the person denied a file the tool call served on this thread found. Asked where a call may read folders the policy does not
+     * allow by itself, such as the memory folders a load is given, and a denied file in them stays denied.
+     */
+    public static Predicate<Path> denied() {
+        Supplier<AccessPolicy> serving = SERVING.get();
+        return serving == null ? place -> false : place -> serving.get().denies(place);
     }
 
     private boolean inSeatsFolder(Path place) {

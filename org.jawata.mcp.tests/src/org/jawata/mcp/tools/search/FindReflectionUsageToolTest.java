@@ -60,6 +60,21 @@ class FindReflectionUsageToolTest {
     }
 
     @Test
+    @DisplayName("28h-C27-95 and -94: filePath limits the scan to that file, and a list cut at maxResults says which uses were cut")
+    void filePathAndTheCutAreHonoured() {
+        ObjectNode elsewhere = objectMapper.createObjectNode().put("filePath", "src/main/java/com/example/NoSuchFile.java");
+        ObjectNode inTheFile = objectMapper.createObjectNode().put("filePath", "src/main/java/com/example/DiAndReflectionPatterns.java");
+        // Each use in the sample project occurs once, so only a cap of zero cuts anything.
+        ObjectNode cut = objectMapper.createObjectNode().put("maxResults", 0);
+
+        assertEquals(0, getData(tool.execute(elsewhere)).get("totalCalls"), "a file without reflection answered calls from other files");
+        assertTrue((int) getData(tool.execute(inTheFile)).get("totalCalls") > 0, "CONTROL: the file's own calls were filtered away");
+        Map<String, Object> capped = getData(tool.execute(cut));
+        assertNotNull(capped.get("cutAtMaxResults"), "a list cut at maxResults did not say so: " + capped.get("summary"));
+        assertNull(getData(tool.execute(objectMapper.createObjectNode())).get("cutAtMaxResults"), "CONTROL: a whole list said it was cut");
+    }
+
+    @Test
     @DisplayName("should include reflection method label in results")
     void includesReflectionMethodLabel() {
         ObjectNode args = objectMapper.createObjectNode();

@@ -139,6 +139,16 @@ public final class AgentRecorder {
      * ready has taken the turn when this returns, so a history read at once sees it.
      */
     public void record(Level level, PrincipalSession session, String turnKey, String his, String agent, List<String> toolLines) {
+        record(level, session, turnKey, his, agent, toolLines, why -> { });
+    }
+
+    /**
+     * Writes one turn as {@link #record(Level, PrincipalSession, String, String, String, List)} does, and tells {@code notStored} why when the
+     * lane did not keep it (28h S19-13): the store answers success even for a write that failed, so nobody noticed that none of the chat's
+     * conversations had been kept for days.
+     */
+    public void record(Level level, PrincipalSession session, String turnKey, String his, String agent, List<String> toolLines,
+        java.util.function.Consumer<String> notStored) {
         if (!records(level) || tools == null) {
             return;
         }
@@ -152,7 +162,7 @@ public final class AgentRecorder {
         args.put("agent", agent);
         toolLines.forEach(args.putArray("tools")::add);
         CallerIdentity identity = session.identity();
-        java.util.concurrent.Future<?> written = writer.submit(() -> write(session.id(), args, identity));
+        java.util.concurrent.Future<?> written = writer.submit(() -> write(session.id(), args, identity, notStored));
         try {
             written.get(waitMillis, java.util.concurrent.TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.TimeoutException slow) {
@@ -175,15 +185,18 @@ public final class AgentRecorder {
     }
 
     /** The write itself, on the recorder's thread; one that takes long is counted and logged with its time, so a stalled lane leaves a trace. */
-    private void write(String sessionId, ObjectNode args, CallerIdentity identity) {
+    private void write(String sessionId, ObjectNode args, CallerIdentity identity, java.util.function.Consumer<String> notStored) {
         long started = System.nanoTime();
         try {
             ToolResponse response = tools.callTool("experience", args, identity);
-            if (response == null || !response.isSuccess()) {
-                log.warn("the transcript lane did not take a turn of session {}: {}", sessionId, response == null ? "no answer" : response.getError());
+            String why = whyNotStored(response);
+            if (why != null) {
+                log.warn("the transcript lane did not take a turn of session {}: {}", sessionId, why);
+                notStored.accept(why);
             }
         } catch (Exception e) {
             log.warn("a turn of session {} could not be recorded", sessionId, e);
+            notStored.accept(e.toString());
         } finally {
             long took = java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started);
             if (took >= SLOW_MILLIS) {
@@ -191,6 +204,22 @@ public final class AgentRecorder {
                 log.warn("the transcript lane took {} ms to take a turn of session {}", took, sessionId);
             }
         }
+    }
+
+    /** Why the lane's answer to a write means the turn was not kept; null when it was. A failed or switched off write is answered as success. */
+    private static String whyNotStored(ToolResponse response) {
+        if (response == null) {
+            return "the store did not answer";
+        }
+        if (!response.isSuccess()) {
+            return response.getError().getMessage();
+        }
+        JsonNode data = JSON.valueToTree(response.getData());
+        return switch (data.path("appended").asText("")) {
+            case "failed" -> "the store could not write it: " + data.path("reason").asText("no reason given");
+            case "disabled" -> "keeping conversations is switched off in the engine's settings";
+            default -> null;
+        };
     }
 
     /**

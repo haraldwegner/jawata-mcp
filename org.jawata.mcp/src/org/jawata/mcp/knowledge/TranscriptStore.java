@@ -222,6 +222,7 @@ public final class TranscriptStore {
 
     private final H2ExperienceStore store;
     private long failedWrites;
+    private String lastFailure = "";
 
     public TranscriptStore(H2ExperienceStore store) {
         this.store = store;
@@ -247,6 +248,11 @@ public final class TranscriptStore {
         return failedWrites;
     }
 
+    /** Why the last write that failed every retry failed; empty when none has. */
+    public synchronized String lastFailure() {
+        return lastFailure;
+    }
+
     /**
      * Stores one turn, once. A turn already held in full is left alone, and one held in part (a
      * capture taken while the turn was still running) is completed.
@@ -265,6 +271,7 @@ public final class TranscriptStore {
                 return result[0];
             } catch (Exception e) {
                 failedWrites++;
+                lastFailure = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 log.error("TRANSCRIPT TURN DROPPED after {} attempts — session={} turn={}: the"
                     + " lane is incomplete until this is fixed",
                     LearnerEventStore.WRITE_ATTEMPTS, turn.sessionId(), turn.turnKey(), e);

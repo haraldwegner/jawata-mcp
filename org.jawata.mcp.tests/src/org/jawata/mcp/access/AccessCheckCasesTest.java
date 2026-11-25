@@ -135,6 +135,29 @@ class AccessCheckCasesTest {
     }
 
     @Test
+    @DisplayName("28h-C27-83: the shipped policy lets agents into the Gradle library folder and not the rest of it, and keeps the Maven settings file, which can hold passwords, closed")
+    void theShippedPolicyOpensLibrariesAndNotPasswords() throws Exception {
+        Path shipped = root.resolve("shipped-policy.json");
+        assertTrue(AccessCheck.installDefault(shipped), "CONTROL: the shipped policy was not written");
+        // A home that is not below any folder the shipped policy allows by itself: the test's own folders lie in the system's temp folder, which it allows.
+        Path away = root.getRoot().resolve("jawata-no-such-home");
+        AccessCheck check = new AccessCheck(shipped, session -> List.of(workspace), away, temp);
+        java.util.function.Function<String, Boolean> refused = place -> {
+            try {
+                return check.refuse("s", JSON.readTree("{\"file_path\":\"" + inJson(away) + "/" + place + "\"}")).isPresent();
+            } catch (IOException e) {
+                throw new java.io.UncheckedIOException(e);
+            }
+        };
+
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertTrue(!refused.apply(".gradle/caches/modules-2/x.jar"), "a library Gradle downloaded was refused"),
+            () -> assertTrue(!refused.apply(".m2/repository/g/x.jar"), "CONTROL: a library Maven downloaded was refused"),
+            () -> assertTrue(refused.apply(".gradle/gradle.properties"), "Gradle's own settings, which can hold passwords, were opened"),
+            () -> assertTrue(refused.apply(".m2/settings.xml"), "the Maven settings file, which can hold passwords, was opened"));
+    }
+
+    @Test
     @DisplayName("ACL4: a session whose workspace is another project is refused this one, and a session with none is refused every project file")
     void theWorkspaceIsTheCallersOwn() throws Exception {
         JsonNode inA = JSON.readTree(bound("{\"file_path\":\"${workspace}/src/A.java\"}"));

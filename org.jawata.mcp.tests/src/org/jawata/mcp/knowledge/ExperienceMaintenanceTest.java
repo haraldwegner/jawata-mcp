@@ -133,6 +133,30 @@ class ExperienceMaintenanceTest {
         assertTrue(String.valueOf(report.get("skipped")).contains("access policy"), "the link was read and not reported: " + report);
     }
 
+    /** 28h-C27-102: what the person denied stays denied inside a folder that is being loaded. */
+    @Test
+    void load_does_not_read_a_denied_file_inside_a_loaded_folder(@TempDir Path temp) throws IOException {
+        Path root = temp.toRealPath();
+        Path notes = Files.createDirectories(root.resolve("notes"));
+        writeMemory(notes, "ok.md", "name: ok\ndescription: an allowed note beside the denied one is still loaded\ntype: reference", "body");
+        writeMemory(notes, "private.md", "name: p\ndescription: the denied body stays out of the store\ntype: reference", "body");
+        Path policy = root.resolve("access-policy.json");
+        Files.writeString(policy, "{\"allow\":[\"${workspace}\"],\"deny\":[\"${workspace}/private.md\"]}");
+        org.jawata.mcp.access.AccessCheck access =
+            new org.jawata.mcp.access.AccessCheck(policy, session -> List.of(notes), root.resolve("home"), root.resolve("scratch"));
+
+        Map<String, Object> report = access.whileServing("s", () -> {
+            try {
+                return maint(fqn -> null).load(notes);
+            } catch (Exception failed) {
+                throw new IllegalStateException(failed);
+            }
+        });
+
+        assertEquals(1, report.get("loaded"), "the denied file was read into the store: " + report);
+        assertTrue(String.valueOf(report.get("skipped")).contains("private.md"), "the denied file was not reported as left out: " + report);
+    }
+
     @Test
     void load_is_idempotent_per_source(@TempDir Path dir) throws IOException {
         writeMemory(dir, "a.md", "name: n\ndescription: this note carries a body worth keeping\ntype: reference", "body");

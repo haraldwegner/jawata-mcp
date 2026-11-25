@@ -273,6 +273,20 @@ class FindQualityIssueSummaryTest {
         assertFalse(data.containsKey(listKey), "summary omits the rows: " + data.keySet());
     }
 
+    /** 28h-C27-103: a sweep says which of its scans did not run, so their silence is not read as nothing found. */
+    @Test
+    @DisplayName("a family sweep names the scans it could not run, with why")
+    void aSweepNamesTheScansItCouldNotRun() {
+        ObjectNode args = mapper.createObjectNode();
+        args.put("family", "quality");
+        args.put("summary", true);
+
+        String notRun = String.valueOf(run(args).get("notRun"));
+
+        assertTrue(notRun.contains("throws") && notRun.contains("catches"), "the scans that need a query were skipped in silence: " + notRun);
+        assertFalse(notRun.contains("reflection"), "CONTROL: a scan that ran is listed as not run: " + notRun);
+    }
+
     /**
      * Paging must follow the same key. Bounding that only ever pages {@code findings} would
      * hand back an unpaged list while reporting {@code truncated}/{@code returnedCount} for a

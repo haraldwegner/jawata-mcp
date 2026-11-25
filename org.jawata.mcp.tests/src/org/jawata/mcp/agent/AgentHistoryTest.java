@@ -149,6 +149,43 @@ class AgentHistoryTest {
         assertEquals(List.of("refactor"), names, "the session opened again was sent no command list, so its / list is empty: " + said);
     }
 
+    /** What the conversation was told over two prompts when the store answers success with this outcome for each turn. */
+    private static List<String> toldWhenTheStoreAnswers(String outcome) {
+        ToolCalls lane = new ToolCalls() {
+            @Override public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {
+                return ToolResponse.success(Map.of("appended", outcome, "reason", "disk full"));
+            }
+            @Override public List<Map<String, Object>> getToolDefinitions() {
+                return List.of();
+            }
+        };
+        List<JsonNode> said = new ArrayList<>();
+        AcpServer server = new AcpServer((prompt, chunks) -> chunks.accept("pong"), List::of, m -> said.add(JSON.valueToTree(m)), TurnBoundary.open(),
+            new AgentRecorder(lane, AgentRecorder.Depth.ALL), null);
+        server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+        String session = said.stream().filter(m -> m.path("id").asInt() == 1).findFirst().orElseThrow().path("result").path("sessionId").asText();
+        for (int id = 2; id <= 3; id++) {
+            ObjectNode params = JSON.createObjectNode().put("sessionId", session);
+            params.putArray("prompt").addObject().put("type", "text").put("text", "hello");
+            server.receive(JsonRpcMessage.request(id, "session/prompt", params));
+        }
+        return said.stream().map(m -> m.path("params").path("update").path("content").path("text").asText("")).filter(t -> t.contains("not saved"))
+            .toList();
+    }
+
+    @Test
+    @DisplayName("28h S19-13: a turn the store did not keep is said in the conversation once, with the reason, though the store answered success")
+    void aTurnTheStoreDidNotKeepIsSaidInTheConversation() {
+        List<String> failed = toldWhenTheStoreAnswers("failed");
+        List<String> off = toldWhenTheStoreAnswers("disabled");
+
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertEquals(1, failed.size(), "a failed save is said once over two turns, not " + failed),
+            () -> assertTrue(String.join("", failed).contains("disk full"), "the store's reason is given: " + failed),
+            () -> assertTrue(String.join("", off).contains("switched off"), "a switched off record is said: " + off),
+            () -> assertTrue(toldWhenTheStoreAnswers("stored").isEmpty(), "CONTROL: a saved turn was reported as not saved"));
+    }
+
     @Test
     @DisplayName("with recording off nothing is written; with depth principal the principal's own conversation still is")
     void theDepthSettingDecidesWhatIsWritten() {

@@ -8,6 +8,7 @@
     "${home}/.cursor",
     "${home}/.nvm",
     "${home}/.m2",
+    "${home}/.gradle/caches",
     "/usr",
     "/bin",
     "/sbin",
@@ -24,6 +25,7 @@
   "deny": [
     "${home}/.claude/settings.json",
     "${home}/.claude/settings.local.json",
-    "${home}/.cursor/hooks.json"
+    "${home}/.cursor/hooks.json",
+    "${home}/.m2/settings.xml"
   ]
 }

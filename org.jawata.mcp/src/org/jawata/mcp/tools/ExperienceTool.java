@@ -3809,6 +3809,9 @@ public final class ExperienceTool implements Tool {
         Map<String, Object> out = new java.util.LinkedHashMap<>();
         out.put("appended", result.name().toLowerCase(java.util.Locale.ROOT));
         out.put("enabled", org.jawata.mcp.knowledge.TranscriptStore.enabled());
+        if (result == org.jawata.mcp.knowledge.TranscriptStore.Appended.FAILED) {
+            out.put("reason", transcript.lastFailure());
+        }
         return ToolResponse.success(out);
     }
 
