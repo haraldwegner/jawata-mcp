@@ -120,6 +120,28 @@ class AccessPathArgumentsTest {
     }
 
     @Test
+    @DisplayName("the writer writes the very place the policy judged: through a link followed by .., and through a missing folder, .. and a link")
+    void theWriterWritesThePlaceThatWasJudged(@org.junit.jupiter.api.io.TempDir Path temp) throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeFalse(System.getProperty("os.name").startsWith("Windows"),
+            "Windows resolves .. before it follows a link");
+        Path root = temp.toRealPath();
+        Path allowed = java.nio.file.Files.createDirectories(root.resolve("allowed/dir")).getParent();
+        Path elsewhere = java.nio.file.Files.createDirectories(root.resolve("elsewhere"));
+        Path outside = java.nio.file.Files.createDirectories(root.resolve("outside"));
+        java.nio.file.Files.createSymbolicLink(elsewhere.resolve("into"), allowed.resolve("dir"));
+        java.nio.file.Files.createSymbolicLink(allowed.resolve("out"), outside);
+
+        Path linkThenUp = elsewhere.resolve("into/../x.md");
+        Path missingThenUpThenLink = allowed.resolve("nosuch/../out/x.md");
+
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertEquals(allowed.resolve("x.md"), PlaceNames.normalise(linkThenUp)),
+            () -> assertEquals(allowed.resolve("x.md"), org.jawata.mcp.execution.OwnWrites.placeOf(linkThenUp.toString())),
+            () -> assertEquals(outside.resolve("x.md"), PlaceNames.normalise(missingThenUpThenLink), "the link after the missing folder was not followed"),
+            () -> assertEquals(outside.resolve("x.md"), org.jawata.mcp.execution.OwnWrites.placeOf(missingThenUpThenLink.toString())));
+    }
+
+    @Test
     @DisplayName("a classpath is a list of places, and each of them is put to the policy")
     void eachPlaceOfAClasspathIsChecked() {
         ObjectNode arguments = new ObjectMapper().createObjectNode()

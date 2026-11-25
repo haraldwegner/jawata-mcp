@@ -106,6 +106,33 @@ class ExperienceMaintenanceTest {
             "the link out was not reported as refused: " + report);
     }
 
+    /** 28h z70: a symbolic link inside a loaded folder is read where it leads, so it is held to the access policy there. */
+    @Test
+    void load_does_not_read_through_a_link_to_a_denied_file(@TempDir Path temp) throws IOException {
+        org.junit.jupiter.api.Assumptions.assumeFalse(System.getProperty("os.name").startsWith("Windows"), "links need a privilege on Windows");
+        Path root = temp.toRealPath();
+        Path notes = Files.createDirectories(root.resolve("notes"));
+        Path secret = Files.createDirectories(root.resolve("secret"));
+        Files.writeString(secret.resolve("s.md"), "---\nname: s\ndescription: the secret body stays out of the store\ntype: reference\n---\nbody");
+        writeMemory(notes, "ok.md", "name: ok\ndescription: an allowed note beside the link is still loaded\ntype: reference", "body");
+        Files.createSymbolicLink(notes.resolve("linked.md"), secret.resolve("s.md"));
+        Path policy = root.resolve("access-policy.json");
+        Files.writeString(policy, "{\"allow\":[\"${workspace}\"],\"deny\":[]}");
+        org.jawata.mcp.access.AccessCheck access =
+            new org.jawata.mcp.access.AccessCheck(policy, session -> List.of(notes), root.resolve("home"), root.resolve("scratch"));
+
+        Map<String, Object> report = access.whileServing("s", () -> {
+            try {
+                return maint(fqn -> null).load(notes);
+            } catch (Exception failed) {
+                throw new IllegalStateException(failed);
+            }
+        });
+
+        assertEquals(1, report.get("loaded"), String.valueOf(report));
+        assertTrue(String.valueOf(report.get("skipped")).contains("access policy"), "the link was read and not reported: " + report);
+    }
+
     @Test
     void load_is_idempotent_per_source(@TempDir Path dir) throws IOException {
         writeMemory(dir, "a.md", "name: n\ndescription: this note carries a body worth keeping\ntype: reference", "body");

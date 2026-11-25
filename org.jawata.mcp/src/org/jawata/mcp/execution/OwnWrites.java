@@ -65,9 +65,9 @@ public final class OwnWrites {
     }
 
     /**
-     * Where an absolute path really leads: the real place of its nearest folder that exists, with the rest of the path after it, so a link
-     * anywhere on the way is followed although the folders below it are still to be made (the C27 audit). None for a relative path, which names
-     * no place until a folder is given for it, so it is not resolved against the engine's own folder; none when nothing on the way can be read.
+     * Where an absolute path really leads, asked of the one resolver the access policy judges with, so what is written is what was judged
+     * (28h z70). None for a relative path, which names no place until a folder is given for it, so it is not resolved against the engine's own
+     * folder; none when the path cannot be read as one.
      */
     private static java.util.Optional<String> realPathOf(String path) {
         try {
@@ -75,18 +75,11 @@ public final class OwnWrites {
             if (!spelled.isAbsolute()) {
                 return java.util.Optional.empty();
             }
-            java.nio.file.Path rest = java.nio.file.Path.of("");
-            for (java.nio.file.Path existing = spelled.normalize(); existing != null; existing = existing.getParent()) {
-                if (java.nio.file.Files.exists(existing)) {
-                    return java.util.Optional.of(existing.toRealPath().resolve(rest).toString());
-                }
-                java.nio.file.Path name = existing.getFileName();
-                rest = name == null ? rest : name.resolve(rest);
-            }
-        } catch (java.io.IOException | RuntimeException unreadable) {
+            return java.util.Optional.of(org.jawata.mcp.access.PlaceNames.realOf(spelled).toString());
+        } catch (RuntimeException unreadable) {
             // a path that cannot be followed is judged as spelled
+            return java.util.Optional.empty();
         }
-        return java.util.Optional.empty();
     }
 
     /**

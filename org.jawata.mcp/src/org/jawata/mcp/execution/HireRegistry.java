@@ -309,7 +309,8 @@ public final class HireRegistry {
      */
     public final class Inbox implements AutoCloseable {
         private final java.util.concurrent.LinkedBlockingQueue<Event> reports = new java.util.concurrent.LinkedBlockingQueue<>();
-        private final java.util.concurrent.atomic.AtomicInteger out = new java.util.concurrent.atomic.AtomicInteger();
+        /** The plan ids of this lead's hires that are out. A set, so a report of a hire never counted takes nothing off. */
+        private final java.util.Set<String> out = ConcurrentHashMap.newKeySet();
         private final Runnable unsubscribe;
         /** The reports the lead's run has taken and not yet said were put in front of its brain; guarded by this inbox. */
         private final List<Event> taken = new java.util.ArrayList<>();
@@ -323,7 +324,7 @@ public final class HireRegistry {
             inboxes.put(leadId, this);
             this.unsubscribe = subscribe(event -> {
                 if (leadId.equals(event.leadId()) && event.background() && "started".equals(event.kind())) {
-                    out.incrementAndGet();
+                    out.add(event.planId());
                 }
             });
         }
@@ -336,7 +337,7 @@ public final class HireRegistry {
             if (closed) {
                 return false;
             }
-            out.decrementAndGet();
+            out.remove(finished.planId());
             reports.add(finished);
             return true;
         }
@@ -353,7 +354,7 @@ public final class HireRegistry {
 
         /** How many of this lead's background hires have started and not yet reported. */
         public int outstanding() {
-            return out.get();
+            return out.size();
         }
 
         /** The reports that have come, waiting up to this long for the first when none has; empty when none came in that time. */
@@ -512,42 +513,50 @@ public final class HireRegistry {
         if (planId == null || planId.isEmpty() || leadId == null || leadId.isEmpty()) {
             return;
         }
-        String before = issuedBy.put(planId, leadId);
-        if (leadId.equals(before)) {
-            return;
-        }
-        for (Running hire : running) {
-            if (planId.equals(hire.planId)) {
-                hire.leadId = leadId;
-                tell(new Event("started", planId, hire.name, hire.seat, hire.brief, leadId, null, hire.background));
+        Event toTell = null;
+        // Under the same lock as the routing in record(), so a report is either already kept when this looks, or is routed to the lead afterwards.
+        synchronized (routing) {
+            String before = issuedBy.put(planId, leadId);
+            if (leadId.equals(before)) {
                 return;
             }
-        }
-        List<Event> held = before == null ? null : waiting.get(rootOf(before));
-        if (held == null) {
-            return;
-        }
-        for (Event kept : held) {
-            if (kept.planId().equals(planId) && held.remove(kept)) {
-                Event ended = new Event(kept.kind(), kept.planId(), kept.name(), kept.seat(), kept.brief(), leadId, kept.answer(), kept.background());
-                // Telling is not giving: only an offer puts a report in front of the lead's brain, and without one the report of a hire that ended
-                // before the lead learned it was its own was lost. That hire was never counted as out under this lead, so it is counted just before
-                // the offer takes it off again. Where no inbox takes it, it is held as any report no lead read is.
-                Inbox inbox = inboxes.get(leadId);
-                if (inbox != null) {
-                    inbox.out.incrementAndGet();
+            for (Running hire : running) {
+                if (planId.equals(hire.planId)) {
+                    hire.leadId = leadId;
+                    toTell = new Event("started", planId, hire.name, hire.seat, hire.brief, leadId, null, hire.background);
                 }
-                if (inbox == null || !inbox.offer(ended)) {
-                    if (inbox != null) {
-                        inbox.out.decrementAndGet();
-                    }
-                    if (!heldForItsLead(leadId, List.of(ended))) {
-                        keepForItsChat(ended);
-                    }
-                }
-                tell(ended);
-                return;
             }
+            List<Event> held = toTell != null || before == null ? null : waiting.get(rootOf(before));
+            for (Event kept : held == null ? List.<Event>of() : held) {
+                if (kept.planId().equals(planId) && held.remove(kept)) {
+                    // Telling is not giving: only an offer puts a report in front of the lead's brain, and without one the report of a hire that
+                    // ended before the lead learned it was its own was lost.
+                    toTell = new Event(kept.kind(), kept.planId(), kept.name(), kept.seat(), kept.brief(), leadId, kept.answer(), kept.background());
+                    route(inboxes.get(leadId), toTell);
+                    break;
+                }
+            }
+            // Closed and its report not yet kept: it is counted as out, so the lead waits for the report record() is about to bring.
+            Inbox inbox = inboxes.get(leadId);
+            if (toTell == null && inbox != null && backgroundPlans.contains(planId)) {
+                inbox.out.add(planId);
+            }
+        }
+        if (toTell != null) {
+            tell(toTell);
+        }
+    }
+
+    /** Held while a report is routed and while a lead takes a hire over, so neither can miss the other. */
+    private final Object routing = new Object();
+
+    /**
+     * Puts a background hire's report where it will be read: in front of its lead's brain when the lead's inbox takes it, else held on the
+     * lead's own record while it runs, else kept for its chat.
+     */
+    private void route(Inbox inbox, Event ended) {
+        if ((inbox == null || !inbox.offer(ended)) && !heldForItsLead(ended.leadId(), List.of(ended))) {
+            keepForItsChat(ended);
         }
     }
 
@@ -885,16 +894,18 @@ public final class HireRegistry {
         }
         // Told outside the lock: a subscriber answers a host and takes locks of its own.
         String plan = answer.path("plan").asText("");
-        Event ended = new Event("finished", plan, answer.path("name").asText(""), seat, normal(brief), issuedBy.getOrDefault(plan, ""), answer,
-            backgroundPlans.remove(plan));
+        Event ended;
+        synchronized (routing) {
+            ended = new Event("finished", plan, answer.path("name").asText(""), seat, normal(brief), issuedBy.getOrDefault(plan, ""), answer,
+                backgroundPlans.remove(plan));
+            if (ended.background()) {
+                route(inboxes.get(ended.leadId()), ended);
+            }
+        }
         // A lead's run that reads an inbox takes the report there. When none takes it, a lead that still runs (its brain's turns are over, or its
         // brain is not started over ACP) has the report held and told again the moment it ends, for its chat (28h-C27-18). A background hire whose
         // lead does not run, a chat or a hire that has ended, has its report kept until a connection takes it, so a chat closed while it worked is
         // told when it is opened again (ND4).
-        Inbox inbox = ended.background() ? inboxes.get(ended.leadId()) : null;
-        if (ended.background() && (inbox == null || !inbox.offer(ended)) && !heldForItsLead(ended.leadId(), List.of(ended))) {
-            keepForItsChat(ended);
-        }
         // Told whoever holds the report: the hire has finished, so its card ends now, while its lead still runs too.
         tell(ended);
     }

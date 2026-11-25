@@ -314,6 +314,27 @@ class LeadLoopTest {
     }
 
     @Test
+    @DisplayName("28h-C27-1: a hire that closed and has not yet had its report kept when the lead names it is counted until the report comes, and the count never goes wrong")
+    void aHireNamedBetweenItsCloseAndItsReportIsStillWaitedFor() {
+        String lead = "c27-lead-window";
+        try (HireRegistry.Inbox watching = HireRegistry.shared().inboxFor(lead)) {
+            HireRegistry.shared().nextHireIsBackground();
+            try (HireRegistry.Registration closing = HireRegistry.shared().begin("developer", "window c27-child-w", "c27-server-session-w")) {
+                HireRegistry.shared().planOpened("c27-child-w");
+            }
+
+            HireRegistry.shared().startedBy("c27-child-w", lead);
+            int whileTheReportIsStillToCome = watching.outstanding();
+            HireRegistry.shared().record("developer", "window c27-child-w", JSON.createObjectNode().put("plan", "c27-child-w").put("name", "Joe"));
+
+            assertAll(
+                () -> assertEquals(1, whileTheReportIsStillToCome, "the lead would have ended instead of waiting for this report"),
+                () -> assertEquals(0, watching.outstanding(), "the count went wrong, so a later hire would not be waited for"),
+                () -> assertFalse(watching.isEmpty(), "the report did not reach the lead's inbox"));
+        }
+    }
+
+    @Test
     @DisplayName("28h-C27-1: a hire that had already ended when the lead's brain named it still reaches that lead's brain")
     void aHireThatEndedBeforeTheLeadLearnedOfItIsStillReportedToIt() throws Exception {
         String lead = "c27-lead-late";

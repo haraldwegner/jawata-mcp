@@ -17,7 +17,7 @@ import java.util.Locale;
  * not been created. Case is folded only where this filesystem itself ignores it, found by asking it, never from the name of the
  * operating system.</p>
  */
-final class PlaceNames {
+public final class PlaceNames {
 
     private static volatile Boolean folds;
 
@@ -25,8 +25,18 @@ final class PlaceNames {
     }
 
     static Path normalise(Path place) {
-        // Not normalised first (28h z70): taking "lnk/.." out by its text judges a place beside the link, where the system opens one beside the
-        // link's target. The real-path call below follows the link before the "..", and what does not exist yet is normalised at the end.
+        Path out = realOf(place);
+        return foldsCase() ? Path.of(out.toString().toLowerCase(Locale.ROOT)) : out;
+    }
+
+    /**
+     * Where a path really leads, the one answer for judging a place and for writing there (28h z70), in the file system's own letter case.
+     *
+     * <p>Not normalised first: taking "lnk/.." out by its text names a place beside the link, where the system opens one beside the link's
+     * target. The longest part that exists is resolved through the file system, which follows a link before a "..". Taking a ".." out of the rest
+     * can uncover a link further on, so a path that changes by it is resolved again.</p>
+     */
+    public static Path realOf(Path place) {
         Path absolute = place.toAbsolutePath();
         Path existing = absolute;
         Deque<Path> tail = new ArrayDeque<>();
@@ -50,8 +60,8 @@ final class PlaceNames {
                 out = out.resolve(name);
             }
         }
-        out = out.normalize();
-        return foldsCase() ? Path.of(out.toString().toLowerCase(Locale.ROOT)) : out;
+        Path plain = out.normalize();
+        return plain.equals(out) ? out : realOf(plain);
     }
 
     /**
