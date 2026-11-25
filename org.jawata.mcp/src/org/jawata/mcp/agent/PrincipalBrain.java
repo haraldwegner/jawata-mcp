@@ -12,6 +12,7 @@ import java.util.function.Consumer;
 
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.engine.EngineApi;
+import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.BrainRoster;
 import org.jawata.mcp.execution.HireSite;
@@ -19,6 +20,7 @@ import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.OwnWrites;
 import org.jawata.mcp.execution.ScheduledHires;
+import org.jawata.mcp.execution.SeatBrains;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.execution.SeatPrompts;
 import org.jawata.mcp.execution.SeatTree;
@@ -89,6 +91,8 @@ public final class PrincipalBrain implements AgentBrain {
      * chose on the row. A model the brain does not offer is left alone, and the session stays on the brain's own default.
      */
     private Optional<String> preferredModel = Optional.empty();
+    /** What a prompt is answered with while there is no brain to start. */
+    private volatile String noBrain = AgentFace.NO_BRAIN;
     /** Pictures that go with the next prompt. */
     private volatile List<JsonNode> images = List.of();
 
@@ -127,12 +131,17 @@ public final class PrincipalBrain implements AgentBrain {
      * connection.
      */
     public static PrincipalBrain over(EngineApi engine, Path workingDirectory) {
-        Optional<AcpBrainSession.Program> seatProgram = programOfSeat(engine, "main");
-        Optional<AcpBrainSession.Program> program = seatProgram.or(() -> engine.settings().get(SETTING).flatMap(AcpBrainSession::parseProgram));
+        // 28h z78: the choice the Seats page shows comes first, the one a hire reads. Only where nothing is stored do the seat file and then
+        // the host setting decide; a stored brain that cannot be started is said, never replaced by another.
+        Optional<SeatBrains.Notice> stored = storedChoice(engine, "main");
+        Optional<AcpBrainSession.Program> seatProgram = stored.isPresent() ? Optional.empty() : programOfSeat(engine, "main");
+        Optional<AcpBrainSession.Program> program = stored.isPresent() ? programNamed(engine, stored.get().brain())
+            : seatProgram.or(() -> engine.settings().get(SETTING).flatMap(AcpBrainSession::parseProgram));
         SeatPrompts seats = new SeatPrompts(() -> engine.settings().get(ScheduledHires.SEATS_SETTING).filter(folder -> !folder.isBlank()).map(Path::of));
         // The model the setting names beside its command line is the principal's own; a brain the seat file chose is not the one it describes,
         // so with a brain from the seat file the model is the one that file names beside it (D56 (f)), or the brain's own default.
-        Optional<String> model = seatProgram.isPresent() ? seats.modelNamedBy("main")
+        Optional<String> model = stored.isPresent() ? stored.map(SeatBrains.Notice::model).filter(name -> !name.isBlank())
+            : seatProgram.isPresent() ? seats.modelNamedBy("main")
             : engine.settings().get(SETTING).flatMap(Hirer::brainOf).map(Hirer.Brain::model).filter(name -> !name.isBlank());
         SelfEndpoint self = engine.mcp().map(PrincipalBrain::endpointOf).orElse(null);
         List<Map<String, Object>> definitions = engine.tools().getToolDefinitions();
@@ -143,6 +152,9 @@ public final class PrincipalBrain implements AgentBrain {
         PrincipalBrain principal = new PrincipalBrain(HostProcesses.system(), program, HireSite.in(workingDirectory), self, tools, hirer,
             HiredBrain.Ceilings.of(Duration.ofMinutes(30)), () -> seats.text("main"));
         principal.preferredModel = model;
+        if (stored.isPresent() && program.isEmpty()) {
+            principal.noBrain = unavailable(stored.get());
+        }
         return principal;
     }
 
@@ -152,8 +164,36 @@ public final class PrincipalBrain implements AgentBrain {
      */
     public static PrincipalBrain forSide(EngineApi engine, Path workingDirectory) {
         PrincipalBrain principal = over(engine, workingDirectory);
-        Optional<AcpBrainSession.Program> side = programOfSeat(engine, SIDE_SEAT).or(() -> principal.program);
-        return new PrincipalBrain(principal.host, side, principal.site, principal.self, principal.engineTools, principal.hirer, principal.ceilings);
+        Optional<SeatBrains.Notice> stored = storedChoice(engine, SIDE_SEAT);
+        Optional<AcpBrainSession.Program> side = stored.isPresent() ? programNamed(engine, stored.get().brain())
+            : programOfSeat(engine, SIDE_SEAT).or(() -> principal.program);
+        PrincipalBrain discussion = new PrincipalBrain(principal.host, side, principal.site, principal.self, principal.engineTools, principal.hirer,
+            principal.ceilings);
+        discussion.preferredModel = stored.map(SeatBrains.Notice::model).filter(name -> !name.isBlank());
+        discussion.noBrain = stored.isPresent() ? unavailable(stored.get()) : principal.noBrain;
+        return discussion;
+    }
+
+    /** The choice the Seats page shows for {@code seat}, the one a hire reads; none when nothing readable is stored for it. */
+    private static Optional<SeatBrains.Notice> storedChoice(EngineApi engine, String seat) {
+        String text = SeatBrains.installed().map(SeatBrains.Store::text)
+            .orElseGet(() -> engine.settings().get(SettingKeys.SEATS_BRAINS.name()).orElse(""));
+        try {
+            return SeatBrains.listed(text).stream().filter(row -> row.seat().equals(seat) && !row.brain().isBlank()).findFirst();
+        } catch (IllegalArgumentException unreadable) {
+            return Optional.empty();
+        }
+    }
+
+    /** The program the brain registry starts {@code brain} with; none when there is no registry or it does not offer that brain. */
+    private static Optional<AcpBrainSession.Program> programNamed(EngineApi engine, String brain) {
+        return engine.settings().get(Hirer.BRAINS_SETTING).flatMap(registry -> AcpBrainSession.programFor(registry, brain));
+    }
+
+    /** What the person is told when the stored choice cannot be started. */
+    private static String unavailable(SeatBrains.Notice stored) {
+        return AgentFace.NO_BRAIN + " Seat '" + stored.seat() + "' is set to run on '" + stored.brain()
+            + "', which the brain registry does not offer. " + SeatBrains.WHERE;
     }
 
     /**
@@ -232,7 +272,7 @@ public final class PrincipalBrain implements AgentBrain {
     @Override
     public void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls, Consumer<JsonNode> thinking) {
         if (program.isEmpty()) {
-            chunks.accept(AgentFace.NO_BRAIN);
+            chunks.accept(noBrain);
             return;
         }
         long started = System.nanoTime();

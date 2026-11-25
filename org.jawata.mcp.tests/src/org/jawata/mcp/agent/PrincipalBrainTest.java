@@ -717,6 +717,59 @@ class PrincipalBrainTest {
         assertEquals(List.of(AgentFace.NO_BRAIN), none);
     }
 
+    /** A registry or setting entry for the fake brain, offering {@code models}. */
+    private String fakeOffering(String models) {
+        return "{\"command\":[\"" + inJson(fake.command().get(0)) + "\",\"" + inJson(fake.command().get(1)) + "\"],\"env\":{\"FAKE_ACP_STATE\":\""
+            + inJson(dir.toString()) + "\",\"FAKE_ACP_MODELS\":\"" + models + "\"}}";
+    }
+
+    @Test
+    @DisplayName("28h z78: a new conversation starts on the choice the Seats page shows, brain and model, over what the seat file and the host setting name")
+    void aStoredChoiceOutranksTheSeatFileAndTheSetting() throws Exception {
+        org.jawata.mcp.execution.SeatBrains.uninstall();
+        java.nio.file.Path seats = java.nio.file.Files.createDirectories(dir.resolve("seats"));
+        java.nio.file.Files.writeString(seats.resolve("main.md"), "---\nname: main\nbrain: cursor\nmodel: Xray\n---\nYou are main.\n");
+        PrincipalBrain brain = PrincipalBrain.over(engineWith(Map.of(
+            Hirer.BRAINS_SETTING, "{\"claude-code\":" + fakeOffering("a=Alpha,b=Beta") + ",\"cursor\":" + fakeOffering("x=Xray") + "}",
+            PrincipalBrain.SETTING, fakeOffering("x=Xray"),
+            org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING, seats.toString(),
+            org.jawata.mcp.engine.SettingKeys.SEATS_BRAINS.name(), "main=claude-code/Beta")), dir);
+
+        assertEquals("b", ask(brain, "WHICHMODEL", new ArrayList<>()));
+        assertEquals(Optional.of("Beta"), brain.currentModel());
+        brain.close();
+    }
+
+    @Test
+    @DisplayName("28h z78: a stored choice the registry does not offer is said, with where to set it, and no other agent is started in its place")
+    void anUnavailableStoredChoiceIsSaidNotReplaced() {
+        org.jawata.mcp.execution.SeatBrains.uninstall();
+        PrincipalBrain brain = PrincipalBrain.over(engineWith(Map.of(
+            Hirer.BRAINS_SETTING, "{\"cursor\":" + fakeOffering("x=Xray") + "}",
+            PrincipalBrain.SETTING, fakeOffering("x=Xray"),
+            org.jawata.mcp.engine.SettingKeys.SEATS_BRAINS.name(), "main=claude-code/Beta")), dir);
+        List<String> said = new ArrayList<>();
+
+        brain.answer("hello", said::add);
+
+        String answer = String.join("", said);
+        assertTrue(answer.contains("claude-code") && answer.contains(org.jawata.mcp.execution.SeatBrains.WHERE), answer);
+        brain.close();
+    }
+
+    @Test
+    @DisplayName("28h z78: a side discussion starts on the stored choice of its own seat")
+    void theSideDiscussionTakesItsStoredChoice() {
+        org.jawata.mcp.execution.SeatBrains.uninstall();
+        PrincipalBrain side = PrincipalBrain.forSide(engineWith(Map.of(
+            Hirer.BRAINS_SETTING, "{\"cursor\":" + fakeOffering("x=Xray,y=Yankee") + "}",
+            PrincipalBrain.SETTING, fakeOffering("a=Alpha"),
+            org.jawata.mcp.engine.SettingKeys.SEATS_BRAINS.name(), "btw=cursor/Yankee")), dir);
+
+        assertEquals("y", ask(side, "WHICHMODEL", new ArrayList<>()));
+        side.close();
+    }
+
     private static String inJson(String text) {
         return text.replace("\\", "\\\\");
     }
