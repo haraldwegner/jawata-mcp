@@ -34,6 +34,9 @@ class AccessPathArgumentsTest {
         "validate_syntax.fileName", "the name shown for inline source; nothing is opened",
         "find_quality_issue.excludePaths", "substrings that drop findings; nothing is opened");
 
+    /** A complete path on this machine: Windows does not count "/somewhere" as one without a drive. */
+    private static final Path PROBE = Path.of("/somewhere/probe").toAbsolutePath();
+
     @Test
     @DisplayName("every published argument that is named like a place is put to the access policy")
     void everyPlaceArgumentIsChecked() {
@@ -88,22 +91,22 @@ class AccessPathArgumentsTest {
         }
         String leaf = trail.get(trail.size() - 1);
         if (list) {
-            at.putArray(leaf).add("/somewhere/probe");
+            at.putArray(leaf).add(PROBE.toString());
         } else {
-            at.put(leaf, "/somewhere/probe");
+            at.put(leaf, PROBE.toString());
         }
-        return ToolPaths.of(arguments, List.of(), null).places().contains(Path.of("/somewhere/probe"));
+        return ToolPaths.of(arguments, List.of(), null).places().contains(PROBE);
     }
 
     @Test
     @DisplayName("the seats folder a review sweep reads is a place, and one the host's own seats folder may allow")
     void theSeatsFolderArgumentIsChecked() {
-        ObjectNode arguments = new ObjectMapper().createObjectNode().put("kind", "review_sweep").put("seats", "/somewhere/seats");
+        ObjectNode arguments = new ObjectMapper().createObjectNode().put("kind", "review_sweep").put("seats", PROBE.toString());
 
         ToolPaths.Named named = ToolPaths.of(arguments, List.of(), null);
 
-        assertEquals(List.of(Path.of("/somewhere/seats")), named.places());
-        assertEquals(Set.of(Path.of("/somewhere/seats")), named.seatFiles());
+        assertEquals(List.of(PROBE), named.places());
+        assertEquals(Set.of(PROBE), named.seatFiles());
     }
 
     @Test
@@ -116,7 +119,8 @@ class AccessPathArgumentsTest {
         Path target = java.nio.file.Files.createDirectories(root.resolve("outside/target"));
         java.nio.file.Files.createSymbolicLink(inside.resolve("lnk"), target);
 
-        assertEquals(root.resolve("outside/x"), PlaceNames.normalise(inside.resolve("lnk/../x")));
+        // both sides under one name: where the file system ignores letter case, as macOS does, normalise answers in lower case
+        assertEquals(PlaceNames.normalise(root.resolve("outside/x")), PlaceNames.normalise(inside.resolve("lnk/../x")));
     }
 
     @Test
@@ -135,18 +139,20 @@ class AccessPathArgumentsTest {
         Path missingThenUpThenLink = allowed.resolve("nosuch/../out/x.md");
 
         org.junit.jupiter.api.Assertions.assertAll(
-            () -> assertEquals(allowed.resolve("x.md"), PlaceNames.normalise(linkThenUp)),
+            () -> assertEquals(PlaceNames.normalise(allowed.resolve("x.md")), PlaceNames.normalise(linkThenUp)),
             () -> assertEquals(allowed.resolve("x.md"), org.jawata.mcp.execution.OwnWrites.placeOf(linkThenUp.toString())),
-            () -> assertEquals(outside.resolve("x.md"), PlaceNames.normalise(missingThenUpThenLink), "the link after the missing folder was not followed"),
+            () -> assertEquals(PlaceNames.normalise(outside.resolve("x.md")), PlaceNames.normalise(missingThenUpThenLink),
+                "the link after the missing folder was not followed"),
             () -> assertEquals(outside.resolve("x.md"), org.jawata.mcp.execution.OwnWrites.placeOf(missingThenUpThenLink.toString())));
     }
 
     @Test
     @DisplayName("a classpath is a list of places, and each of them is put to the policy")
     void eachPlaceOfAClasspathIsChecked() {
-        ObjectNode arguments = new ObjectMapper().createObjectNode()
-            .put("classpath", "/somewhere/a.jar" + java.io.File.pathSeparator + "/elsewhere/b.jar");
+        Path first = PROBE.resolveSibling("a.jar");
+        Path second = PROBE.resolveSibling("b.jar");
+        ObjectNode arguments = new ObjectMapper().createObjectNode().put("classpath", first + java.io.File.pathSeparator + second);
 
-        assertEquals(List.of(Path.of("/somewhere/a.jar"), Path.of("/elsewhere/b.jar")), ToolPaths.of(arguments, List.of(), null).places());
+        assertEquals(List.of(first, second), ToolPaths.of(arguments, List.of(), null).places());
     }
 }

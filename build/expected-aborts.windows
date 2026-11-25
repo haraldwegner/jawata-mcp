@@ -130,3 +130,12 @@ the fixture is a POSIX shell; the Windows path has no equivalent one-liner
 # be posed here; the test says so rather than passing a vendor it never saw named. The same naming is proven on Linux and macOS, and the
 # command-line reading itself (aCommandLineNamesTheBrainsVendor, including a Windows .exe path) runs here.
 the fixture is a symbolic link to java named agent, which Windows cannot run
+
+# 28h z70: AccessPathArgumentsTest proves that a link followed by ".." is judged beside the link's target, which is what a POSIX system
+# opens. Windows takes the ".." out of the text before it follows a link, so the case these two tests pose does not exist there. Not run
+# on Windows; the same rule is proven on Linux and macOS.
+Windows resolves .. before it follows a link
+
+# 28h z70: ExperienceMaintenanceTest makes a symbolic link to a denied file. Windows refuses a link to an account without the privilege,
+# so the cell is not posed there; the denied file read directly is covered by a sibling test that runs everywhere.
+links need a privilege on Windows

@@ -94,6 +94,11 @@ public final class AccessPolicy {
                 if (!entry.isTextual()) {
                     return unusable("the access policy at " + file + " has an entry in \"" + list + "\" that is not text, so no place may be named");
                 }
+                // The shipped file names Unix folders. Windows does not count "/usr" as an absolute path, so such an allow entry names nothing
+                // there and opens nothing; read as an error it made the whole policy unusable and refused every call. A deny entry stays strict.
+                if ("allow".equals(list) && entry.asText().startsWith("/") && !new java.io.File(entry.asText()).isAbsolute()) {
+                    continue;
+                }
                 String problem = expand(entry.asText(), variables, "allow".equals(list) ? allow : deny);
                 if (problem != null) {
                     return unusable("the access policy at " + file + ": entry \"" + entry.asText() + "\" in \"" + list + "\" " + problem
