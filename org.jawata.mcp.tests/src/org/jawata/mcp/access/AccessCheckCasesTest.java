@@ -154,7 +154,8 @@ class AccessCheckCasesTest {
             () -> assertTrue(!refused.apply(".gradle/caches/modules-2/x.jar"), "a library Gradle downloaded was refused"),
             () -> assertTrue(!refused.apply(".m2/repository/g/x.jar"), "CONTROL: a library Maven downloaded was refused"),
             () -> assertTrue(refused.apply(".gradle/gradle.properties"), "Gradle's own settings, which can hold passwords, were opened"),
-            () -> assertTrue(refused.apply(".m2/settings.xml"), "the Maven settings file, which can hold passwords, was opened"));
+            () -> assertTrue(refused.apply(".m2/settings.xml"), "the Maven settings file, which can hold passwords, was opened"),
+            () -> assertTrue(refused.apply(".m2/settings-security.xml"), "the Maven master password file was opened"));
     }
 
     @Test

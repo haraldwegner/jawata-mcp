@@ -26,6 +26,7 @@
     "${home}/.claude/settings.json",
     "${home}/.claude/settings.local.json",
     "${home}/.cursor/hooks.json",
-    "${home}/.m2/settings.xml"
+    "${home}/.m2/settings.xml",
+    "${home}/.m2/settings-security.xml"
   ]
 }

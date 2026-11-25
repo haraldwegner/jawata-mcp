@@ -104,6 +104,9 @@ public class FindReflectionUsageTool extends AbstractTool {
             // The one file asked for; a path that names no source file of a loaded project has no uses.
             org.eclipse.jdt.core.ICompilationUnit unit = oneFile ? service.getCompilationUnit(service.getPathUtils().resolve(filePath)) : null;
             org.eclipse.core.resources.IResource wanted = unit == null ? null : unit.getResource();
+            if (oneFile && wanted == null) {
+                return ToolResponse.invalidParameter("filePath", "'" + filePath + "' is no source file of a loaded project, so nothing was searched");
+            }
             // One more than is shown, so a list that was cut can be told from one that is whole; with one file asked for, everything, since the cap
             // applies to that file's uses and not to the project's.
             int searched = oneFile ? Integer.MAX_VALUE : (int) Math.min(Integer.MAX_VALUE, maxResults + 1L);
@@ -138,7 +141,7 @@ public class FindReflectionUsageTool extends AbstractTool {
                         continue;
                     }
                     if (oneFile) {
-                        matches.removeIf(match -> wanted == null || !wanted.equals(match.getResource()));
+                        matches.removeIf(match -> !wanted.equals(match.getResource()));
                     }
                     if (matches.size() > maxResults) {
                         cut.add(label);

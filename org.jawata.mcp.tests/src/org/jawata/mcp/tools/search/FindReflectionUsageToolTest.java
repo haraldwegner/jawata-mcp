@@ -67,7 +67,7 @@ class FindReflectionUsageToolTest {
         // Each use in the sample project occurs once, so only a cap of zero cuts anything.
         ObjectNode cut = objectMapper.createObjectNode().put("maxResults", 0);
 
-        assertEquals(0, getData(tool.execute(elsewhere)).get("totalCalls"), "a file without reflection answered calls from other files");
+        assertFalse(tool.execute(elsewhere).isSuccess(), "a path that names no source file was answered as a scan that found nothing");
         assertTrue((int) getData(tool.execute(inTheFile)).get("totalCalls") > 0, "CONTROL: the file's own calls were filtered away");
         Map<String, Object> capped = getData(tool.execute(cut));
         assertNotNull(capped.get("cutAtMaxResults"), "a list cut at maxResults did not say so: " + capped.get("summary"));
