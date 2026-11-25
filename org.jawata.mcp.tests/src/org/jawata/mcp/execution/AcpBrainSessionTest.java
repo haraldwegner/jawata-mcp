@@ -395,6 +395,18 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h z61: Antigravity's calls of the engine, titled in either of its two forms, are kept under the server and tool, so a hire's card counts them as jawata calls")
+    void antigravitysCallsAreKnownByServerAndTool() throws Exception {
+        HiredBrain.Outcome outcome = hire("AGYCALL");
+
+        assertEquals(List.of("mcp__jawata-engine__lookup", "mcp__jawata-javata-dev__experience", "mcp__someone-else__experience"), outcome.toolNames());
+        assertEquals("{\"kind\":\"stats\"}", outcome.toolCalls().get(1).arguments().toString(), "the call kept the wrapper instead of its arguments");
+        assertEquals("{\"kind\":\"processes\"}", outcome.toolCalls().get(0).arguments().toString());
+        assertEquals(2, ToolUse.of(outcome.toolCalls(), 3, java.util.Set.of("lookup", "experience")::contains).jawata(),
+            "CONTROL: a server that is not ours was counted as jawata, or ours was not");
+    }
+
+    @Test
     @DisplayName("28h D57 (d): a call Claude's ACP adapter opens with an empty input and streams its input in later updates is kept with the whole input, so it can be compared with an instruction")
     void aCallsStreamedInputIsKeptWhole() throws Exception {
         HiredBrain.Outcome outcome = hire("CLAUDECALL");

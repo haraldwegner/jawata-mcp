@@ -877,6 +877,25 @@ public final class AcpBrainSession {
                     default -> { }
                 }
             }
+            // 28h z61: Antigravity names a call of an MCP server either in the title ("Run mcp_<server>_<tool>") or only in the input
+            // ({ServerName, ToolName, Arguments}), and no rule that reads a call's name knew either form, so a hire's card counted its calls
+            // of the engine as other calls. Both are kept as mcp__<server>__<tool>, the form every such rule reads.
+            for (int i = 0; i < toolCalls.size(); i++) {
+                String called = toolCalls.get(i).name();
+                JsonNode input = toolCalls.get(i).arguments();
+                String name = null;
+                if (input.hasNonNull("ServerName") && input.hasNonNull("ToolName")) {
+                    name = "mcp__" + input.get("ServerName").asText() + "__" + input.get("ToolName").asText();
+                    input = input.has("Arguments") ? input.get("Arguments") : JSON.createObjectNode();
+                } else if (called.startsWith("Run mcp_") && residentToolIn(called) != null) {
+                    String tool = residentToolIn(called);
+                    name = "mcp__" + called.substring("Run mcp_".length(), called.length() - tool.length() - 1) + "__" + tool;
+                }
+                if (name != null) {
+                    toolNames.set(i, name);
+                    toolCalls.set(i, new ToolCall(name, input));
+                }
+            }
             wire.closeToolTime();
             stoppedBy = wire.stoppedBy;
             answered = stop != null;

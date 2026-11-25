@@ -277,6 +277,22 @@ public class FakeAcpAgent {
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"e1\",\"status\":\"completed\"}}}");
             chunk(session, "edited");
+        } else if (text.startsWith("AGYCALL")) {
+            // As Antigravity's agent names an MCP call (measured 2026-11-24, 28h z64): the engine's server in the title, or only the tool in the
+            // title with the server and the tool in the raw input; the third call is of a server that is not ours.
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"a1\",\"title\":\"Run mcp_jawata-engine_lookup\",\"kind\":\"other\","
+                + "\"status\":\"pending\",\"rawInput\":{\"kind\":\"processes\"}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"a2\",\"title\":\"MCP Tool experience\",\"kind\":\"other\","
+                + "\"status\":\"pending\",\"rawInput\":{\"ServerName\":\"jawata-javata-dev\",\"ToolName\":\"experience\",\"Arguments\":{\"kind\":\"stats\"}}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"a3\",\"title\":\"MCP Tool experience\",\"kind\":\"other\","
+                + "\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"a3\","
+                + "\"rawInput\":{\"ServerName\":\"someone-else\",\"ToolName\":\"experience\",\"Arguments\":{}}}}}");
+            chunk(session, "called");
         } else if (text.startsWith("OWNEDIT:")) {
             // an edit of the brain's own editor on the file named after the colon (28h Stage 27 (z2)): opened with no input, then the path
             String file = text.substring("OWNEDIT:".length()).trim();
