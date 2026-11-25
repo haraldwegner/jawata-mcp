@@ -811,7 +811,9 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
 
         try {
             JsonNode toolArguments = arguments;
-            ToolResponse response = caller.speaking(() -> tool.execute(toolArguments));
+            // 28h z70: a tool that finds files by itself asks the same check about each one while it runs
+            ToolResponse response = caller.speaking(() -> access == null ? tool.execute(toolArguments)
+                : access.whileServing(caller.id(), () -> tool.execute(toolArguments)));
             long duration = System.currentTimeMillis() - startTime;
             log.info("Tool {} completed in {}ms, success={}", name, duration, response.isSuccess());
             // Sprint 21e (item A): a successful project mutation changes what symbol

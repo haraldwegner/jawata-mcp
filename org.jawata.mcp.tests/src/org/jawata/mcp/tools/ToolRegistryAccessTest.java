@@ -158,6 +158,70 @@ class ToolRegistryAccessTest {
     }
 
     @Test
+    @DisplayName("28h z70: a files search of a folder the policy does not allow is refused, as a read of a file in it is")
+    void aSearchOfAFolderOutsideIsRefused() throws Exception {
+        Path outside = Files.createDirectories(root.resolve("home").resolve("outside"));
+        Files.writeString(outside.resolve("notes.txt"), "the secret line\n");
+        ToolRegistry registry = registry(policy);
+        registry.register(new FilesTool());
+
+        ToolResponse read = registry.callTool("files", OM.createObjectNode().put("action", "read").put("path", outside.resolve("notes.txt").toString()),
+            CallerIdentity.supplied("s"));
+        ToolResponse search = registry.callTool("files", OM.createObjectNode().put("action", "search").put("folder", outside.toString()).put("pattern", "secret"),
+            CallerIdentity.supplied("s"));
+
+        assertAll(
+            () -> assertEquals("ACCESS_DENIED", read.getError().getCode(), "CONTROL: the read was not refused"),
+            () -> assertFalse(search.isSuccess(), "the search answered: " + search.getData()),
+            () -> assertEquals("ACCESS_DENIED", search.getError() == null ? null : search.getError().getCode()));
+    }
+
+    @Test
+    @DisplayName("28h z70: a search of an allowed folder returns no line of a denied file inside it, and says how many files it left out")
+    void aSearchLeavesADeniedFileOutAndSaysSo() throws Exception {
+        Path denied = Files.writeString(project.resolve("settings.json"), "the secret line\n");
+        Files.writeString(project.resolve("notes.txt"), "the secret is elsewhere\n");
+        Files.writeString(policy, "{\"allow\":[\"${workspace}\"],\"deny\":[" + OM.writeValueAsString(denied.toString()) + "]}");
+        ToolRegistry registry = registry(policy);
+        registry.register(new FilesTool());
+
+        ToolResponse search = registry.callTool("files", OM.createObjectNode().put("action", "search").put("folder", project.toString()).put("pattern", "secret"),
+            CallerIdentity.supplied("s"));
+
+        assertTrue(search.isSuccess(), () -> String.valueOf(search.getError()));
+        JsonNode data = OM.valueToTree(search.getData());
+        assertAll(
+            () -> assertEquals(1, data.path("matches").size(), data.toString()),
+            () -> assertTrue(data.path("matches").path(0).path("path").asText().endsWith("notes.txt"), data.toString()),
+            () -> assertEquals(1, data.path("leftOut").asInt(), "the answer does not say a file was left out: " + data));
+    }
+
+    @Test
+    @DisplayName("28h z70: a hire's seat file may be read from the engine's seats folder though the policy does not list it; one elsewhere, and a denied one, may not")
+    void aSeatFileInTheSeatsFolderMayBeNamed() throws Exception {
+        Path seats = Files.createDirectories(root.resolve("home").resolve("studio").resolve("seats"));
+        Path denied = seats.resolve("denied.md");
+        Files.writeString(policy, "{\"allow\":[\"${workspace}\"],\"deny\":[" + OM.writeValueAsString(denied.toString()) + "]}");
+        ToolRegistry registry = registry(null);
+        registry.setAccessCheck(new AccessCheck(policy, session -> List.of(project), root.resolve("home"), root.resolve("scratch"),
+            () -> java.util.Optional.of(seats)));
+
+        ToolResponse own = registry.callTool("read_something", OM.createObjectNode().put("seatFile", seats.resolve("pm.md").toString()),
+            CallerIdentity.supplied("s"));
+        ToolResponse elsewhere = registry.callTool("read_something", OM.createObjectNode().put("seatFile", root.resolve("home").resolve("pm.md").toString()),
+            CallerIdentity.supplied("s"));
+        ToolResponse listed = registry.callTool("read_something", OM.createObjectNode().put("seatFile", denied.toString()),
+            CallerIdentity.supplied("s"));
+        ToolResponse otherArgument = registry.callTool("read_something", file(seats.resolve("pm.md")), CallerIdentity.supplied("s"));
+
+        assertAll(
+            () -> assertTrue(own.isSuccess(), () -> "the seat file in the seats folder was refused: " + own.getError()),
+            () -> assertFalse(elsewhere.isSuccess(), "a seat file outside every allowed place was named"),
+            () -> assertFalse(listed.isSuccess(), "a seat file on the deny list was named"),
+            () -> assertFalse(otherArgument.isSuccess(), "the seats folder was opened to every argument, not to seat files only"));
+    }
+
+    @Test
     @DisplayName("a registry with no access check installed (a host with no data folder) runs the call, so the check is the only thing that refuses")
     void withoutTheCheckNothingIsRefused() throws Exception {
         ToolResponse response = registry(null).callTool("read_something", file(root.resolve("home").resolve("Documents").resolve("notes.txt")),

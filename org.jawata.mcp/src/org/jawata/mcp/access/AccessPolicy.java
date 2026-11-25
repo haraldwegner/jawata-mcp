@@ -163,6 +163,12 @@ public final class AccessPolicy {
         return Decision.deny("'" + place + "' is outside every place the access policy allows");
     }
 
+    /** Whether {@code place} lies on the deny list, which no allowance from outside the file may override. */
+    boolean denies(Path place) {
+        Path at = PlaceNames.normalise(place);
+        return deny.stream().anyMatch(at::startsWith);
+    }
+
     private static String firstLine(String message) {
         if (message == null) {
             return "no detail";

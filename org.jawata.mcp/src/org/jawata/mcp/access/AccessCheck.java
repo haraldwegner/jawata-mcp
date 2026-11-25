@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -22,10 +24,14 @@ import com.fasterxml.jackson.databind.JsonNode;
  */
 public final class AccessCheck {
 
+    /** Which files the tool call served on this thread may open; none outside a call a check guards. */
+    private static final ThreadLocal<Predicate<Path>> OPENING = new ThreadLocal<>();
+
     private final Path policyFile;
     private final Function<String, List<Path>> workspaceOf;
     private final Path home;
     private final Path temp;
+    private final Supplier<Optional<Path>> seatsFolder;
 
     /**
      * @param policyFile  the one declared policy file
@@ -34,10 +40,20 @@ public final class AccessCheck {
      * @param temp        the machine's scratch directory, which {@code ${temp}} stands for
      */
     public AccessCheck(Path policyFile, Function<String, List<Path>> workspaceOf, Path home, Path temp) {
+        this(policyFile, workspaceOf, home, temp, Optional::empty);
+    }
+
+    /**
+     * @param seatsFolder the folder the person's seat files are in, as the host set it, read at each call; a call may name a seat file in it
+     *                    though the policy file does not list it, never one on the deny list
+     */
+    public AccessCheck(Path policyFile, Function<String, List<Path>> workspaceOf, Path home, Path temp,
+        Supplier<Optional<Path>> seatsFolder) {
         this.policyFile = policyFile;
         this.workspaceOf = workspaceOf;
         this.home = home;
         this.temp = temp;
+        this.seatsFolder = seatsFolder;
     }
 
     /** The sentence to refuse the call with, or nothing when every place it names is allowed or it names none. */
@@ -47,20 +63,60 @@ public final class AccessCheck {
         if (named.places().isEmpty() && named.unresolved().isEmpty()) {
             return Optional.empty();
         }
-        AccessPolicy policy = AccessPolicy.read(policyFile, Map.of(
-            "home", home == null ? List.of() : List.of(home),
-            "temp", List.of(temp),
-            "workspace", workspace));
+        AccessPolicy policy = policyFor(workspace);
         if (!named.unresolved().isEmpty()) {
             return Optional.of(refusal("'" + named.unresolved().get(0) + "' is a relative path and the session has no workspace to say where it is"));
         }
         for (Path place : named.places()) {
             AccessPolicy.Decision decision = policy.check(place);
-            if (!decision.allowed()) {
+            if (!decision.allowed() && !(named.seatFiles().contains(place) && inSeatsFolder(place) && !policy.denies(place))) {
                 return Optional.of(refusal(decision.reason()));
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Runs {@code call} for {@code sessionId} with {@link #openable()} answering for it. A tool that finds files by itself, such as a search
+     * through a folder, names only the folder in its arguments, so each file it is about to open is put to the policy there (28h z70). The
+     * policy is read only if the tool asks, and once for the call.
+     */
+    public <T> T whileServing(String sessionId, Supplier<T> call) {
+        Predicate<Path> before = OPENING.get();
+        AccessPolicy[] read = new AccessPolicy[1];
+        OPENING.set(place -> {
+            if (read[0] == null) {
+                read[0] = policyFor(workspaceOf.apply(sessionId));
+            }
+            return read[0].check(place).allowed();
+        });
+        try {
+            return call.get();
+        } finally {
+            if (before == null) {
+                OPENING.remove();
+            } else {
+                OPENING.set(before);
+            }
+        }
+    }
+
+    /** Whether the tool call served on this thread may open a file it found; every file when no check guards the call. */
+    public static Predicate<Path> openable() {
+        Predicate<Path> serving = OPENING.get();
+        return serving == null ? place -> true : serving;
+    }
+
+    private boolean inSeatsFolder(Path place) {
+        return seatsFolder.get().map(folder -> PlaceNames.normalise(place).startsWith(PlaceNames.normalise(folder))).orElse(false);
+    }
+
+    private AccessPolicy policyFor(List<Path> workspace) {
+        AccessPolicy policy = AccessPolicy.read(policyFile, Map.of(
+            "home", home == null ? List.of() : List.of(home),
+            "temp", List.of(temp),
+            "workspace", workspace));
+        return policy;
     }
 
     /**

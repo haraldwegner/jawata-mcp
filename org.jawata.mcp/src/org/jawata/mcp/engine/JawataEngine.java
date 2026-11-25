@@ -561,7 +561,10 @@ public class JawataEngine {
 						return this.getToolRegistry().sessionFolders().workspaceOf(session, loaded, onDisk.of(loaded));
 					};
 			this.getToolRegistry().setAccessCheck(new org.jawata.mcp.access.AccessCheck(policy, workspaceOf,
-					java.nio.file.Path.of(System.getProperty("user.home")), java.nio.file.Path.of(System.getProperty("java.io.tmpdir"))));
+					java.nio.file.Path.of(System.getProperty("user.home")), java.nio.file.Path.of(System.getProperty("java.io.tmpdir")),
+					// 28h z70: a hire names the seat's file, which lies in the seats folder the host set
+					() -> this.host().settings().get(org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING).filter(folder -> !folder.isBlank())
+							.map(java.nio.file.Path::of)));
 			// 28h-C27-31: every brain the engine starts is told where to read what this check allows, so the guard in its own client allows the
 			// same; it reads the windows' folders from their lists, never from a picture taken at its start (second audit 2026-11-20, finding 1)
 			org.jawata.mcp.access.BrainAccess.publish(

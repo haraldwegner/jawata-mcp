@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
+import org.jawata.mcp.access.AccessCheck;
 import org.jawata.mcp.models.ToolResponse;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -57,8 +58,8 @@ public final class FilesTool implements Tool {
             It is held to the same refusals as write (only a text document; never one that tells an agent what it may do) and does not make a file.
 
             read answers {path, content, totalLines, firstLine, truncated}: lines from offset (0-based), at most limit of them.
-            search answers {matches: [{path, line, text}], truncated}: line is 1-based; .git and node_modules are not searched, nor a file
-            over 2 MB or one that is not text.
+            search answers {matches: [{path, line, text}], truncated, leftOut}: line is 1-based; .git and node_modules are not searched, nor a
+            file over 2 MB or one that is not text. A file the access policy does not let the call open is not searched, and leftOut counts them.
             write creates the folders it needs and replaces the file; a path that is not a text document (a picture, code, a build or
             configuration file) is REFUSED and nothing is written, because a seat that carries this tool and no editor changes documents and
             never code. The kinds are the ones the main seat and a lead may write, named once in the engine.
@@ -149,6 +150,7 @@ public final class FilesTool implements Tool {
         int max = Math.max(1, arguments.path("maxResults").asInt(DEFAULT_MATCHES));
         List<Map<String, Object>> matches = new ArrayList<>();
         boolean[] truncated = {false};
+        int[] leftOut = {0};
         Files.walkFileTree(folder, new SimpleFileVisitor<>() {
             @Override
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attributes) {
@@ -159,6 +161,11 @@ public final class FilesTool implements Tool {
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
                 if (!attributes.isRegularFile() || attributes.size() > LARGEST_SEARCHED || matcher != null && !matcher.matches(file.getFileName())) {
+                    return FileVisitResult.CONTINUE;
+                }
+                // 28h z70: a file the access policy does not let this call open is not opened, and the answer says how many there were.
+                if (!AccessCheck.openable().test(file)) {
+                    leftOut[0]++;
                     return FileVisitResult.CONTINUE;
                 }
                 List<String> lines;
@@ -193,6 +200,7 @@ public final class FilesTool implements Tool {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("matches", matches);
         data.put("truncated", truncated[0]);
+        data.put("leftOut", leftOut[0]);
         return ToolResponse.success(data);
     }
 
