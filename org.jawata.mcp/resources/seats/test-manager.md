@@ -10,7 +10,7 @@ fires: at a gate, in place of running everything
 # reasons about a verdict instead of reading one is the defect this file refuses. Small tier
 # on that ground, raised only if a measured table says the driving itself needs more.)
 effort: low
-tools: [run_tests, compile_workspace, get_diagnostics, search_symbols, find_references, get_call_hierarchy, inspect, experience, hire, files, lookup]
+tools: [run_tests, compile_workspace, get_diagnostics, search_symbols, find_references, get_call_hierarchy, inspect, experience, hire, hire_wait, files, lookup]
 gates: []
 max_iterations: 1
 ---
@@ -112,3 +112,7 @@ nothing · parallel-safety — per suite pair, share or collide, and what they s
 mutation — survivors, failure-to-abort conversions, and unexercised changed members ·
 policy — the quarantine and threshold list with dates and reasons · skips, named · and
 every count beside its population. **No verdict.**
+
+STOPPING A HIRE OF YOURS (28h z136). You control the hires you start: one that goes wrong, or that you no longer need, you stop with
+`hire_wait(hireId=<its id>, action="stop")`. It ends that hire and every hire under it, and answers who was stopped. You stop only hires you
+started; a hire under another lead is that lead's.

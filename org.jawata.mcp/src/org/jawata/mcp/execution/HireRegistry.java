@@ -51,6 +51,8 @@ public final class HireRegistry {
         volatile long lastActivityMs = System.currentTimeMillis();
         /** How many seconds this hire had been quiet when the engine stopped it for that (28h Stage 27, z28, the second ceiling); negative while it was not. */
         volatile long stalledForSeconds = -1;
+        /** The caller id of the hirer that stopped this hire (28h z136); {@code null} when no hirer did. */
+        volatile String stoppedByHirer;
         /** The sign-of-life time at which the subscribers were told this hire had gone quiet, so one stretch of quiet is told once; 0 until told. */
         volatile long quietToldAtMs;
         final Thread thread;
@@ -125,6 +127,11 @@ public final class HireRegistry {
         /** How many seconds this hire had been quiet when the engine stopped it for that (28h Stage 27, z28); none when it was not stopped as a stall. */
         public OptionalLong stalledFor() {
             return hire.stalledForSeconds < 0 ? OptionalLong.empty() : OptionalLong.of(hire.stalledForSeconds);
+        }
+
+        /** The caller id of the hirer that stopped this hire (28h z136); none when no hirer did. */
+        public Optional<String> stoppedByHirer() {
+            return Optional.ofNullable(hire.stoppedByHirer);
         }
     }
 
@@ -722,8 +729,9 @@ public final class HireRegistry {
      * Stops the running hire with this plan id and every running hire below it in the chain of hires that issued them (Stage 24, M14, ND3): what
      * a person stopping a lead means is that nothing under it goes on spending. Answers each stopped hire as first name and seat, so the answer
      * can say who was stopped.
+     * @param byHirer TODO
      */
-    public synchronized List<String> stopTree(String planId) {
+    public synchronized List<String> stopTree(String planId, String byHirer) {
         List<String> stoppedNames = new java.util.ArrayList<>();
         for (Running hire : running) {
             boolean below = false;
@@ -733,6 +741,7 @@ public final class HireRegistry {
                 above = issuedBy.getOrDefault(above, "");
             }
             if (hire.planId.equals(planId) || below) {
+                hire.stoppedByHirer = byHirer;
                 stopped.add(hire.thread);
                 hire.onStop.forEach(Runnable::run);
                 hire.thread.interrupt();
@@ -740,6 +749,21 @@ public final class HireRegistry {
             }
         }
         return stoppedNames;
+    }
+
+    /**
+     * Whether this caller may stop the hire with this plan id (28h z136): it issued that hire, or issued a hire above it. A hired lead's caller
+     * id is its own plan id, so a lead stops the hires under it and never another lead's.
+     */
+    public boolean mayBeStoppedBy(String planId, String callerId) {
+        String above = issuedBy.get(planId);
+        for (int steps = 0; steps < 16 && above != null; steps++) {
+            if (above.equals(callerId)) {
+                return true;
+            }
+            above = above.isEmpty() ? null : issuedBy.get(above);
+        }
+        return false;
     }
 
     /** What each plan was, as first name and seat, kept so a report can say whose hire it was after that hire has ended. */

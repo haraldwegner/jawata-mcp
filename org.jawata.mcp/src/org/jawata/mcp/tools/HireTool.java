@@ -438,8 +438,12 @@ public class HireTool extends NeutralTool {
                 "the hire was stopped by the engine: it showed no sign of life for " + quiet.getAsLong() + " seconds",
                 "the child process is reaped; nothing is left running; hire again with a smaller task if the work is still wanted");
         }
+        // 28h z136: a hirer that stopped its own hire is named, so the stopped hire's record does not read as the person's stop.
+        String by = stopped.stoppedByHirer()
+            .map(hirer -> "by " + HireRegistry.shared().labelOf(hirer) + " (" + hirer + "), which hired it,")
+            .orElse("from the Agent Control panel");
         return ToolResponse.error("HIRE_STOPPED",
-            "the hire was stopped from the Agent Control panel while the brain was running",
+            "the hire was stopped " + by + " while the brain was running",
             "the child process is reaped; nothing is left running; hire again if the work is still wanted");
     }
 

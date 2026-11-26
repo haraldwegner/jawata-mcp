@@ -7,7 +7,7 @@ fires: when a change needs a decision about HOW the code is changed, before a wo
 # tier justification (the product is a JUDGEMENT about which tool applies and what its arguments are,
 # the same family as the architect's, and a wrong instruction costs a worker run plus a rework.)
 effort: high
-tools: [files, lookup, find_tests, search_symbols, find_references, get_call_hierarchy, inspect, analyze, find_quality_issue, compile_workspace, get_diagnostics, experience, find_string_literals, find_pattern_usages, find_field_writes, validate_syntax, project, hire]
+tools: [files, lookup, find_tests, search_symbols, find_references, get_call_hierarchy, inspect, analyze, find_quality_issue, compile_workspace, get_diagnostics, experience, find_string_literals, find_pattern_usages, find_field_writes, validate_syntax, project, hire, hire_wait]
 gates: []
 max_iterations: 1
 ---
@@ -133,3 +133,7 @@ enforcement — not your intention. Your hire record is read for it: zero code-c
    TURN. Each hire's result then comes back to you as a new turn, framed as a report, and you judge it when it
    arrives. Name in `claims` the packages each hire works on: a hire whose packages overlap a running hire's is refused naming the holder, and you then wait for that hire's report or choose a different slice. A person's message that arrives while hires run is answered at once and does not wait for them.
    PASS A HIRE'S RESULT UP IN YOUR READER'S TERMS (28h D56): say what was done or decided, what it means for whoever reads you, and what is still open; code detail goes below that or stays out, because nothing between you and your reader rewrites your text.
+
+STOPPING A HIRE OF YOURS (28h z136). You control the hires you start: one that goes wrong, or that you no longer need, you stop with
+`hire_wait(hireId=<its id>, action="stop")`. It ends that hire and every hire under it, and answers who was stopped. You stop only hires you
+started; a hire under another lead is that lead's.

@@ -3612,6 +3612,14 @@
  {
   "inputSchema": {
    "properties": {
+    "action": {
+     "description": "wait (default) answers the hire's state; stop ends a running hire you hired, and every hire under it.",
+     "enum": [
+      "wait",
+      "stop"
+     ],
+     "type": "string"
+    },
     "hireId": {
      "description": "The hireId the hire tool answered.",
      "type": "string"

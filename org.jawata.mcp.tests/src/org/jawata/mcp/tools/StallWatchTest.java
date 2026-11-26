@@ -78,7 +78,7 @@ class StallWatchTest {
         HireRegistry hires = HireRegistry.shared();
         try (HireRegistry.Registration stoppedByPerson = hires.begin("developer", "z28 watch person", "")) {
             hires.planOpened("plan-z28-watch-person");
-            hires.stopTree("plan-z28-watch-person");
+            hires.stopTree("plan-z28-watch-person", null);
             Thread.interrupted();
 
             ToolResponse answer = HireTool.stoppedAnswer(stoppedByPerson);

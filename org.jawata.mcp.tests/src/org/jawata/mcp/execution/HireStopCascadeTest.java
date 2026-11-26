@@ -70,7 +70,7 @@ class HireStopCascadeTest {
         Hire developer = aHire("developer", "m14 write", "m14-plan-engineer", "m14-plan-developer");
         Hire stranger = aHire("pm", "m14 another sprint", "m14-other-chat", "m14-plan-stranger");
 
-        List<String> names = HireRegistry.shared().stopTree("m14-plan-lead");
+        List<String> names = HireRegistry.shared().stopTree("m14-plan-lead", null);
         for (Hire hire : List.of(lead, engineer, developer)) {
             hire.thread.join(5_000);
         }
@@ -91,7 +91,7 @@ class HireStopCascadeTest {
         Hire lead = aHire("pm", "m14 lone sprint", "m14-chat-2", "m14-plan-lone-lead");
         Hire engineer = aHire("chief-engineer", "m14 lone build", "m14-plan-lone-lead", "m14-plan-lone-engineer");
 
-        List<String> names = HireRegistry.shared().stopTree("m14-plan-lone-engineer");
+        List<String> names = HireRegistry.shared().stopTree("m14-plan-lone-engineer", null);
         engineer.thread.join(5_000);
 
         assertAll(

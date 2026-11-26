@@ -187,4 +187,61 @@ class HireWaitToolTest {
             () -> assertEquals("finished", asked.get("state"), String.valueOf(asked)),
             () -> assertEquals(Boolean.FALSE, asked.get("newToYou"), "a report the chat had already taken was marked new to the tool: " + asked));
     }
+
+    /**
+     * A hire this lead issued, held running until released or stopped; {@code answeredOnStop} receives the message its call would answer when it
+     * was stopped.
+     */
+    private Thread heldUnder(String leadPlan, String planId, CountDownLatch end, java.util.concurrent.atomic.AtomicReference<String> answeredOnStop)
+            throws InterruptedException {
+        CountDownLatch registered = new CountDownLatch(1);
+        Thread thread = new Thread(() -> {
+            try (HireRegistry.Registration hire = hires.begin("developer", "z136 " + planId, leadPlan)) {
+                hires.planOpened(planId);
+                registered.countDown();
+                try {
+                    end.await();
+                } catch (InterruptedException stopped) {
+                    if (hire.wasStopped()) {
+                        answeredOnStop.set(HireTool.stoppedAnswer(hire).getError().getMessage());
+                    }
+                }
+            }
+        });
+        thread.setDaemon(true);
+        thread.start();
+        assertTrue(registered.await(5, TimeUnit.SECONDS), "the hire did not register as running");
+        return thread;
+    }
+
+    private ToolResponse stopAs(String callerId, String hireId) {
+        ObjectNode args = JSON.createObjectNode().put("hireId", hireId).put("action", "stop");
+        return org.jawata.mcp.models.CallerIdentity.supplied(callerId).speaking(() -> tool.execute(args));
+    }
+
+    @Test
+    @DisplayName("28h z136: a lead stops a hire of its own, whose answer says who stopped it; another lead is refused and the hire goes on")
+    void aLeadStopsOnlyItsOwnHire() throws Exception {
+        CountDownLatch end = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<String> answered = new java.util.concurrent.atomic.AtomicReference<>("");
+        Thread child = heldUnder("plan-z136-lead", "plan-z136-child", end, answered);
+        try {
+            ToolResponse byAnother = stopAs("plan-z136-other-lead", "plan-z136-child");
+            boolean ranOnAfterTheRefusal = hires.isRunningPlan("plan-z136-child");
+            ToolResponse byItsLead = stopAs("plan-z136-lead", "plan-z136-child");
+            child.join(5_000);
+
+            assertAll(
+                () -> assertTrue(!byAnother.isSuccess() && "NOT_YOUR_HIRE".equals(byAnother.getError().getCode()),
+                    "another lead was let stop it: " + byAnother.getData()),
+                () -> assertTrue(ranOnAfterTheRefusal, "the refused stop ended the hire"),
+                () -> assertEquals("stopping", dataOf(byItsLead).get("state"), String.valueOf(byItsLead.getData())),
+                () -> assertEquals(1, dataOf(byItsLead).get("count"), "how many were stopped is not said: " + byItsLead.getData()),
+                () -> assertTrue(!hires.isRunningPlan("plan-z136-child"), "the hire its lead stopped is still running"),
+                () -> assertTrue(answered.get().contains("plan-z136-lead"), "the stopped hire does not say who stopped it: " + answered.get()));
+        } finally {
+            end.countDown();
+            child.join(5_000);
+        }
+    }
 }

@@ -54,6 +54,8 @@ public final class HireWaitTool implements Tool {
             state, checks, number of files changed, money, time and tokens ("no figure" where the brain published none), report, the summary it
             wrote, and record, the file that holds its whole answer and changes; and newToYou, false when the report was already handed over, by
             this tool or to the chat), or unknown (no hire has that id on this engine).
+            action="stop" ends a running hire you hired, and every hire under it; it answers who was stopped and how many, and is refused for a hire
+            you did not start.
             waitSeconds (0 to 50, default 0) is how long to wait for a running hire before answering running: call again, and between the calls
             you are free to answer the person. A finished report is handed over once as new and marked read, so the chat does not hand it over again.
             """;
@@ -64,7 +66,9 @@ public final class HireWaitTool implements Tool {
         return Map.of("type", "object",
             "properties", Map.of(
                 "hireId", Map.of("type", "string", "description", "The hireId the hire tool answered."),
-                "waitSeconds", Map.of("type", "integer", "description", "How long to wait for a running hire, 0 to " + MAX_WAIT_SECONDS + " (default 0).")),
+                "waitSeconds", Map.of("type", "integer", "description", "How long to wait for a running hire, 0 to " + MAX_WAIT_SECONDS + " (default 0)."),
+                "action", Map.of("type", "string", "enum", List.of("wait", "stop"),
+                    "description", "wait (default) answers the hire's state; stop ends a running hire you hired, and every hire under it.")),
             "required", List.of("hireId"));
     }
 
@@ -73,6 +77,9 @@ public final class HireWaitTool implements Tool {
         String hireId = arguments == null || !arguments.hasNonNull("hireId") ? "" : arguments.get("hireId").asText().strip();
         if (hireId.isEmpty()) {
             return ToolResponse.invalidParameter("hireId", "name the hire to wait for: the hireId the hire tool answered");
+        }
+        if ("stop".equals(arguments.path("action").asText("wait"))) {
+            return stop(hireId);
         }
         // The principal of the jawata chat has a turn its hire's report comes back in (28h z62): it never waits here, and the call answers at once, so
         // the person's next message is not queued behind a poll of minutes.
@@ -119,6 +126,26 @@ public final class HireWaitTool implements Tool {
             // the hire has ended and its report is being kept: not a finished report yet
             data.put("state", "running");
         }
+        return ToolResponse.success(data);
+    }
+
+    /** A lead ends a running hire of its own, and every hire under it (28h z136); the answer says how many and who. */
+    private ToolResponse stop(String hireId) {
+        String caller = org.jawata.mcp.models.CallerIdentity.serving().map(org.jawata.mcp.models.CallerIdentity::id).orElse("");
+        if (!hires.isRunningPlan(hireId)) {
+            return ToolResponse.error("HIRE_NOT_RUNNING", "no running hire has the id " + hireId, "ask hire_wait for its report instead");
+        }
+        if (!hires.mayBeStoppedBy(hireId, caller)) {
+            return ToolResponse.error("NOT_YOUR_HIRE",
+                "refused: " + hires.labelOf(hireId) + " was not hired by you, nor by a hire of yours",
+                "stop only hires you started; a hire under another lead is that lead's to stop");
+        }
+        List<String> stopped = hires.stopTree(hireId, caller);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("hireId", hireId);
+        data.put("state", "stopping");
+        data.put("count", stopped.size());
+        data.put("stopped", stopped);
         return ToolResponse.success(data);
     }
 }

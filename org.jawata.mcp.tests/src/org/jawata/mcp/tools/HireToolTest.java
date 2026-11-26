@@ -1285,7 +1285,7 @@ class HireToolTest {
         }
         assertTrue(Files.exists(started), "the brain never started");
 
-        HireRegistry.shared().stopTree(String.valueOf(opened.get("hireId")));
+        HireRegistry.shared().stopTree(String.valueOf(opened.get("hireId")), null);
 
         JsonNode kept = null;
         for (int i = 0; i < 200 && kept == null; i++) {
@@ -3222,7 +3222,7 @@ class HireToolTest {
             String plan = String.valueOf(opened.get("hireId"));
 
             // what the chat's Stop on a hire's card asks the engine for
-            registry.stopTree(plan);
+            registry.stopTree(plan, null);
 
             org.jawata.mcp.execution.HireRegistry.Event ended = null;
             for (int i = 0; i < 200 && ended == null; i++) {
@@ -3273,7 +3273,7 @@ class HireToolTest {
             assertTrue(Files.exists(started), "the brain never started");
             String plan = String.valueOf(opened.get("hireId"));
 
-            registry.stopTree(plan);
+            registry.stopTree(plan, null);
 
             org.jawata.mcp.execution.HireRegistry.Event ended = null;
             for (int i = 0; i < 200 && ended == null; i++) {
