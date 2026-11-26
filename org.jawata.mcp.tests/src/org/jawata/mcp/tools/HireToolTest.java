@@ -3220,6 +3220,25 @@ class HireToolTest {
         }
     }
 
+    @Test
+    @DisplayName("28h z27: a full test run asked for as a hire's check is refused unless the hirer is the test manager, since the check itself runs under no caller")
+    void aFullRunAsACheckIsJudgedAgainstTheHirer() throws Exception {
+        HireRegistry hires = HireRegistry.shared();
+        try (HireRegistry.Registration lead = hires.begin("chief-engineer", "z27-gate-brief", "")) {
+            hires.planOpened("plan-z27-gate-lead");
+            ObjectNode withAFullRun = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+            withAFullRun.set("steps", JSON.createArrayNode().add(JSON.createObjectNode().put("tool", "run_tests")
+                .set("arguments", JSON.createObjectNode().put("fullRun", true).put("reason", "all of it"))));
+            HireTool tool = toolWith(aHostThatMustNotSpawn(), events, aRegistryWithACleanGate());
+
+            ToolResponse refused = org.jawata.mcp.models.CallerIdentity.supplied("plan-z27-gate-lead").speaking(() -> tool.execute(withAFullRun));
+
+            assertAll(
+                () -> assertFalse(refused.isSuccess(), "a chief engineer had a full run made as a check of its hire"),
+                () -> assertTrue(String.valueOf(refused.getError()).contains("test-manager"), String.valueOf(refused.getError())));
+        }
+    }
+
     /** A seats folder holding the cataloguer's file, as a studio-started engine is given one, and the settings that name it. */
     private Map<String, String> settingsWithASeatsFolder() throws Exception {
         Path seats = Files.createTempDirectory(dir, "seats-");

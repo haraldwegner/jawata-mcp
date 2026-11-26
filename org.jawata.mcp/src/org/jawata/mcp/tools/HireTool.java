@@ -800,6 +800,16 @@ public class HireTool extends NeutralTool {
         } catch (IllegalArgumentException e) {
             return ToolResponse.invalidParameter("steps", e.getMessage());
         }
+        // 28h z27: the engine runs a hire's checks itself, under no caller, so a full test run asked for as a check is judged here against
+        // the seat that asks for the hire.
+        Optional<String> asks = call.getServing().flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id()));
+        Optional<String> fullRunRefused = steps.stream()
+            .filter(step -> step.tool().equals("run_tests") && step.gateArguments() != null && step.gateArguments().path("fullRun").asBoolean(false))
+            .findFirst().flatMap(step -> hiring.refuseFullRun(asks, step.gateArguments().path("reason").asText(null)));
+        if (fullRunRefused.isPresent()) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", fullRunRefused.get(),
+                "name the tests the change reaches in the check, or have the test manager hire with the full run and its reason");
+        }
         if (steps.isEmpty()) {
             // PlanLedger.open refuses an empty step list, so this would fail one layer down with a
             // message about a plan rather than about the gates the caller did not declare.
