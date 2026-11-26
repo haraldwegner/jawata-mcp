@@ -399,6 +399,9 @@ class PrincipalBrainTest {
         assertTrue(said.startsWith("Cursor-Grok did not open a session: Authentication required."), said);
         assertTrue(said.contains("press Connect beside it in jawata studio"), said);
         assertTrue(PrincipalBrain.noSession(Optional.empty(), "").startsWith("The brain did not open a session. If it is not connected"));
+        // 28h-C27-54: a brain that gave another reason is quoted, and not told to log in
+        assertEquals("Cursor-Grok did not open a session: model not available.",
+            PrincipalBrain.noSession(Optional.of("Cursor-Grok"), "model not available"));
     }
 
     @Test

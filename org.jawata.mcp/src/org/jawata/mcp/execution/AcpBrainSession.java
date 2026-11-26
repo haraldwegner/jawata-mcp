@@ -53,6 +53,11 @@ public final class AcpBrainSession {
      */
     private static final Map<Program, List<Model>> OFFERED = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** Whether what a brain said when it refused means its user must log in first. */
+    public static boolean asksForLogin(String refusal) {
+        return refusal.toLowerCase(java.util.Locale.ROOT).contains("authentication required");
+    }
+
     private AcpBrainSession() {
     }
 
@@ -1196,7 +1201,7 @@ public final class AcpBrainSession {
 
         /** Whether the last reply was a refusal that says the user must log in first. */
         boolean refusedForWantOfLogin() {
-            return lastError != null && lastError.path("message").asText("").toLowerCase().contains("authentication required");
+            return lastError != null && asksForLogin(lastError.path("message").asText(""));
         }
 
         /** Sends a request and returns its result, or null when the brain ended or answered with an error. */

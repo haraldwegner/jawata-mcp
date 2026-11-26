@@ -349,10 +349,17 @@ public final class PrincipalBrain implements AgentBrain {
         }
     }
 
-    /** What the person is told when the brain opened no session: which brain, what it said, and how to connect it if that is the reason. */
+    /**
+     * What the person is told when the brain opened no session: which brain, what it said, and, when it said nothing or asked for a login, how to
+     * connect it. The editor that hears this may have no jawata studio, so the terminal comes first.
+     */
     static String noSession(Optional<String> brainLabel, String refusal) {
-        return brainLabel.orElse("The brain") + " did not open a session" + (refusal.isBlank() ? "" : ": " + refusal)
-            + ". If it is not connected: press Connect beside it in jawata studio, Seats (its own login opens your browser), or run its own login in a terminal.";
+        String said = brainLabel.orElse("The brain") + " did not open a session" + (refusal.isBlank() ? "" : ": " + refusal) + ".";
+        if (!refusal.isBlank() && !AcpBrainSession.asksForLogin(refusal)) {
+            return said;
+        }
+        return said + " If it is not connected: run its own login in a terminal, or, if you use jawata studio, press Connect beside it in jawata studio, Seats"
+            + " (its own login opens your browser).";
     }
 
     /** The state of the working folder before a turn, to read afterwards what the brain wrote there by any means; null when there is no folder. */
