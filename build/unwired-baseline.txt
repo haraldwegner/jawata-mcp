@@ -46,9 +46,6 @@ org.jawata.mcp.engine.SettingKeys#all()
 # Sprint 28k C25k: the words and the on-or-off kind a host shows for a setting. Their production callers are the Eclipse plug-in's preference pages (jawata-eclipse, JawataPreferencePage and MemoryPreferencePage), outside this repository's scan. Recorded at 28h C26.
 org.jawata.mcp.engine.SettingKeys#isOnOff(SettingKey)
 org.jawata.mcp.engine.SettingKeys#labelOf(SettingKey)
-# Sprint 28h z53, recorded at the release of the stored seat choice, 2026-11-23. noteOffered (AcpBrainSessionTest only) and HireRegistry#replace (HireRegistryReplaceTest and one HireToolTest case) belong to the pick-a-model-and-restart-the-running-hire path. His ruling for z53 is that a change applies to the NEXT hire only and there is no restart button, so no production code calls replace any more. Deleting them means deleting their tests and the answer path behind them, which is a design change and not a change to make inside a release; the architect schedules it (finding in findings-28h.tsv).
-org.jawata.mcp.execution.AcpBrainSession#noteOffered(Program,List<Model>)
-org.jawata.mcp.execution.HireRegistry#replace(String,String,Brain,String)
 # Sprint 28g S9a, C9a 2026-10-05 — THE DRIVER'S ENTRY POINTS AND THE LEDGER'S READ SURFACE.
 # These are an ABSENCE this gate is reporting correctly, not a defect: the thing that would
 # call and read them is the /main seat's ledger wiring (plan step M7), which is named and
@@ -66,11 +63,9 @@ org.jawata.mcp.execution.HireRegistry#replace(String,String,Brain,String)
 org.jawata.mcp.execution.HiredRun#issue(BrainDialect,HireSite,String,Ceilings,List<GatedStep>,GateRunner)
 # Sprint 28h Stage 27, found at C27 2026-11-19 by this gate's first run since the stage began: the SHORT forms of two calls whose production caller uses the longer one. HiredRun#issue(SeatHire,...,List<String>) is the seat form without the ACP program, which its own javadoc names the form a caller should use; HireTool calls the one that takes the program, and 16 hunks of HiredRunProposesTest call the short one. ToolUse#of(List,int,Predicate) is the form with no failed-call list; HireTool calls the four-argument one and ToolUseTest calls the short one. Deleting either means rewriting those test calls, which the inline tool refused for ToolUse#of (binary references to the built jar) and produced a broken lambda for HiredRun#issue; the cleanup is the architect's to schedule, not a change to make inside a checkpoint.
 org.jawata.mcp.execution.HiredRun#issue(SeatHire,HireSite,String,List<GatedStep>,GateRunner,List<String>)
-# Sprint 28h z53, 2026-11-23. SeatBrains#uninstall is a test-only helper by design (one test class must not leave an installed store for the next; it has five test callers). SeatBrains.Store#choose is the instance form of the static SeatBrains#choose that the hire path calls; the store's own tests read the pair through it. SeatHire#withBrain and #withRegistryModel are the old brain-pick forms the stored choice replaced; one SeatHireTest case still calls them. The two SeatHire methods are dead code to delete with that test (finding in findings-28h.tsv).
+# Sprint 28h z53, 2026-11-23. SeatBrains#uninstall is a test-only helper by design (one test class must not leave an installed store for the next; it has five test callers). SeatBrains.Store#choose is the instance form of the static SeatBrains#choose that the hire path calls; the store's own tests read the pair through it.
 org.jawata.mcp.execution.SeatBrains#uninstall()
 org.jawata.mcp.execution.SeatBrains.Store#choose(String,String)
-org.jawata.mcp.execution.SeatHire#withBrain(Brain,String)
-org.jawata.mcp.execution.SeatHire#withRegistryModel(Brain)
 org.jawata.mcp.execution.ToolUse#of(List<ToolCall>,int,Predicate<String>)
 org.jawata.mcp.field.FieldPile#countErrorShapes()
 org.jawata.mcp.knowledge.AnalogyPolicy#nominate(Map<String,Double>)

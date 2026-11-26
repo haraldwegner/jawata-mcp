@@ -77,21 +77,6 @@ public final class AcpBrainSession {
     }
 
     /**
-     * Remembers the models a brain's session offered, so a later command line can use the program's value for a shown name.
-     * An empty list forgets them. The session that lists models records the same catalogue.
-     */
-    public static void noteOffered(Program program, List<Model> models) {
-        if (program == null) {
-            return;
-        }
-        if (models == null || models.isEmpty()) {
-            OFFERED.remove(program);
-        } else {
-            OFFERED.put(program, List.copyOf(models));
-        }
-    }
-
-    /**
      * The program a setting names: {@code {"command":[...],"env":{...}}}. None when the text is not a command line (a setting that is wrong
      * names no brain). The one reader of that form, for the principal's brain, the reviewer's and every hired seat's.
      */

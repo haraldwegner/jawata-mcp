@@ -636,15 +636,15 @@ class AcpBrainSessionTest {
 
     @Test
     @DisplayName("a shown model the catalogue holds is the value the command line is given")
-    void aShownModelBecomesTheProgramsValue() {
-        String registry = "{\"claude-code\":{\"command\":[\"claude\"],\"vendor\":\"anthropic\",\"model\":\"sonnet\"}}";
-        AcpBrainSession.Program program = AcpBrainSession.programFor(registry, "claude-code").orElseThrow();
-        AcpBrainSession.noteOffered(program, List.of(new AcpBrainSession.Model("haiku", "Haiku 5.5")));
-        try {
-            assertEquals("haiku", AcpBrainSession.commandLineModelIn(registry, "claude-code", "Haiku 5.5"));
-            assertEquals("not-in-the-catalogue", AcpBrainSession.commandLineModelIn(registry, "claude-code", "not-in-the-catalogue"));
-        } finally {
-            AcpBrainSession.noteOffered(program, List.of());
-        }
+    void aShownModelBecomesTheProgramsValue() throws Exception {
+        // The stand-in's command names this test's own folder, so what its session records is no other test's.
+        String registry = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(Map.of("claude-code",
+            Map.of("command", agent.command(), "env", Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_MODELS", "haiku=Haiku 5.5"),
+                "vendor", "anthropic", "model", "sonnet")));
+
+        AcpBrainSession.modelsOfferedIn(registry, "claude-code");
+
+        assertEquals("haiku", AcpBrainSession.commandLineModelIn(registry, "claude-code", "Haiku 5.5"));
+        assertEquals("not-in-the-catalogue", AcpBrainSession.commandLineModelIn(registry, "claude-code", "not-in-the-catalogue"));
     }
 }

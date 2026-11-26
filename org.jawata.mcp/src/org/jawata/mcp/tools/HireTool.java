@@ -19,7 +19,6 @@ import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.BrainDialect;
 import org.jawata.mcp.execution.HireRegistry;
-import org.jawata.mcp.execution.HireRegistry.Replacement;
 import org.jawata.mcp.execution.HireSite;
 import org.jawata.mcp.execution.HiredBrain;
 import org.jawata.mcp.execution.HiredRun;
@@ -345,7 +344,7 @@ public class HireTool extends NeutralTool {
     @Override
     public ToolResponse execute(JsonNode arguments) {
         // The caller is read here, on the thread the call arrived on: a hire started on an engine thread would find no caller there.
-        HireCall call = new HireCall(arguments, null, "", org.jawata.mcp.models.CallerIdentity.serving());
+        HireCall call = new HireCall(arguments, org.jawata.mcp.models.CallerIdentity.serving());
         return startInBackground(arguments, call);
     }
 
@@ -566,34 +565,21 @@ public class HireTool extends NeutralTool {
     }
 
     /**
-     * One request to hire: the arguments the caller sent, the replacement the person chose while an earlier brain worked, what that brain had
-     * said, and the caller who sent it. The caller is read from the thread's context when the call is made, because the context lives on the
-     * calling thread and an engine thread that carries the call out later would find it empty.
+     * One request to hire: the arguments the caller sent and the caller who sent it. The caller is read from the thread's context when the call
+     * is made, because the context lives on the calling thread and an engine thread that carries the call out later would find it empty.
      */
     public static class HireCall {
         private final JsonNode arguments;
-        private final Replacement replacing;
-        private final String saidBefore;
         private final Optional<org.jawata.mcp.models.CallerIdentity> serving;
         private Optional<String> hireThrough = Optional.empty();
 
-        public HireCall(JsonNode arguments, Replacement replacing, String saidBefore, Optional<org.jawata.mcp.models.CallerIdentity> serving) {
+        public HireCall(JsonNode arguments, Optional<org.jawata.mcp.models.CallerIdentity> serving) {
             this.arguments = arguments;
-            this.replacing = replacing;
-            this.saidBefore = saidBefore;
             this.serving = serving;
         }
 
         public JsonNode getArguments() {
             return arguments;
-        }
-
-        public Replacement getReplacing() {
-            return replacing;
-        }
-
-        public String getSaidBefore() {
-            return saidBefore;
         }
 
         /** The caller this hire serves, captured when the call was made; empty when none was identified. */
@@ -861,8 +847,7 @@ public class HireTool extends NeutralTool {
             }
         }
         HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, area)
-            // A replacement starts on another brain, which cannot continue the session of the one it replaces.
-            .resuming(call.getReplacing() != null ? Optional.empty() : principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
+            .resuming(principalSession.flatMap(principal -> org.jawata.mcp.execution.SeatBrainSessions.shared().recall(principal, hired)))
             // The plan this hire opens belongs to the session that issued it, whoever it is: only that session's turn waits on its step (S10).
             .ownedBy(call.getServing().map(org.jawata.mcp.models.CallerIdentity::id))
             .labelled(hired, hirer, running.name())
@@ -880,10 +865,6 @@ public class HireTool extends NeutralTool {
         // The ACP program the brain was started through, kept to say which PATH it had (28h z21).
         Optional<AcpBrainSession.Program> brainProgram = Optional.empty();
         boolean stoppedByPerson = false;
-        Optional<HireRegistry.Replacement> replacement = Optional.empty();
-        // The registration keeps the brief the principal gave, so the panel still finds this hire; the brain is also told what was said before it took over.
-        String briefToBrain = call.getSaidBefore().isBlank() ? brief
-            : brief + "\n\nYou are taking over this work from another brain, which was stopped. What it had said so far:\n\n" + call.getSaidBefore();
         // 28h Stage 27 (z53): the hires that end while this run is on, kept so a lead's end can tell the code its own hires wrote from its own.
         List<HireRegistry.Event> hiresThatEnded = new java.util.concurrent.CopyOnWriteArrayList<>();
         Runnable stopListening = listeningForEndedHires(hiresThatEnded);
@@ -896,7 +877,7 @@ public class HireTool extends NeutralTool {
                 .flatMap(registryJson -> AcpBrainSession.programFor(registryJson, productName)
                     .or(() -> AcpBrainSession.programFor(registryJson, dialect.name())));
             brainProgram = acp;
-            proposal = run.issue(seat, base, briefToBrain, steps, new ToolGateRunner(registry.get()),
+            proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()),
                 hiddenTools, acp);
         } catch (IOException e) {
             return ToolResponse.error("INTERNAL_ERROR",
@@ -905,12 +886,6 @@ public class HireTool extends NeutralTool {
                     + " that CLI is installed and on the resident's PATH. Which executable a brain"
                     + " IS cannot be set per call; it is the dialect's, chosen by the seat's brain");
         } catch (InterruptedException e) {
-            replacement = running.replacement();
-            if (replacement.isPresent()) {
-                running.wasStopped();
-                running.close();
-                return hire(new HireCall(call.getArguments(), replacement.get(), call.getSaidBefore(), call.getServing()));
-            }
             if (running.wasStopped()) {
                 // The person's stop, or the engine's for a stall, is handled here and ends with this answer, so the thread is left as it is for the next request.
                 return stoppedAnswer(running);
@@ -922,7 +897,6 @@ public class HireTool extends NeutralTool {
         } finally {
             stopListening.run();
             // A killed process ends the read normally and no interrupt exception follows, so the stop is looked for here as well.
-            replacement = replacement.or(running::replacement);
             stoppedByPerson = running.wasStopped() || stoppedByPerson;
             running.close();
             if (stoppedByPerson) {
@@ -930,10 +904,6 @@ public class HireTool extends NeutralTool {
                 // served on this thread must not start interrupted.
                 Thread.interrupted();
             }
-        }
-        if (replacement.isPresent()) {
-            // D53 (i): the same seat and task again, on the brain the person chose, with what the stopped brain had said. The answer tells the principal.
-            return hire(new HireCall(call.getArguments(), replacement.get(), call.getSaidBefore() + proposal.outcome().text(), call.getServing()));
         }
         if (stoppedByPerson) {
             return stoppedAnswer(running);
@@ -945,9 +915,6 @@ public class HireTool extends NeutralTool {
         data.put("hirer", hirer);
         data.put("hired", hired);
         data.put("name", running.name());
-        if (call.getReplacing() != null) {
-            data.put("replaced", "the person moved this agent onto " + seat.brain().label() + " while it worked: its first brain was stopped and this seat was hired again with what had been said; this answer is the replacement's, and the seat's default brain is unchanged");
-        }
         String corrects = getStringParam(call.getArguments(), "fixes");
         if (corrects != null && !corrects.isBlank()) {
             data.put("fixes", corrects.strip());

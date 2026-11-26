@@ -99,11 +99,6 @@ public final class HireRegistry {
             return stopped.remove(hire.thread);
         }
 
-        /** The brain the person moved this hire onto, if the stop was a Replace (D53 (i)); answered once, then the mark is gone. */
-        public Optional<Replacement> replacement() {
-            return Optional.ofNullable(replacements.remove(hire.thread));
-        }
-
         @Override
         public void close() {
             List<Event> handed;
@@ -111,7 +106,6 @@ public final class HireRegistry {
                 hire.claims = java.util.Set.of();
                 running.remove(hire);
                 stopped.remove(hire.thread);
-                replacements.remove(hire.thread);
                 if (!hire.planId.isEmpty()) {
                     endedOn.put(hire.thread, new Ended(hire.planId, hire.name));
                 }
@@ -143,10 +137,6 @@ public final class HireRegistry {
         return Optional.ofNullable(endedOn.remove(Thread.currentThread()));
     }
 
-    /** The brain, and the model of it, a running hire is to continue on after its stop (D53 (i)). The model is empty for a brain that takes none. */
-    public record Replacement(SeatHire.Brain brain, String model) {
-    }
-
     /**
      * How long a running hire may show no sign of life before it is called stalled (28h Stage 27, z28): the first ceiling, at which a client that
      * asks {@code hire_wait} is told and the card of the hire says so. The second, past which the engine stops the hire, is a host setting.
@@ -169,7 +159,6 @@ public final class HireRegistry {
 
     private final List<Running> running = new CopyOnWriteArrayList<>();
     private final Set<Thread> stopped = ConcurrentHashMap.newKeySet();
-    private final java.util.Map<Thread, Replacement> replacements = new ConcurrentHashMap<>();
 
     /** The one registry of running hires in this process, which the hire tool fills and the agent face reads. */
     public static HireRegistry shared() {
@@ -864,24 +853,6 @@ public final class HireRegistry {
             }
         }
         return stoppedCount;
-    }
-
-    /**
-     * Stops every running hire of this seat for this brief so that it continues on another brain (D53 (i)), and answers how many there were.
-     * The hire's own run reads the mark and hires the seat again; nothing else is told. Only the brain's process is ended and the thread is not
-     * interrupted: the run then reads to the end of the output and keeps what the brain has said, which an interrupt would lose, and the next brain needs it.
-     */
-    public synchronized int replace(String seat, String brief, SeatHire.Brain brain, String model) {
-        int replaced = 0;
-        for (Running hire : running) {
-            if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
-                replacements.put(hire.thread, new Replacement(brain, model));
-                stopped.add(hire.thread);
-                hire.onStop.forEach(Runnable::run);
-                replaced++;
-            }
-        }
-        return replaced;
     }
 
     /** How many finished answers are kept. */

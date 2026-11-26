@@ -362,26 +362,6 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             changesCode, readsFiles, activities, writesStore, command, launched);
     }
 
-    public SeatHire withRegistryModel(Hirer.Brain offered) {
-        if (model != null || offered == null || offered.model().isBlank()) {
-            return this;
-        }
-        return new SeatHire(seat, brain, offered.model(), tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
-            changesCode, readsFiles, activities, writesStore, command, launchModel);
-    }
-
-    /**
-     * The same seat on the brain and model a person picked for it in the Agent Control panel (S9). A model written for one brain is not the
-     * model of another: with no model picked, the same brain keeps its model and a different brain starts from its own default, which the
-     * registry setting may then fill.
-     */
-    public SeatHire withBrain(Brain picked, String pickedModel) {
-        boolean named = pickedModel != null && !pickedModel.isBlank();
-        String next = named && picked.takesAModel() ? pickedModel.strip() : (picked == brain ? model : null);
-        return new SeatHire(seat, picked, next, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites,
-            changesCode, readsFiles, activities, writesStore, command, launchModel);
-    }
-
     /**
      * The dialect for this seat's brain, given the hiring resident's endpoint when it has one — see
      * {@link SelfEndpoint} for what a Claude hire does with it. Null is the stdio case.
