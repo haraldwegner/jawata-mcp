@@ -305,6 +305,7 @@ public final class PrincipalBrain implements AgentBrain {
                 brain.selectModel(model);
             });
             census = censusBeforeTurn();
+            atTurnStart = org.jawata.mcp.execution.HireRegistry.shared().workMark();
             turnRunning = true;
             try {
                 String owed = owedCorrection;
@@ -338,7 +339,7 @@ public final class PrincipalBrain implements AgentBrain {
         // C27, his word that it must not be possible: what the brain wrote to the folder, by any means, is read from the folder itself, and code that
         // was clean before the turn is put back.
         String correction = String.join("\n\n", java.util.stream.Stream.of(OwnWrites.correction(OwnWrites.flags(outcome.toolCalls())),
-            putBackCode(census)).filter(text -> !text.isEmpty()).toList());
+            putBackCode(census, outcome.toolCalls())).filter(text -> !text.isEmpty()).toList());
         if (!correction.isEmpty()) {
             chunks.accept("\n\n" + correction);
             owedCorrection = correction;
@@ -373,12 +374,21 @@ public final class PrincipalBrain implements AgentBrain {
      * wrote no code. The main seat edits no code, so this is what makes it impossible for a brain that keeps an editor of its own (C27, his
      * word). A document, a data file or a picture is left; a file that already had changes of the person's is kept and named, not touched.
      */
-    private String putBackCode(TreeAttribution census) {
+    private String putBackCode(TreeAttribution census, List<org.jawata.mcp.execution.ToolCall> made) {
         if (census == null) {
             return "";
         }
-        return OwnCodeTakeBack.of(host, site.workingDirectory().toString(), census.after());
+        TreeAttribution.Attribution seen = census.after();
+        // 28h z114: while a hire works, the folder also changes by the hire's hands, and a change is never main's because it happened during
+        // main's turn. Then only what main's own calls name as written is its own; without a hire the folder is read as before.
+        if (org.jawata.mcp.execution.HireRegistry.shared().workedSince(atTurnStart)) {
+            seen = seen.only(org.jawata.mcp.execution.OwnWrites.pathsWritten(made));
+        }
+        return OwnCodeTakeBack.of(host, site.workingDirectory().toString(), seen);
     }
+
+    /** The hires at work when the running turn started. */
+    private org.jawata.mcp.execution.HireRegistry.WorkMark atTurnStart;
 
     /** The brain process of this conversation, started if there is none, it has died, or the person has chosen another brain. */
     private AcpBrainSession.Conversation conversation() throws IOException {

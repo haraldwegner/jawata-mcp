@@ -155,6 +155,40 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("z114: while a hire works, a code file the hire changes during the main seat's turn is left, and the main seat's own write is still put back")
+    void aHiresWriteDuringTheTurnIsLeft() throws Exception {
+        Path foo = Files.createDirectories(dir.resolve("src")).resolve("Foo.java");
+        Path bar = dir.resolve("src").resolve("Bar.java");
+        Files.writeString(foo, "class Foo {}\n");
+        Files.writeString(bar, "class Bar {}\n");
+        git(dir, "init", "-q");
+        git(dir, "config", "core.autocrlf", "false");
+        git(dir, "add", "src/Foo.java", "src/Bar.java");
+        git(dir, "commit", "-q", "-m", "base");
+        PrincipalBrain brain = brain(Optional.of(fake));
+        List<String> pieces = new ArrayList<>();
+        try (org.jawata.mcp.execution.HireRegistry.Registration working =
+                org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "z114 hire", "z114-key")) {
+            brain.answer("OWNWRITE:" + foo, piece -> {
+                if (pieces.isEmpty()) {
+                    try {
+                        Files.writeString(bar, "class Bar { int written; }\n");
+                    } catch (IOException e) {
+                        throw new java.io.UncheckedIOException(e);
+                    }
+                }
+                pieces.add(piece);
+            });
+        } finally {
+            brain.close();
+        }
+        String said = String.join("", pieces);
+        assertAll(
+            () -> assertEquals("class Bar { int written; }\n", Files.readString(bar), "the hire's write was taken back: " + said),
+            () -> assertEquals("class Foo {}\n", Files.readString(foo), "the main seat's own write was left: " + said));
+    }
+
+    @Test
     @DisplayName("the person's stop reaches the brain, whose reply ends the turn that an interrupt cannot end (D53 (f))")
     void aStopEndsTheTurnThroughTheBrain() throws Exception {
         PrincipalBrain brain = brain(Optional.of(fake));

@@ -131,6 +131,11 @@ public final class OwnWrites {
         return dot > slash + 1 ? path.substring(dot + 1).toLowerCase(java.util.Locale.ROOT) : "";
     }
 
+    /** The files these calls name as written by the brain's own editor. */
+    public static java.util.Set<String> pathsWritten(List<ToolCall> made) {
+        return made.stream().map(TestFirst::writtenFile).flatMap(java.util.Optional::stream).collect(java.util.stream.Collectors.toSet());
+    }
+
     /** One flag, against no instruction, for each write the brain's own editor made to a file that is not a document. */
     public static List<Observer.Flag> flags(List<ToolCall> made) {
         List<Observer.Flag> flags = new ArrayList<>();

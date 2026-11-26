@@ -180,7 +180,25 @@ public final class HireRegistry {
         endedOn.remove(hire.thread); // an end nobody read belongs to an earlier hire of this thread
         hire.background = backgroundNext.remove(hire.thread);
         running.add(hire);
+        begun.incrementAndGet();
         return new Registration(hire);
+    }
+
+    /** How many hires this engine has begun, which with the running list answers whether any hire worked since a moment. */
+    private final java.util.concurrent.atomic.AtomicLong begun = new java.util.concurrent.atomic.AtomicLong();
+
+    /** A moment to ask {@link #workedSince} about later (28h z114). */
+    public record WorkMark(long begun, boolean anyRunning) {
+    }
+
+    /** This moment, for {@link #workedSince}. */
+    public WorkMark workMark() {
+        return new WorkMark(begun.get(), !running.isEmpty());
+    }
+
+    /** Whether any hire was working at the mark, began after it, or is working now. */
+    public boolean workedSince(WorkMark mark) {
+        return mark.anyRunning() || begun.get() != mark.begun() || !running.isEmpty();
     }
 
     /**

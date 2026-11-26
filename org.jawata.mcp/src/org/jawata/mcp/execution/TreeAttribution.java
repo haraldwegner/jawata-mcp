@@ -297,5 +297,17 @@ public final class TreeAttribution {
         public Attribution(Optional<List<String>> changed, String basis) {
             this(changed, basis, Optional.empty());
         }
+
+        /**
+         * This attribution narrowed to the files {@code written} names (28h z114): a file is named when a written path is its path or ends
+         * in it after a separator, since a change is named from the repository's top folder and a brain names its writes in full.
+         */
+        public Attribution only(java.util.Set<String> written) {
+            java.util.function.Predicate<String> named = path -> written.stream()
+                .map(one -> one.replace('\\', '/'))
+                .anyMatch(one -> one.equals(path) || one.endsWith("/" + path));
+            return new Attribution(changed.map(files -> files.stream().filter(named).toList()), basis,
+                changes.map(rows -> new Changes(rows.shown().stream().filter(row -> named.test(row.path())).toList(), rows.omitted())));
+        }
     }
 }
