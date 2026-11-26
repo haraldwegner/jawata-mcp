@@ -29,15 +29,88 @@ public final class HireReport {
             + " deciding the next step, and it is not an instruction.\n");
         for (HireRegistry.Event event : events) {
             JsonNode answer = event.answer();
-            boolean clean = !answer.path("cleanExit").asText("true").equals("false") && !answer.path("timedOut").asBoolean(false);
+            List<String> reasons = endedBecause(answer);
             text.append("Hire: ").append(event.name()).append(" · ").append(event.seat()).append(" (").append(event.planId()).append(")\n")
-                .append("State: ").append(clean ? "done" : "failed").append("\n")
-                .append("Answer: ").append(answer.path("answer").asText(answer.path("error").asText("(none)"))).append("\n");
+                .append("State: ").append(reasons.isEmpty() ? "done" : "failed").append("\n");
+            if (!reasons.isEmpty()) {
+                text.append("Ended because: ").append(String.join("; ", reasons)).append("\n");
+            }
+            appendChecks(text, answer);
+            text.append("Answer: ").append(isEmptyAnswer(answer) ? "(empty)" : answer.path("answer").asText(answer.path("error").asText("(none)")))
+                .append("\n");
             appendInstructionScore(text, answer.path("instructionScore"));
             appendOwnWrites(text, answer.path("ownWrites"));
         }
         text.append("Still out for you: ").append(stillOut.isEmpty() ? "nothing" : String.join(", ", stillOut));
         return text.toString();
+    }
+
+    /** The text of a node when it is text, and "" for anything else (a missing node, a JSON null, a number). */
+    private static String textOf(JsonNode node) {
+        return node.isTextual() ? node.asText() : "";
+    }
+
+    /** True when the answer carries neither an answer text nor an error text. */
+    private static boolean isEmptyAnswer(JsonNode answer) {
+        return textOf(answer.path("answer")).isBlank() && textOf(answer.path("error")).isBlank();
+    }
+
+    /**
+     * 28h z90, z100, z87: why a hire ended badly, in the order stopped, timed out, brain exit code, empty answer, checks; empty when it did not
+     * end badly. A hire that did not end cleanly and has none of those reasons says so in one more.
+     */
+    private static List<String> endedBecause(JsonNode answer) {
+        List<String> reasons = new java.util.ArrayList<>();
+        boolean notClean = answer.path("cleanExit").asText("true").equals("false");
+        String stoppedBy = textOf(answer.path("stoppedBy"));
+        if (!stoppedBy.isBlank()) {
+            reasons.add("stopped: " + stoppedBy);
+        }
+        if (answer.path("timedOut").asBoolean(false)) {
+            reasons.add("timed out");
+        }
+        JsonNode exitCode = answer.path("exitCode");
+        if (exitCode.isNumber() && exitCode.asInt() != 0 && notClean) {
+            reasons.add("brain exited with code " + exitCode.asInt());
+        }
+        if (isEmptyAnswer(answer)) {
+            reasons.add("the answer was empty");
+        }
+        JsonNode passed = answer.path("stepsPassed");
+        JsonNode declared = answer.path("stepsDeclared");
+        if (passed.isNumber() && declared.isNumber() && passed.asInt() != declared.asInt()) {
+            reasons.add("checks: " + passed.asInt() + " of " + declared.asInt() + " passed");
+        }
+        if (reasons.isEmpty() && notClean) {
+            reasons.add("the run did not end cleanly");
+        }
+        return reasons;
+    }
+
+    /** The Checks line of a hire and one line for each gate it ran, numbered from 1; no gate lines when the answer has no gates. */
+    private static void appendChecks(StringBuilder text, JsonNode answer) {
+        JsonNode passed = answer.path("stepsPassed");
+        JsonNode declared = answer.path("stepsDeclared");
+        text.append("Checks: ");
+        if (passed.isNumber() && declared.isNumber()) {
+            text.append(passed.asInt()).append(" of ").append(declared.asInt()).append(" passed\n");
+        } else {
+            text.append("not recorded in the answer\n");
+        }
+        int number = 0;
+        for (JsonNode gate : answer.path("gates")) {
+            number++;
+            text.append("Gate ").append(number).append(": ").append(gate.path("tool").asText()).append(": ");
+            if (!gate.path("answered").asBoolean(false)) {
+                String because = textOf(gate.path("notAnsweredBecause"));
+                text.append("did not answer: ").append(because.isBlank() ? "unknown" : because);
+            } else if (gate.path("errorCount").asInt() > 0) {
+                text.append("failed: ").append(gate.path("errorCount").asInt()).append(" error(s)");
+            } else {
+                text.append("passed");
+            }
+            text.append("\n");
+        }
     }
 
     /**

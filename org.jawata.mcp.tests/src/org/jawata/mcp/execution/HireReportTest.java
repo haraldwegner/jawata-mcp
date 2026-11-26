@@ -109,4 +109,98 @@ class HireReportTest {
             () -> assertTrue(report.contains("Answer: PROBE OK"), report),
             () -> assertFalse(report.contains("Instructions:"), report));
     }
+
+    @Test
+    @DisplayName("28h z90 (a): a run that exited cleanly with every step passed but answered nothing is failed, not done, and the report says the answer was empty")
+    void aCleanRunWithAnEmptyAnswerIsFailed() throws Exception {
+        String report = reportOf("{\"cleanExit\":true,\"answer\":\"\",\"stepsPassed\":3,\"stepsDeclared\":3}");
+
+        assertAll(
+            () -> assertTrue(report.contains("State: failed"), report),
+            () -> assertTrue(report.contains("Ended because: the answer was empty"), report),
+            () -> assertTrue(report.contains("Answer: (empty)"), report));
+    }
+
+    @Test
+    @DisplayName("28h z90 (b): a run with fewer steps passed than declared is failed, says so as 'checks: 2 of 3 passed', and lists each gate with its outcome")
+    void aRunWithFewerStepsPassedThanDeclaredIsFailedAndListsItsGates() throws Exception {
+        String report = reportOf("""
+            {"cleanExit":true,"answer":"I changed it","stepsPassed":2,"stepsDeclared":3,"gates":[
+              {"tool":"compile_workspace","errorCount":0,"answered":true},
+              {"tool":"get_diagnostics","errorCount":4,"answered":true},
+              {"tool":"git","errorCount":0,"answered":false,"notAnsweredBecause":"the brain was stopped before it finished"}]}
+            """);
+
+        assertAll(
+            () -> assertTrue(report.contains("State: failed"), report),
+            () -> assertTrue(report.contains("Ended because: checks: 2 of 3 passed"), report),
+            () -> assertTrue(report.contains("Checks: 2 of 3 passed"), report),
+            () -> assertTrue(report.contains("Gate 1: compile_workspace: passed"), report),
+            () -> assertTrue(report.contains("Gate 2: get_diagnostics: failed: 4 error(s)"), report),
+            () -> assertTrue(report.contains("Gate 3: git: did not answer: the brain was stopped before it finished"), report));
+    }
+
+    @Test
+    @DisplayName("28h z90 (c): a run stopped by a ceiling is failed, and the report names the ceiling first and the empty answer after it")
+    void aRunStoppedByACeilingNamesTheCeilingFirst() throws Exception {
+        String report = reportOf("""
+            {"cleanExit":false,"stoppedBy":"tool steps: 61 over the ceiling of 60","exitCode":null,"answer":""}
+            """);
+
+        assertAll(
+            () -> assertTrue(report.contains("State: failed"), report),
+            () -> assertTrue(report.contains(
+                "Ended because: stopped: tool steps: 61 over the ceiling of 60; the answer was empty"), report));
+    }
+
+    @Test
+    @DisplayName("28h z90 (d): a brain that exited with a non-zero code without a clean exit is failed and the report gives the code")
+    void aBrainThatExitedWithACodeIsFailedWithTheCode() throws Exception {
+        String report = reportOf("{\"cleanExit\":false,\"exitCode\":1,\"answer\":\"partial\",\"stepsPassed\":3,\"stepsDeclared\":3}");
+
+        assertAll(
+            () -> assertTrue(report.contains("State: failed"), report),
+            () -> assertTrue(report.contains("Ended because: brain exited with code 1"), report));
+    }
+
+    @Test
+    @DisplayName("28h z90 (e), the control: a clean run with an answer and every step passed is done, says 'Checks: 3 of 3 passed' and has no 'Ended because' line")
+    void aCleanRunWithAnAnswerAndAllStepsPassedIsDone() throws Exception {
+        String report = reportOf("{\"cleanExit\":true,\"answer\":\"all good\",\"stepsPassed\":3,\"stepsDeclared\":3}");
+
+        assertAll(
+            () -> assertTrue(report.contains("State: done"), report),
+            () -> assertTrue(report.contains("Checks: 3 of 3 passed"), report),
+            () -> assertFalse(report.contains("Ended because"), report));
+    }
+
+    @Test
+    @DisplayName("28h z90 (f): a run that timed out is failed even when its exit was clean, and the report says it timed out")
+    void aRunThatTimedOutIsFailed() throws Exception {
+        String report = reportOf("{\"cleanExit\":true,\"timedOut\":true,\"answer\":\"late\",\"stepsPassed\":3,\"stepsDeclared\":3}");
+
+        assertAll(
+            () -> assertTrue(report.contains("State: failed"), report),
+            () -> assertTrue(report.contains("Ended because: timed out"), report));
+    }
+
+    @Test
+    @DisplayName("28h z90 (g): an answer that carries no step counts and no gates is not failed for that, and says the checks were not recorded")
+    void anAnswerWithoutStepCountsIsNotFailedForIt() throws Exception {
+        String report = reportOf("{\"cleanExit\":true,\"answer\":\"fine\"}");
+
+        assertAll(
+            () -> assertTrue(report.contains("State: done"), report),
+            () -> assertTrue(report.contains("Checks: not recorded in the answer"), report),
+            () -> assertFalse(report.contains("Gate 1"), report));
+    }
+
+    @Test
+    @DisplayName("28h z90 (h): every reason that holds is listed, in the order stopped, timed out, exit code, empty answer, checks")
+    void everyReasonThatHoldsIsListedInOrder() throws Exception {
+        String report = reportOf("{\"cleanExit\":false,\"timedOut\":true,\"exitCode\":143,\"answer\":\"\",\"stepsPassed\":1,\"stepsDeclared\":2}");
+
+        assertTrue(report.contains(
+            "Ended because: timed out; brain exited with code 143; the answer was empty; checks: 1 of 2 passed"), report);
+    }
 }
