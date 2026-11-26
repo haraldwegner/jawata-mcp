@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
@@ -52,6 +53,11 @@ public final class FilesTool implements Tool {
                    files(action="search", folder="/abs/folder", pattern="<Java regex>" [, glob="*.java"] [, maxResults=200])
                    files(action="write",  path="/abs/notes/plan.md", content="...")
                    files(action="edit",   path="/abs/notes/plan.md", oldText="...", newText="...")
+                   files(action="append_row", path="/abs/notes/plan.md", prefix="z", content="- **({row}) Title.** text")
+
+            append_row adds a numbered row to a plan: the number is one above the highest (zN) in the document, taken as the row is written,
+            and put where {row} stands in content, after the last such row. Two writers never get one number, so a row is added with it and
+            never numbered by hand. It answers {path, row, line}.
 
             edit replaces ONE exact passage of an existing document and leaves the rest as it was: oldText must occur exactly once, so a passage
             found twice or not at all is refused and nothing is written, and an empty one is refused. It answers {path, replaced: 1, bytes}.
@@ -69,7 +75,8 @@ public final class FilesTool implements Tool {
     @Override
     public Map<String, Object> getInputSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("action", Map.of("type", "string", "enum", List.of("read", "search", "write", "edit"), "description", "What to do."));
+        properties.put("action", Map.of("type", "string", "enum", List.of("read", "search", "write", "edit", "append_row"), "description", "What to do."));
+        properties.put("prefix", Map.of("type", "string", "description", "append_row: the letters the rows are numbered with, such as z."));
         properties.put("oldText", Map.of("type", "string", "description", "edit: the exact passage to replace; it must occur exactly once in the document."));
         properties.put("newText", Map.of("type", "string", "description", "edit: what replaces it."));
         properties.put("path", Map.of("type", "string", "description", "read/write: the file, as an absolute path."));
@@ -98,7 +105,8 @@ public final class FilesTool implements Tool {
                 case "search" -> search(arguments);
                 case "write" -> write(arguments);
                 case "edit" -> edit(arguments);
-                default -> ToolResponse.invalidParameter("action", "action must be read, search, write or edit, not '" + action + "'");
+                case "append_row" -> appendRow(arguments);
+                default -> ToolResponse.invalidParameter("action", "action must be read, search, write, edit or append_row, not '" + action + "'");
             };
         } catch (IOException e) {
             return ToolResponse.error("IO_ERROR", e.getMessage(), "Check the path and that the file can be read or written.");
@@ -284,6 +292,57 @@ public final class FilesTool implements Tool {
         data.put("replaced", 1);
         data.put("bytes", edited.getBytes(StandardCharsets.UTF_8).length);
         return ToolResponse.success(data);
+    }
+
+    /**
+     * Appends a numbered row to a plan (28h z127): the number is read and the row written while no other append runs, so two writers
+     * never give out the same one. It is held to the writer's refusals, as an edit is.
+     */
+    private static ToolResponse appendRow(JsonNode arguments) throws IOException {
+        String given = arguments.path("path").asText("");
+        String prefix = arguments.path("prefix").asText("");
+        String content = arguments.path("content").asText("");
+        if (given.isBlank() || !prefix.matches("[A-Za-z]+") || !content.contains("{row}")) {
+            return ToolResponse.invalidParameter(given.isBlank() ? "path" : !prefix.matches("[A-Za-z]+") ? "prefix" : "content",
+                "append_row needs the plan's path, the letters its rows are numbered with, and the row with {row} where its number goes");
+        }
+        if (org.jawata.mcp.execution.OwnWrites.tellsAnAgentWhatItMayDo(given) || !org.jawata.mcp.execution.OwnWrites.isTextDocument(given)) {
+            return ToolResponse.invalidParameter("path", "only a text document that tells no agent what it may do is appended to, not " + given,
+                "NOT_A_DOCUMENT");
+        }
+        Path path = org.jawata.mcp.execution.OwnWrites.placeOf(given);
+        if (!Files.isRegularFile(path)) {
+            return ToolResponse.invalidParameter("path", given + " is not a document that exists", "FILE_NOT_FOUND");
+        }
+        synchronized (FilesTool.class) {
+            List<String> lines = new ArrayList<>(List.of(Files.readString(path, StandardCharsets.UTF_8).split("\n", -1)));
+            Pattern numbered = Pattern.compile("\\(" + prefix + "(\\d+)\\)");
+            Pattern row = Pattern.compile("^- \\*\\*\\(" + prefix + "\\d+\\)");
+            int highest = 0;
+            int after = -1;
+            for (int i = 0; i < lines.size(); i++) {
+                Matcher found = numbered.matcher(lines.get(i));
+                while (found.find()) {
+                    highest = Math.max(highest, Integer.parseInt(found.group(1)));
+                }
+                if (row.matcher(lines.get(i)).find()) {
+                    after = i;
+                }
+            }
+            String number = prefix + (highest + 1);
+            // After the last row and the indented lines that continue it; at the end where there is no row yet.
+            int at = after < 0 ? lines.size() - (lines.get(lines.size() - 1).isEmpty() ? 1 : 0) : after + 1;
+            while (after >= 0 && at < lines.size() && lines.get(at).startsWith("  ")) {
+                at++;
+            }
+            lines.add(at, content.replace("{row}", number));
+            Files.writeString(path, String.join("\n", lines), StandardCharsets.UTF_8);
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("path", path.toString());
+            data.put("row", number);
+            data.put("line", at + 1);
+            return ToolResponse.success(data);
+        }
     }
 
     /** Where a passage the document does not hold parts from the nearest text it does: the line, and what each has next. */

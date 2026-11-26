@@ -650,7 +650,7 @@
      "type": "string"
     },
     "includeTests": {
-     "description": "Fowler smell kinds only \u2014 include test sources in the scan. Test-ness comes from the source root's test attribute in the loaded model, not from a path or name convention, so a flat-layout test bundle is recognised too. Default false: test code legitimately has long methods and subject-under-test access, so it is excluded to keep findings actionable.",
+     "description": "Fowler smell kinds only \u2014 include test sources in the scan. Test-ness comes from the source root's test attribute in the loaded model, not from a path or name convention, so a flat-layout test bundle is recognised too. Default false: test code legitimately has long methods and subject-under-test access, so it is excluded to keep findings actionable. kind=forbidden_edge leaves test sources out the same way, since a test may cross a boundary the product may not.",
      "type": "boolean"
     },
     "kind": {
@@ -3668,7 +3668,8 @@
       "read",
       "search",
       "write",
-      "edit"
+      "edit",
+      "append_row"
      ],
      "type": "string"
     },
@@ -3706,6 +3707,10 @@
     },
     "path": {
      "description": "read/write: the file, as an absolute path.",
+     "type": "string"
+    },
+    "prefix": {
+     "description": "append_row: the letters the rows are numbered with, such as z.",
      "type": "string"
     },
     "pattern": {

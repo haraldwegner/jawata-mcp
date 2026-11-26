@@ -187,6 +187,37 @@ class FilesToolTest {
     }
 
     @Test
+    @DisplayName("28h z127: a row appended is numbered one above the highest, after the last row and its continuation lines")
+    void aRowIsNumberedAndPlaced(@TempDir Path folder) throws Exception {
+        Path plan = Files.writeString(folder.resolve("plan.md"), "# Plan\n- **(z7) One.** text.\n  BUILT.\n\n## Next\n(z12) is named here.\n");
+
+        Map<String, Object> answer = data(call("append_row", Map.of("path", plan.toString(), "prefix", "z", "content", "- **({row}) Two.** more.")));
+
+        assertEquals("z13", answer.get("row"));
+        assertEquals("# Plan\n- **(z7) One.** text.\n  BUILT.\n- **(z13) Two.** more.\n\n## Next\n(z12) is named here.\n", Files.readString(plan));
+    }
+
+    @Test
+    @DisplayName("28h z127: two writers appending at once get different numbers and both rows stay")
+    void concurrentAppendsGetDistinctNumbers(@TempDir Path folder) throws Exception {
+        Path plan = Files.writeString(folder.resolve("plan.md"), "- **(z1) First.**\n");
+        java.util.Set<Object> distinct = new java.util.HashSet<>();
+        try (java.util.concurrent.ExecutorService writers = java.util.concurrent.Executors.newFixedThreadPool(8)) {
+            List<java.util.concurrent.Future<Object>> numbers = new java.util.ArrayList<>();
+            for (int i = 0; i < 40; i++) {
+                numbers.add(writers.submit(() -> data(call("append_row", Map.of("path", plan.toString(), "prefix", "z", "content",
+                    "- **({row}) Row.**"))).get("row")));
+            }
+            for (java.util.concurrent.Future<Object> number : numbers) {
+                distinct.add(number.get());
+            }
+        }
+
+        assertEquals(40, distinct.size(), "two appends took one number");
+        assertEquals(41, Files.readAllLines(plan).size(), "a row was lost");
+    }
+
+    @Test
     @DisplayName("Stage 27 (q): an edit is held to the writer's refusals: any file that is not a .md, a document that tells an agent what it may do, and a file that is not there")
     void anEditIsHeldToTheWritersRefusals(@TempDir Path folder) throws Exception {
         for (String name : List.of("Foo.java", "main.rs", "view.tsx", "CLAUDE.md", "seats/main.md", ".claude/skills/x/skill.md")) {

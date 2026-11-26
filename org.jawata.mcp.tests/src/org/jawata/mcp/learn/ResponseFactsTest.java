@@ -63,6 +63,14 @@ class ResponseFactsTest {
     }
 
     @Test
+    @DisplayName("28h z127: a row appended to a plan is a file the call wrote")
+    void anAppendedRowIsAWrittenFile() {
+        assertEquals(List.of("/p/plan.md"), ResponseFacts.filesWritten("files",
+            new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("action", "append_row"),
+            ToolResponse.success(Map.of("path", "/p/plan.md", "row", "z3"))));
+    }
+
+    @Test
     @DisplayName("files modified is a count, and its absence means this was not a modifying tool")
     void filesModifiedCountsWhatTheToolSaidItTouched() {
         assertAll(
