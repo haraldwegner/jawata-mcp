@@ -227,9 +227,6 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
                 "close(PlanId)",
                 // S10: a READ of every plan, open or closed, as copies, so the board is drawn from the ledger and from nothing else.
                 "view()",
-                // S12 slice 4 (D18): open(List,int) is open(List) with a per-step ceiling, a plan's birth and no step movement; stepBudget(String)
-                // is a READ that hands back a copy (which step, which gate, how many calls, from when), so the one-member rule for the step holds.
-                "open(List,int)", "stepBudget(String)",
                 // S10 (F7): ownedBy(PlanId,String) records WHO opened a plan and moves no step; pendingFor(String) is a READ of pending() narrowed
                 // to one caller, returning copies. A plan's owner is not its step, so the one-member rule for the step still holds.
                 "ownedBy(PlanId,String)", "pendingFor(String)",
@@ -238,10 +235,9 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
                 // S13 (F2): allowTools(PlanId,Collection) records which tools the hired seat may call and moves no step; allowance(String) is a READ
                 // that hands back a copy. A plan's tool list is not its step, so the one-member rule for the step still holds.
                 "allowTools(PlanId,Collection)", "allowance(String)",
-                // 28h z128: editSeen(PlanId) records that the hired brain edited, so its ceiling starts; it moves no step.
-                // offerOwnCall(...) moves a step only through advanceIfGatePassed, with the call checked against the step's declared
+                // 28h z128: offerOwnCall(...) moves a step only through advanceIfGatePassed, with the call checked against the step's declared
                 // gate first, so the one-member rule for the step still holds. passedOutcomes(PlanId) is a READ that hands back a copy.
-                "editSeen(PlanId)", "offerOwnCall(String,String,JsonNode,Function)", "passedOutcomes(PlanId)")),
+                "offerOwnCall(String,String,JsonNode,Function)", "passedOutcomes(PlanId)")),
             published,
             "a member ARRIVING here is how an external write gets in, so the set is pinned"
                 + " rather than merely counted — and pinned by SIGNATURE, so an overload"

@@ -102,46 +102,8 @@ public final class ServerChecks {
         this.plans = plans;
     }
 
-    /** Where each hired session's current step began, and how many engine calls a step may spend (D18); null when none is wired. */
+    /** The ledger of the hired sessions' plans: their tool lists and their steps; null when none is wired. */
     private final PlanLedger plans;
-
-    /**
-     * THE PER-STEP ACTION CEILING (Sprint 28h, S12, D18): a hired brain that has spent a step's whole allowance of engine calls without that
-     * step's gate passing is refused its NEXT call, and the refusal names the gate, because running the gate is the one thing that moves it on.
-     *
-     * <p>The session is the hire: a hired brain's session id is its plan's value (S3, D30), so the session ledger already holds exactly its
-     * calls, and the ledger counted here is that one; no second counter exists. The count is the session's recorded calls since the current
-     * step began, which the plan ledger stamps at its opening and at every advance, so a step that passes its gate starts again from nothing.</p>
-     *
-     * <p>Two cases are never counted or refused: the gate's own tool (refusing it would forbid the only thing that ends the step), and
-     * anything while the current step gates the seat's ANSWER (that step can pass only after the brain has answered, so a ceiling there would
-     * refuse calls before the brain could finish). The brain's own tools that are not this engine's (its Edit and Write) are not seen here;
-     * the run's tool ceiling and the ACP permission allowlist bound those.</p>
-     */
-    private ToolResponse stepCeiling(CallerIdentity caller, String name, SessionLedger ledger) {
-        // 28h z128: the budget is empty until the brain's first edit and for a lead, so a brain that only reads is never refused
-        if (plans == null || caller == null || ledger == null) {
-            return null;
-        }
-        java.util.Optional<PlanLedger.StepBudget> budget = plans.stepBudget(caller.id());
-        if (budget.isEmpty() || budget.get().gate().tool().equals(name)) {
-            return null;
-        }
-        PlanLedger.StepBudget step = budget.get();
-        int spent = 0;
-        for (SessionLedger.CallRecord call : ledger.calls(caller)) {
-            if (call.ts() >= step.since() && !call.tool().equals(step.gate().tool())) {
-                spent++;
-            }
-        }
-        if (spent < step.ceiling()) {
-            return null;
-        }
-        return ToolResponse.error("PRECONDITION_NOT_MET",
-            "this step has had its " + step.ceiling() + " calls and its gate has not passed: " + spent + " engine calls since it began",
-            "call " + step.gate().tool() + " with " + step.gate().gateArguments() + " now: the step passes when that answer reports no errors"
-                + " (the engine also runs it after your next edit). Other calls are refused until it passes; a step that passes starts its count again");
-    }
 
     /**
      * THE SEAT'S ALLOWLIST AT THE CHOKE (S13, the audit of C6, finding F2). A hired session may call the tools its seat lists and the gate of the
@@ -223,10 +185,6 @@ public final class ServerChecks {
             ToolResponse notListed = outsideTheSeatsTools(caller, name, arguments);
             if (notListed != null) {
                 return notListed;
-            }
-            ToolResponse overSpent = stepCeiling(caller, name, ledger);
-            if (overSpent != null) {
-                return overSpent;
             }
             if (!"experience".equals(name) || arguments == null) {
                 return null;

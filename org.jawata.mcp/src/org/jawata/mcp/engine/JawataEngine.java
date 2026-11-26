@@ -35,7 +35,7 @@ public class JawataEngine {
 	 */
 	private RuntimeSessionRegistry runtimeSessions;
 
-	/** The one plan ledger: the hire path opens plans in it and the per-step action ceiling reads it (Sprint 28h, S12, D18), so both hold the same state. */
+	/** The one plan ledger: the hire path opens plans in it and the server checks read a hired seat's tool list from it (Sprint 28h, S12, D18), so both hold the same state. */
 	private final org.jawata.mcp.learn.PlanLedger planLedger = new org.jawata.mcp.learn.PlanLedger();
 	private ToolRegistry toolRegistry;
 	private ExperienceStore experienceStore;

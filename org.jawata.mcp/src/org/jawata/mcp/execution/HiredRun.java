@@ -245,8 +245,7 @@ public final class HiredRun {
     }
 
     private PlanId openPlan(SeatHire seat, List<GatedStep> planned) {
-        // 28h z128: a lead reads and hires, and its steps are run after it answers, so it holds no step ceiling.
-        PlanId plan = plans.open(planned, lead ? 0 : perStepCeiling(seat.ceilings(), planned.size()));
+        PlanId plan = plans.open(planned);
         owner.ifPresent(opener -> plans.ownedBy(plan, opener));
         // The registry learns the plan id of the hire running on this thread, so a hire this hire's brain issues can name this one as its lead.
         HireRegistry.shared().planOpened(plan.value());
@@ -324,8 +323,7 @@ public final class HiredRun {
      * THE PLAN'S STEP MOVES WHILE THE BRAIN WORKS (Sprint 28h, S12, D18). On the ACP start path the client reports every tool call the brain
      * makes, including its own Edit and Write that no engine gate ever sees; after each COMPLETED call of an editing kind this runs the plan's
      * current step's gate through the same {@link GateRunner} the end-of-hire loop uses and lets the ledger rule on it, so a step whose gate
-     * passes is passed at that moment, the per-step ceiling counts from there, and the end-of-hire loop resumes at the ledger's current step
-     * instead of at the first.
+     * passes is passed at that moment, and the end-of-hire loop resumes at the ledger's current step instead of at the first.
      *
      * <p>It does nothing while the current step gates the seat's ANSWER (that gate can pass only after the answer exists), and a gate that
      * fails is not recorded here: the end-of-hire loop runs it again and records that attempt, so a brain that edits ten times against a
@@ -355,7 +353,6 @@ public final class HiredRun {
             if (!"completed".equals(update.path("status").asText("")) || !EDITING.contains(kinds.getOrDefault(callId, ""))) {
                 return;
             }
-            plans.editSeen(plan);
             Optional<GatedStep> next = plans.nextStep(plan);
             if (next.isEmpty() || next.get().tool().startsWith(PlanLedger.ANSWER_GATE_PREFIX)) {
                 return;
@@ -484,20 +481,6 @@ public final class HiredRun {
     public HiredRun resuming(Optional<String> brainSession) {
         this.resume = brainSession;
         return this;
-    }
-
-    /**
-     * The per-step action ceiling for a plan (D18): the seat's own run-wide tool ceiling ({@code max_tool_steps}, which the spec names as the
-     * ceiling D18 enforces) spread over the plan's steps, rounded up, so a step cannot spend the whole run's allowance before its gate has
-     * passed and the steps together stay near the run's. Zero when the seat set no ceiling. DECIDED here because the spec gives no separate
-     * number: a new frontmatter key would be a second place a budget is set (D-SIX), the same reason the model registry's budget was dropped in
-     * slice 1.
-     */
-    static int perStepCeiling(HiredBrain.Ceilings ceilings, int stepCount) {
-        if (ceilings == null || ceilings.maxToolSteps() <= 0) {
-            return 0;
-        }
-        return (int) Math.ceil(ceilings.maxToolSteps() / (double) Math.max(1, stepCount));
     }
 
     private Proposal conduct(BrainDialect dialect, HireSite base, String brief, List<String> tools,

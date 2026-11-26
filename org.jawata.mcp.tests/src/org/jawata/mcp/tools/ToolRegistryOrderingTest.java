@@ -114,7 +114,7 @@ class ToolRegistryOrderingTest {
     /** The step the plan reached after its own hire called compile_workspace once with {@code arguments}. */
     private static int stepAfterOwnCall(int errors, String arguments) throws Exception {
         PlanLedger plans = new PlanLedger();
-        PlanId plan = plans.open(List.of(new GatedStep(0, "compile_workspace", json("{\"projectKey\":\"jawata-mcp\"}"))), 3);
+        PlanId plan = plans.open(List.of(new GatedStep(0, "compile_workspace", json("{\"projectKey\":\"jawata-mcp\"}"))));
         ToolRegistry registry = new ToolRegistry();
         registry.setEventTap(new EventTap(new SessionLedger(), null));
         registry.setServerChecks(new ServerChecks(null, null, ShippedGates.registry(), plans));

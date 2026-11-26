@@ -39,7 +39,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 class HiredRunLiveGatesTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final String SEAT = "---\nname: cataloguer\nbrain: cursor\naccepts_uncontained_writes: true\nttl_secs: 60\nmax_tool_steps: 8\n---\n\nbody\n";
+    private static final String SEAT = "---\nname: cataloguer\nbrain: cursor\naccepts_uncontained_writes: true\nttl_secs: 60\nmax_tool_steps: 8\ntools: [inspect]\n---\n\nbody\n";
 
     private H2ExperienceStore store;
     private Path dir;
@@ -103,37 +103,28 @@ class HiredRunLiveGatesTest {
     }
 
     @Test
-    @DisplayName("S12 D18, audit C12 F4: the plan a hire opens holds the seat's step allowance while the brain works, so the ceiling reaches a real hire and not only a hand-opened plan")
-    void theSeatsStepAllowanceIsHeldByThePlanTheHireOpened() throws Exception {
-        List<Integer> ceilings = new ArrayList<>();
-        HiredRun.GateRunner reading = gate -> {
+    @DisplayName("z132: a hire's engine calls are never refused for their number, whatever the seat's max_tool_steps: they are counted, not rationed")
+    void aHiresCallsAreNotRationedPerStep() throws Exception {
+        org.jawata.mcp.learn.SessionLedger calls = new org.jawata.mcp.learn.SessionLedger();
+        org.jawata.mcp.learn.ServerChecks checks = new org.jawata.mcp.learn.ServerChecks(new LearnerEventStore(store), (summary, details) -> { },
+            org.jawata.mcp.fixtures.ShippedGates.registry(), plans);
+        List<String> refusals = new ArrayList<>();
+        HiredRun.GateRunner busy = gate -> {
             List<PlanLedger.PlanView> views = plans.view();
-            plans.stepBudget(views.get(views.size() - 1).id().value()).ifPresent(budget -> ceilings.add(budget.ceiling()));
-            return new GateOutcome(gate.tool(), gate.gateArguments(), 0, true);
+            org.jawata.mcp.models.CallerIdentity hired = org.jawata.mcp.models.CallerIdentity.supplied(views.get(views.size() - 1).id().value());
+            for (int i = 0; i < 20; i++) {
+                calls.record(hired, new org.jawata.mcp.learn.SessionLedger.CallRecord("inspect", true, 0, System.currentTimeMillis(), null));
+            }
+            org.jawata.mcp.models.ToolResponse answer = checks.acceptance(hired, "inspect", JSON.createObjectNode(), calls);
+            if (answer != null) {
+                refusals.add(answer.getError().getMessage());
+            }
+            return new GateOutcome(gate.tool(), gate.gateArguments(), 1, true);
         };
 
-        hire("EDITS:1", reading);
+        hire("EDITS:1", busy);
 
-        // The seat allows 8 tool steps across 2 planned steps, so each step may spend 4 before its gate passes.
-        assertAll(
-            () -> assertFalse(ceilings.isEmpty(), "the ledger held no step allowance for the hire's plan while the brain worked"),
-            () -> assertEquals(4, ceilings.get(0), "not the seat's allowance spread over its steps: " + ceilings));
-    }
-
-    @Test
-    @DisplayName("z128: a lead's plan holds no step ceiling, because a lead reads and hires and its steps are run after it answers")
-    void aLeadsPlanHoldsNoStepCeiling() throws Exception {
-        List<Integer> ceilings = new ArrayList<>();
-        HiredRun.GateRunner reading = gate -> {
-            List<PlanLedger.PlanView> views = plans.view();
-            plans.stepBudget(views.get(views.size() - 1).id().value()).ifPresent(budget -> ceilings.add(budget.ceiling()));
-            return new GateOutcome(gate.tool(), gate.gateArguments(), 0, true);
-        };
-        run.leading(true);
-
-        hire("EDITS:1", reading);
-
-        assertEquals(List.of(), ceilings, "a lead was held to a step ceiling");
+        assertEquals(List.of(), refusals, "a hire was refused a call for the number of calls it had made");
     }
 
     @Test
@@ -158,15 +149,5 @@ class HiredRunLiveGatesTest {
             () -> assertEquals(1, proposal.gates().size(), "only the end-of-hire attempt is recorded: " + proposal.gates()),
             () -> assertEquals(0, proposal.stepsPassed()),
             () -> assertFalse(proposal.complete()));
-    }
-
-    @Test
-    @DisplayName("S12 D18: the per-step ceiling is the seat's run ceiling spread over the plan's steps, rounded up, and nothing when the seat set none")
-    void theCeilingIsTheRunCeilingSpreadOverTheSteps() {
-        assertAll(
-            () -> assertEquals(4, HiredRun.perStepCeiling(new HiredBrain.Ceilings(java.time.Duration.ofSeconds(1), 8, null), 2)),
-            () -> assertEquals(3, HiredRun.perStepCeiling(new HiredBrain.Ceilings(java.time.Duration.ofSeconds(1), 5, null), 2)),
-            () -> assertEquals(0, HiredRun.perStepCeiling(new HiredBrain.Ceilings(java.time.Duration.ofSeconds(1), 0, null), 2)),
-            () -> assertEquals(0, HiredRun.perStepCeiling(null, 2)));
     }
 }
