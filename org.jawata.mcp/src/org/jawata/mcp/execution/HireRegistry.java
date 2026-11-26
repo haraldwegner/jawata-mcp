@@ -111,6 +111,12 @@ public final class HireRegistry {
                 }
                 handed = List.copyOf(hire.handedUp);
                 hire.handedUp.clear();
+                // 28h z102: its lead was waiting for it, so the lead's quiet counts from now, when there is a report to read.
+                for (Running lead : running) {
+                    if (!lead.planId.isEmpty() && lead.planId.equals(hire.leadId)) {
+                        lead.lastActivityMs = System.currentTimeMillis();
+                    }
+                }
             }
             // Told outside the lock, now that this hire no longer runs: the reports its brain never read go to its chat.
             handed.forEach(HireRegistry.this::retell);
@@ -1030,7 +1036,7 @@ public final class HireRegistry {
             long now = System.currentTimeMillis();
             for (Running hire : running) {
                 long idle = Math.max(0, now - hire.lastActivityMs) / 1000;
-                if (!hire.planId.isEmpty() && idle >= ceilingSeconds && hire.quietToldAtMs != hire.lastActivityMs) {
+                if (!hire.planId.isEmpty() && idle >= ceilingSeconds && hire.quietToldAtMs != hire.lastActivityMs && runningNamesFor(hire.planId).isEmpty()) {
                     hire.quietToldAtMs = hire.lastActivityMs;
                     told.add(new Event("stalled", hire.planId, hire.name, hire.seat, hire.brief, hire.leadId, null, hire.background));
                 }
@@ -1052,7 +1058,8 @@ public final class HireRegistry {
         long now = System.currentTimeMillis();
         for (Running hire : running) {
             long idle = Math.max(0, now - hire.lastActivityMs) / 1000;
-            if (!hire.planId.isEmpty() && idle >= ceilingSeconds && hire.stalledForSeconds < 0) {
+            // 28h z102: a lead with a hire running under it is waiting, not quiet.
+            if (!hire.planId.isEmpty() && idle >= ceilingSeconds && hire.stalledForSeconds < 0 && runningNamesFor(hire.planId).isEmpty()) {
                 hire.stalledForSeconds = idle;
                 stopped.add(hire.thread);
                 hire.onStop.forEach(Runnable::run);

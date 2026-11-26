@@ -49,7 +49,8 @@ public final class HireWaitTool implements Tool {
             hire answers at once with a hireId and the hire goes on working on the engine's own thread; its report comes back to the seat that hired
             as a new turn only where jawata itself is that seat (the jawata chat). A client that calls this server's tools is its own principal, so it
             asks here. Answers {state, hireId}: running (with idleSeconds, how long it has shown no sign of life, and stalled, true once that passes
-            the ceiling, 300 seconds unless the host's setting jawata.hire.stallSeconds says another, so a hire that has gone quiet is told to you and not waited for), finished (with report, the hire's own answer,
+            the ceiling, 300 seconds unless the host's setting jawata.hire.stallSeconds says another, so a hire that has gone quiet is told to you and not waited for;
+            a lead with a hire running under it is never stalled, and waitingFor names those hires), finished (with report, the hire's own answer,
             and newToYou, false when the report was already handed over, by this tool or to the chat), or unknown (no hire has that id on this engine).
             waitSeconds (0 to 50, default 0) is how long to wait for a running hire before answering running: call again, and between the calls
             you are free to answer the person. A finished report is handed over once as new and marked read, so the chat does not hand it over again.
@@ -99,7 +100,12 @@ public final class HireWaitTool implements Tool {
             // A hire that shows no sign of life is told to its principal here, which is where a client with no chat asks (28h Stage 27, z28).
             long idle = hires.idleSecondsOf(hireId).orElse(0);
             data.put("idleSeconds", idle);
-            data.put("stalled", idle >= (stallSeconds >= 0 ? stallSeconds : hires.quietCeiling()));
+            // 28h z102: a lead with a hire running under it is waiting for it, not stalled, and the answer says for whom.
+            List<String> waitingFor = hires.runningNamesFor(hireId);
+            data.put("stalled", waitingFor.isEmpty() && idle >= (stallSeconds >= 0 ? stallSeconds : hires.quietCeiling()));
+            if (!waitingFor.isEmpty()) {
+                data.put("waitingFor", waitingFor);
+            }
         } else if (report.isPresent()) {
             data.put("state", "finished");
             data.put("report", report.get());

@@ -29,10 +29,10 @@ class HireStalledStopTest {
         final AtomicReference<OptionalLong> stalledFor = new AtomicReference<>(OptionalLong.empty());
         final AtomicReference<Boolean> interrupted = new AtomicReference<>(false);
 
-        Held(String plan, boolean actsAfterTheWait) {
+        Held(String plan, boolean actsAfterTheWait, String issuer) {
             thread = new Thread(() -> {
                 HireRegistry hires = HireRegistry.shared();
-                try (HireRegistry.Registration hire = hires.begin("developer", "z28 stop " + plan, "")) {
+                try (HireRegistry.Registration hire = hires.begin("developer", "z28 stop " + plan, issuer)) {
                     hires.planOpened(plan);
                     registered.countDown();
                     try {
@@ -53,10 +53,52 @@ class HireStalledStopTest {
     }
 
     @Test
+    @DisplayName("z102: a lead with a hire running under it is neither told quiet nor stopped; once nothing runs under it, its quiet counts again from then")
+    void aLeadWaitingOnItsHireIsNotQuiet() throws Exception {
+        Held lead = new Held("plan-z102-lead", false, "");
+        assertTrue(lead.registered.await(5, TimeUnit.SECONDS), "the lead did not register");
+        Held child = new Held("plan-z102-child", true, "plan-z102-lead");
+        try {
+            assertTrue(child.registered.await(5, TimeUnit.SECONDS), "the lead's hire did not register");
+            Thread.sleep(1_300);
+            child.act.countDown();
+            Thread.sleep(200);
+
+            @SuppressWarnings("unchecked")
+            java.util.Map<String, Object> asked = (java.util.Map<String, Object>) new org.jawata.mcp.tools.HireWaitTool(HireRegistry.shared(), 1)
+                .execute(new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("hireId", "plan-z102-lead")).getData();
+            assertAll(
+                () -> assertEquals(false, asked.get("stalled"), "hire_wait called a waiting lead stalled: " + asked),
+                () -> assertTrue(String.valueOf(asked.get("waitingFor")).contains("developer"), "hire_wait does not say what the lead waits for: " + asked));
+
+            List<String> told = HireRegistry.shared().noteQuiet(1);
+            List<String> stopped = HireRegistry.shared().stopStalled(1);
+            child.release.countDown();
+            child.thread.join(5_000);
+            List<String> rightAfter = HireRegistry.shared().stopStalled(1);
+
+            assertAll(
+                () -> assertEquals(List.of(), told, "a lead waiting on its hire was told as quiet"),
+                () -> assertEquals(List.of(), stopped, "a lead waiting on its hire was stopped"),
+                () -> assertEquals(List.of(), rightAfter, "a lead was stopped the moment its hire ended, before it could read the report"),
+                () -> assertTrue(lead.thread.isAlive(), "the lead is no longer running"));
+
+            Thread.sleep(1_300);
+            assertEquals(1, HireRegistry.shared().stopStalled(1).size(), "CONTROL: a lead with nothing under it that stays quiet is stopped");
+            lead.thread.join(5_000);
+        } finally {
+            child.release.countDown();
+            lead.release.countDown();
+            child.thread.join(5_000);
+            lead.thread.join(5_000);
+        }
+    }
+
+    @Test
     @DisplayName("28h z28: a hire quiet past the second ceiling is stopped and says it was a stall and for how long; a hire that has just acted is not stopped; nothing else is told stopped")
     void aHireQuietPastTheSecondCeilingIsStopped() throws Exception {
-        Held quiet = new Held("plan-z28-quiet-stop", false);
-        Held active = new Held("plan-z28-active-stop", true);
+        Held quiet = new Held("plan-z28-quiet-stop", false, "");
+        Held active = new Held("plan-z28-active-stop", true, "");
         try {
             assertTrue(quiet.registered.await(5, TimeUnit.SECONDS) && active.registered.await(5, TimeUnit.SECONDS), "the hires did not register");
             Thread.sleep(1_300);

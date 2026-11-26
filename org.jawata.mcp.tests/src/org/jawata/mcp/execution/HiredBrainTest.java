@@ -232,6 +232,24 @@ class HiredBrainTest {
     }
 
     @Test
+    @DisplayName("z102: what a brain started by command line prints counts as a sign of life, so a working hire is not stopped as silent")
+    void aCommandLineHireShowsSignsOfLife() throws Exception {
+        HostCommand command = script("""
+            sleep 2
+            echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"search_symbols"}]}}'
+            echo '{"type":"result","result":"done","total_cost_usd":0.01}'
+            """);
+        HireRegistry hires = HireRegistry.shared();
+        try (HireRegistry.Registration hire = hires.begin("developer", "z102 command line", "")) {
+            hires.planOpened("plan-z102-cli");
+            HiredBrain.hire(host, new ClaudeCodeDialect(command.argv().get(0), 12, null, false), site(command), "brief", List.of(),
+                HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
+
+            assertEquals(0L, hires.idleSecondsOf("plan-z102-cli").orElse(-1), "the brain's own output did not count as a sign of life");
+        }
+    }
+
+    @Test
     @DisplayName("DEFECT 1: the step ceiling actually fires — set it to 1 and the run stops")
     void theStepCeilingIsABoundRatherThanADecoration() throws Exception {
         // The reference's loop breaks on its first pass, so its iteration ceiling can only fire
