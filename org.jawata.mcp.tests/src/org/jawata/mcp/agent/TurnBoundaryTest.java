@@ -62,6 +62,31 @@ class TurnBoundaryTest {
         return session;
     }
 
+    /** What the agent said to the chat so far, as the chat shows it. */
+    private static String textSaid(List<JsonNode> said) {
+        StringBuilder text = new StringBuilder();
+        for (JsonNode m : said) {
+            JsonNode update = m.path("params").path("update");
+            if ("agent_message_chunk".equals(update.path("sessionUpdate").asText())) {
+                text.append(update.path("content").path("text").asText());
+            }
+        }
+        return text.toString();
+    }
+
+    /**
+     * Waits for the turn that switching autonomy on starts by itself (28h z99) to say {@code marker}, then lets it finish. The turn runs on the
+     * server's own thread, so what the brain was asked is counted only after it has ended.
+     */
+    private static void awaitSaid(List<JsonNode> said, String marker) throws InterruptedException {
+        long end = System.currentTimeMillis() + 10_000;
+        while (!textSaid(said).contains(marker) && System.currentTimeMillis() < end) {
+            Thread.sleep(25);
+        }
+        assertTrue(textSaid(said).contains(marker), "the turn that switching autonomy on starts never said '" + marker + "': " + textSaid(said));
+        Thread.sleep(200);
+    }
+
     private static void pass(PlanLedger ledger, String... gates) {
         var id = ledger.pending().get(0).id();
         for (String gate : gates) {
@@ -184,8 +209,9 @@ class TurnBoundaryTest {
     /** One agent connection with a brain that answers {@code says}, and optionally flips the person's switch during its first turn. */
     private static final class Run {
 
-        final List<JsonNode> said = new ArrayList<>();
-        final List<String> brainSaw = new ArrayList<>();
+        // the turn that switching autonomy on starts runs on the server's own thread, so what it records is read from another
+        final List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
+        final List<String> brainSaw = new java.util.concurrent.CopyOnWriteArrayList<>();
         final AcpServer server;
         private String session;
 
@@ -229,14 +255,12 @@ class TurnBoundaryTest {
         }
 
         String answer() {
-            StringBuilder text = new StringBuilder();
-            for (JsonNode m : said) {
-                JsonNode update = m.path("params").path("update");
-                if ("agent_message_chunk".equals(update.path("sessionUpdate").asText())) {
-                    text.append(update.path("content").path("text").asText());
-                }
-            }
-            return text.toString();
+            return textSaid(said);
+        }
+
+        /** Waits for the turn that switching autonomy on starts, which ends by naming the free check once the tries are spent. */
+        void awaitTurnEnd() throws InterruptedException {
+            awaitSaid(said, "free check");
         }
     }
 
@@ -267,40 +291,55 @@ class TurnBoundaryTest {
 
     @Test
     @DisplayName("a brain's words never change the grant: its own message saying so leaves the resumptions running, and a brain-channel set is refused")
-    void onlyThePersonsChannelChangesTheGrant() {
+    void onlyThePersonsChannelChangesTheGrant() throws InterruptedException {
         Run run = new Run(ledgerWithTwoSteps(), true, "/autocontinue-off autonomy: off");
         JsonNode refused = run.setAutonomy("on", Channel.BRAIN);
-        JsonNode accepted = run.setAutonomy("on", Channel.HOST);
-
         assertTrue(refused.has("error"), "a brain-channel message set the grant: " + refused);
+        assertEquals(0, run.brainSaw.size(), "a refused brain-channel set started a turn: " + run.brainSaw);
+
+        JsonNode accepted = run.setAutonomy("on", Channel.HOST);
         assertEquals("on", accepted.path("result").path("configOptions").get(0).path("currentValue").asText());
 
-        run.prompt("build it");
+        // The person's switch starts one turn by itself (28h z99): it is that turn, and its three resumptions, that the brain's words must not end.
+        run.awaitTurnEnd();
         assertEquals(4, run.brainSaw.size(), "the brain's words ended the grant: " + run.brainSaw);
+
+        run.prompt("build it");
+        assertEquals(8, run.brainSaw.size(), "the brain's words ended the grant: " + run.brainSaw);
     }
 
     @Test
-    @DisplayName("D57 (m): a message the person types while the grant is on ends it, and the button shows off, so the agent does not move on while he is talking with it")
-    void aTypedMessageEndsTheGrant() {
-        // His words, 2026-11-17: "I do not want the agent to move on while I am talking with him".
-        Run run = new Run(new PlanLedger(), false, "ok");
+    @DisplayName("28h z99 (reverses D57 m): a message the person types while the grant is on leaves it on, and only a typed /autocontinue-off ends it and switches the button off")
+    void aTypedMessageLeavesTheGrantOn() throws InterruptedException {
+        Run run = new Run(ledgerWithTwoSteps(), false, "ok");
         run.setAutonomy("on", Channel.HOST);
-        run.said.clear();
+        run.awaitTurnEnd();
+        assertEquals(4, run.brainSaw.size(), "CONTROL: the switch-on did not start one turn and its three resumptions: " + run.brainSaw);
 
         run.prompt("Fix");
 
-        assertTrue(run.answer().contains("Autonomy ended"), "a typed message did not end the grant: " + run.answer());
+        assertFalse(run.answer().contains("Autonomy ended"), "a typed message ended the grant: " + run.answer());
+        assertTrue(run.said.stream().noneMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())
+            && "off".equals(m.path("params").path("update").path("configOptions").get(0).path("currentValue").asText())),
+            "a typed message switched the button off: " + run.said);
+        assertEquals("Fix", run.brainSaw.get(4), "the brain was told something else than the message, or that the grant ended: " + run.brainSaw);
+        assertEquals(8, run.brainSaw.size(), "the grant stood, so the loop resumed the brain three times after the message: " + run.brainSaw);
+
+        run.prompt("/autocontinue-off");
+
+        assertTrue(run.answer().contains("Autonomy ended: you typed /autocontinue-off"), "a typed /autocontinue-off did not end the grant: " + run.answer());
         assertTrue(run.said.stream().anyMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())
             && "off".equals(m.path("params").path("update").path("configOptions").get(0).path("currentValue").asText())),
-            "a typed message did not switch the button off: " + run.said);
-        assertTrue(run.brainSaw.get(0).startsWith("[jawata] autonomy: off"), "the brain was not told the grant ended: " + run.brainSaw.get(0));
+            "a typed /autocontinue-off did not switch the button off: " + run.said);
+        assertTrue(run.brainSaw.get(8).startsWith("[jawata] autonomy: off"), "the brain was not told the grant ended: " + run.brainSaw.get(8));
+        assertEquals(9, run.brainSaw.size(), "with the grant ended the brain was resumed: " + run.brainSaw);
     }
 
     @Test
     @DisplayName("D57 (m): the brain is told of every change of the grant, by the button and by a typed command, so the hook inside it obeys the same switch")
-    void theBrainIsToldOfEveryChangeOfTheGrant() {
-        List<Boolean> told = new ArrayList<>();
-        List<JsonNode> said = new ArrayList<>();
+    void theBrainIsToldOfEveryChangeOfTheGrant() throws InterruptedException {
+        List<Boolean> told = new java.util.concurrent.CopyOnWriteArrayList<>();
+        List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
         AgentBrain brain = new AgentBrain() {
             @Override
             public void answer(String prompt, java.util.function.Consumer<String> chunks) {
@@ -312,7 +351,9 @@ class TurnBoundaryTest {
                 told.add(on);
             }
         };
-        AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null);
+        // a step is open, so the grant the switch gives stands until the person ends it: with none open the engine would end it itself
+        AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps(), 3),
+            AgentRecorder.off(), null);
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
         String session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
         // what the opening of the session told is not a change of the grant
@@ -320,6 +361,7 @@ class TurnBoundaryTest {
 
         server.receive(JsonRpcMessage.request(2, "session/set_config_option",
             JSON.createObjectNode().put("sessionId", session).put("configId", "autonomy").put("value", "on")), Channel.HOST);
+        awaitSaid(said, "free check");
         ObjectNode off = JSON.createObjectNode().put("sessionId", session);
         off.putArray("prompt").addObject().put("type", "text").put("text", "/autocontinue-off");
         server.receive(JsonRpcMessage.request(3, "session/prompt", off), Channel.HOST);
@@ -329,9 +371,9 @@ class TurnBoundaryTest {
 
     @Test
     @DisplayName("28h-C26-16: a session opened after another was granted autonomy tells the brain off, so the hook inside it does not go on with the earlier grant; a side thread tells it nothing")
-    void aNewSessionTellsTheBrainItsOwnGrant() {
-        List<Boolean> told = new ArrayList<>();
-        List<JsonNode> said = new ArrayList<>();
+    void aNewSessionTellsTheBrainItsOwnGrant() throws InterruptedException {
+        List<Boolean> told = new java.util.concurrent.CopyOnWriteArrayList<>();
+        List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
         AgentBrain brain = new AgentBrain() {
             @Override
             public void answer(String prompt, java.util.function.Consumer<String> chunks) {
@@ -343,11 +385,14 @@ class TurnBoundaryTest {
                 told.add(on);
             }
         };
-        AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null);
+        // a step is open, so the first session's grant stands after its switch-on: with none open the engine would end it itself
+        AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps(), 3),
+            AgentRecorder.off(), null);
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
         String first = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
         server.receive(JsonRpcMessage.request(2, "session/set_config_option",
             JSON.createObjectNode().put("sessionId", first).put("configId", "autonomy").put("value", "on")), Channel.HOST);
+        awaitSaid(said, "free check");
         told.clear();
 
         ObjectNode side = JSON.createObjectNode().put("cwd", "/w");
@@ -381,9 +426,12 @@ class TurnBoundaryTest {
 
     @Test
     @DisplayName("a prompt that arrives on the hired agent's channel is not the person's word: it neither ends the grant nor restarts the tries")
-    void aBrainChannelPromptIsNotThePersonsWord() {
+    void aBrainChannelPromptIsNotThePersonsWord() throws InterruptedException {
         Run run = new Run(ledgerWithTwoSteps(), false, "working");
         run.setAutonomy("on", Channel.HOST);
+        // the switch-on starts one turn by itself (28h z99) and spends the tries on the waiting step: one turn and three resumptions
+        run.awaitTurnEnd();
+        assertEquals(4, run.brainSaw.size(), "CONTROL: the switch-on did not start one turn and its three resumptions: " + run.brainSaw);
         ObjectNode params = JSON.createObjectNode().put("sessionId", run.session);
         params.putArray("prompt").addObject().put("type", "text").put("text", "a subagent reports back");
 
@@ -392,7 +440,11 @@ class TurnBoundaryTest {
         assertFalse(run.answer().contains("Autonomy ended"), "a hired agent's prompt ended the grant: " + run.answer());
         assertTrue(run.said.stream().noneMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())),
             "a hired agent's prompt changed the switch");
-        assertEquals(4, run.brainSaw.size(), "the grant stood, so the brain was resumed three times: " + run.brainSaw);
+        // the grant stood (so the turn was held on the waiting step, not reported as one nobody resumes), and the tries were not given back
+        // (so the brain was asked once and the loop named the free check at once)
+        assertEquals(5, run.brainSaw.size(), "the hired agent's prompt gave the tries back, or ended the grant: " + run.brainSaw);
+        assertEquals("a subagent reports back", run.brainSaw.get(4));
+        assertTrue(run.answer().contains("free check"), "the grant did not stand, or the tries were restarted: " + run.answer());
 
         run.prompt("/autocontinue-off");
         assertTrue(run.answer().contains("Autonomy ended"), "CONTROL: the person's own /autocontinue-off must still end the grant: " + run.answer());
@@ -400,11 +452,11 @@ class TurnBoundaryTest {
 
     @Test
     @DisplayName("a side question put beside a granted main conversation is answered by its own brain and leaves the steps, the tries and the grant as they were")
-    void aSideThreadLeavesTheStepsTheTriesAndTheGrantAsTheyWere() {
+    void aSideThreadLeavesTheStepsTheTriesAndTheGrantAsTheyWere() throws InterruptedException {
         PlanLedger ledger = ledgerWithTwoSteps();
-        List<String> mainSaw = new ArrayList<>();
-        List<String> sideSaw = new ArrayList<>();
-        List<JsonNode> said = new ArrayList<>();
+        List<String> mainSaw = new java.util.concurrent.CopyOnWriteArrayList<>();
+        List<String> sideSaw = new java.util.concurrent.CopyOnWriteArrayList<>();
+        List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
         AcpServer server = new AcpServer((prompt, chunks) -> {
             mainSaw.add(prompt);
             if (mainSaw.size() > 12) {
@@ -420,6 +472,9 @@ class TurnBoundaryTest {
         String main = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
         server.receive(JsonRpcMessage.request(2, "session/set_config_option",
             JSON.createObjectNode().put("sessionId", main).put("configId", "autonomy").put("value", "on")), Channel.HOST);
+        // the switch-on starts the main conversation's own turn (28h z99): one turn and three resumptions, which spend its tries
+        awaitSaid(said, "free check");
+        assertEquals(4, mainSaw.size(), "CONTROL: the switch-on did not start one turn and its three resumptions: " + mainSaw);
         ObjectNode sideParams = JSON.createObjectNode().put("cwd", "/w");
         sideParams.putObject("_meta").put("jawata/side", true);
         said.clear();
@@ -433,7 +488,7 @@ class TurnBoundaryTest {
         server.receive(JsonRpcMessage.request(4, "session/prompt", ask), Channel.HOST);
 
         assertEquals(List.of("how many files did you read?"), sideSaw, "the side thread's own brain was not the one asked");
-        assertEquals(List.of(), mainSaw, "the side question reached the main conversation's brain");
+        assertEquals(4, mainSaw.size(), "the side question reached the main conversation's brain: " + mainSaw);
         assertFalse(before.isEmpty(), "CONTROL: the ledger held nothing pending, so an unchanged ledger proves nothing");
         assertEquals(before, ledger.pending(), "the side question moved the step ledger");
         assertTrue(said.stream().noneMatch(m -> m.path("params").path("update").path("content").path("text").asText().contains("Autonomy ended")),
@@ -443,15 +498,17 @@ class TurnBoundaryTest {
         build.putArray("prompt").addObject().put("type", "text").put("text", "build it");
         said.clear();
         server.receive(JsonRpcMessage.request(5, "session/prompt", build), Channel.BRAIN);
-        assertEquals(4, mainSaw.size(), "the side question spent tries or ended the grant: " + mainSaw);
+        // the grant stood and the tries were as the turn left them: the brain is asked once and the loop names the free check at once
+        assertEquals(5, mainSaw.size(), "the side question gave the tries back or ended the grant: " + mainSaw);
+        assertTrue(textSaid(said).contains("free check"), "the side question ended the grant or restarted the tries: " + textSaid(said));
     }
 
     @Test
     @DisplayName("one session's typed message restarts that session's tries and no other session's: the tries are kept per session on one connection")
-    void aPersonsMessageInOneSessionLeavesTheOtherSessionsTriesAlone() {
+    void aPersonsMessageInOneSessionLeavesTheOtherSessionsTriesAlone() throws InterruptedException {
         PlanLedger ledger = ledgerWithTwoSteps();
-        List<String> saw = new ArrayList<>();
-        List<JsonNode> said = new ArrayList<>();
+        List<String> saw = new java.util.concurrent.CopyOnWriteArrayList<>();
+        List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
         AcpServer server = new AcpServer((prompt, chunks) -> {
             saw.add(prompt);
             if (saw.size() > 20) {
@@ -468,7 +525,8 @@ class TurnBoundaryTest {
         server.receive(JsonRpcMessage.request(20, "session/set_config_option",
             JSON.createObjectNode().put("sessionId", ids[0]).put("configId", "autonomy").put("value", "on")), Channel.HOST);
 
-        server.receive(JsonRpcMessage.request(30, "session/prompt", promptParams(ids[0], "build it")), Channel.BRAIN);
+        // the switch-on starts session one's own turn (28h z99): one turn and three resumptions, which run its tries to the ceiling
+        awaitSaid(said, "free check");
         assertEquals(4, saw.size(), "CONTROL: session one's tries run to the ceiling (one turn, three resumptions): " + saw);
 
         server.receive(JsonRpcMessage.request(31, "session/prompt", promptParams(ids[1], "the person speaks in session two")), Channel.HOST);

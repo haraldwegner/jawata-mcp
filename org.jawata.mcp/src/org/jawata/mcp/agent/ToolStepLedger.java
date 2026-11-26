@@ -36,19 +36,34 @@ public final class ToolStepLedger implements StepLedger {
         this.askAs = askAs;
     }
 
-    @Override
-    public List<Pending> pending(PrincipalSession session) {
+    /** What {@code plan_steps} answered to this session, or empty when it could not be asked or refused. */
+    private java.util.Optional<JsonNode> ask(PrincipalSession session) {
         ToolResponse response;
         try {
             response = tools.callTool(TOOL, JSON.createObjectNode(),
                 askAs.map(org.jawata.mcp.models.CallerIdentity::supplied).orElseGet(session::identity));
         } catch (Exception e) {
-            return List.of();
+            return java.util.Optional.empty();
         }
         if (response == null || !response.isSuccess()) {
+            return java.util.Optional.empty();
+        }
+        return java.util.Optional.of(JSON.valueToTree(response.getData()));
+    }
+
+    /** No plan is known only when {@code plan_steps} answered and said the ledger holds none; every other case is yes, as the interface says. */
+    @Override
+    public boolean planKnown(PrincipalSession session) {
+        return ask(session).map(data -> data.path("planCount")).filter(JsonNode::isNumber).map(count -> count.asInt() != 0).orElse(true);
+    }
+
+    @Override
+    public List<Pending> pending(PrincipalSession session) {
+        java.util.Optional<JsonNode> data = ask(session);
+        if (data.isEmpty()) {
             return List.of();
         }
-        JsonNode rows = JSON.valueToTree(response.getData()).path("pending");
+        JsonNode rows = data.get().path("pending");
         List<Pending> pending = new ArrayList<>();
         for (JsonNode row : rows) {
             JsonNode step = row.path("step");

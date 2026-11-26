@@ -25,4 +25,12 @@ public interface StepLedger {
 
     /** The steps still waiting, oldest plan first; empty when none is, and when the ledger cannot be asked. */
     List<Pending> pending(PrincipalSession session);
+
+    /**
+     * Whether any plan is known to this ledger for {@code session}, so that an empty {@link #pending} can be told apart: no step is open in a
+     * plan that is known, or there is no plan to open a step in. A ledger that cannot say answers yes, and an empty list then means no step is open.
+     */
+    default boolean planKnown(PrincipalSession session) {
+        return true;
+    }
 }

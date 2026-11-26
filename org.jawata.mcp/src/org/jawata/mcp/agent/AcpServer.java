@@ -2,14 +2,15 @@ package org.jawata.mcp.agent;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import org.jawata.mcp.execution.AcpBrainSession;
-import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.HireRegistry;
+import org.jawata.mcp.execution.Hirer;
 import org.jawata.mcp.execution.SeatHire;
 import org.jawata.mcp.protocol.JsonRpcMessage;
 
@@ -144,6 +145,10 @@ public final class AcpServer {
         String target = textField(message.getParams(), "sessionId");
         if (target != null) {
             cancelled.add(target);
+            PrincipalSession stopped = sessions.get(target);
+            if (stopped != null && stopped.autonomy()) {
+                switchAutonomyOff(stopped, "Autonomy ended: you pressed Stop.\n\n", "msg_" + UUID.randomUUID());
+            }
             Thread working = running.get(target);
             if (working != null) {
                 // The brain's answer is read from its process, which an interrupt cannot end: the brain itself is told, and its turn ends with its reply.
@@ -527,9 +532,9 @@ public final class AcpServer {
         ObjectNode autonomy = options.addObject();
         autonomy.put("id", AUTONOMY);
         autonomy.put("name", "Autonomy");
-        autonomy.put("description", "on: the agent carries on after each turn while a step still waits for its gate, within the limit "
-            + "on tries per step. off: it stops at the end of each turn. Typing /autocontinue switches it on, as the button does; any message "
-            + "you type while it is on ends it, so the agent does not move on while you are talking with it.");
+        autonomy.put("description", "on: the agent takes the next open step of the plan by itself, and goes on after each turn while a step "
+            + "still waits for its gate, within the limit on tries per step. It ends only when you switch it off (here or by typing "
+            + "/autocontinue-off), when you press Esc or the chat's Stop, or when no step is open. Messages you type do not end it.");
         autonomy.put("type", "select");
         autonomy.put("currentValue", session.autonomy() ? "on" : "off");
         ArrayNode values = autonomy.putArray("options");
@@ -553,12 +558,16 @@ public final class AcpServer {
         if (!"on".equals(value) && !"off".equals(value)) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS, "Autonomy is on or off, not: " + value, null);
         }
+        boolean wasOn = session.autonomy();
         if (!session.setAutonomy(from, "on".equals(value))) {
             return JsonRpcMessage.errorResponse(id, NOT_PERMITTED,
                 "Only the person sets autonomy; a message from a hired agent does not change it.", null);
         }
         // D57 (m): the brain is told, so the jawata hook inside it obeys the button as well.
         brain.autonomyChanged(session.autonomy());
+        if (session.autonomy() && !wasOn) {
+            startATurnByItself(session);
+        }
         ObjectNode result = JSON.createObjectNode();
         result.set("configOptions", configOptions(session));
         return JsonRpcMessage.successResponse(id, result);
@@ -792,6 +801,63 @@ public final class AcpServer {
         }
     }
 
+    /**
+     * Ends the session's autonomy the way {@code /autocontinue-off} does (28h z99): the grant is cleared, the brain and the chat are told, and the
+     * chat is given the reason as an agent message.
+     */
+    private void switchAutonomyOff(PrincipalSession session, String reason, String messageId) {
+        session.setAutonomy(Channel.HOST, false);
+        brain.autonomyChanged(false);
+        update(session.id(), messageChunk("agent_message_chunk", reason, messageId));
+        update(session.id(), configOptionUpdate(session));
+    }
+
+    /**
+     * Autonomy has just been switched on (28h z99): a turn starts by itself, with no message of the person's, telling the brain to take the next
+     * open step of the plan. It is built the way {@link #deliver} builds a report's turn. A turn that is already running starts no second one: it
+     * carries on at its own end, as autonomy always did. The plan is read when the turn is taken, so a step that was cleared while the turn waited
+     * is not asked for: with no step open the chat is told and autonomy ends, and with no plan known the turn asks the person which plan, once.
+     */
+    private void startATurnByItself(PrincipalSession session) {
+        java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());
+        if (turn.isLocked()) {
+            return;
+        }
+        deliveries.execute(() -> {
+            if (!takeTheTurnAfterThePersons(turn, session.id())) {
+                return;
+            }
+            try {
+                String messageId = "msg_" + UUID.randomUUID();
+                TurnBoundary.Opening opening = boundary.openingOf(session);
+                if (opening.standing() == TurnBoundary.Standing.NONE_OPEN) {
+                    switchAutonomyOff(session, "Autonomy ended: no step is open.\n\n", messageId);
+                    return;
+                }
+                if (opening.standing() == TurnBoundary.Standing.WORKING) {
+                    // A hire is working on the step: autonomy stays on and no turn starts. The hire's report arrives as a turn, and its end
+                    // resumes the plan through TurnBoundary#atTurnEnd.
+                    StepLedger.Pending step = opening.step();
+                    Optional<HireEntry> hire = hires.entry(step.planId());
+                    String who = hire.flatMap(HireEntry::name).orElseGet(() -> hire.map(HireEntry::seat).orElse(step.planId()));
+                    update(session.id(), messageChunk("agent_message_chunk",
+                        "Autonomy on: waiting for " + who + " to finish step " + step.index() + " of plan " + step.planId() + ".\n\n", messageId));
+                    return;
+                }
+                String text = opening.standing() == TurnBoundary.Standing.NO_PLAN
+                    ? "[jawata] autonomy: on\nNo sprint plan is known to the engine. Ask the person which plan to work, once, and wait for their answer."
+                    : "[jawata] autonomy: on\nTake the next open step of the sprint plan: step " + opening.step().index() + " of plan "
+                        + opening.step().planId() + " (its gate is " + opening.step().gateTool() + "). Carry on until it passes, and run "
+                        + opening.step().gateTool() + " to show that it has.";
+                conductTurn(JSON.createObjectNode(), session, messageId, "[autonomy: on]", text);
+            } catch (RuntimeException failed) {
+                java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.WARNING, "the turn autonomy starts could not be conducted", failed);
+            } finally {
+                turn.unlock();
+            }
+        });
+    }
+
     /** What the brain is told when a hire it started has gone quiet: who, for how long, that it still runs, and what can be done (28h Stage 27, z28). */
     private String quietNotice(HireRegistry.Event event) {
         return "A hire you started has gone quiet: " + event.name() + " · " + event.seat() + " has shown no sign of life for "
@@ -862,9 +928,9 @@ public final class AcpServer {
             boundary.personSpoke(session);
             // 28h D57 (j): his message is what a release is checked against; only this path, the host's, writes it.
             brain.toolSessionKey().ifPresent(key -> org.jawata.mcp.execution.PersonsWords.said(key, typed));
-            // D57 (m): the grant is ONE state, switched by the button or by his typed /autocontinue and /autocontinue-off alike. Any other
-            // message he types ends it, as it always did (his words 2026-11-17: "I do not want the agent to move on while I am talking with
-            // him"): /autocontinue-off is that same ending, named.
+            // D57 (m): the grant is ONE state, switched by the button or by his typed /autocontinue and /autocontinue-off alike. A message
+            // he types is not an ending of it (28h z99): it ends by the switch, by /autocontinue-off, by Stop, or when no step is open. A typed
+            // /autocontinue is itself the turn that begins the work, so it does not start a second one.
             String command = typed == null ? "" : typed.strip();
             if ("/autocontinue".equals(command) && !session.autonomy()) {
                 session.setAutonomy(Channel.HOST, true);
@@ -872,13 +938,9 @@ public final class AcpServer {
                 update(session.id(), messageChunk("agent_message_chunk", "Autonomy on: you typed /autocontinue.\n\n", messageId));
                 update(session.id(), configOptionUpdate(session));
                 text = "[jawata] autonomy: on (the person typed /autocontinue)\n" + text;
-            } else if (session.autonomy() && !"/autocontinue".equals(command)) {
-                boolean named = "/autocontinue-off".equals(command);
-                session.setAutonomy(Channel.HOST, false);
-                brain.autonomyChanged(false);
-                update(session.id(), messageChunk("agent_message_chunk", named ? "Autonomy ended: you typed /autocontinue-off.\n\n" : "Autonomy ended: you sent a message.\n\n", messageId));
-                update(session.id(), configOptionUpdate(session));
-                text = "[jawata] autonomy: off (the person typed " + (named ? "/autocontinue-off" : "a message, which ends it") + ")\n" + text;
+            } else if (session.autonomy() && "/autocontinue-off".equals(command)) {
+                switchAutonomyOff(session, "Autonomy ended: you typed /autocontinue-off.\n\n", messageId);
+                text = "[jawata] autonomy: off (the person typed /autocontinue-off)\n" + text;
             }
         }
         java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());

@@ -54,6 +54,40 @@ public final class TurnBoundary {
         attempts.personSpoke(session.id());
     }
 
+    /** Where the plan stands for a session whose autonomy has just been switched on. */
+    public enum Standing {
+        /** A step is open, and nobody is working on it: {@link Opening#step()} is the next one. */
+        STEP,
+        /** A plan is known, and no step of it is open. */
+        NONE_OPEN,
+        /** No plan is known at all. */
+        NO_PLAN,
+        /** A step is open and a hire is working on it: {@link Opening#step()} is that step. */
+        WORKING
+    }
+
+    /**
+     * @param standing where the plan stands
+     * @param step     the next open step, or the first one a hire is working on; null unless {@code standing} is {@link Standing#STEP} or
+     *                 {@link Standing#WORKING}
+     */
+    public record Opening(Standing standing, StepLedger.Pending step) {
+    }
+
+    /**
+     * The next open step of {@code session}'s plan, found the way {@link #atTurnEnd} finds a waiting one (a step whose hire is running is not
+     * open), but spending no try and asking nothing of the grant: it is what a turn started by switching autonomy on is told to take.
+     */
+    public Opening openingOf(PrincipalSession session) {
+        List<StepLedger.Pending> pending = steps.pending(session);
+        if (pending.isEmpty() && !steps.planKnown(session)) {
+            return new Opening(Standing.NO_PLAN, null);
+        }
+        return pending.stream().filter(step -> !step.inFlight()).findFirst()
+            .map(step -> new Opening(Standing.STEP, step))
+            .orElseGet(() -> pending.isEmpty() ? new Opening(Standing.NONE_OPEN, null) : new Opening(Standing.WORKING, pending.get(0)));
+    }
+
     /** Decides what to do with the end of the turn a brain just made in {@code session}. */
     public Verdict atTurnEnd(PrincipalSession session) {
         // A step whose hire is running is waiting because someone is working on it, which is the normal state of a lead with hires out (Stage 24,

@@ -43,6 +43,8 @@ public final class PlanStepsTool implements Tool {
             when a hire of that plan is running right now, so the step is waiting because someone is working on it. A plan whose every step has
             passed is not listed. A plan advances only when its next step's gate call answered and reported no errors, so an empty
             list means no step is waiting, and a listed plan names the gate tool that would move it.
+
+            planCount is how many plans the ledger holds, so an empty pending list can be told apart from no plan at all.
             """;
     }
 
@@ -81,6 +83,7 @@ public final class PlanStepsTool implements Tool {
         }
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("pending", pending);
+        data.put("planCount", plans.planCount());
         return ToolResponse.success(data);
     }
 }
