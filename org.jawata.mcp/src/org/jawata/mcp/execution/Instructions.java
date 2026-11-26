@@ -2,12 +2,13 @@ package org.jawata.mcp.execution;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,11 +27,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * ARGUMENTS: {"symbol":"pkg.Type#member","newName":"x"}
  * </pre>
  *
- * <p>It <em>ran as written</em> when the worker made exactly one call to that tool carrying exactly
- * those arguments and no other call to that tool: a second call with other arguments is rework, and
- * a call whose arguments differ was not the instruction. Reads and the compile check are not
- * rework. The comparison is made on the calls the worker's own event stream shows, never on what the
- * worker's report says it did.</p>
+ * <p>It <em>ran as written</em> when the worker made one call to that tool carrying exactly those
+ * arguments and no further call for it (28h z117): the same call a second time, or a call of that tool
+ * nobody wrote that acts on the same file, symbol or command (an edit: also on the same text), is
+ * rework, and a call whose arguments differ was not the instruction. Reads and the compile check are
+ * not rework. The comparison is made on the calls the worker's own event stream shows, never on what
+ * the worker's report says it did.</p>
  */
 public final class Instructions {
 
@@ -46,6 +48,9 @@ public final class Instructions {
 
     /** The argument every tool accepts and none reads as part of its work; ignored when comparing. */
     private static final String META_ARGUMENT = "precedentOverride";
+
+    /** The arguments that say what a call acts on, so a call that names another of one of them is not another go at an instruction. */
+    private static final List<String> TARGET_ARGUMENTS = List.of("file_path", "filePath", "path", "symbol", "typeName", "packageName", "command");
 
     /**
      * 28h D57 (d): the defaults a brain's own editor spells out in its call when the instruction left them out, by tool. Measured
@@ -298,36 +303,54 @@ public final class Instructions {
         List<String> notAsWritten = new ArrayList<>();
         int ran = 0;
         boolean[] accounted = new boolean[made.size()];
+        // 28h z117: each instruction is scored on the calls made for it. First every call written out by an instruction is claimed by
+        // one, so two instructions of one tool, or two that read the same, do not count each other's calls.
+        boolean[] written = new boolean[made.size()];
+        List<Integer> own = new ArrayList<>();
         for (Instruction instruction : issued) {
+            Integer claimed = null;
+            for (int i = 0; i < made.size(); i++) {
+                if (asWritten(instruction, made.get(i))) {
+                    written[i] = true;
+                    if (claimed == null && !accounted[i]) {
+                        claimed = i;
+                        accounted[i] = true;
+                    }
+                }
+            }
+            own.add(claimed);
+        }
+        boolean[] claimed = accounted.clone();
+        for (int k = 0; k < issued.size(); k++) {
+            Instruction instruction = issued.get(k);
             if (instruction.arguments() == null) {
                 notAsWritten.add("instruction " + instruction.number() + ": its ARGUMENTS were not one JSON object, so it has no execution");
                 continue;
             }
-            List<Integer> sameTool = new ArrayList<>();
-            List<Integer> exact = new ArrayList<>();
+            // Its further calls: one written like it that no instruction claimed, and one nobody wrote that acts on what it acts on.
+            int further = 0;
+            boolean toolCalled = false;
             for (int i = 0; i < made.size(); i++) {
-                if (instruction.tool().equals(made.get(i).bareName())) {
-                    sameTool.add(i);
-                    if (equalArguments(instruction.arguments(), withoutGuardBracket(instruction, withoutSpelledOutDefaults(instruction, made.get(i).arguments())))
-                            || sameEditAsItsDiff(instruction, made.get(i).arguments())) {
-                        exact.add(i);
-                    }
+                if (!instruction.tool().equals(made.get(i).bareName())) {
+                    continue;
+                }
+                toolCalled = true;
+                boolean again = asWritten(instruction, made.get(i)) ? !claimed[i] : !written[i] && actsOnTheSame(instruction, made.get(i).arguments());
+                if (again) {
+                    further++;
+                    accounted[i] = true;
                 }
             }
-            if (sameTool.isEmpty()) {
+            if (!toolCalled) {
                 notAsWritten.add("instruction " + instruction.number() + ": the worker never called " + instruction.tool());
-            } else if (exact.isEmpty()) {
+            } else if (own.get(k) == null) {
                 notAsWritten.add("instruction " + instruction.number() + ": " + instruction.tool()
                     + " was called, but not with the arguments written");
-            } else if (sameTool.size() > 1) {
+            } else if (further > 0) {
                 notAsWritten.add("instruction " + instruction.number() + ": " + instruction.tool()
-                    + " was called " + sameTool.size() + " times, which is rework");
+                    + " was called " + (further + 1) + " times, which is rework");
             } else {
                 ran++;
-                accounted[exact.get(0)] = true;
-            }
-            for (int i : sameTool) {
-                accounted[i] = true;
             }
         }
         List<String> extra = new ArrayList<>();
@@ -340,6 +363,55 @@ public final class Instructions {
             }
         }
         return new Score(issued.size(), ran, List.copyOf(notAsWritten), List.copyOf(extra));
+    }
+
+    /** Whether this call is the instruction's tool carrying what it wrote. */
+    private static boolean asWritten(Instruction instruction, ToolCall call) {
+        return instruction.arguments() != null && instruction.tool().equals(call.bareName())
+            && (equalArguments(instruction.arguments(), withoutGuardBracket(instruction, withoutSpelledOutDefaults(instruction, call.arguments())))
+                || sameEditAsItsDiff(instruction, call.arguments()));
+    }
+
+    /**
+     * 28h z117: whether a call of the instruction's tool that no instruction wrote is another go at this one: it names no other target than
+     * the instruction names, and an edit also touches the text the instruction replaced or put there.
+     */
+    private static boolean actsOnTheSame(Instruction instruction, JsonNode made) {
+        if (made == null) {
+            return true;
+        }
+        for (String target : TARGET_ARGUMENTS) {
+            JsonNode named = instruction.arguments().get(target);
+            if (named != null && made.has(target) && !named.equals(made.get(target))) {
+                return false;
+            }
+        }
+        if (!"Edit".equals(instruction.tool())) {
+            return true;
+        }
+        String touched = made.has("old_string") ? made.path("old_string").asText()
+            : made.has("oldText") ? changedLines(made.path("oldText").asText(), made.path("newText").asText()) : "";
+        if (touched.isEmpty()) {
+            return true;
+        }
+        return Stream.of("old_string", "new_string").map(name -> instruction.arguments().path(name).asText(""))
+            .anyMatch(text -> !text.isEmpty() && (text.contains(touched) || touched.contains(text)));
+    }
+
+    /** The whole lines of {@code before} that an edit known only by its two texts replaced. */
+    private static String changedLines(String before, String after) {
+        int start = 0;
+        while (start < before.length() && start < after.length() && before.charAt(start) == after.charAt(start)) {
+            start++;
+        }
+        int end = 0;
+        while (end < before.length() - start && end < after.length() - start
+                && before.charAt(before.length() - 1 - end) == after.charAt(after.length() - 1 - end)) {
+            end++;
+        }
+        int from = start == 0 ? 0 : before.lastIndexOf('\n', start - 1) + 1;
+        int to = before.indexOf('\n', Math.max(from, before.length() - end));
+        return before.substring(from, to < 0 ? before.length() : to);
     }
 
     /**

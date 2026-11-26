@@ -279,6 +279,61 @@ class TokensAndInstructionsTest {
             () -> assertEquals(0, otherText.ranAsWritten(), "other new text ran as written"));
     }
 
+    private static String editOf(String file, String before, String after) {
+        return "{\"file_path\":\"" + file + "\",\"old_string\":\"" + before + "\",\"new_string\":\"" + after + "\"}";
+    }
+
+    @Test
+    @DisplayName("28h z117: each instruction is scored on the calls made for it, so eight single edits ran as written 8 of 8; a second edit of what one wrote counts against that one, and an edit of something else against none")
+    void eachInstructionIsScoredOnItsOwnCalls() throws Exception {
+        List<Instructions.Instruction> issued = new java.util.ArrayList<>();
+        List<ToolCall> made = new java.util.ArrayList<>();
+        for (int n = 1; n <= 8; n++) {
+            String edit = editOf("/p/Foo.java", "int old" + n + " = 0;", "int new" + n + " = 0;");
+            issued.add(new Instructions.Instruction(n, "Edit", MAPPER.readTree(edit)));
+            made.add(call("Edit", edit));
+        }
+        Instructions.Score each = Instructions.score(issued, made, ENGINE);
+        List<ToolCall> reworked = new java.util.ArrayList<>(made);
+        reworked.add(call("Edit", editOf("/p/Foo.java", "int new3 = 0;", "int new3 = 1;")));
+        Instructions.Score again = Instructions.score(issued, reworked, ENGINE);
+        List<ToolCall> besides = new java.util.ArrayList<>(made);
+        besides.add(call("Edit", editOf("/p/Other.java", "a", "b")));
+        Instructions.Score elsewhere = Instructions.score(issued, besides, ENGINE);
+
+        assertAll(
+            () -> assertEquals(8, each.ranAsWritten(), "THE CLAIM: " + each.notAsWritten()),
+            () -> assertTrue(each.extraCodeChangingCalls().isEmpty()),
+            () -> assertEquals(7, again.ranAsWritten(), String.valueOf(again.notAsWritten())),
+            () -> assertTrue(again.notAsWritten().get(0).startsWith("instruction 3: ") && again.notAsWritten().get(0).contains("rework"),
+                String.valueOf(again.notAsWritten())),
+            () -> assertEquals(8, elsewhere.ranAsWritten(), String.valueOf(elsewhere.notAsWritten())),
+            () -> assertEquals(List.of("Edit"), elsewhere.extraCodeChangingCalls(), "an edit nobody asked for went unnamed"));
+    }
+
+    private static ToolCall diffOf(String before, String after) throws Exception {
+        return new ToolCall("Edit", MAPPER.createObjectNode().put("file_path", "/p/F.java").put("oldText", before).put("newText", after));
+    }
+
+    @Test
+    @DisplayName("28h z117: an edit known only by its two texts counts against the instruction whose lines it changed, and one that inserts at the start of a file is still scored")
+    void anEditKnownByItsDiffIsChargedByTheLinesItChanged() throws Exception {
+        List<Instructions.Instruction> issued = List.of(
+            new Instructions.Instruction(1, "Edit", MAPPER.readTree(editOf("/p/F.java", "int a = 0;", "int a = 1;"))),
+            new Instructions.Instruction(2, "Edit", MAPPER.readTree(editOf("/p/F.java", "int b = 0;", "int b = 1;"))));
+        Instructions.Score again = Instructions.score(issued, List.of(
+            diffOf("int a = 0;\nint b = 0;\n", "int a = 1;\nint b = 0;\n"),
+            diffOf("int a = 1;\nint b = 0;\n", "int a = 1;\nint b = 1;\n"),
+            diffOf("int a = 1;\nint b = 1;\n", "int a = 1;\nint b = 2;\n")), ENGINE);
+        Instructions.Score inserted = Instructions.score(issued, List.of(diffOf("\nint c;\n", "x\nint c;\n")), ENGINE);
+
+        assertAll(
+            () -> assertEquals(1, again.ranAsWritten(), String.valueOf(again.notAsWritten())),
+            () -> assertTrue(again.notAsWritten().get(0).startsWith("instruction 2: ") && again.notAsWritten().get(0).contains("rework"),
+                String.valueOf(again.notAsWritten())),
+            () -> assertEquals(0, inserted.ranAsWritten()));
+    }
+
     @Test
     @DisplayName("precedentOverride, the meta-argument every call may carry, is not part of what was written")
     void theMetaArgumentIsIgnored() throws Exception {
