@@ -79,6 +79,17 @@ class FqnResolverTest {
     }
 
     @Test
+    @DisplayName("28h z134: a signature names a method with a generic parameter by its raw type, qualified or not, and with its type arguments written out")
+    void genericParameter_resolvesByItsRawType() throws Exception {
+        for (String signature : new String[] {"java.util.List", "List", "java.util.List<com.example.Calculator>", "List<Calculator>"}) {
+            Optional<IJavaElement> resolved = FqnResolver.resolveWorkspace("com.example.PipelineTargets#activeNames(" + signature + ")", service);
+            assertTrue(resolved.isPresent(), "THE CLAIM: " + signature + " did not find the method");
+        }
+        assertFalse(FqnResolver.resolveWorkspace("com.example.PipelineTargets#activeNames(java.util.Set)", service).isPresent(),
+            "CONTROL: another parameter type found the method");
+    }
+
+    @Test
     @DisplayName("field FQN resolves to IField")
     void fieldFqn_resolvesToIField() {
         // HelloWorld has `private String greeting;`
