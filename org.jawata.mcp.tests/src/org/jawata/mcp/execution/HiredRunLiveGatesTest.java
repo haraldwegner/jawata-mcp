@@ -121,6 +121,22 @@ class HiredRunLiveGatesTest {
     }
 
     @Test
+    @DisplayName("z128: a lead's plan holds no step ceiling, because a lead reads and hires and its steps are run after it answers")
+    void aLeadsPlanHoldsNoStepCeiling() throws Exception {
+        List<Integer> ceilings = new ArrayList<>();
+        HiredRun.GateRunner reading = gate -> {
+            List<PlanLedger.PlanView> views = plans.view();
+            plans.stepBudget(views.get(views.size() - 1).id().value()).ifPresent(budget -> ceilings.add(budget.ceiling()));
+            return new GateOutcome(gate.tool(), gate.gateArguments(), 0, true);
+        };
+        run.leading(true);
+
+        hire("EDITS:1", reading);
+
+        assertEquals(List.of(), ceilings, "a lead was held to a step ceiling");
+    }
+
+    @Test
     @DisplayName("S12 D18, resume: a step passed live is not run again, the end of the hire runs only the steps after it")
     void theEndOfTheHireResumesAfterTheLiveSteps() throws Exception {
         HiredRun.Proposal proposal = hire("EDITS:1", gates(0));

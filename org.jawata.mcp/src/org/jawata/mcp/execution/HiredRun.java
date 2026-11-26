@@ -245,7 +245,8 @@ public final class HiredRun {
     }
 
     private PlanId openPlan(SeatHire seat, List<GatedStep> planned) {
-        PlanId plan = plans.open(planned, perStepCeiling(seat.ceilings(), planned.size()));
+        // 28h z128: a lead reads and hires, and its steps are run after it answers, so it holds no step ceiling.
+        PlanId plan = plans.open(planned, lead ? 0 : perStepCeiling(seat.ceilings(), planned.size()));
         owner.ifPresent(opener -> plans.ownedBy(plan, opener));
         // The registry learns the plan id of the hire running on this thread, so a hire this hire's brain issues can name this one as its lead.
         HireRegistry.shared().planOpened(plan.value());
@@ -338,7 +339,6 @@ public final class HiredRun {
         private final PlanId plan;
         private final GateRunner gates;
         private final Map<String, String> kinds = new java.util.HashMap<>();
-        private final List<GateOutcome> passed = new ArrayList<>();
 
         LiveGates(PlanId plan, GateRunner gates) {
             this.plan = plan;
@@ -355,22 +355,16 @@ public final class HiredRun {
             if (!"completed".equals(update.path("status").asText("")) || !EDITING.contains(kinds.getOrDefault(callId, ""))) {
                 return;
             }
+            plans.editSeen(plan);
             Optional<GatedStep> next = plans.nextStep(plan);
             if (next.isEmpty() || next.get().tool().startsWith(PlanLedger.ANSWER_GATE_PREFIX)) {
                 return;
             }
             try {
-                GateOutcome gate = gates.run(next.get());
-                if (plans.advanceIfGatePassed(plan, gate).advanced()) {
-                    passed.add(gate);
-                }
+                plans.advanceIfGatePassed(plan, gates.run(next.get()));
             } catch (RuntimeException e) {
                 // a gate that could not run is not a pass; the end-of-hire loop runs it again and says what happened
             }
-        }
-
-        synchronized List<GateOutcome> passed() {
-            return List.copyOf(passed);
         }
     }
 
@@ -543,9 +537,9 @@ public final class HiredRun {
         // refusal is deliberate: a plan's steps are ordered, so a step whose gate
         // did not pass makes every later verdict a statement about a tree that was
         // never reached.
-        // Steps the live gates already passed while the brain worked are in the list, in order, and the ledger holds how far the plan got:
-        // the loop resumes after that step, so none runs twice. On any other start path nothing ran live and the loop starts at the first.
-        List<GateOutcome> ran = new ArrayList<>(live == null ? List.of() : live.passed());
+        // Steps already passed while the brain worked, by the live gates or by the brain's own gate calls, are in the ledger in order, and it
+        // holds how far the plan got: the loop resumes after that step, so none runs twice.
+        List<GateOutcome> ran = new ArrayList<>(plans.passedOutcomes(plan));
         List<String> answerRefusals = new ArrayList<>();
         // 28h Stage 27 (z5): what the worker's test runs showed is taken whatever the brief, so the store never keeps a hire's runs; a worker
         // briefed with a BUILD instruction is held to writing the test first and seeing it fail.

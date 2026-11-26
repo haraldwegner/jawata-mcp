@@ -816,6 +816,11 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
                 : access.whileServing(caller.id(), () -> tool.execute(toolArguments)));
             long duration = System.currentTimeMillis() - startTime;
             log.info("Tool {} completed in {}ms, success={}", name, duration, response.isSuccess());
+            // 28h z128: a hired brain's own call of its step's gate moves the plan, judged like the engine's run of that gate.
+            if (!editor && serverChecks != null) {
+                serverChecks.ownCall(caller, name, toolArguments,
+                    step -> org.jawata.mcp.execution.ToolGateRunner.outcomeOf(step, response));
+            }
             // Sprint 21e (item A): a successful project mutation changes what symbol
             // anchors can resolve — refresh + backfill the store's anchors now (add:
             // new types become anchorable; remove: their auto-anchors get cleared).

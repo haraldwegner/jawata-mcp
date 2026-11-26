@@ -6,15 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jawata.mcp.fixtures.ShippedGates;
 import org.jawata.mcp.learn.EventTap;
+import org.jawata.mcp.learn.GatedStep;
+import org.jawata.mcp.learn.PlanLedger;
 import org.jawata.mcp.learn.ServerChecks;
 import org.jawata.mcp.learn.SessionLedger;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.step.PlanId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -87,6 +91,52 @@ class ToolRegistryOrderingTest {
         registry.setServerChecks(new ServerChecks(null, null, ShippedGates.registry()));
         registry.register(countingExperienceTool());
         return registry;
+    }
+
+    /** A gate stand-in that answers with the error count it is given. */
+    private static Tool compileAnswering(int errors) {
+        return new Tool() {
+            @Override public String getName() {
+                return "compile_workspace";
+            }
+            @Override public String getDescription() {
+                return "a compile stand-in";
+            }
+            @Override public Map<String, Object> getInputSchema() {
+                return Map.of();
+            }
+            @Override public ToolResponse execute(JsonNode arguments) {
+                return ToolResponse.success(Map.of("errorCount", errors));
+            }
+        };
+    }
+
+    /** The step the plan reached after its own hire called compile_workspace once with {@code arguments}. */
+    private static int stepAfterOwnCall(int errors, String arguments) throws Exception {
+        PlanLedger plans = new PlanLedger();
+        PlanId plan = plans.open(List.of(new GatedStep(0, "compile_workspace", json("{\"projectKey\":\"jawata-mcp\"}"))), 3);
+        ToolRegistry registry = new ToolRegistry();
+        registry.setEventTap(new EventTap(new SessionLedger(), null));
+        registry.setServerChecks(new ServerChecks(null, null, ShippedGates.registry(), plans));
+        registry.register(compileAnswering(errors));
+
+        registry.callTool("compile_workspace", json(arguments), CallerIdentity.supplied(plan.value()));
+
+        return plans.currentStep(plan).orElse(-99);
+    }
+
+    @Test
+    @DisplayName("z128: a hired brain's own call of its step's gate, with the declared arguments and no errors, moves the plan")
+    void ownGateCallMovesThePlan() throws Exception {
+        assertEquals(0, stepAfterOwnCall(0, "{\"projectKey\":\"jawata-mcp\"}"), "the brain's own passing gate call did not move the plan");
+    }
+
+    @Test
+    @DisplayName("z128, the controls: an own gate call with errors, or without the declared arguments, moves nothing")
+    void ownGateCallThatFailsOrDiffersMovesNothing() throws Exception {
+        assertAll(
+            () -> assertEquals(-1, stepAfterOwnCall(2, "{\"projectKey\":\"jawata-mcp\"}"), "a failing gate call moved the plan"),
+            () -> assertEquals(-1, stepAfterOwnCall(0, "{}"), "a call without the declared arguments moved the plan"));
     }
 
     private static void seed(SessionLedger ledger, CallerIdentity caller, String tool) {

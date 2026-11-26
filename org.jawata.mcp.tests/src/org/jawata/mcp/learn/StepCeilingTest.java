@@ -54,8 +54,11 @@ class StepCeilingTest {
         return new GatedStep(index, tool, JSON.createObjectNode());
     }
 
+    /** A plan whose hired brain has made its first edit: the only state in which a ceiling applies. */
     private PlanId open(int ceiling, GatedStep... steps) {
-        return plans.open(List.of(steps), ceiling);
+        PlanId plan = plans.open(List.of(steps), ceiling);
+        plans.editSeen(plan);
+        return plan;
     }
 
     private void call(PlanId plan, String tool) {
@@ -136,5 +139,51 @@ class StepCeilingTest {
             () -> assertNull(next(answer, "inspect"), "the current step gates the answer, which cannot exist yet"),
             () -> assertNull(checks.acceptance(CallerIdentity.supplied("a-session-that-is-no-plans"), "inspect", JSON.createObjectNode(), ledger),
                 "a caller that is not a hired brain"));
+    }
+
+    @Test
+    @DisplayName("z128 (a): a brain that has completed no editing call cannot pass a step, so 15 reading calls are not refused")
+    void readingCallsWithoutAnEditAreNotRefused() {
+        PlanId plan = plans.open(List.of(step(0, "compile_workspace")), 3);
+        for (int i = 0; i < 15; i++) {
+            call(plan, "inspect");
+        }
+
+        assertNull(next(plan, "inspect"), "the plan's hire has not completed an editing call: no ceiling applies");
+    }
+
+    @Test
+    @DisplayName("z128 (b): 12 reading calls and then 'hire' (a lead's call) is not refused")
+    void aLeadsHireCallAfterReadingIsNotRefused() {
+        PlanId plan = plans.open(List.of(step(0, "compile_workspace")), 3);
+        for (int i = 0; i < 12; i++) {
+            call(plan, "search_symbols");
+        }
+
+        assertNull(next(plan, "hire"), "a lead never edits: no ceiling applies to it");
+    }
+
+    @Test
+    @DisplayName("z128 (c): the count starts at the first edit, and the refusal names the gate call with its declared arguments")
+    void theCountStartsAtTheFirstEditAndTheHintNamesTheDeclaredCall() {
+        com.fasterxml.jackson.databind.node.ObjectNode declared = JSON.createObjectNode().put("projectKey", "jawata-mcp");
+        PlanId plan = plans.open(List.of(new GatedStep(0, "compile_workspace", declared)), 3);
+        for (int i = 0; i < 10; i++) {
+            call(plan, "inspect");
+        }
+        now[0] = 2000;
+        plans.editSeen(plan);
+        now[0] = 2001;
+        ToolResponse rightAfterTheEdit = next(plan, "inspect");
+        call(plan, "inspect");
+        call(plan, "inspect");
+        call(plan, "inspect");
+        ToolResponse spent = next(plan, "inspect");
+
+        assertAll(
+            () -> assertNull(rightAfterTheEdit, "the reading before the first edit counted against the step"),
+            () -> assertNotNull(spent, "three calls after the edit spend the allowance of three"),
+            () -> assertTrue(spent.getError().getHint().contains("compile_workspace with {\"projectKey\":\"jawata-mcp\"}"),
+                spent.getError().getHint()));
     }
 }

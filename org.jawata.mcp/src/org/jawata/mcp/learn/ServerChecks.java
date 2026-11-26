@@ -119,6 +119,7 @@ public final class ServerChecks {
      * the run's tool ceiling and the ACP permission allowlist bound those.</p>
      */
     private ToolResponse stepCeiling(CallerIdentity caller, String name, SessionLedger ledger) {
+        // 28h z128: the budget is empty until the brain's first edit and for a lead, so a brain that only reads is never refused
         if (plans == null || caller == null || ledger == null) {
             return null;
         }
@@ -138,7 +139,8 @@ public final class ServerChecks {
         }
         return ToolResponse.error("PRECONDITION_NOT_MET",
             "this step has had its " + step.ceiling() + " calls and its gate has not passed: " + spent + " engine calls since it began",
-            "run " + step.gate().tool() + " now; the next call of any other tool is refused until it passes, and a step that passes starts its count again");
+            "call " + step.gate().tool() + " with " + step.gate().gateArguments() + " now: the step passes when that answer reports no errors"
+                + " (the engine also runs it after your next edit). Other calls are refused until it passes; a step that passes starts its count again");
     }
 
     /**
@@ -159,6 +161,22 @@ public final class ServerChecks {
             "the seat this session was hired as does not list " + name,
             "the tools it may call: " + (allowance.get().tools().isEmpty() ? "none" : String.join(", ", new java.util.TreeSet<>(allowance.get().tools())))
                 + (allowance.get().gate().map(gate -> "; and " + gate + ", the gate of its current step").orElse("")));
+    }
+
+    /**
+     * AFTER a call the brain made itself: when it was the gate of the step its hire is working, that answer moves the plan (28h z128). A
+     * failure to judge it leaves the plan where it was; the engine still runs the gate itself.
+     */
+    public void ownCall(CallerIdentity caller, String name, JsonNode arguments,
+            java.util.function.Function<GatedStep, org.jawata.mcp.step.GateOutcome> judge) {
+        if (plans == null || caller == null) {
+            return;
+        }
+        try {
+            plans.offerOwnCall(caller.id(), name, arguments, judge);
+        } catch (RuntimeException e) {
+            log.warn("the call of {} could not be read as its step's gate", name, e);
+        }
     }
 
     public PolicyDial dial() {

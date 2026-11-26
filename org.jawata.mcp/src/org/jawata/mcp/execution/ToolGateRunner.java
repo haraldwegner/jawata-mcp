@@ -102,6 +102,14 @@ public final class ToolGateRunner implements HiredRun.GateRunner {
         // failure and fails open, while the remainder cannot throw on any input. The property the
         // backstop stood for is pinned at its source, where a fault can be injected:
         // ToolRegistryAnswersWhateverItsOwnMachineryDoesTest, including a gate run through it.
+        return outcomeOf(step, response);
+    }
+
+    /**
+     * What a gate call's answer means for its step: the one reading of an answer, for the gate the engine runs and for a hired brain's own call
+     * of its step's gate (28h z128).
+     */
+    public static GateOutcome outcomeOf(GatedStep step, ToolResponse response) {
         if (response == null) {
             return didNotAnswer(step, "it returned nothing at all");
         }

@@ -237,7 +237,11 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
                 "ownerOf(PlanId)",
                 // S13 (F2): allowTools(PlanId,Collection) records which tools the hired seat may call and moves no step; allowance(String) is a READ
                 // that hands back a copy. A plan's tool list is not its step, so the one-member rule for the step still holds.
-                "allowTools(PlanId,Collection)", "allowance(String)")),
+                "allowTools(PlanId,Collection)", "allowance(String)",
+                // 28h z128: editSeen(PlanId) records that the hired brain edited, so its ceiling starts; it moves no step.
+                // offerOwnCall(...) moves a step only through advanceIfGatePassed, with the call checked against the step's declared
+                // gate first, so the one-member rule for the step still holds. passedOutcomes(PlanId) is a READ that hands back a copy.
+                "editSeen(PlanId)", "offerOwnCall(String,String,JsonNode,Function)", "passedOutcomes(PlanId)")),
             published,
             "a member ARRIVING here is how an external write gets in, so the set is pinned"
                 + " rather than merely counted — and pinned by SIGNATURE, so an overload"

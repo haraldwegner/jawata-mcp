@@ -140,6 +140,12 @@ public final class PlanLedger {
         /** When the step now being worked began: the plan's opening, then each advance. Engine calls from this moment count against the ceiling. */
         private long stepStartedAt;
 
+        /** Whether the hired brain has completed an editing call: until then no step can pass while it works, so no ceiling applies (28h z128). */
+        private boolean edited;
+
+        /** The gate outcomes that moved the plan, in step order, whoever ran the gate. */
+        private final List<GateOutcome> passed = new ArrayList<>();
+
         /** The session that opened the plan, or empty when nobody said: a plan's pending step is that session's to answer for (S10). */
         private String owner = "";
 
@@ -213,7 +219,7 @@ public final class PlanLedger {
             }
             Entry entry = plan.getValue();
             int next = entry.currentStep + 1;
-            if (entry.closed || entry.perStepCeiling <= 0 || next >= entry.steps.size()
+            if (entry.closed || !entry.edited || entry.perStepCeiling <= 0 || next >= entry.steps.size()
                     || entry.steps.get(next).tool().startsWith(ANSWER_GATE_PREFIX)) {
                 return Optional.empty();
             }
@@ -335,7 +341,52 @@ public final class PlanLedger {
         }
         entry.currentStep = next;
         entry.stepStartedAt = clock.getAsLong();
+        entry.passed.add(gate);
         return Advance.moved(next);
+    }
+
+    /**
+     * The hired brain of this plan completed an editing call. From now on a step can pass while it works, so the step ceiling applies, counted
+     * from this first edit and not from the reading that came before it (28h z128). Later edits change nothing here.
+     */
+    public synchronized void editSeen(PlanId id) {
+        Entry entry = id == null ? null : plans.get(id);
+        if (entry != null && !entry.edited) {
+            entry.edited = true;
+            entry.stepStartedAt = clock.getAsLong();
+        }
+    }
+
+    /** The gate outcomes that moved this plan so far, in step order; empty for an unknown plan. */
+    public synchronized List<GateOutcome> passedOutcomes(PlanId id) {
+        Entry entry = id == null ? null : plans.get(id);
+        return entry == null ? List.of() : List.copyOf(entry.passed);
+    }
+
+    /**
+     * A hired session called a tool itself: when it is the gate of the step it is working, with the declared arguments, its answer is judged
+     * like the engine's own run of that gate and moves the plan when it passes (28h z128). Any other call changes nothing.
+     *
+     * @param sessionId the caller's session id; a hired brain's is its plan's value
+     * @param judge     reads the answer of the call as an outcome of the step
+     */
+    public synchronized void offerOwnCall(String sessionId, String tool, JsonNode arguments,
+            java.util.function.Function<GatedStep, GateOutcome> judge) {
+        if (sessionId == null) {
+            return;
+        }
+        for (Map.Entry<PlanId, Entry> plan : plans.entrySet()) {
+            if (!plan.getKey().value().equals(sessionId)) {
+                continue;
+            }
+            Entry entry = plan.getValue();
+            int next = entry.currentStep + 1;
+            if (!entry.closed && next < entry.steps.size() && entry.steps.get(next).tool().equals(tool)
+                    && declaredArgumentsAreSatisfied(entry.steps.get(next).gateArguments(), arguments)) {
+                advanceIfGatePassed(plan.getKey(), judge.apply(entry.steps.get(next)));
+            }
+            return;
+        }
     }
 
     /**
