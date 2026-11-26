@@ -401,6 +401,8 @@ public final class AcpServer {
         if (!session.side()) {
             result.set("configOptions", configOptions(session));
             brain.workIn(cwd);
+            // The brain and the hook inside it outlive a session: they are told this one's grant, or they keep the one before's.
+            brain.autonomyChanged(session.autonomy());
             // The brain's own models and the one it is on are known only once its session is open: the host is told then (D54 (a)).
             brain.prepare(() -> update(session.id(), configOptionUpdate(session)));
         }
@@ -1087,6 +1089,7 @@ public final class AcpServer {
         String cwd = textField(params, "cwd");
         PrincipalSession session = sessions.computeIfAbsent(sessionId, key -> new PrincipalSession(key, cwd == null ? "" : cwd, false));
         brain.workIn(session.cwd());
+        brain.autonomyChanged(session.autonomy());
         int turnNo = 0;
         java.util.Set<String> replayedCards = new java.util.HashSet<>();
         for (AgentRecorder.Turn turn : turns) {

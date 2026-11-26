@@ -315,6 +315,8 @@ class TurnBoundaryTest {
         AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null);
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
         String session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
+        // what the opening of the session told is not a change of the grant
+        told.clear();
 
         server.receive(JsonRpcMessage.request(2, "session/set_config_option",
             JSON.createObjectNode().put("sessionId", session).put("configId", "autonomy").put("value", "on")), Channel.HOST);
@@ -323,6 +325,38 @@ class TurnBoundaryTest {
         server.receive(JsonRpcMessage.request(3, "session/prompt", off), Channel.HOST);
 
         assertEquals(List.of(true, false), told, "the brain was not told of the button's switch and the typed /autocontinue-off");
+    }
+
+    @Test
+    @DisplayName("28h-C26-16: a session opened after another was granted autonomy tells the brain off, so the hook inside it does not go on with the earlier grant; a side thread tells it nothing")
+    void aNewSessionTellsTheBrainItsOwnGrant() {
+        List<Boolean> told = new ArrayList<>();
+        List<JsonNode> said = new ArrayList<>();
+        AgentBrain brain = new AgentBrain() {
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks) {
+                chunks.accept("ok");
+            }
+
+            @Override
+            public void autonomyChanged(boolean on) {
+                told.add(on);
+            }
+        };
+        AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), TurnBoundary.open(), AgentRecorder.off(), null);
+        server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+        String first = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
+        server.receive(JsonRpcMessage.request(2, "session/set_config_option",
+            JSON.createObjectNode().put("sessionId", first).put("configId", "autonomy").put("value", "on")), Channel.HOST);
+        told.clear();
+
+        ObjectNode side = JSON.createObjectNode().put("cwd", "/w");
+        side.putObject("_meta").put("jawata/side", true);
+        server.receive(JsonRpcMessage.request(3, "session/new", side));
+        assertEquals(List.of(), told, "a side question ended the grant of the conversation beside it");
+
+        server.receive(JsonRpcMessage.request(4, "session/new", JSON.createObjectNode().put("cwd", "/w")));
+        assertEquals(List.of(false), told, "the new session shows off while the brain was left on");
     }
 
     @Test
