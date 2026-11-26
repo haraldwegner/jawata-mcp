@@ -197,6 +197,34 @@ class ADeadPublishedMemberIsDeletableTest {
             "neither path may write anything");
     }
 
+    @Test
+    @DisplayName("28h z146: a private field the clean-up leaves, because its value calls code, is deleted here and the answer says the call went with it")
+    void aPrivateFieldWithACallIsDeletableHere() throws Exception {
+        Path registry = registryPath();
+        Files.writeString(registry, Files.readString(registry).replace("    public void register(String entry)",
+            "    private static final java.time.Duration DEAD_WAIT = java.time.Duration.ofMinutes(10);\n\n    public void register(String entry)"));
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+
+        ToolResponse r = remove("DEAD_WAIT", true);
+
+        assertTrue(r.isSuccess(), () -> "the field the clean-up leaves has no tool: " + describe(r));
+        assertFalse(Files.readString(registry).contains("DEAD_WAIT"));
+        assertTrue(String.valueOf(r.getData()).contains("initializer"), () -> "the answer does not say what went with it: " + r.getData());
+    }
+
+    @Test
+    @DisplayName("28h z147: a match with no source file, such as one in a compiled jar, is not a caller; a match in a source file is")
+    void aMatchWithNoSourceIsNotACaller() {
+        var project = service.getJavaProject().getProject();
+        var participant = org.eclipse.jdt.core.search.SearchEngine.getDefaultSearchParticipant();
+        var inAJar = new org.eclipse.jdt.core.search.SearchMatch(null, 0, -1, 0, participant, project);
+        var inASource = new org.eclipse.jdt.core.search.SearchMatch(null, 0, 10, 4, participant,
+            project.getFile("src/main/java/com/example/Caller.java"));
+
+        assertEquals(java.util.List.of(inASource),
+            org.jawata.mcp.tools.RemoveUnreferencedMemberTool.callers(java.util.List.of(inAJar, inASource)));
+    }
+
     private Path registryPath() {
         return projectPath.resolve("src/main/java/com/example/Registry.java");
     }

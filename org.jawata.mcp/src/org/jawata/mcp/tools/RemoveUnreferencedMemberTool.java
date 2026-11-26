@@ -134,7 +134,9 @@ public class RemoveUnreferencedMemberTool extends AbstractRefactoringTool
             is invisible to any search, so the caller states whether the
             enumeration is complete rather than this tool assuming it.
             Refuses a PRIVATE member (apply_cleanup kind=remove_dead_code
-            proves those with the compiler, which is the stronger proof), a
+            proves those with the compiler, which is the stronger proof) —
+            except a private field whose initializer calls code, which the
+            clean-up leaves and this deletes, saying the call went with it — a
             method that overrides or implements anything — named as such so
             you start at the supertype, rather than being told it has one
             reference at the interface that declares it — a method with
@@ -231,7 +233,8 @@ public class RemoveUnreferencedMemberTool extends AbstractRefactoringTool
                         + ". This deletes a method, constructor, field or nested type.");
             }
 
-            ToolResponse refusal = refuseIfUnsafe(service, member, consumersHere);
+            List<String> notes = new ArrayList<>();
+            ToolResponse refusal = refuseIfUnsafe(service, member, consumersHere, notes);
             if (refusal != null) {
                 return refusal;
             }
@@ -279,10 +282,16 @@ public class RemoveUnreferencedMemberTool extends AbstractRefactoringTool
             Change change = ChangeEngine.fromFileEdits(
                 "remove " + member.getElementName(), editsByFile);
 
-            return runRefactoring(service,
+            ToolResponse removed = runRefactoring(service,
                 new PreparedRefactoring(change, "remove unreferenced member "
                     + member.getElementName()),
                 "inline kind=unreferenced_member", arguments);
+            if (removed.isSuccess() && !notes.isEmpty() && removed.getData() instanceof Map<?, ?> data) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> answer = (Map<String, Object>) data;
+                answer.put("notes", notes);
+            }
+            return removed;
         } catch (Exception e) {
             return ToolResponse.internalError(e);
         }
@@ -293,8 +302,8 @@ public class RemoveUnreferencedMemberTool extends AbstractRefactoringTool
      * appears to. Null when none of them holds.
      */
     private ToolResponse refuseIfUnsafe(IJdtService service, IMember member,
-                                        boolean consumersHere) throws Exception {
-        if (Flags.isPrivate(member.getFlags())) {
+                                        boolean consumersHere, List<String> notes) throws Exception {
+        if (Flags.isPrivate(member.getFlags()) && !leftByTheCleanUp(member)) {
             // The stronger proof exists for this case, so it should be used. D3a: the refusal
             // names the operation that does apply, with the address THAT operation takes — a
             // file, because remove_dead_code is a sweep. The coordinates are -1 rather than 0:
@@ -352,14 +361,22 @@ public class RemoveUnreferencedMemberTool extends AbstractRefactoringTool
             }
         }
 
-        List<SearchMatch> references =
-            service.getSearchService().findAllReferences(member, SITES_IN_A_REFUSAL);
-        if (references != null && !references.isEmpty()) {
+        List<SearchMatch> found = service.getSearchService().findAllReferences(member, 200);
+        List<SearchMatch> references = found == null ? List.of() : callers(found);
+        if (!references.isEmpty()) {
             return ToolResponse.preconditionNotMet(
                 member.getElementName() + " is referenced " + references.size()
-                    + " time(s) — the useful half of this refusal is where: " + sites(references)
+                    + " time(s) — the useful half of this refusal is where: "
+                    + sites(references.subList(0, Math.min(references.size(), SITES_IN_A_REFUSAL)))
                     + ". A member with a caller is not dead code.",
                 "MEMBER_IS_REFERENCED");
+        }
+        if (found != null && !found.isEmpty()) {
+            notes.add(found.size() + " match(es) with no source file, such as a compiled class, were not counted as callers: "
+                + found.stream().limit(SITES_IN_A_REFUSAL).map(match -> String.valueOf(match.getElement())).toList());
+        }
+        if (Flags.isPrivate(member.getFlags())) {
+            notes.add("its initializer, which calls code, went with it: check that nothing relied on that call being made");
         }
         return null;
     }
@@ -402,6 +419,45 @@ public class RemoveUnreferencedMemberTool extends AbstractRefactoringTool
             node = node.getParent();
         }
         return (BodyDeclaration) node;
+    }
+
+    /**
+     * The matches that are callers somebody can see and change: those in a source file. A match in a compiled class has no source and no
+     * position (28h z147): it is reported with the deletion and does not stop it.
+     *
+     * @param matches what the reference search found
+     * @return the callers among them
+     */
+    public static List<SearchMatch> callers(List<SearchMatch> matches) {
+        return matches.stream().filter(match -> match.getOffset() >= 0 && match.getResource() instanceof IFile).toList();
+    }
+
+    /** Whether this is a private field {@code remove_dead_code} leaves, because its initializer calls code (28h z146). */
+    private static boolean leftByTheCleanUp(IMember member) throws Exception {
+        ICompilationUnit unit = member.getCompilationUnit();
+        if (!(member instanceof org.eclipse.jdt.core.IField) || unit == null) {
+            return false;
+        }
+        ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
+        parser.setSource(unit);
+        if (!(parser.createAST(null) instanceof CompilationUnit ast) || !(declarationOf(ast, member) instanceof FieldDeclaration field)) {
+            return false;
+        }
+        boolean[] calls = {false};
+        field.accept(new org.eclipse.jdt.core.dom.ASTVisitor() {
+            @Override
+            public boolean visit(org.eclipse.jdt.core.dom.MethodInvocation node) {
+                calls[0] = true;
+                return false;
+            }
+
+            @Override
+            public boolean visit(org.eclipse.jdt.core.dom.ClassInstanceCreation node) {
+                calls[0] = true;
+                return false;
+            }
+        });
+        return calls[0];
     }
 
     private static String sites(List<SearchMatch> matches) {
