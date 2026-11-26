@@ -2732,8 +2732,8 @@ class HireToolTest {
     }
 
     @Test
-    @DisplayName("S24 (M14, ND7): a background hire past the cap is refused naming who is running, and the same hire under a higher cap starts")
-    void aBackgroundHirePastTheCapIsRefusedNamingWhoIsRunning() throws Exception {
+    @DisplayName("28h z132: no number of running hires refuses another, even where a host still sets the old cap setting")
+    void noNumberOfRunningHiresRefusesAnother() throws Exception {
         java.util.concurrent.CountDownLatch out = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
         Thread running = new Thread(() -> {
@@ -2750,20 +2750,11 @@ class HireToolTest {
         running.start();
         try {
             assertTrue(out.await(5, java.util.concurrent.TimeUnit.SECONDS), "the running hire did not start");
-            int already = org.jawata.mcp.execution.HireRegistry.shared().runningCount();
+            // One hire is running and the host still says it allows one: the next one starts all the same.
+            HireTool tool = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()), Map.of("jawata.hire.maxRunning", "1"));
+            ToolResponse started = tool.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
 
-            HireTool capped = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()),
-                Map.of(HireTool.MAX_RUNNING_SETTING, String.valueOf(already)));
-            ToolResponse refused = capped.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
-            HireTool roomy = plainToolWithSettings(new StandsIn(host, aBrainThatAnswers()),
-                Map.of(HireTool.MAX_RUNNING_SETTING, String.valueOf(already + 5)));
-            ToolResponse started = roomy.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
-
-            assertAll(
-                () -> assertFalse(refused.isSuccess(), "a hire past the cap was started"),
-                () -> assertTrue(String.valueOf(refused.getError()).contains("TOO_MANY_HIRES") && String.valueOf(refused.getError()).contains("developer"),
-                    "the refusal does not say who is running: " + refused.getError()),
-                () -> assertTrue(started.isSuccess(), "the control: a hire under a higher cap was refused: " + started.getError()));
+            assertTrue(started.isSuccess(), "a hire was refused for the number already running: " + started.getError());
         } finally {
             release.countDown();
             running.join(5_000);

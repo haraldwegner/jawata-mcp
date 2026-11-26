@@ -348,11 +348,6 @@ public class HireTool extends NeutralTool {
         return startInBackground(arguments, call);
     }
 
-    /** The host setting that caps how many hires run at once when they run in the background (Stage 24, ND7); zero or less means no cap. */
-    public static final String MAX_RUNNING_SETTING = "jawata.hire.maxRunning";
-
-    private static final int DEFAULT_MAX_RUNNING = 8;
-
     /**
      * The host setting that names the least free memory, in MB, a new hire is admitted on (28h Stage 27, z29): each hire starts an agent process of
      * its own and runs builds and tests, so a machine out of memory swaps and dies, as it did with a single agent. Zero or less switches the check off.
@@ -478,22 +473,8 @@ public class HireTool extends NeutralTool {
      * for, so a caller whose own request times out after a minute is no longer a reason for a hire to fail.
      */
     private ToolResponse startInBackground(JsonNode arguments, HireCall call) {
-        // THE CAP (Stage 24, M14, ND7): a lead that hires without limit can flood the machine, so a hire past the number the host allows is refused,
-        // and the refusal says who is running. The number is provisional until a brain's memory and cost are measured.
-        int cap = settings.get().get(MAX_RUNNING_SETTING).map(text -> {
-            try {
-                return Integer.parseInt(text.strip());
-            } catch (NumberFormatException notANumber) {
-                return DEFAULT_MAX_RUNNING;
-            }
-        }).orElse(DEFAULT_MAX_RUNNING);
-        if (cap > 0 && HireRegistry.shared().runningCount() >= cap) {
-            return ToolResponse.error("TOO_MANY_HIRES", "refused: " + HireRegistry.shared().runningCount() + " hires are running, which is the most this"
-                + " engine runs at once (" + cap + "): " + String.join(", ", HireRegistry.shared().runningNames()),
-                "wait for one of them to end, or stop one from the Agent Control panel; the limit is the setting " + MAX_RUNNING_SETTING);
-        }
-        // THE MEMORY FLOOR (28h Stage 27, z29): the same admission, asked of the machine as well as of the count, since each hire is a process of
-        // its own. A machine that cannot say how much it has free is admitted, not guessed at.
+        // THE MEMORY FLOOR (28h Stage 27, z29): each hire is a process of its own, so the machine is asked. No number of running hires refuses one
+        // (28h z132). A machine that cannot say how much it has free is admitted, not guessed at.
         long floorMb = settings.get().get(MIN_FREE_MEMORY_SETTING).map(text -> {
             try {
                 return Long.parseLong(text.strip());
