@@ -76,6 +76,29 @@ class RefreshWorkspaceToolTest {
     }
 
     @Test
+    @DisplayName("28h z135: a refresh answers at most a page of problems, errors first, and counts all of them")
+    @SuppressWarnings("unchecked")
+    void theProblemListIsBounded() throws Exception {
+        for (int file = 0; file < 3; file++) {
+            StringBuilder broken = new StringBuilder("package com.example;\n\npublic class Broken" + file + " {\n");
+            for (int i = 0; i < 60; i++) {
+                broken.append("    int f").append(i).append(" = missing").append(i).append(";\n");
+            }
+            Files.writeString(service.getProjectRoot().resolve("src/main/java/com/example/Broken" + file + ".java"), broken.append("}\n"));
+        }
+
+        ToolResponse response = tool.execute(objectMapper.createObjectNode());
+
+        assertTrue(response.isSuccess(), String.valueOf(response.getError()));
+        Map<String, Object> data = (Map<String, Object>) response.getData();
+        List<Map<String, Object>> diagnostics = (List<Map<String, Object>>) data.get("diagnostics");
+        assertEquals(100, diagnostics.size(), "the answer is not bounded");
+        assertEquals(180, ((Map<String, Object>) data.get("summary")).get("errorCount"), "the count lost the rest");
+        assertEquals(Boolean.TRUE, data.get("truncated"), "a cut list does not say so: " + data.keySet());
+        assertTrue(diagnostics.stream().allMatch(d -> "ERROR".equals(d.get("severity"))), "a warning came before an error");
+    }
+
+    @Test
     @DisplayName("bugs.md #11 corollary: refresh_workspace preserves projectKey state (does NOT drop or rotate keys)")
     void refresh_preservesProjectKey() {
         String beforeKey = service.allProjects().iterator().next().projectKey();

@@ -2936,6 +2936,10 @@
  {
   "inputSchema": {
    "properties": {
+    "limit": {
+     "description": "Most problems listed (default 100), errors first; the summary counts all of them.",
+     "type": "integer"
+    },
     "precedentOverride": {
      "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
      "type": "string"

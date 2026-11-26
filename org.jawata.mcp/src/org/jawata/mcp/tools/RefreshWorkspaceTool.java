@@ -58,6 +58,9 @@ public class RefreshWorkspaceTool extends WorkspaceTool<LoadedWorkspace> {
     /** The host's reconciler, which refreshes and builds; read at call time (28k E6). */
     private final Supplier<Reconciler> reconciler;
 
+    /** How many problems an answer lists unless the caller asks for another number. */
+    private static final int DEFAULT_LIMIT = 100;
+
     /** The language's compile check, read at call time (28k E10b). */
     private final Supplier<BuildVerdict> verdict;
 
@@ -122,7 +125,8 @@ public class RefreshWorkspaceTool extends WorkspaceTool<LoadedWorkspace> {
     public Map<String, Object> getInputSchema() {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
-        schema.put("properties", new LinkedHashMap<>());
+        schema.put("properties", new LinkedHashMap<>(Map.of("limit", Map.of("type", "integer",
+            "description", "Most problems listed (default 100), errors first; the summary counts all of them."))));
         return withProjectKey(schema);
     }
 
@@ -198,11 +202,20 @@ public class RefreshWorkspaceTool extends WorkspaceTool<LoadedWorkspace> {
                 data.put("notRebuilt", notRebuilt);
             }
             data.put("summary", summary);
-            data.put("diagnostics", diagnostics);
+            // 28h z135: one page of problems, errors first, so the answer fits the caller; the counts above are of all of them.
+            diagnostics.sort(java.util.Comparator.comparing(row -> "ERROR".equals(row.get("severity")) ? 0 : 1));
+            int limit = Math.max(0, arguments == null ? DEFAULT_LIMIT : arguments.path("limit").asInt(DEFAULT_LIMIT));
+            List<Map<String, Object>> page = diagnostics.subList(0, Math.min(limit, diagnostics.size()));
+            data.put("diagnostics", page);
+            data.put("truncated", page.size() < diagnostics.size());
+            if (page.size() < diagnostics.size()) {
+                data.put("hint", "showing " + page.size() + " of " + diagnostics.size() + " problems, errors first; compile_workspace pages "
+                    + "through the rest with offset");
+            }
 
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(diagnostics.size())
-                .returnedCount(diagnostics.size())
+                .returnedCount(page.size())
                 .build());
         } catch (Exception e) {
             log.warn("refresh_workspace threw unexpectedly: {}", e.getMessage(), e);
