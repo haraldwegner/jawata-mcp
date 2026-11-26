@@ -3788,6 +3788,10 @@
      "description": "release: publish the GitHub release through gh (default true).",
      "type": "boolean"
     },
+    "recheck": {
+     "description": "commit: when checks of the plan did not pass, run those checks again on the files as they stand; commit if they all pass.",
+     "type": "boolean"
+    },
     "tag": {
      "description": "release: the tag to make, such as v1.2.3.",
      "type": "string"
