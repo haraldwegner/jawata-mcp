@@ -158,7 +158,30 @@ public class FakeAcpAgent {
             Thread.sleep(5_000);
             Runtime.getRuntime().halt(137);
         }
-        if (text.contains("EDITS:")) {
+        Path leadWrites = state.resolve("lead-writes");
+        Path leadEdit = state.resolve("lead-edit");
+        if (Files.exists(leadWrites) || Files.exists(leadEdit)) {
+            // a HIRED lead that writes files as its shell would, which its stream does not show, and reports one edit of its own editor (28h z53,
+            // C27-22): each line of $FAKE_ACP_STATE/lead-writes is "path|one line of content", $FAKE_ACP_STATE/lead-edit is that edit's input.
+            // Both are consumed, so a later turn or another brain of the same test writes nothing.
+            if (Files.exists(leadWrites)) {
+                for (String write : Files.readAllLines(leadWrites)) {
+                    String[] parts = write.split("\\|", 2);
+                    Files.writeString(Path.of(parts[0]), parts[1] + "\n");
+                }
+                Files.delete(leadWrites);
+            }
+            if (Files.exists(leadEdit)) {
+                String input = Files.readString(leadEdit).strip();
+                Files.delete(leadEdit);
+                send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                    + "\",\"update\":{\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"l1\",\"title\":\"Edit\",\"kind\":\"edit\",\"status\":\"pending\",\"rawInput\":"
+                    + input + "}}}");
+                send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                    + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"l1\",\"status\":\"completed\"}}}");
+            }
+            chunk(session, "done");
+        } else if (text.contains("EDITS:")) {
             // the brain edits N times, each call reported as pending and then completed (an editing kind, as a real brain's own Edit is), then waits
             // 700 ms, drops $FAKE_ACP_STATE/answered.marker and ANSWERS: a gate that ran for a step before the marker ran while the brain worked
             int edits = Integer.parseInt(text.substring(text.indexOf("EDITS:") + "EDITS:".length()).trim().split("\\D")[0]);

@@ -719,7 +719,7 @@ class HireToolTest {
             ToolResponse guest = org.jawata.mcp.models.CallerIdentity.supplied("z25-nobody-registered").speaking(() -> strangersTool.execute(claimed));
             ObjectNode asMain = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT.replace("name: cataloguer", "name: pm")), "pm");
             asMain.put("hirer", "main").put("boardFile", dir.resolve("z25-guest-sprint-plan.md").toString());
-            HireTool mainTool = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+            HireTool mainTool = hireOnABrainThatTakesTurns(host);
             ToolResponse guestAsMain = org.jawata.mcp.models.CallerIdentity.supplied("z25-nobody-registered").speaking(() -> mainTool.execute(asMain));
             ToolResponse noIdentity = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(claimed);
 
@@ -749,16 +749,16 @@ class HireToolTest {
 
             ObjectNode same = (ObjectNode) hireArgs(seatFile(pmSeat), "pm");
             same.put("hirer", "main").put("boardFile", sprint);
-            StandsIn sameProcesses = new StandsIn(host, aBrainThatAnswers());
-            ToolResponse refused = toolWith(sameProcesses, events, aRegistryWithACleanGate()).execute(same);
+            List<List<String>> startedForTheSecond = new java.util.ArrayList<>();
+            ToolResponse refused = hireOnABrainThatTakesTurns(aHostRecording(startedForTheSecond, false)).execute(same);
 
             ObjectNode other = (ObjectNode) hireArgs(seatFile(pmSeat), "pm");
             other.put("hirer", "main").put("boardFile", otherSprint);
-            ToolResponse anotherSprint = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(other);
+            ToolResponse anotherSprint = hireOnABrainThatTakesTurns(host).execute(other);
 
             ObjectNode none = (ObjectNode) hireArgs(seatFile(pmSeat), "pm");
             none.put("hirer", "main");
-            ToolResponse noPlanFile = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(none);
+            ToolResponse noPlanFile = hireOnABrainThatTakesTurns(host).execute(none);
 
             ObjectNode developer = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT.replace("name: cataloguer", "name: developer")), "developer");
             developer.put("boardFile", sprint);
@@ -768,7 +768,7 @@ class HireToolTest {
                 () -> assertFalse(refused.isSuccess(), "a second pm was let run the same sprint"),
                 () -> assertEquals("CLAIM_REFUSED", refused.getError().getCode()),
                 () -> assertTrue(refused.getError().getMessage().contains("pm"), "the refusal names the running pm: " + refused.getError().getMessage()),
-                () -> assertTrue(sameProcesses.asked().isEmpty(), "nothing was started: " + sameProcesses.asked()),
+                () -> assertTrue(startedForTheSecond.isEmpty(), "nothing was started: " + startedForTheSecond),
                 () -> assertFalse("CLAIM_REFUSED".equals(codeOf(anotherSprint)), "CONTROL: a pm for another sprint was refused by the sprint claim"),
                 () -> assertFalse("CLAIM_REFUSED".equals(codeOf(noPlanFile)), "CONTROL: a pm with no plan file was refused by the sprint claim"),
                 () -> assertFalse("CLAIM_REFUSED".equals(codeOf(notAPm)), "CONTROL: a seat that is not a pm was refused by the sprint claim"));
@@ -781,12 +781,12 @@ class HireToolTest {
         String pmSeat = CATALOGUER_SEAT.replace("name: cataloguer", "name: pm");
         ObjectNode none = (ObjectNode) hireArgs(seatFile(pmSeat), "pm");
         none.put("hirer", "main");
-        StandsIn started = new StandsIn(host, aBrainThatAnswers());
-        ToolResponse refused = toolWith(started, events, aRegistryWithACleanGate()).execute(none);
+        List<List<String>> started = new java.util.ArrayList<>();
+        ToolResponse refused = hireOnABrainThatTakesTurns(aHostRecording(started, false)).execute(none);
 
         ObjectNode named = (ObjectNode) hireArgs(seatFile(pmSeat), "pm");
         named.put("hirer", "main").put("boardFile", dir.resolve("z26-named-sprint-plan.md").toString());
-        ToolResponse withPlanFile = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(named);
+        ToolResponse withPlanFile = hireOnABrainThatTakesTurns(host).execute(named);
 
         ObjectNode developer = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT.replace("name: cataloguer", "name: developer")), "developer");
         ToolResponse notAPm = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(developer);
@@ -795,7 +795,7 @@ class HireToolTest {
             () -> assertFalse(refused.isSuccess(), "a pm with no plan file was let start"),
             () -> assertEquals("PRECONDITION_NOT_MET", codeOf(refused)),
             () -> assertTrue(String.valueOf(refused.getError().getMessage()).contains("boardFile"), "the refusal says what to name: " + refused.getError().getMessage()),
-            () -> assertTrue(started.asked().isEmpty(), "nothing was started: " + started.asked()),
+            () -> assertTrue(started.isEmpty(), "nothing was started: " + started),
             () -> assertFalse("PRECONDITION_NOT_MET".equals(codeOf(withPlanFile)), "CONTROL: a pm that names its plan file was refused for it"),
             () -> assertFalse("PRECONDITION_NOT_MET".equals(codeOf(notAPm)), "CONTROL: a developer with no plan file was refused for it"));
     }
@@ -2072,21 +2072,20 @@ class HireToolTest {
     @SuppressWarnings("unchecked")
     void aLeadsOwnCodeEditIsInItsAnswer() throws Exception {
         Files.writeString(dir.resolve("observer.md"), CATALOGUER_SEAT);
-        HireTool hire = toolWith(new StandsIn(host, aBrainCallingThenAnObserverWhoHalts("Edit", EDIT_OF_PRODUCTION).withSeparateStderr()),
-            events, aRegistryWithACleanGate());
+        HireTool hire = hireOnABrainThatTakesTurns(host);
         com.fasterxml.jackson.databind.node.ObjectNode args =
             (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "chief-engineer");
         args.put("hirer", "pm");
         args.put("brief", "Plan the change and hire a developer.");
 
+        Files.writeString(dir.resolve("lead-edit"), EDIT_OF_PRODUCTION);
         Map<String, Object> lead = dataOf(hire.execute(args));
 
         Map<String, Object> own = (Map<String, Object>) lead.get("ownWrites");
         org.junit.jupiter.api.Assertions.assertNotNull(own, "a lead's edit of a code file was not in its answer: " + lead.keySet());
         assertEquals(1, ((List<?>) own.get("flagged")).size(), String.valueOf(own));
-        Map<String, Object> clean = dataOf(toolWith(new StandsIn(host, aBrainCallingThenAnObserverWhoHalts("Edit",
-            "{\"file_path\":\"/w/docs/plan.md\",\"old_string\":\"a\",\"new_string\":\"b\"}").withSeparateStderr()), events, aRegistryWithACleanGate())
-            .execute(args));
+        Files.writeString(dir.resolve("lead-edit"), "{\"file_path\":\"/w/docs/plan.md\",\"old_string\":\"a\",\"new_string\":\"b\"}");
+        Map<String, Object> clean = dataOf(hire.execute(args));
         org.junit.jupiter.api.Assertions.assertFalse(clean.containsKey("ownWrites"), "CONTROL: an edit of a document was reported as an own write: " + clean.get("ownWrites"));
     }
 
@@ -2111,9 +2110,9 @@ class HireToolTest {
         gitIn(work, "commit", "-q", "-m", "base");
         Path made = work.resolve("Made.java");
         Path plan = work.resolve("plan.md");
-        String byShell = "  echo 'class Foo { int x; }' > '" + tracked + "'\n  echo 'class Made {}' > '" + made + "'\n  echo '# plan' > '" + plan + "'\n";
-        HireTool hire = toolWith(new StandsIn(host, aBrainWritingThenCallingThenAnObserverWhoHalts(byShell, "Edit",
-            "{\"file_path\":\"/w/docs/plan.md\",\"old_string\":\"a\",\"new_string\":\"b\"}").withSeparateStderr()), events, aRegistryWithACleanGate());
+        Files.writeString(dir.resolve("lead-writes"), tracked + "|class Foo { int x; }\n" + made + "|class Made {}\n" + plan + "|# plan\n");
+        Files.writeString(dir.resolve("lead-edit"), "{\"file_path\":\"/w/docs/plan.md\",\"old_string\":\"a\",\"new_string\":\"b\"}");
+        HireTool hire = hireOnABrainThatTakesTurns(host);
         com.fasterxml.jackson.databind.node.ObjectNode args =
             (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "chief-engineer");
         args.put("hirer", "pm");
@@ -2138,9 +2137,9 @@ class HireToolTest {
         gitIn(work, "init", "-q");
         gitIn(work, "add", "Foo.java");
         gitIn(work, "commit", "-q", "-m", "base");
-        String byShell = "  echo 'class " + codeFile.replace(".java", "") + " {}' > '" + work.resolve(codeFile) + "'\n";
-        HireTool hire = toolWith(new StandsIn(host, aBrainWritingThenCallingThenAnObserverWhoHalts(byShell, "Edit",
-            "{\"file_path\":\"/w/docs/plan.md\",\"old_string\":\"a\",\"new_string\":\"b\"}").withSeparateStderr()), events, aRegistryWithACleanGate());
+        Files.writeString(dir.resolve("lead-writes"), work.resolve(codeFile) + "|class " + codeFile.replace(".java", "") + " {}\n");
+        Files.writeString(dir.resolve("lead-edit"), "{\"file_path\":\"/w/docs/plan.md\",\"old_string\":\"a\",\"new_string\":\"b\"}");
+        HireTool hire = hireOnABrainThatTakesTurns(host);
         com.fasterxml.jackson.databind.node.ObjectNode args =
             (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT), "chief-engineer");
         args.put("hirer", "pm");
@@ -2322,6 +2321,11 @@ class HireToolTest {
         };
     }
 
+    /** A hire tool whose brain is the stand-in ACP agent, which takes further turns: the only kind a seat that hires is run on (28h design step 9). */
+    private HireTool hireOnABrainThatTakesTurns(HostProcesses processes) throws Exception {
+        return toolWithBrainsSetting(processes, JSON.writeValueAsString(Map.of("claude-code", theStandInAcpProgram())));
+    }
+
     private HireTool toolWithBrainsSetting(HostProcesses processes, String registryJson) {
         return new Finishing(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),
             () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
@@ -2383,6 +2387,26 @@ class HireToolTest {
                 "the row does not name the lead: " + issued.get("journalRow")),
             () -> assertTrue(JSON.valueToTree(alone).path("journalRow").path("detail").path("lead").isMissingNode(),
                 "CONTROL: a hire no lead issued names one: " + alone.get("journalRow")));
+    }
+
+    @Test
+    @DisplayName("28h design step 9: a seat that hires is refused on a brain that can take only one turn, before anything starts, saying how to give it one that can; a worker runs on it")
+    void aLeadOnABrainWithOneTurnIsRefused() throws Exception {
+        StandsIn brain = new StandsIn(host, aBrainThatAnswers());
+        HireTool hire = toolWith(brain, events, aRegistryWithACleanGate());
+        ObjectNode lead = hiringAs("chief-engineer", seatFile(CATALOGUER_SEAT));
+        lead.put("hirer", "pm");
+
+        ToolResponse refused = hire.execute(lead);
+        int startedForTheLead = brain.asked().size();
+        ToolResponse worked = hire.execute(hireArgs(seatFile(CATALOGUER_SEAT)));
+
+        assertAll(
+            () -> assertFalse(refused.isSuccess(), "a lead was hired on a brain that cannot wait for its hires"),
+            () -> assertTrue(!refused.isSuccess() && refused.getError().getMessage().contains("cannot take a second turn"),
+                String.valueOf(refused.getError())),
+            () -> assertEquals(0, startedForTheLead, "a brain was started for the refused lead"),
+            () -> assertTrue(worked.isSuccess(), "CONTROL: a worker on the same brain was refused: " + worked.getError()));
     }
 
     @Test

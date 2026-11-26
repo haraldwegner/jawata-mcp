@@ -791,6 +791,20 @@ public class HireTool extends NeutralTool {
             .filter(name -> engineTools.getTool(name).map(Tool::changesCode).orElse(false))
             .toList());
         BrainDialect dialect = seat.dialect(endpoint, hiddenTools);
+        // THE ONE START PATH (S12): a brain the host setting gives a program that speaks ACP is started through the engine's ACP client. The
+        // registry names a brain by its product name, as the panel's choices and the vendor rule do ("cursor"); the dialect names itself otherwise
+        // ("cursor-agent"), so the product name is tried first and the dialect's after.
+        String productName = seat.brain().label();
+        Optional<AcpBrainSession.Program> acp = brainsRegistry
+            .flatMap(registryJson -> AcpBrainSession.programFor(registryJson, productName)
+                .or(() -> AcpBrainSession.programFor(registryJson, dialect.name())));
+        // Design step 9: a seat that hires is told what its hires report in a later turn. A brain started by its command line takes one turn, so
+        // such a lead would end before they report; it is refused here instead.
+        if (declaredTree.tree().isLead(hired) && acp.isEmpty()) {
+            return ToolResponse.error("PRECONDITION_NOT_MET",
+                "seat '" + hired + "' hires others, and " + productName + " as set up here cannot take a second turn, so it would end before its hires report",
+                "install the agent protocol program of " + productName + " and deploy again from the studio, or give the seat a brain that has one");
+        }
         WriteContainment containment = dialect.writeContainment();
         if (!containment.isContained() && !seat.acceptsUncontainedWrites()) {
             // THE ARCHITECT'S F1, option A. A brain whose writes are held only by an instruction to
@@ -878,13 +892,6 @@ public class HireTool extends NeutralTool {
         org.jawata.mcp.execution.TreeAttribution census = base.workingDirectory() == null ? null
             : org.jawata.mcp.execution.TreeAttribution.before(host, base.workingDirectory());
         try {
-            // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
-            // The registry names a brain by its product name, as the panel's choices and the vendor rule do ("cursor"); the dialect names itself
-            // otherwise ("cursor-agent"), so the product name is tried first and the dialect's after.
-            String productName = seat.brain().label();
-            Optional<AcpBrainSession.Program> acp = brainsRegistry
-                .flatMap(registryJson -> AcpBrainSession.programFor(registryJson, productName)
-                    .or(() -> AcpBrainSession.programFor(registryJson, dialect.name())));
             brainProgram = acp;
             proposal = run.issue(seat, base, brief, steps, new ToolGateRunner(registry.get()),
                 hiddenTools, acp);
