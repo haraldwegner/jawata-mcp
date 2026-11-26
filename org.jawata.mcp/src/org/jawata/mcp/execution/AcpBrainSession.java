@@ -17,6 +17,7 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostProcesses;
@@ -290,10 +291,11 @@ public final class AcpBrainSession {
      * @param inbox  the reports of this lead's background hires, opened before the first turn so that none is missed
      * @param leadId the id this lead's hires are issued under, to say which of them are still out
      * @param model  the model the seat names, as {@link #run} takes it
+     * @param openChecks what the lead's declared checks leave open, asked with its latest answer once nothing is out; empty when nothing is
      */
     public static HiredBrain.Outcome runAsLead(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
             List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate,
-            Consumer<JsonNode> onThinking, HireRegistry.Inbox inbox, String leadId, String model) throws IOException, InterruptedException {
+            Consumer<JsonNode> onThinking, HireRegistry.Inbox inbox, String leadId, String model, Function<String, Optional<OpenCheck>> openChecks) throws IOException, InterruptedException {
         // A lead plans and hires and changes no code (28h D57 (l)): its brain's own editors and shell are withheld, as the principal's are.
         // Opened inside the try, so a brain that cannot be started still closes the inbox (the C27 audit).
         Conversation conversation = null;
@@ -315,19 +317,31 @@ public final class AcpBrainSession {
             List<String> names = new ArrayList<>(last.toolNames());
             List<ToolCall> calls = new ArrayList<>(last.toolCalls());
             long toolMillis = last.toolMillis();
-            while (last.stoppedBy().isEmpty() && !conversation.lost() && (inbox.outstanding() > 0 || !inbox.isEmpty())) {
-                // waits only while the lead's brain lives: a brain that died (an exit 137) is never prompted again, so waiting on would leave the
-                // lead running with nobody to read the reports (28h-C27-15). The wait is cut in slices of a second, after each of which it asks
-                // again whether the brain lives, so a brain that dies with a long hire out ends the lead within a second, not after its ceiling.
-                List<HireRegistry.Event> reports = inbox.awaitWhileOut(
-                    ceilings.wallClock() == null ? DEATH_CHECK_MILLIS : Math.min(ceilings.wallClock().toMillis(), DEATH_CHECK_MILLIS),
-                    () -> !brain.lost() && !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
-                if (reports.isEmpty()) {
-                    break;
-                }
-                if (conversation.lost()) {
+            int passedWhenLastTold = -1;
+            while (last.stoppedBy().isEmpty() && !conversation.lost()) {
+                List<HireRegistry.Event> reports = List.of();
+                String next;
+                if (inbox.outstanding() > 0 || !inbox.isEmpty()) {
+                    // waits only while the lead's brain lives: a brain that died (an exit 137) is never prompted again, so waiting on would leave
+                    // the lead running with nobody to read the reports (28h-C27-15). The wait is cut in slices of a second, after each of which it
+                    // asks again whether the brain lives, so a brain that dies with a long hire out ends the lead within a second.
+                    reports = inbox.awaitWhileOut(
+                        ceilings.wallClock() == null ? DEATH_CHECK_MILLIS : Math.min(ceilings.wallClock().toMillis(), DEATH_CHECK_MILLIS),
+                        () -> !brain.lost() && !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
                     // a report that came for a brain that has died is never put into it: closing the inbox hands it up (28h-C27-18)
-                    break;
+                    if (reports.isEmpty() || conversation.lost()) {
+                        break;
+                    }
+                    next = HireReport.ofAll(reports, HireRegistry.shared().runningNamesFor(leadId));
+                } else {
+                    // Design step 9: with nothing out and nothing unread, a lead whose declared check is still open gets another turn that says
+                    // so, as long as the turn before moved a check; a lead that moves nothing ends, and its checks say what is left open.
+                    Optional<OpenCheck> open = openChecks.apply(last.text());
+                    if (open.isEmpty() || open.get().passed() <= passedWhenLastTold) {
+                        break;
+                    }
+                    passedWhenLastTold = open.get().passed();
+                    next = open.get().told();
                 }
                 HiredBrain.Ceilings left = ceilings.maxToolSteps() > 0
                     ? new HiredBrain.Ceilings(ceilings.wallClock(), Math.max(1, ceilings.maxToolSteps() - steps), ceilings.maxCostUsd())
@@ -335,8 +349,7 @@ public final class AcpBrainSession {
                 if (ceilings.maxToolSteps() > 0 && steps >= ceilings.maxToolSteps()) {
                     break;
                 }
-                conversation.turn(HireReport.ofAll(reports, HireRegistry.shared().runningNamesFor(leadId)), List.of(), left, onText, toolUpdates,
-                    onThinking);
+                conversation.turn(next, List.of(), left, onText, toolUpdates, onThinking);
                 if (!conversation.lost()) {
                     // the brain answered the turn that showed it these reports; a brain that died in it read none, and closing the inbox hands them up
                     inbox.delivered(reports);
@@ -378,6 +391,10 @@ public final class AcpBrainSession {
                 inbox.close();
             }
         }
+    }
+
+    /** What a lead's declared checks still leave open after a turn (design step 9): how many have passed, and what its brain is told. */
+    public record OpenCheck(int passed, String told) {
     }
 
     /** How long a lead's wait for its hires' reports goes before it asks again whether its brain still lives. */

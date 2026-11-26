@@ -99,7 +99,7 @@ class LeadLoopTest {
 
     private HiredBrain.Outcome runAsLead(String prompt, HiredBrain.Ceilings ceilings, String leadId, HireRegistry.Inbox inbox) throws Exception {
         return AcpBrainSession.runAsLead(host, agent, HireSite.in(dir), prompt, null, List.of(), Optional.empty(), ceilings, null, null, update -> { },
-            inbox, leadId, null);
+            inbox, leadId, null, text -> java.util.Optional.empty());
     }
 
     @Test
@@ -119,6 +119,40 @@ class LeadLoopTest {
             () -> assertTrue(reported.text().contains("report read: Hire: Joe · developer (m12-child-report)"),
                 "the lead was never prompted with the report of its hire: " + reported.text()),
             () -> assertTrue(reported.clean(), "the lead's run did not end cleanly: " + reported.stderrTail()));
+    }
+
+    private HiredBrain.Outcome runWithChecks(String leadId, java.util.function.Function<String, Optional<AcpBrainSession.OpenCheck>> open)
+            throws Exception {
+        return AcpBrainSession.runAsLead(host, agent, HireSite.in(dir), "REMEMBER:bluebird", null, List.of(), Optional.empty(),
+            HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null, null, update -> { }, HireRegistry.shared().inboxFor(leadId), leadId, null, open);
+    }
+
+    @Test
+    @DisplayName("28h design step 9: a lead whose declared check is still open gets another turn that says so; one that moves nothing gets no further one, one that moves gets one more")
+    void aLeadWithAnOpenCheckGetsAnotherTurnWhileItMakesProgress() throws Exception {
+        String told = "ASKGREETING: answered at once";
+        List<String> askedWith = new java.util.ArrayList<>();
+        HiredBrain.Outcome closed = runWithChecks("d9-closes", text -> {
+            askedWith.add(text);
+            return askedWith.size() == 1 ? Optional.of(new AcpBrainSession.OpenCheck(0, told)) : Optional.empty();
+        });
+        int[] stuck = {0};
+        HiredBrain.Outcome unmoved = runWithChecks("d9-stuck", text -> {
+            stuck[0]++;
+            return Optional.of(new AcpBrainSession.OpenCheck(0, told));
+        });
+        int[] moving = {0};
+        runWithChecks("d9-moves", text -> {
+            moving[0]++;
+            return Optional.of(new AcpBrainSession.OpenCheck(moving[0] == 1 ? 0 : 1, told));
+        });
+
+        assertAll(
+            () -> assertEquals(List.of("noted", "told"), askedWith, "the lead was not given another turn that says what is open"),
+            () -> assertEquals("told", closed.text()),
+            () -> assertEquals(2, stuck[0], "a check that did not move: asked, one more turn, asked again, no further turn"),
+            () -> assertTrue(unmoved.clean(), "left work open is the checks' verdict, not a stopped run: " + unmoved.stoppedBy()),
+            () -> assertEquals(3, moving[0], "a check that moved once earns exactly one more turn"));
     }
 
     @Test
@@ -147,7 +181,7 @@ class LeadLoopTest {
                     if (text.contains("noted")) {
                         answered.countDown();
                     }
-                }, null, update -> { }, watching, lead, null);
+                }, null, update -> { }, watching, lead, null, text -> java.util.Optional.empty());
             long seconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - began);
             // the hire ends while the lead is still registered, whether the lead saw its brain die while waiting or before it waited
             children.get(children.size() - 1).join(10_000);

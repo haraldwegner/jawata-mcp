@@ -2330,6 +2330,45 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h design step 9: a lead whose declared check fails gets another turn and the check is asked again before the hire ends; a worker gets no such turn")
+    void aLeadHireWithAFailingCheckGetsAnotherTurn() throws Exception {
+        String brains = JSON.writeValueAsString(Map.of("claude-code", theStandInAcpProgram()));
+        int[] asked = {0};
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new Tool() {
+            @Override public String getName() {
+                return "compile_workspace";
+            }
+            @Override public String getDescription() {
+                return "a gate fixture that fails the first time it is asked and passes after that";
+            }
+            @Override public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+            @Override public ToolResponse execute(JsonNode arguments) {
+                asked[0]++;
+                return ToolResponse.success(Map.of("errorCount", asked[0] == 1 ? 1 : 0));
+            }
+        });
+        HireTool hire = new Finishing(host, artifacts, plans, () -> events, () -> registry,
+            () -> new SelfEndpoint("http://127.0.0.1:1/mcp", "test-token"), null,
+            () -> held(java.util.Map.of(HireTool.BRAINS_SETTING, brains)), null);
+        ObjectNode lead = hiringAs("chief-engineer", seatFile(CATALOGUER_SEAT));
+        lead.put("hirer", "pm");
+
+        Map<String, Object> led = dataOf(hire.execute(lead));
+        int askedForTheLead = asked[0];
+        asked[0] = 0;
+        Map<String, Object> worked = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(Boolean.TRUE, led.get("complete"), "the lead was not asked to finish what its check left open: " + led.get("gates")),
+            () -> assertEquals(2, askedForTheLead, "asked once between its turns and once more after the second"),
+            () -> assertEquals(Boolean.FALSE, worked.get("complete"), "CONTROL: a worker's failed check was asked again"),
+            () -> assertEquals(1, asked[0]));
+    }
+
+    @Test
     @DisplayName("S12: a brain the host setting gives an ACP program is started through the engine's ACP client, and its own command line is never run")
     void aBrainWithAnAcpProgramIsStartedOverAcp() throws Exception {
         Map<String, Object> program = theStandInAcpProgram();

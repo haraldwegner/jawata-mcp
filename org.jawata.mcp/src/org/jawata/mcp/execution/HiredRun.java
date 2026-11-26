@@ -480,6 +480,29 @@ public final class HiredRun {
         return this;
     }
 
+    /**
+     * Design step 9: what a lead's declared checks still leave open between its turns. The checks not yet passed are asked in order, as at the
+     * end of a run, and the first that does not pass is what the lead is told to finish; nothing when all of them pass.
+     */
+    private Optional<AcpBrainSession.OpenCheck> openCheck(PlanId plan, GateRunner declaredGates, List<GatedStep> planned, String answer) {
+        int done = plans.currentStep(plan).orElse(-1);
+        for (GatedStep step : planned) {
+            if (step.index() <= done) {
+                continue;
+            }
+            GateOutcome gate = UpwardMessageGate.STEP.equals(step.tool())
+                ? new GateOutcome(step.tool(), step.gateArguments(), UpwardMessageGate.refusals(answer).size(), true)
+                : declaredGates.run(step);
+            PlanLedger.Advance advance = plans.advanceIfGatePassed(plan, gate);
+            if (!advance.advanced()) {
+                return Optional.of(new AcpBrainSession.OpenCheck(advance.currentStep() + 1, "[jawata] Your hire is not finished: its declared check "
+                    + (step.index() + 1) + " of " + planned.size() + " (" + step.tool() + ") did not pass: " + advance.refusedBecause()
+                    + ". Finish that work, hiring for it as your seat says, and answer again."));
+            }
+        }
+        return Optional.empty();
+    }
+
     private Proposal conduct(BrainDialect dialect, HireSite base, String brief, List<String> tools,
             HiredBrain.Ceilings ceilings, GateRunner declaredGates, List<GatedStep> planned, PlanId plan, String model, Optional<Program> acp,
             List<String> shownGround)
@@ -498,7 +521,8 @@ public final class HiredRun {
             ? HiredBrain.hire(host, dialect, base, brief, tools, ceilings)
             : lead
                 ? AcpBrainSession.runAsLead(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                    resume, ceilings, null, live, update -> { }, HireRegistry.shared().inboxFor(plan.value()), plan.value(), model)
+                    resume, ceilings, null, live, update -> { }, HireRegistry.shared().inboxFor(plan.value()), plan.value(), model,
+                    answer -> openCheck(plan, declaredGates, planned, answer))
                 : AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
                     resume, ceilings, null, live, update -> { }, model);
 
