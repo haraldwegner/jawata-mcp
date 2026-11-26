@@ -138,6 +138,22 @@ class HireReportTest {
     }
 
     @Test
+    @DisplayName("28h z137: a lead's report says which attempt at the task a hire was and where the work goes when returns stay useless; a first attempt of a seat that goes nowhere says neither")
+    void aReportSaysTheAttemptAndWhereTheWorkGoes() throws Exception {
+        String report = reportOf("""
+            {"cleanExit":true,"answer":"REPORT: done","attempt":2,"escalatesTo":"senior-developer"}
+            """);
+        String plain = reportOf("""
+            {"cleanExit":true,"answer":"REPORT: done"}
+            """);
+
+        assertAll(
+            () -> assertTrue(report.contains("Attempt 2 at this task"), report),
+            () -> assertTrue(report.contains("If its returns stay useless, the work goes to: senior-developer"), report),
+            () -> assertFalse(plain.contains("Attempt ") || plain.contains("stay useless"), "CONTROL: " + plain));
+    }
+
+    @Test
     @DisplayName("28h z136: the registry adds up what ended hires used under their lead, their own and what they carried from below")
     void theRegistryAddsUpWhatWasUsedUnderALead() throws Exception {
         HireRegistry hires = HireRegistry.shared();

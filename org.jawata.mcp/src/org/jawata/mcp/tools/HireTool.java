@@ -977,6 +977,8 @@ public class HireTool extends NeutralTool {
         String corrects = getStringParam(ran.call.getArguments(), "fixes");
         if (corrects != null && !corrects.isBlank()) {
             data.put("fixes", corrects.strip());
+            // 28h z137: which attempt at the same task this is, so the lead sees the second useless return.
+            data.put("attempt", HireRegistry.shared().attemptOf(corrects.strip()) + 1);
         }
         // WHICH BRAIN ANSWERED (D11, D48): its name, the vendor and model the registry setting names for it, and the model the run used.
         Map<String, Object> brainRow = new LinkedHashMap<>();
@@ -1191,10 +1193,9 @@ public class HireTool extends NeutralTool {
         data.put("writeContainmentWitnessed",
             HiredRun.writeWitness(ran.containment, ran.hire.getProposal().outcome().toolsOffered()));
         data.put("toolsSettableByTheHirer", ran.dialect.toolAttachment().settableByTheHirer());
-        // S12 (D11): a hire that did not pass its gates goes up one rung where the tree has one (a developer to the senior developer).
-        if (!ran.hire.getProposal().complete()) {
-            ran.deciding.escalateTo(ran.hire.getHired()).ifPresent(next -> data.put("escalation", escalate(ran.call.getArguments(), next, ran.hire.getProposal().plan().value())));
-        }
+        // 28h z137: where this seat's work goes when its returns stay useless (a developer's to the senior developer). The lead judges the return
+        // and makes that hire; the engine hires nobody by itself.
+        ran.deciding.escalateTo(ran.hire.getHired()).ifPresent(next -> data.put("escalatesTo", next));
         if (ran.declaredTree.refused()) {
             data.put("seatTreeRefused", ran.declaredTree.refusals());
         }
@@ -1204,11 +1205,6 @@ public class HireTool extends NeutralTool {
         return ToolResponse.success(data);
     }
 
-    /**
-     * Hires {@code next} for the same brief and gates after a hire failed its gates (D11). The senior seat's file is the one named
-     * {@code <next>.md} beside the failed seat's own, so the caller names no second file; when there is none the answer says so and nothing
-     * is hired. The second hire is itself answered by this tool, so it carries its own record and, being the top rung, no escalation.
-     */
     /** Collects every hire the registry reports finished until the returned action is run (28h Stage 27, z53). */
     private static Runnable listeningForEndedHires(List<HireRegistry.Event> into) {
         return HireRegistry.shared().subscribe(event -> {
@@ -1250,39 +1246,6 @@ public class HireTool extends NeutralTool {
             changed.basis(),
             changed.changes().map(changes -> new org.jawata.mcp.execution.TreeAttribution.Changes(
                 changes.shown().stream().filter(row -> !paths.contains(row.path())).toList(), changes.omitted())));
-    }
-
-    private Map<String, Object> escalate(JsonNode arguments, String next, String failedPlan) {
-        Map<String, Object> row = new LinkedHashMap<>();
-        row.put("escalatedFrom", failedPlan);
-        row.put("to", next);
-        String failedFile = getStringParam(arguments, "seatFile");
-        if (failedFile == null || failedFile.isBlank()) {
-            // a hire on a sealed engine names no file: the senior seat is hired by name from the same sealed set
-            ObjectNode again = (ObjectNode) arguments.deepCopy();
-            again.put("seat", next);
-            ToolResponse answered = execute(again);
-            row.put("hired", answered.isSuccess());
-            row.put(answered.isSuccess() ? "hire" : "because", answered.isSuccess() ? answered.getData() : answered.getError().getMessage());
-            return row;
-        }
-        Path sibling = Path.of(failedFile).resolveSibling(next + ".md");
-        if (!Files.isRegularFile(sibling)) {
-            row.put("hired", false);
-            row.put("because", "there is no seat file for " + next + " beside the failed seat's own (" + sibling + ")");
-            return row;
-        }
-        ObjectNode again = (ObjectNode) arguments.deepCopy();
-        again.put("seat", next);
-        again.put("seatFile", sibling.toString());
-        ToolResponse answered = execute(again);
-        row.put("hired", answered.isSuccess());
-        if (answered.isSuccess()) {
-            row.put("hire", answered.getData());
-        } else {
-            row.put("because", answered.getError().getMessage());
-        }
-        return row;
     }
 
     /**

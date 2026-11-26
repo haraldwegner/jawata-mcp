@@ -115,6 +115,14 @@ enforcement — not your intention. Your hire record is read for it: zero code-c
    again after it. The outcome goes into your answer as `accepted`, `accepted-with-fix` or
    `rejected`.
 
+   TWO USELESS RETURNS, THEN THE SENIOR DEVELOPER (his order, 2026-11-22; 28h z137). Judge every
+   return yourself, also one whose checks passed: a return is useless when you would reject it as
+   wrong at the root. After the first useless return you hire the developer again; after the second
+   useless return you hire the senior developer with the same instruction and what both returns got
+   wrong. The engine hires nobody by itself. So name `fixes` in every hire of the same task, also
+   after a reject: the report then says which attempt it was, and where the work goes. THE FAILURE
+   SHAPE TO REFUSE: a third hire of the developer on a task it has failed twice.
+
 7. BOUNDARIES: THE EDGES A SLICE MUST NOT CREATE (28f S19, read as the package edges a slice must not cross).
    WHEN YOU WRITE THE INSTRUCTIONS FOR A SLICE, YOU LIST THE EDGES THE SLICE MUST NOT CREATE, TAKEN FROM THE PLAN
    OR THE ARCHITECTURE YOU WERE GIVEN, never from your own guess. The tool does not know the boundaries; it checks

@@ -941,6 +941,10 @@ public final class HireRegistry {
         synchronized (routing) {
             ended = new Event("finished", plan, answer.path("name").asText(""), seat, normal(brief), issuedBy.getOrDefault(plan, ""), answer,
                 backgroundPlans.remove(plan));
+            // 28h z137: a hire that was itself an attempt at an earlier task is remembered with its number, so the next one counts on.
+            if (answer.path("attempt").isNumber()) {
+                attempts.put(plan, answer.path("attempt").asInt());
+            }
             // 28h z136: what it used is added to its lead's one total, before any report of it is read.
             if (!ended.leadId().isEmpty()) {
                 below.merge(ended.leadId(), HireTotals.of(answer), HireTotals::plus);
@@ -1104,5 +1108,13 @@ public final class HireRegistry {
     /** The one total of what the ended hires under this lead used, theirs and what they carried from below; none when none has ended. */
     public java.util.Optional<HireTotals> usedUnder(String leadPlanId) {
         return java.util.Optional.ofNullable(below.get(leadPlanId == null ? "" : leadPlanId));
+    }
+
+    /** Which attempt at its task each ended hire was, by its plan id, for the hires that corrected an earlier one (28h z137). */
+    private final java.util.Map<String, Integer> attempts = new ConcurrentHashMap<>();
+
+    /** Which attempt at its task this ended hire was: 1 unless it corrected an earlier one, and then one more than that one's. */
+    public int attemptOf(String planId) {
+        return attempts.getOrDefault(planId == null ? "" : planId, 1);
     }
 }

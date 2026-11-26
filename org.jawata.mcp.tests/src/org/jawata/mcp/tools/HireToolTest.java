@@ -937,65 +937,62 @@ class HireToolTest {
     }
 
     @Test
-    @DisplayName("S12 (D11): a developer hire that fails its gate is answered by a senior-developer hire, from the seat file beside the developer's")
-    void aFailedDeveloperHireIsAnsweredByTheSeniorDeveloper() throws Exception {
+    @DisplayName("28h z137: a developer hire that fails its gate hires nobody; its answer says where the work goes, for the lead to judge")
+    void aFailedDeveloperHireHiresNobodyAndSaysWhereItsWorkGoes() throws Exception {
         Path seats = seatsBeside("developer", "senior-developer");
         HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithAFailingGate());
+        List<HireRegistry.Event> ended = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Runnable unsubscribe = HireRegistry.shared().subscribe(event -> {
+            if ("finished".equals(event.kind())) {
+                ended.add(event);
+            }
+        });
+        Map<String, Object> first;
+        try {
+            first = dataOf(hire.execute(hiringAs("developer", seats.resolve("developer.md"))));
+        } finally {
+            unsubscribe.run();
+        }
 
-        Map<String, Object> first = dataOf(hire.execute(hiringAs("developer", seats.resolve("developer.md"))));
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> escalation = (Map<String, Object>) first.get("escalation");
         assertAll(
-            () -> assertEquals(Boolean.FALSE, first.get("complete"), "the first hire failed its gate"),
-            () -> assertEquals(first.get("plan"), escalation.get("escalatedFrom")),
-            () -> assertEquals(Boolean.TRUE, escalation.get("hired"), String.valueOf(escalation)),
-            () -> assertEquals("senior-developer", ((Map<?, ?>) escalation.get("hire")).get("hired")),
-            () -> assertTrue(!first.get("plan").equals(((Map<?, ?>) escalation.get("hire")).get("plan")),
-                "the second hire is a run of its own, with its own plan"),
-            () -> assertTrue(!((Map<?, ?>) escalation.get("hire")).containsKey("escalation"),
-                "the senior developer is the top rung: nothing escalates past it"));
+            () -> assertEquals(Boolean.FALSE, first.get("complete"), "the hire failed its gate"),
+            () -> assertTrue(ended.stream().noneMatch(event -> "senior-developer".equals(event.seat())),
+                "the engine hired the senior developer by itself: " + ended),
+            () -> assertTrue(!first.containsKey("escalation"), "the answer still carries a hire of the engine's own: " + first.get("escalation")),
+            () -> assertEquals("senior-developer", first.get("escalatesTo"), "the lead is not told where this seat's work goes: " + first.keySet()));
     }
 
     @Test
-    @DisplayName("S12 (D11), the control: a developer hire that passes its gate is not escalated")
-    void aDeveloperHirePassingItsGateIsNotEscalated() throws Exception {
+    @DisplayName("28h z137: a developer hire that passes its gate still says where the work goes, because the lead judges the return; a seat that goes nowhere says nothing")
+    void onlyASeatThatGoesSomewhereSaysWhere() throws Exception {
+        Path developers = seatsBeside("developer", "senior-developer");
+        Path others = seatsBeside("cataloguer", "senior-developer");
+        HireTool passing = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+        HireTool failing = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithAFailingGate());
+
+        Map<String, Object> developer = dataOf(passing.execute(hiringAs("developer", developers.resolve("developer.md"))));
+        Map<String, Object> cataloguer = dataOf(failing.execute(hiringAs("cataloguer", others.resolve("cataloguer.md"))));
+
+        assertAll(
+            () -> assertEquals("senior-developer", developer.get("escalatesTo"), String.valueOf(developer.keySet())),
+            () -> assertTrue(!cataloguer.containsKey("escalatesTo"), "CONTROL: a seat whose work goes nowhere names a seat: " + cataloguer.get("escalatesTo")));
+    }
+
+    @Test
+    @DisplayName("28h z137: a hire that corrects an earlier one is counted as the next attempt at the same task, so the lead can see the second useless return")
+    void aHireThatCorrectsAnEarlierOneIsTheNextAttempt() throws Exception {
         Path seats = seatsBeside("developer", "senior-developer");
         HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+        Path developer = seats.resolve("developer.md");
 
-        Map<String, Object> first = dataOf(hire.execute(hiringAs("developer", seats.resolve("developer.md"))));
-
-        assertAll(
-            () -> assertEquals(Boolean.TRUE, first.get("complete")),
-            () -> assertTrue(!first.containsKey("escalation"), "nothing failed, so nothing went up"));
-    }
-
-    @Test
-    @DisplayName("S12 (D11), the control: only a developer escalates; a failed cataloguer hire stays what it is")
-    void onlyADeveloperEscalates() throws Exception {
-        Path seats = seatsBeside("cataloguer", "senior-developer");
-        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithAFailingGate());
-
-        Map<String, Object> first = dataOf(hire.execute(hiringAs("cataloguer", seats.resolve("cataloguer.md"))));
+        Map<String, Object> first = dataOf(hire.execute(hiringAs("developer", developer)));
+        Map<String, Object> second = dataOf(hire.execute(hiringAs("developer", developer).put("fixes", String.valueOf(first.get("plan")))));
+        Map<String, Object> third = dataOf(hire.execute(hiringAs("developer", developer).put("fixes", String.valueOf(second.get("plan")))));
 
         assertAll(
-            () -> assertEquals(Boolean.FALSE, first.get("complete")),
-            () -> assertTrue(!first.containsKey("escalation")));
-    }
-
-    @Test
-    @DisplayName("S12 (D11): with no senior-developer seat file beside the developer's, the answer says nothing was hired and why")
-    void aMissingSeniorSeatFileIsSaidNotGuessed() throws Exception {
-        Path seats = seatsBeside("developer");
-        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithAFailingGate());
-
-        Map<String, Object> first = dataOf(hire.execute(hiringAs("developer", seats.resolve("developer.md"))));
-
-        @SuppressWarnings("unchecked")
-        Map<String, Object> escalation = (Map<String, Object>) first.get("escalation");
-        assertAll(
-            () -> assertEquals(Boolean.FALSE, escalation.get("hired")),
-            () -> assertTrue(String.valueOf(escalation.get("because")).contains("senior-developer"), String.valueOf(escalation)));
+            () -> assertTrue(!first.containsKey("attempt"), "CONTROL: a hire that corrects nothing is numbered: " + first.get("attempt")),
+            () -> assertEquals(2, second.get("attempt"), String.valueOf(second.keySet())),
+            () -> assertEquals(3, third.get("attempt"), String.valueOf(third.keySet())));
     }
 
     @Test

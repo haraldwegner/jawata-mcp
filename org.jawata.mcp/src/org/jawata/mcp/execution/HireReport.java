@@ -31,7 +31,7 @@ public final class HireReport {
     /** The keys of a hire's answer a lead is told as they are (28h z52); every other key stays with the record. */
     private static final List<String> SENT_UP = List.of("hirer", "hired", "name", "fixes", "plan", "brain", "complete", "cleanExit",
         "stoppedBy", "timedOut", "exitCode", "stepsPassed", "stepsDeclared", "gates", "changedFileCount", "verdict", "fullRunReasons",
-        "instructionScore", "ownWrites", "ownCodePutBack", "escalation", "record", "error", "below");
+        "instructionScore", "ownWrites", "ownCodePutBack", "attempt", "escalatesTo", "record", "error", "below");
 
     /** The line that opens a brain's own summary: REPORT: or a heading of that word. */
     private static final Pattern REPORT_HEADING = Pattern.compile(
@@ -58,7 +58,14 @@ public final class HireReport {
             if (!reasons.isEmpty()) {
                 text.append("Ended because: ").append(String.join("; ", reasons)).append("\n");
             }
+            if (told.path("attempt").isNumber()) {
+                text.append("Attempt ").append(told.path("attempt").asInt()).append(" at this task\n");
+            }
             appendChecks(text, told);
+            String nextSeat = textOf(told.path("escalatesTo"));
+            if (!nextSeat.isBlank()) {
+                text.append("If its returns stay useless, the work goes to: ").append(nextSeat).append("\n");
+            }
             appendFigures(text, told);
             if (told.hasNonNull("verdict")) {
                 text.append("Verdict: ").append(told.path("verdict").asText(told.path("verdict").toString())).append("\n");
