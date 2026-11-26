@@ -392,6 +392,22 @@ class PrincipalBrainTest {
     }
 
     @Test
+    @DisplayName("28h review: when the automatic login fails in other words, the person still learns a login is wanted and how; other wordings of 'log in' get the hint too")
+    void aFailedLoginStillSaysHowToConnect() {
+        AcpBrainSession.Program failing = new AcpBrainSession.Program(fake.command(),
+            Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_LOGIN", "fails"));
+        PrincipalBrain brain = brain(Optional.of(failing));
+        try {
+            String said = ask(brain, "hello", new ArrayList<>());
+            assertTrue(said.contains("the account is locked") && said.contains("press Connect beside it in jawata studio"), said);
+        } finally {
+            brain.close();
+        }
+        assertTrue(PrincipalBrain.noSession(Optional.of("Claude Code"), "Please run /login first").contains("press Connect"), "another wording");
+        assertTrue(PrincipalBrain.noSession(Optional.of("Codex"), "you are not logged in").contains("press Connect"), "another wording");
+    }
+
+    @Test
     @DisplayName("a brain that opened no session is named with what it said and how to connect it (28h z55); agy is the Antigravity brain (z54)")
     void aBrainThatOpenedNoSessionIsNamedAndToldHowToConnect() {
         assertEquals(Optional.of("antigravity"), PrincipalBrain.vendorOf(List.of("/home/h/.local/bin/agy", "acp")));

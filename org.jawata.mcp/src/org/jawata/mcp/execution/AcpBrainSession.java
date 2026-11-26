@@ -53,9 +53,14 @@ public final class AcpBrainSession {
      */
     private static final Map<Program, List<Model>> OFFERED = new java.util.concurrent.ConcurrentHashMap<>();
 
+    /** The usual ways a brain says its user is not logged in: they decide whether the person is told how to connect it. */
+    private static final java.util.regex.Pattern LOGIN_WORDS = java.util.regex.Pattern.compile(
+        "authenticat|unauthorized|\\blog[ -]?in\\b|\\blogged[ -](in|out)\\b|\\bsign(ed)?[ -]in\\b|credential|api[ _-]?key",
+        java.util.regex.Pattern.CASE_INSENSITIVE);
+
     /** Whether what a brain said when it refused means its user must log in first. */
     public static boolean asksForLogin(String refusal) {
-        return refusal.toLowerCase(java.util.Locale.ROOT).contains("authentication required");
+        return LOGIN_WORDS.matcher(refusal).find();
     }
 
     private AcpBrainSession() {
@@ -550,6 +555,8 @@ public final class AcpBrainSession {
                     String method = init.path("authMethods").get(0).path("id").asText();
                     if (wire.call(4, "authenticate", params -> params.put("methodId", method)) != null) {
                         created = wire.call(5, "session/new", newSession);
+                    } else {
+                        wire.loginFailed = true;
                     }
                 }
                 sessionId = created == null ? null : created.path("sessionId").asText(null);
@@ -735,7 +742,9 @@ public final class AcpBrainSession {
 
         /** What the brain said when it would not open a session, such as that its user must sign in; empty when it said nothing. */
         public String refusal() {
-            return wire.lastError == null ? "" : wire.lastError.path("message").asText("");
+            String said = wire.lastError == null ? "" : wire.lastError.path("message").asText("");
+            // A login that failed in its own words ("the account is locked") is still a login the person has to make.
+            return wire.loginFailed && !asksForLogin(said) ? "Authentication required, and the login failed: " + said : said;
         }
 
         /** Whether the brain is still there to be prompted: a process that died between two messages is started again by whoever holds this. */
@@ -1199,9 +1208,12 @@ public final class AcpBrainSession {
         /** The error object of the last reply the brain gave to a request, or null when that reply was a result. */
         private JsonNode lastError;
 
-        /** Whether the last reply was a refusal that says the user must log in first. */
+        /** Whether the brain refused to open a session for want of a login and the login it was then sent failed. */
+        private boolean loginFailed;
+
+        /** Whether the last reply was a refusal that says the user must log in first, in the words that make it worth sending the login. */
         boolean refusedForWantOfLogin() {
-            return lastError != null && asksForLogin(lastError.path("message").asText(""));
+            return lastError != null && lastError.path("message").asText("").toLowerCase(java.util.Locale.ROOT).contains("authentication required");
         }
 
         /** Sends a request and returns its result, or null when the brain ended or answered with an error. */

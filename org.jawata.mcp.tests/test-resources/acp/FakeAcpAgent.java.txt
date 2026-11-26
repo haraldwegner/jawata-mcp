@@ -85,6 +85,11 @@ public class FakeAcpAgent {
                     + (loginRequired ? ",\"authMethods\":[{\"id\":\"fake_login\",\"name\":\"Fake login\"}]" : "") + "}");
                 case "authenticate" -> {
                     // FAKE_ACP_LOGIN=never: the login is accepted and changes nothing, as a brain whose account is not connected behaves
+                    // FAKE_ACP_LOGIN=fails: the login itself is refused, with words of its own
+                    if ("fails".equals(System.getenv("FAKE_ACP_LOGIN"))) {
+                        send("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":-32000,\"message\":\"the account is locked\"}}");
+                        continue;
+                    }
                     authenticated = !"never".equals(System.getenv("FAKE_ACP_LOGIN")) && "fake_login".equals(field(line, "methodId"));
                     reply(id, "{}");
                 }
