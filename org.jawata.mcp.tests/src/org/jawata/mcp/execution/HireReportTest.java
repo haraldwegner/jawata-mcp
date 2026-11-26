@@ -127,6 +127,46 @@ class HireReportTest {
     }
 
     @Test
+    @DisplayName("28h z136: a lead's report says the one total of money, time and tokens under it, and how many brains published no figure")
+    void aReportCarriesTheTotalUnderTheLead() throws Exception {
+        String report = reportOf("""
+            {"cleanExit":true,"answer":"REPORT: done","below":
+             {"hires":3,"costUsd":0.75,"withoutCost":1,"elapsedMs":80000,"tokens":3000,"withoutTokens":0}}
+            """);
+
+        assertTrue(report.contains("Under it: 3 hires, 0.75 USD (1 with no money figure), 80 s, 3000 tokens"), report);
+    }
+
+    @Test
+    @DisplayName("28h z136: the registry adds up what ended hires used under their lead, their own and what they carried from below")
+    void theRegistryAddsUpWhatWasUsedUnderALead() throws Exception {
+        HireRegistry hires = HireRegistry.shared();
+        endedUnder(hires, "z136-sum-lead", "z136-sum-a", "{\"plan\":\"z136-sum-a\",\"costUsd\":0.25,\"tokens\":{\"spent\":100},"
+            + "\"journalRow\":{\"detail\":{\"elapsedMs\":1000}}}");
+        endedUnder(hires, "z136-sum-lead", "z136-sum-b", "{\"plan\":\"z136-sum-b\",\"costUsd\":\"NOT PUBLISHED BY THIS BRAIN\","
+            + "\"below\":{\"hires\":1,\"costUsd\":0.5,\"withoutCost\":0,\"elapsedMs\":2000,\"tokens\":200,\"withoutTokens\":0}}");
+
+        HireTotals total = hires.usedUnder("z136-sum-lead").orElse(HireTotals.NONE);
+
+        assertAll(
+            () -> assertTrue(total.hires() == 3, "hires: " + total),
+            () -> assertTrue(total.costUsd() == 0.75, "money: " + total),
+            () -> assertTrue(total.withoutCost() == 1, "no money figure: " + total),
+            () -> assertTrue(total.elapsedMs() == 3000, "time: " + total),
+            () -> assertTrue(total.tokens() == 300 && total.withoutTokens() == 1, "tokens: " + total),
+            () -> assertTrue(hires.usedUnder("z136-sum-nobody").isEmpty(), "a lead with no ended hire was given a total"));
+    }
+
+    /** One background hire of this lead, begun, given its plan and recorded as ended with this answer. */
+    private static void endedUnder(HireRegistry hires, String lead, String plan, String answer) throws Exception {
+        hires.nextHireIsBackground();
+        try (HireRegistry.Registration running = hires.begin("developer", plan, lead)) {
+            hires.planOpened(plan);
+        }
+        hires.record("developer", plan, JSON.readTree(answer));
+    }
+
+    @Test
     @DisplayName("28h z52: a worker that wrote no REPORT section is reported as such, with its record, and its answer does not go up")
     void anAnswerWithNoReportSectionDoesNotGoUp() throws Exception {
         String report = reportOf("{\"cleanExit\":true,\"record\":\"/tmp/records/a2/proposal.md\",\"answer\":\"first I looked at the tree, then\"}");

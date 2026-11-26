@@ -1007,6 +1007,8 @@ public class HireTool extends NeutralTool {
             data.put("answerGateRefusals", ran.hire.getProposal().answerGateRefusals());
         }
         data.put("gates", gateRows(ran.hire.getProposal()));
+        // 28h z136: the one total of what the hires under this one used, so a report up the tree carries the money and time of everything below.
+        HireRegistry.shared().usedUnder(ran.hire.getProposal().plan().value()).ifPresent(used -> data.put("below", used.asMap()));
         // S10 (D18): the plan board is drawn from the ledger the moment the gates have run, by the
         // hire itself, so the plan file says what the gates say without anyone remembering to ask.
         String boardFile = getStringParam(ran.call.getArguments(), "boardFile");

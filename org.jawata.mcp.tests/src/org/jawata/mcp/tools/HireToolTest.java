@@ -2450,6 +2450,61 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h z136: the answer of a lead's hire carries the one total of what the hires under it used; a hire with none under it has no such field")
+    void aLeadsAnswerCarriesTheTotalOfWhatWasUsedUnderIt() throws Exception {
+        boolean[] aWorkerEnds = {true};
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new Tool() {
+            @Override public String getName() {
+                return "compile_workspace";
+            }
+            @Override public String getDescription() {
+                return "a gate fixture that, while the lead's hire still runs, ends one worker hired under its plan when the test asks it to";
+            }
+            @Override public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+            @Override public ToolResponse execute(JsonNode arguments) {
+                if (aWorkerEnds[0]) {
+                    for (PlanLedger.Pending open : plans.pending()) {
+                        endAWorkerUnder(open.id().value());
+                    }
+                }
+                return ToolResponse.success(Map.of("errorCount", 0));
+            }
+        });
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, registry);
+        Map<String, Object> led = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+        aWorkerEnds[0] = false;
+        Map<String, Object> alone = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertEquals(Map.of("hires", 1, "costUsd", 0.25, "withoutCost", 0, "elapsedMs", 4000L, "tokens", 700L, "withoutTokens", 0),
+                led.get("below"), "the lead's answer does not carry what its worker used: " + led.keySet()),
+            () -> assertTrue(!alone.containsKey("below"), "CONTROL: a hire with none under it has the field: " + alone.get("below")));
+    }
+
+    /** One worker hired under a lead's plan that ends having used money, time and tokens, on a thread of its own as the engine runs one. */
+    private static void endAWorkerUnder(String leadPlan) {
+        Thread worker = new Thread(() -> {
+            String plan = "z136-worker-of-" + leadPlan;
+            com.fasterxml.jackson.databind.node.ObjectNode kept = JSON.createObjectNode().put("plan", plan).put("costUsd", 0.25);
+            kept.putObject("tokens").put("spent", 700);
+            kept.putObject("journalRow").putObject("detail").put("elapsedMs", 4000);
+            try (HireRegistry.Registration ignored = HireRegistry.shared().begin("developer", plan, leadPlan)) {
+                HireRegistry.shared().planOpened(plan);
+            }
+            HireRegistry.shared().record("developer", plan, kept);
+        });
+        worker.start();
+        try {
+            worker.join(5_000);
+        } catch (InterruptedException ended) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Test
     @DisplayName("28h z27: the answer of a hire carries the reasons it gave for full test runs, for the pm that reads it; a hire that gave none has no such field")
     void aHiresAnswerCarriesTheReasonsItGaveForFullRuns() throws Exception {
         boolean[] orderTheRun = {true};

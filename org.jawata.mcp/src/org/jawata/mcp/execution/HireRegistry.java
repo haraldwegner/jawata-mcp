@@ -941,6 +941,10 @@ public final class HireRegistry {
         synchronized (routing) {
             ended = new Event("finished", plan, answer.path("name").asText(""), seat, normal(brief), issuedBy.getOrDefault(plan, ""), answer,
                 backgroundPlans.remove(plan));
+            // 28h z136: what it used is added to its lead's one total, before any report of it is read.
+            if (!ended.leadId().isEmpty()) {
+                below.merge(ended.leadId(), HireTotals.of(answer), HireTotals::plus);
+            }
             if (ended.background()) {
                 route(inboxes.get(ended.leadId()), ended);
             }
@@ -1092,5 +1096,13 @@ public final class HireRegistry {
             }
         }
         return stoppedNames;
+    }
+
+    /** What the ended hires under each lead used (28h z136), by the lead's plan id; added up as each hire's answer is kept. */
+    private final java.util.Map<String, HireTotals> below = new ConcurrentHashMap<>();
+
+    /** The one total of what the ended hires under this lead used, theirs and what they carried from below; none when none has ended. */
+    public java.util.Optional<HireTotals> usedUnder(String leadPlanId) {
+        return java.util.Optional.ofNullable(below.get(leadPlanId == null ? "" : leadPlanId));
     }
 }

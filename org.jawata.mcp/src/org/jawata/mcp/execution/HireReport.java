@@ -31,7 +31,7 @@ public final class HireReport {
     /** The keys of a hire's answer a lead is told as they are (28h z52); every other key stays with the record. */
     private static final List<String> SENT_UP = List.of("hirer", "hired", "name", "fixes", "plan", "brain", "complete", "cleanExit",
         "stoppedBy", "timedOut", "exitCode", "stepsPassed", "stepsDeclared", "gates", "changedFileCount", "verdict", "fullRunReasons",
-        "instructionScore", "ownWrites", "ownCodePutBack", "escalation", "record", "error");
+        "instructionScore", "ownWrites", "ownCodePutBack", "escalation", "record", "error", "below");
 
     /** The line that opens a brain's own summary: REPORT: or a heading of that word. */
     private static final Pattern REPORT_HEADING = Pattern.compile(
@@ -142,6 +142,25 @@ public final class HireReport {
         text.append("Time: ").append(millis.isNumber() ? Math.round(millis.asLong() / 1000.0) + " s" : NO_FIGURE).append("\n");
         JsonNode tokens = told.path("tokensSpent");
         text.append("Tokens: ").append(tokens.isNumber() ? tokens.asText() : NO_FIGURE).append("\n");
+        appendBelow(text, told.path("below"));
+    }
+
+    /** The one total of what the hires under a lead used (28h z136), never a line per hire; nothing for a hire that had none under it. */
+    private static void appendBelow(StringBuilder text, JsonNode below) {
+        if (!below.isObject()) {
+            return;
+        }
+        double money = Math.round(below.path("costUsd").asDouble() * 10_000) / 10_000.0;
+        text.append("Under it: ").append(below.path("hires").asInt()).append(" hires, ").append(money).append(" USD");
+        if (below.path("withoutCost").asInt() > 0) {
+            text.append(" (").append(below.path("withoutCost").asInt()).append(" with no money figure)");
+        }
+        text.append(", ").append(Math.round(below.path("elapsedMs").asLong() / 1000.0)).append(" s, ")
+            .append(below.path("tokens").asLong()).append(" tokens");
+        if (below.path("withoutTokens").asInt() > 0) {
+            text.append(" (").append(below.path("withoutTokens").asInt()).append(" with no token figure)");
+        }
+        text.append("\n");
     }
 
     /** The text of a node when it is text, and "" for anything else (a missing node, a JSON null, a number). */
