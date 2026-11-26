@@ -111,6 +111,35 @@ class AddMethodToolTest {
     }
 
     @Test
+    @DisplayName("28h z105: an interface with one abstract method gets a default method, so lambdas and implementors still compile")
+    void aFunctionalShapeGetsADefaultMethod() throws Exception {
+        Path targets = helper.getFixturePath("simple-maven").resolve("src/main/java/com/example/SpeculativeGeneralityTargets.java");
+        ObjectNode arguments = request(targets, 18, 10, "count");
+        arguments.put("returnType", "int");
+
+        Map<String, Object> data = data(generate.execute(arguments));
+
+        String written = Files.readString(targets);
+        assertTrue(written.contains("default int count()"), "THE CLAIM: the method is not a default one:\n" + written);
+        assertTrue(written.contains("throw new UnsupportedOperationException("), "the default method has no throwing body:\n" + written);
+        assertTrue(String.valueOf(data.get("note")).contains("default"), "the answer does not say why: " + data.get("note"));
+    }
+
+    @Test
+    @DisplayName("28h z105: an interface that something implements gets a default method, whatever its number of methods")
+    void anImplementedInterfaceGetsADefaultMethod() throws Exception {
+        Files.writeString(interfaceFile, Files.readString(interfaceFile)
+            + "\nabstract class CohesiveImpl implements CohesiveService {\n}\n");
+        service.getJavaProject().getProject().refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, null);
+        ObjectNode arguments = request(interfaceFile, 20, 12, "r");
+
+        data(generate.execute(arguments));
+
+        String written = Files.readString(interfaceFile);
+        assertTrue(written.contains("default void r()"), "THE CLAIM: an implemented interface got an abstract method:\n" + written);
+    }
+
+    @Test
     @DisplayName("a method that is already there is refused and the file is left as it was")
     void anExistingMethodIsRefused() throws Exception {
         String original = Files.readString(classFile);

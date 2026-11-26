@@ -1,11 +1,18 @@
 package org.jawata.mcp.tools.codegen;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
+
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.jdt.core.Flags;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
 import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
@@ -35,11 +42,7 @@ import org.jawata.mcp.tools.AbstractTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * {@code generate kind=add_method} (28h-C27-20): adds one method to the type at the caret from a name, a return type and parameters.
@@ -152,7 +155,11 @@ public class AddMethodTool extends AbstractTool
                 return ToolResponse.invalidParameter("methodName", type.getElementName() + " already declares " + methodName
                     + " with " + method.parameters().size() + " parameter(s).");
             }
-            if (!typeDecl.isInterface()) {
+            boolean asDefault = typeDecl.isInterface() && abstractWouldBreakImplementors(type);
+            if (asDefault) {
+                method.modifiers().add(ast.newModifier(Modifier.ModifierKeyword.DEFAULT_KEYWORD));
+            }
+            if (!typeDecl.isInterface() || asDefault) {
                 method.setBody(throwingBody(ast));
             }
 
@@ -164,7 +171,7 @@ public class AddMethodTool extends AbstractTool
             TextEdit edits = rewrite.rewriteAST(doc, org.jawata.mcp.tools.shared.FormatterOptions.forGeneratedCode(
                 cu, getStringParam(arguments, "indentChar", null)));
             edits.apply(doc);
-            return commit(service, cu, doc.get(), methodName, arguments);
+            return commit(service, cu, doc.get(), methodName, arguments, asDefault ? AS_DEFAULT : null);
         } catch (Exception e) {
             log.warn("generate(kind=add_method) failed: {}", e.getMessage(), e);
             return ToolResponse.internalError(e);
@@ -198,7 +205,7 @@ public class AddMethodTool extends AbstractTool
         return null;
     }
 
-    private ToolResponse commit(IJdtService service, ICompilationUnit cu, String newSource, String methodName, JsonNode arguments)
+    private ToolResponse commit(IJdtService service, ICompilationUnit cu, String newSource, String methodName, JsonNode arguments, String note)
             throws Exception {
         if (!getBooleanParam(arguments, "auto_apply", true)) {
             SourceCommit.Staged staged = SourceCommit.stageFullReplace(cu, newSource, "add_method", changeCache, service);
@@ -208,6 +215,9 @@ public class AddMethodTool extends AbstractTool
             stagedData.put("changeId", staged.changeId());
             putDiff(stagedData, staged.diff(), arguments);
             stagedData.put("filePath", staged.filePath());
+            if (note != null) {
+                stagedData.put("note", note);
+            }
             return ToolResponse.success(stagedData, ResponseMeta.builder()
                 .suggestedNextTools(List.of(
                     "refactoring(action=apply) with this changeId to commit the staged change",
@@ -224,7 +234,25 @@ public class AddMethodTool extends AbstractTool
         data.put("filesModified", List.of(committed.filePath()));
         putDiff(data, committed.diff(), arguments);
         data.put("undoChangeId", committed.undoChangeId());
+        if (note != null) {
+            data.put("note", note);
+        }
         return ToolResponse.success(data, ResponseMeta.builder().totalCount(1).returnedCount(1).build());
+    }
+
+    private static final String AS_DEFAULT = "added as a default method: a bare signature would break what implements this interface, or the"
+        + " lambdas its one abstract method may be";
+
+    /** True when something extends or implements the interface, or its one abstract method may be implemented by lambdas. */
+    private static boolean abstractWouldBreakImplementors(IType type) throws JavaModelException {
+        int abstractMethods = 0;
+        for (IMethod declared : type.getMethods()) {
+            int flags = declared.getFlags();
+            if (!Flags.isStatic(flags) && !Flags.isDefaultMethod(flags) && !Flags.isPrivate(flags)) {
+                abstractMethods++;
+            }
+        }
+        return abstractMethods == 1 || type.newTypeHierarchy(new NullProgressMonitor()).getAllSubtypes(type).length > 0;
     }
 
     /** {@code throw new UnsupportedOperationException("not implemented");}, the body that compiles for any return type. */
