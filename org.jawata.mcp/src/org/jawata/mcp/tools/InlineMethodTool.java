@@ -1,14 +1,36 @@
 package org.jawata.mcp.tools;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Supplier;
+
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.jdt.core.ICompilationUnit;
 import org.eclipse.jdt.core.IMethod;
+import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTParser;
+import org.eclipse.jdt.core.dom.ASTVisitor;
+import org.eclipse.jdt.core.dom.Block;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.Expression;
+import org.eclipse.jdt.core.dom.ExpressionStatement;
+import org.eclipse.jdt.core.dom.LambdaExpression;
+import org.eclipse.jdt.core.dom.ReturnStatement;
 import org.eclipse.jdt.internal.corext.refactoring.code.InlineMethodRefactoring;
 import org.eclipse.ltk.core.refactoring.Change;
+import org.eclipse.ltk.core.refactoring.CompositeChange;
+import org.eclipse.ltk.core.refactoring.TextFileChange;
+import org.eclipse.text.edits.ReplaceEdit;
+import org.eclipse.text.edits.TextEdit;
 import org.jawata.core.IJdtService;
+import org.jawata.mcp.change.ChangeEngine;
 import org.jawata.mcp.change.CheckedChange;
 import org.jawata.mcp.change.RefactoringChangeCache;
 import org.jawata.mcp.change.RefactoringEngine;
@@ -19,11 +41,7 @@ import org.jawata.mcp.tools.shared.UnresolvedFile;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * Inline a method call by replacing it with the method body.
@@ -118,6 +136,79 @@ public class InlineMethodTool extends AbstractApplyingRefactoringTool
         return withAutoApply(withProjectKey(schema));
     }
 
+    /**
+     * 28h z133: the engine's inline puts a call that was a lambda's whole body into braces, and for a value-returning method writes no
+     * semicolon there, which does not compile. A lambda that was an expression and became a block of one statement is made an expression
+     * again; the change is rebuilt from the new content of each file only where one was.
+     */
+    private static Change keepExpressionLambdas(Change change) throws CoreException {
+        List<TextFileChange> files = new ArrayList<>();
+        if (!textFileChanges(change, files)) {
+            return change;
+        }
+        Map<IFile, List<TextEdit>> edits = new LinkedHashMap<>();
+        boolean restored = false;
+        for (TextFileChange file : files) {
+            String before = file.getCurrentContent(new NullProgressMonitor());
+            String after = file.getPreviewContent(new NullProgressMonitor());
+            String fixed = withExpressionLambdas(before, after);
+            restored |= !fixed.equals(after);
+            edits.put(file.getFile(), List.of(new ReplaceEdit(0, before.length(), fixed)));
+        }
+        return restored ? ChangeEngine.fromFileEdits(change.getName(), edits) : change;
+    }
+
+    /** The file changes under a change; false when a part of it is something else, which is then left as it is. */
+    private static boolean textFileChanges(Change change, List<TextFileChange> into) {
+        if (change instanceof CompositeChange composite) {
+            return Arrays.stream(composite.getChildren()).allMatch(child -> textFileChanges(child, into));
+        }
+        if (change instanceof TextFileChange file) {
+            into.add(file);
+            return true;
+        }
+        return false;
+    }
+
+    private static String withExpressionLambdas(String before, String after) {
+        List<LambdaExpression> old = lambdasIn(before);
+        List<LambdaExpression> now = lambdasIn(after);
+        if (old.size() != now.size()) {
+            return after;
+        }
+        StringBuilder text = new StringBuilder(after);
+        for (int i = now.size() - 1; i >= 0; i--) {
+            if (old.get(i).getBody() instanceof Expression && now.get(i).getBody() instanceof Block block && block.statements().size() == 1) {
+                Object only = block.statements().get(0);
+                Expression body = only instanceof ExpressionStatement statement ? statement.getExpression()
+                    : only instanceof ReturnStatement returned ? returned.getExpression() : null;
+                if (body != null) {
+                    text.replace(block.getStartPosition(), block.getStartPosition() + block.getLength(),
+                        after.substring(body.getStartPosition(), body.getStartPosition() + body.getLength()));
+                }
+            }
+        }
+        return text.toString();
+    }
+
+    private static List<LambdaExpression> lambdasIn(String source) {
+        ASTParser parser = ASTParser.newParser(AST.getJLSLatest());
+        parser.setSource(source.toCharArray());
+        parser.setStatementsRecovery(true);
+        Map<String, String> options = JavaCore.getOptions();
+        options.put(JavaCore.COMPILER_SOURCE, "21");
+        parser.setCompilerOptions(options);
+        List<LambdaExpression> found = new ArrayList<>();
+        parser.createAST(null).accept(new ASTVisitor() {
+            @Override
+            public boolean visit(LambdaExpression node) {
+                found.add(node);
+                return true;
+            }
+        });
+        return found;
+    }
+
     @Override
     protected Preparation prepareChange(IJdtService service, JsonNode arguments) throws Exception {
         String filePath = getStringParam(arguments, "filePath");
@@ -167,7 +258,7 @@ public class InlineMethodTool extends AbstractApplyingRefactoringTool
                     + "the target and retry. No files were modified."));
         }
 
-        Change change = checked.change();
+        Change change = keepExpressionLambdas(checked.change());
         IMethod method = refactoring.getMethod();
 
         Map<String, Object> extras = new LinkedHashMap<>();

@@ -87,6 +87,71 @@ class InlineMethodToolTest {
         assertEquals(original, Files.readString(refactoringTargetFile));
     }
 
+    @Test
+    @DisplayName("28h z133: a call that is a lambda's whole body stays an expression lambda, and no other line is re-indented")
+    void aLambdaBodyStaysAnExpression() throws Exception {
+        Path file = service.getProjectRoot().resolve("src/main/java/com/example/Ledgers.java");
+        Files.writeString(file, """
+            package com.example;
+
+            public class Ledgers {
+                static void open(int plan) {
+                    open(plan, 0);
+                }
+
+                static void open(int plan, int step) {
+                }
+
+                Runnable later() {
+                    Runnable first = () -> open(1);
+                    return first;
+                }
+            }
+            """);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        ObjectNode arguments = objectMapper.createObjectNode().put("filePath", file.toString()).put("line", 3).put("column", 16);
+
+        ToolResponse response = tool.execute(arguments);
+
+        assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
+        String after = Files.readString(file);
+        assertTrue(after.contains("        Runnable first = () -> open(1, 0);"), "THE CLAIM: the lambda or its line changed:\n" + after);
+    }
+
+    @Test
+    @DisplayName("28h z133: the same for a method that returns a value, called by a lambda that returns it")
+    void aValueLambdaBodyStaysAnExpression() throws Exception {
+        Path file = service.getProjectRoot().resolve("src/main/java/com/example/Shelf.java");
+        Files.writeString(file, """
+            package com.example;
+
+            import java.util.function.Supplier;
+
+            public class Shelf {
+                static String open(int plan) {
+                    return open(plan, 0);
+                }
+
+                static String open(int plan, int step) {
+                    return "";
+                }
+
+                Supplier<String> later() {
+                    Supplier<String> first = () -> open(1);
+                    return first;
+                }
+            }
+            """);
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        ObjectNode arguments = objectMapper.createObjectNode().put("filePath", file.toString()).put("line", 5).put("column", 18);
+
+        ToolResponse response = tool.execute(arguments);
+
+        assertTrue(response.isSuccess(), () -> String.valueOf(response.getError()));
+        String after = Files.readString(file);
+        assertTrue(after.contains("        Supplier<String> first = () -> open(1, 0);"), "THE CLAIM: the lambda or its line changed:\n" + after);
+    }
+
     // ========== Required Parameter Tests ==========
 
     @Test
