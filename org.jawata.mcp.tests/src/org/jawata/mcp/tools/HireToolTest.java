@@ -2369,6 +2369,23 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h design step 5: a hire's journal row names the hired lead that issued it, so costs add up to the tree after a restart; a hire no lead issued names none")
+    void aHiresJournalRowNamesTheLeadThatIssuedIt() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+        org.jawata.mcp.models.CallerIdentity lead = org.jawata.mcp.models.CallerIdentity.supplied("plan-d5-lead");
+        Path seat = seatFile(CATALOGUER_SEAT);
+
+        Map<String, Object> issued = dataOf(asAChiefEngineersSession(lead, () -> hire.execute(hireArgs(seat))));
+        Map<String, Object> alone = dataOf(hire.execute(hireArgs(seat)));
+
+        assertAll(
+            () -> assertEquals("plan-d5-lead", JSON.valueToTree(issued).path("journalRow").path("detail").path("lead").asText(),
+                "the row does not name the lead: " + issued.get("journalRow")),
+            () -> assertTrue(JSON.valueToTree(alone).path("journalRow").path("detail").path("lead").isMissingNode(),
+                "CONTROL: a hire no lead issued names one: " + alone.get("journalRow")));
+    }
+
+    @Test
     @DisplayName("S12: a brain the host setting gives an ACP program is started through the engine's ACP client, and its own command line is never run")
     void aBrainWithAnAcpProgramIsStartedOverAcp() throws Exception {
         Map<String, Object> program = theStandInAcpProgram();

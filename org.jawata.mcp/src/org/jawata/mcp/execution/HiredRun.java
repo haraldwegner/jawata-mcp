@@ -241,9 +241,14 @@ public final class HiredRun {
         }
     }
 
+    /** The plan id of the hired lead that issued this hire; none when the chat or a client issued it. */
+    private Optional<String> issuingLead = Optional.empty();
+
     private PlanId openPlan(SeatHire seat, List<GatedStep> planned) {
         PlanId plan = plans.open(planned);
         owner.ifPresent(opener -> plans.ownedBy(plan, opener));
+        // Asked as the plan opens, while the issuer's own hire is certainly running: it may have ended by the time this one's row is written.
+        issuingLead = owner.filter(id -> HireRegistry.shared().seatOfCaller(id).isPresent());
         // The registry learns the plan id of the hire running on this thread, so a hire this hire's brain issues can name this one as its lead.
         HireRegistry.shared().planOpened(plan.value());
         return plan;
@@ -647,6 +652,9 @@ public final class HiredRun {
                 // when it said. A cost the brain did not send is absent from the row and never 0.
                 detail.put("seat", seatName);
                 detail.put("hirer", hirerName);
+                // Design step 5: the hired lead that issued this hire, by its plan id, so what a tree cost can be added up from the rows after
+                // a restart; a hire the chat or a client issued names none.
+                issuingLead.ifPresent(id -> detail.put("lead", id));
                 if (!hireName.isEmpty()) {
                     detail.put("name", hireName);
                 }
