@@ -59,7 +59,7 @@ public final class HireReport {
      * 28h z90, z100, z87: why a hire ended badly, in the order stopped, timed out, brain exit code, empty answer, checks; empty when it did not
      * end badly. A hire that did not end cleanly and has none of those reasons says so in one more.
      */
-    private static List<String> endedBecause(JsonNode answer) {
+    public static List<String> endedBecause(JsonNode answer) {
         List<String> reasons = new java.util.ArrayList<>();
         boolean notClean = answer.path("cleanExit").asText("true").equals("false");
         String stoppedBy = textOf(answer.path("stoppedBy"));

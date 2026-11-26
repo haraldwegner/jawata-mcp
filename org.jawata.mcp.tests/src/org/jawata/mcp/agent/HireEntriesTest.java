@@ -386,6 +386,17 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("z90: a hire that answered nothing and passed none of its checks is shown as failed, as its report says, not as done")
+    void aCardAgreesWithTheReportThatANothingRunFailed() {
+        watch.observe(withInput(hireCall("tool_call", "z90", "pending"), "main", "developer", "build"));
+
+        HireEntry card = watch.observe(answered(hireCall("tool_call_update", "z90", "completed"),
+            "{\"data\":{\"cleanExit\":true,\"answer\":\"\",\"stepsPassed\":0,\"stepsDeclared\":3}}")).orElseThrow();
+
+        assertEquals(HireEntry.FAILED, card.state(), "the card says done over an empty run");
+    }
+
+    @Test
     @DisplayName("a cost the brain did not send is absent and not 0, and a hire that timed out or whose call failed is failed")
     void aMissingCostIsAbsentAndAFailureIsFailed() {
         watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "architect", "review"));

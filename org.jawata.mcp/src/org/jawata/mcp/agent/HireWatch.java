@@ -413,8 +413,10 @@ final class HireWatch {
                 + (answer.hasNonNull("hireThrough") ? "; hire it through " + answer.get("hireThrough").asText() : ""));
             return;
         }
+        // 28h z90: an engine answer, which carries its answer text, is judged by the report's own reasons, so the card and the report agree.
         boolean clean = answer.isMissingNode() || !(answer.path("cleanExit").asText("true").equals("false")
-            || answer.path("timedOut").asBoolean(false));
+            || answer.path("timedOut").asBoolean(false)
+            || answer.has("answer") && !org.jawata.mcp.execution.HireReport.endedBecause(answer).isEmpty());
         finish(hire, clean ? HireEntry.DONE : HireEntry.FAILED);
         // The model the hire tool says ran is the first-hand word: it includes the person's pick in the Agent Control panel, which neither the
         // seat file nor the registry shows.
