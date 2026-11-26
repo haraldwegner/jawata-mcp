@@ -19,6 +19,7 @@ import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.mcp.execution.AcpBrainSession;
 import org.jawata.mcp.execution.AcpBrainSession.Program;
 import org.jawata.mcp.execution.BrainDialect;
+import org.jawata.mcp.execution.Hire;
 import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.execution.HireRegistry.Event;
 import org.jawata.mcp.execution.HireRegistry.Registration;
@@ -921,9 +922,6 @@ public class HireTool extends NeutralTool {
     public static class RanHire {
         public HireCall call;
         public LearnerEventStore landsIn;
-        public String hirer;
-        public String hired;
-        public String brief;
         public SeatHire seat;
         public boolean modelFromRegistry;
         public Loaded declaredTree;
@@ -934,9 +932,8 @@ public class HireTool extends NeutralTool {
         public WriteContainment containment;
         public HireSite base;
         public Optional<String> principalSession;
-        public Registration running;
-        public Proposal proposal;
-        public Optional<Program> brainProgram;
+        public Hire hire = new Hire();
+		public Optional<Program> brainProgram;
         public List<Event> hiresThatEnded;
 
         public RanHire(HireCall call, LearnerEventStore landsIn, String hirer, String hired, String brief,
@@ -946,9 +943,9 @@ public class HireTool extends NeutralTool {
                 Optional<Program> brainProgram, List<Event> hiresThatEnded) {
             this.call = call;
             this.landsIn = landsIn;
-            this.hirer = hirer;
-            this.hired = hired;
-            this.brief = brief;
+            this.hire.setHirer(hirer);
+            this.hire.setHired(hired);
+            this.hire.setBrief(brief);
             this.seat = seat;
             this.modelFromRegistry = modelFromRegistry;
             this.declaredTree = declaredTree;
@@ -959,8 +956,8 @@ public class HireTool extends NeutralTool {
             this.containment = containment;
             this.base = base;
             this.principalSession = principalSession;
-            this.running = running;
-            this.proposal = proposal;
+            this.hire.setRunning(running);
+            this.hire.setProposal(proposal);
             this.brainProgram = brainProgram;
             this.hiresThatEnded = hiresThatEnded;
         }
@@ -970,9 +967,9 @@ public class HireTool extends NeutralTool {
         Map<String, Object> data = new LinkedHashMap<>();
         // The two names C16 asks for, FIRST, because a record that cannot say who asked and who
         // answered is not an attribution.
-        data.put("hirer", ran.hirer);
-        data.put("hired", ran.hired);
-        data.put("name", ran.running.name());
+        data.put("hirer", ran.hire.getHirer());
+        data.put("hired", ran.hire.getHired());
+        data.put("name", ran.hire.getRunning().name());
         String corrects = getStringParam(ran.call.getArguments(), "fixes");
         if (corrects != null && !corrects.isBlank()) {
             data.put("fixes", corrects.strip());
@@ -980,32 +977,32 @@ public class HireTool extends NeutralTool {
         // WHICH BRAIN ANSWERED (D11, D48): its name, the vendor and model the registry setting names for it, and the model the run used.
         Map<String, Object> brainRow = new LinkedHashMap<>();
         brainRow.put("brain", ran.dialect.name());
-        brainRow.put("vendor", ran.deciding.brainFor(ran.hired).map(Hirer.Brain::vendor).filter(v -> !v.isBlank()).orElse("NOT NAMED IN THE REGISTRY SETTING"));
+        brainRow.put("vendor", ran.deciding.brainFor(ran.hire.getHired()).map(Hirer.Brain::vendor).filter(v -> !v.isBlank()).orElse("NOT NAMED IN THE REGISTRY SETTING"));
         brainRow.put("model", ran.seat.model());
         if (ran.modelFromRegistry) {
             brainRow.put("modelFromRegistry", "the registry names this model; the stored entry named the brain and no model");
         }
         data.put("brain", brainRow);
-        data.put("plan", ran.proposal.plan().value());
+        data.put("plan", ran.hire.getProposal().plan().value());
         // The file a human reads, and the artifact it was stored as. The RUN writes both; this call
         // points at them rather than copying them into its own answer, so the record a reader opens
         // and the record the journal refers to cannot drift apart.
-        data.put("artifactId", ran.proposal.artifactId());
-        data.put("record", ran.proposal.record().toString());
+        data.put("artifactId", ran.hire.getProposal().artifactId());
+        data.put("record", ran.hire.getProposal().record().toString());
         // S16-27: what the journal HOLDS for this run, read back by its plan id rather than
         // assumed from the write — `HiredRun` appends inside a catch that swallows, so a run whose
         // row was lost still returns a proposal.
-        data.putAll(journalReport(ran.landsIn.eventsOfSession(ran.proposal.plan().value()),
+        data.putAll(journalReport(ran.landsIn.eventsOfSession(ran.hire.getProposal().plan().value()),
             ran.landsIn.failedWrites()));
-        data.put("complete", ran.proposal.complete());
-        data.put("stepsPassed", ran.proposal.stepsPassed());
+        data.put("complete", ran.hire.getProposal().complete());
+        data.put("stepsPassed", ran.hire.getProposal().stepsPassed());
         // The seat's own checks over its answer are steps of the plan too, ahead of the hirer's.
         data.put("stepsDeclared", ran.steps.size() + ran.seat.answerGates().size());
         if (!ran.seat.answerGates().isEmpty()) {
             data.put("answerGates", ran.seat.answerGates());
-            data.put("answerGateRefusals", ran.proposal.answerGateRefusals());
+            data.put("answerGateRefusals", ran.hire.getProposal().answerGateRefusals());
         }
-        data.put("gates", gateRows(ran.proposal));
+        data.put("gates", gateRows(ran.hire.getProposal()));
         // S10 (D18): the plan board is drawn from the ledger the moment the gates have run, by the
         // hire itself, so the plan file says what the gates say without anyone remembering to ask.
         String boardFile = getStringParam(ran.call.getArguments(), "boardFile");
@@ -1018,14 +1015,14 @@ public class HireTool extends NeutralTool {
         // than sent as an empty list: a caller reading [] would be told the brain touched nothing
         // when in truth nobody looked, which is the one fact they most need right before deciding
         // whether to accept a proposal. `changedFilesBasis` is always present and says which.
-        ran.proposal.changed().changed().ifPresent(files -> {
+        ran.hire.getProposal().changed().changed().ifPresent(files -> {
             data.put("changedFiles", files);
             data.put("changedFileCount", files.size());
         });
-        data.put("changedFilesBasis", ran.proposal.changed().basis());
+        data.put("changedFilesBasis", ran.hire.getProposal().changed().basis());
         // The change file by file as old and new text, so the person asked to accept the proposal can read it (R7); a file too large to show
         // is named in changesOmitted, and the whole key is left out when there is nothing to show.
-        ran.proposal.changed().changes().ifPresent(changes -> {
+        ran.hire.getProposal().changed().changes().ifPresent(changes -> {
             data.put("changes", changes.shown().stream().map(change -> {
                 Map<String, Object> file = new LinkedHashMap<>();
                 file.put("path", change.path());
@@ -1040,25 +1037,25 @@ public class HireTool extends NeutralTool {
         // WHAT THE BRAIN DID, and the three absences are reported as absences. A brain that
         // published no dollar cost is not a brain that cost nothing — only one of the four does —
         // and `saidNothing` is what keeps "it produced nothing" apart from "it failed".
-        data.put("cleanExit", ran.proposal.outcome().clean());
+        data.put("cleanExit", ran.hire.getProposal().outcome().clean());
         // The brain's own session id, when the dialect has one (ACP does): a host's Agent Control can open the hire as the brain's session.
-        ran.proposal.outcome().brainSessionId().ifPresent(id -> data.put("brainSessionId", id));
+        ran.hire.getProposal().outcome().brainSessionId().ifPresent(id -> data.put("brainSessionId", id));
         // What the brain answered in is what the next hire of this seat in this principal session continues (D4), when the run ended cleanly.
-        if (ran.proposal.outcome().clean()) {
-            ran.principalSession.ifPresent(principal -> ran.proposal.outcome().brainSessionId()
-                .ifPresent(id -> org.jawata.mcp.execution.SeatBrainSessions.shared().remember(principal, ran.hired, id)));
+        if (ran.hire.getProposal().outcome().clean()) {
+            ran.principalSession.ifPresent(principal -> ran.hire.getProposal().outcome().brainSessionId()
+                .ifPresent(id -> org.jawata.mcp.execution.SeatBrainSessions.shared().remember(principal, ran.hire.getHired(), id)));
         }
         // WHY it was not clean: a `false` above told a reader nothing while the exit status and the
         // last of stderr sat in a record file the run's own scratch cleanup could remove. Measured
         // 2026-10-14: a test-manager hire ended mid-sentence with cleanExit false, stoppedBy
         // absent and timedOut false, and nothing in the answer said why. Absent exit status means
         // the child was reaped before it exited.
-        data.put("exitCode", ran.proposal.outcome().exitCode().isPresent()
-            ? ran.proposal.outcome().exitCode().getAsInt() : null);
-        if (!ran.proposal.outcome().stderrTail().isBlank()) {
-            data.put("stderrTail", ran.proposal.outcome().stderrTail());
+        data.put("exitCode", ran.hire.getProposal().outcome().exitCode().isPresent()
+            ? ran.hire.getProposal().outcome().exitCode().getAsInt() : null);
+        if (!ran.hire.getProposal().outcome().stderrTail().isBlank()) {
+            data.put("stderrTail", ran.hire.getProposal().outcome().stderrTail());
         }
-        data.put("toolSteps", ran.proposal.outcome().toolSteps());
+        data.put("toolSteps", ran.hire.getProposal().outcome().toolSteps());
         // M11: WHICH calls, classified by the ENGINE's own flag. A count of calls says nothing
         // about whether any of them changed code; the names do, and the three lists that are not
         // "changed code" are reported beside the zero because a zero that hides a shell call, an
@@ -1066,20 +1063,20 @@ public class HireTool extends NeutralTool {
         // measure understood least.
         ToolRegistry engine = registry.get();
         RunEffects.Classification effects = RunEffects.classify(
-            ran.proposal.outcome().toolNames(), ran.proposal.outcome().unnamedToolSteps(),
-            bare -> engine.getTool(bare).map(Tool::changesCode), ran.proposal.outcome().toolsOffered());
-        List<String> incomplete = incompleteReasons(effects, ran.proposal.outcome(), ran.dialect);
-        data.put("toolsCalled", ran.proposal.outcome().toolNames());
+            ran.hire.getProposal().outcome().toolNames(), ran.hire.getProposal().outcome().unnamedToolSteps(),
+            bare -> engine.getTool(bare).map(Tool::changesCode), ran.hire.getProposal().outcome().toolsOffered());
+        List<String> incomplete = incompleteReasons(effects, ran.hire.getProposal().outcome(), ran.dialect);
+        data.put("toolsCalled", ran.hire.getProposal().outcome().toolNames());
         // WHAT A FULL TEST RUN WAS ARGUED FOR (28h Stage 27, z27): the reasons this hire gave for the full runs it ordered stay on its record for
         // the pm that reads it; absent when it ordered none.
-        List<String> fullRunReasons = HireRegistry.shared().fullRunReasonsOf(ran.proposal.plan().value());
+        List<String> fullRunReasons = HireRegistry.shared().fullRunReasonsOf(ran.hire.getProposal().plan().value());
         if (!fullRunReasons.isEmpty()) {
             data.put("fullRunReasons", fullRunReasons);
         }
         // WHAT THE CLI SAID IT OFFERED, and which of the brain's calls named something else. A call
         // to an unoffered tool is an ATTEMPT the CLI refused, not a call that ran; it is listed here
         // and kept out of the four buckets below, so a refused Write cannot read as a code change.
-        ran.proposal.outcome().toolsOffered().ifPresent(offered -> data.put("toolsOffered", offered));
+        ran.hire.getProposal().outcome().toolsOffered().ifPresent(offered -> data.put("toolsOffered", offered));
         data.put("attemptedButNotOffered", effects.notOffered());
         data.put("codeChangingCalls", effects.changesCode());
         // THE WORKER'S MEASURE (sprint spec, 2026-10-11): the share of its code changes made through an
@@ -1091,17 +1088,17 @@ public class HireTool extends NeutralTool {
             ? (Object) effects.shareThroughTools().getAsDouble() : "NO CODE CHANGE MADE");
         // TOKENS, from the brain's own final event. A brain that reported none is NOT a brain that spent
         // none: the record says so in words, and never shows zero.
-        data.put("tokensReported", ran.proposal.outcome().tokens().isPresent());
-        data.put("tokens", ran.proposal.outcome().tokens().isPresent()
-            ? (Object) ran.proposal.outcome().tokens().get().asMap() : "NOT REPORTED BY THIS BRAIN");
+        data.put("tokensReported", ran.hire.getProposal().outcome().tokens().isPresent());
+        data.put("tokens", ran.hire.getProposal().outcome().tokens().isPresent()
+            ? (Object) ran.hire.getProposal().outcome().tokens().get().asMap() : "NOT REPORTED BY THIS BRAIN");
         // WHAT THIS RUN ISSUED, for a PM or a chief engineer: the INSTRUCTION blocks of its answer.
-        List<Instructions.Instruction> issuedHere = Instructions.parse(ran.proposal.outcome().text());
+        List<Instructions.Instruction> issuedHere = Instructions.parse(ran.hire.getProposal().outcome().text());
         if (!issuedHere.isEmpty()) {
             data.put("instructionsIssued", Instructions.rows(issuedHere));
         }
         // A block that is not a whole instruction (no TOOL: line, or ARGUMENTS that are no JSON object) is named here, so it cannot
         // vanish from the list above without a trace (D8).
-        List<String> instructionFaults = Instructions.faults(ran.proposal.outcome().text());
+        List<String> instructionFaults = Instructions.faults(ran.hire.getProposal().outcome().text());
         if (!instructionFaults.isEmpty()) {
             data.put("instructionFaults", instructionFaults);
         }
@@ -1112,30 +1109,30 @@ public class HireTool extends NeutralTool {
         // the observer seat beside its own seat file. No hirer has to remember to pass instructionsFrom or observerSeatFile: no real session ever
         // did, so no worker was ever checked. The blocks are read from the brief because the lead that wrote them is still running when it hires.
         List<Instructions.Instruction> briefed = named ? List.of()
-            : ran.declaredTree.tree().roleOf(ran.hired).filter(SeatTree.Role.WORKER::equals).map(worker -> Instructions.parse(ran.brief)).orElse(List.of());
+            : ran.declaredTree.tree().roleOf(ran.hire.getHired()).filter(SeatTree.Role.WORKER::equals).map(worker -> Instructions.parse(ran.hire.getBrief())).orElse(List.of());
         // Stage 27 (z5): a worker briefed with BUILD instructions (new behaviour) is held to working test first; what its record broke goes to the
         // observer beside the flags of the instructions that did not run as written, and the observer is asked about the whole run once (z1).
-        List<Instructions.Build> briefedBuilds = ran.declaredTree.tree().roleOf(ran.hired).filter(SeatTree.Role.WORKER::equals)
-            .map(worker -> Instructions.builds(ran.brief)).orElse(List.of());
+        List<Instructions.Build> briefedBuilds = ran.declaredTree.tree().roleOf(ran.hire.getHired()).filter(SeatTree.Role.WORKER::equals)
+            .map(worker -> Instructions.builds(ran.hire.getBrief())).orElse(List.of());
         List<Observer.Flag> notTestFirst = briefedBuilds.isEmpty() ? List.<Observer.Flag>of()
-            : ran.proposal.notTestFirst().stream().map(why -> new Observer.Flag(briefedBuilds.size() == 1 ? briefedBuilds.get(0).number() : 0, why)).toList();
+            : ran.hire.getProposal().notTestFirst().stream().map(why -> new Observer.Flag(briefedBuilds.size() == 1 ? briefedBuilds.get(0).number() : 0, why)).toList();
         if (named || !briefed.isEmpty() || !briefedBuilds.isEmpty()) {
             Observer.BatchJudge judge = observerJudgeOf(ran.call, ran.landsIn, ran.endpoint, ran.base);
             data.put("instructionScore", named
-                ? instructionScore(ran.landsIn, instructionsFrom.trim(), ran.proposal.outcome(), engine, effects.notOffered(), judge, notTestFirst, !briefedBuilds.isEmpty())
-                : briefScore(ran.call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""), briefed, ran.proposal.outcome(), engine,
+                ? instructionScore(ran.landsIn, instructionsFrom.trim(), ran.hire.getProposal().outcome(), engine, effects.notOffered(), judge, notTestFirst, !briefedBuilds.isEmpty())
+                : briefScore(ran.call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""), briefed, ran.hire.getProposal().outcome(), engine,
                     effects.notOffered(), judge, notTestFirst, !briefedBuilds.isEmpty()));
-        } else if (ran.declaredTree.tree().roleOf(ran.hired).filter(SeatTree.Role.WORKER::equals).isPresent()) {
+        } else if (ran.declaredTree.tree().roleOf(ran.hire.getHired()).filter(SeatTree.Role.WORKER::equals).isPresent()) {
             // 28h-C26-11: a worker briefed in prose is not scored, and says so, so the lead's report does not read as "nothing to report".
             data.put("instructionScore", org.jawata.mcp.execution.HireReport.notChecked());
         }
         // Stage 27 (z2): a lead edits no code. Its brain may keep an editor of its own (Cursor's agent runs in its normal mode, which is what
         // keeps `hire` for it), so what it wrote outside the documents is read from its own stream and goes to the observer, once, and to the
         // hirer in this answer.
-        if (ran.declaredTree.tree().isLead(ran.hired)) {
-            List<Observer.Flag> ownWrites = org.jawata.mcp.execution.OwnWrites.flags(ran.proposal.outcome().toolCalls());
+        if (ran.declaredTree.tree().isLead(ran.hire.getHired())) {
+            List<Observer.Flag> ownWrites = org.jawata.mcp.execution.OwnWrites.flags(ran.hire.getProposal().outcome().toolCalls());
             if (!ownWrites.isEmpty()) {
-                data.put("ownWrites", observedOf(Observer.observe(List.of(), ran.proposal.outcome().toolCalls(),
+                data.put("ownWrites", observedOf(Observer.observe(List.of(), ran.hire.getProposal().outcome().toolCalls(),
                     bare -> engine.getTool(bare).map(Tool::changesCode), ownWrites, observerJudgeOf(ran.call, ran.landsIn, ran.endpoint, ran.base), false)));
             }
             // C27-22, his word that it must not be possible: the code it wrote is put back, whatever way it wrote it (the folder is read, not the
@@ -1143,7 +1140,7 @@ public class HireTool extends NeutralTool {
             // 28h Stage 27 (z53): only what the lead itself wrote. A file a hire it started changed is that hire's code and stays.
             String putBack = ran.base.workingDirectory() == null ? ""
                 : org.jawata.mcp.agent.OwnCodeTakeBack.of(host, ran.base.workingDirectory().toString(),
-                    withoutPaths(ran.proposal.changed(), pathsChangedByHiresOf(ran.proposal.plan().value(), ran.hiresThatEnded)));
+                    withoutPaths(ran.hire.getProposal().changed(), pathsChangedByHiresOf(ran.hire.getProposal().plan().value(), ran.hiresThatEnded)));
             if (!putBack.isEmpty()) {
                 data.put("ownCodePutBack", putBack);
             }
@@ -1151,10 +1148,10 @@ public class HireTool extends NeutralTool {
         data.put("shellCalls", effects.shell());
         // Stage 27 (o): how the run used jawata, for the card Agent Control draws. Not observed when calls were counted and none named.
         Map<String, Object> toolUse = new LinkedHashMap<>(org.jawata.mcp.execution.ToolUse.of(
-            ran.proposal.outcome().toolCalls(), ran.proposal.outcome().toolSteps(), bare -> engine.getTool(bare).isPresent(),
-            org.jawata.mcp.execution.CallOutcomes.shared().take(ran.proposal.plan().value())).asMap());
+            ran.hire.getProposal().outcome().toolCalls(), ran.hire.getProposal().outcome().toolSteps(), bare -> engine.getTool(bare).isPresent(),
+            org.jawata.mcp.execution.CallOutcomes.shared().take(ran.hire.getProposal().plan().value())).asMap());
         // The steps the run declared whose gate did not pass: a run that ended with such a step is not one whose steps were checked.
-        int stepsOpen = ran.steps.size() + ran.seat.answerGates().size() - ran.proposal.stepsPassed();
+        int stepsOpen = ran.steps.size() + ran.seat.answerGates().size() - ran.hire.getProposal().stepsPassed();
         if (stepsOpen > 0) {
             toolUse.put("stepsOpen", stepsOpen);
         }
@@ -1164,16 +1161,16 @@ public class HireTool extends NeutralTool {
         data.put("performedNoCodeChangingOperation", effects.performedNoCodeChangingOperation());
         data.put("noCodeChangeIsComplete", incomplete.isEmpty());
         data.put("noCodeChangeIncompleteBecause", incomplete);
-        data.put("timedOut", ran.proposal.outcome().timedOut());
-        ran.proposal.outcome().costUsd().ifPresentOrElse(
+        data.put("timedOut", ran.hire.getProposal().outcome().timedOut());
+        ran.hire.getProposal().outcome().costUsd().ifPresentOrElse(
             cost -> data.put("costUsd", cost),
             () -> data.put("costUsd", "NOT PUBLISHED BY THIS BRAIN"));
-        ran.proposal.outcome().stoppedBy().ifPresent(why -> data.put("stoppedBy", why));
-        data.put("answer", ran.proposal.outcome().text());
+        ran.hire.getProposal().outcome().stoppedBy().ifPresent(why -> data.put("stoppedBy", why));
+        data.put("answer", ran.hire.getProposal().outcome().text());
         // S11 (D50b): a review routed to the spec-auditor seat comes back with its verdict read out, SIGN-OFF or REFUSE, so the issuer
         // acts on the verdict and not on a reading of prose. An answer with no verdict line says so and is not a sign-off.
-        if ("spec-auditor".equals(ran.hired)) {
-            data.put("verdict", auditVerdict(ran.proposal.outcome().text()));
+        if ("spec-auditor".equals(ran.hire.getHired())) {
+            data.put("verdict", auditVerdict(ran.hire.getProposal().outcome().text()));
         }
         // C16's own clause: a brain that cannot be told which tools to attach is REPORTED here
         // rather than quietly left out of the count.
@@ -1186,11 +1183,11 @@ public class HireTool extends NeutralTool {
         data.put("writeContainment", ran.containment.report());
         data.put("writeContainmentBasis", ran.containment.basis().name());
         data.put("writeContainmentWitnessed",
-            HiredRun.writeWitness(ran.containment, ran.proposal.outcome().toolsOffered()));
+            HiredRun.writeWitness(ran.containment, ran.hire.getProposal().outcome().toolsOffered()));
         data.put("toolsSettableByTheHirer", ran.dialect.toolAttachment().settableByTheHirer());
         // S12 (D11): a hire that did not pass its gates goes up one rung where the tree has one (a developer to the senior developer).
-        if (!ran.proposal.complete()) {
-            ran.deciding.escalateTo(ran.hired).ifPresent(next -> data.put("escalation", escalate(ran.call.getArguments(), next, ran.proposal.plan().value())));
+        if (!ran.hire.getProposal().complete()) {
+            ran.deciding.escalateTo(ran.hire.getHired()).ifPresent(next -> data.put("escalation", escalate(ran.call.getArguments(), next, ran.hire.getProposal().plan().value())));
         }
         if (ran.declaredTree.refused()) {
             data.put("seatTreeRefused", ran.declaredTree.refusals());
