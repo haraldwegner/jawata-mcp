@@ -2384,4 +2384,92 @@ public class ProjectImporter {
             return ClasspathInfo.empty();
         }
     }
+
+    /**
+     * The folders a project's tests read their files from, as the test runner puts them on its classpath: every module's test resource
+     * folders first, then the main ones. They are read from each build file's own declarations, or Maven's standard folders where none is
+     * declared, and are the folders on disk, so no older copy of a file stands in front of the source. A folder declared with a target path
+     * counts as the folder that path starts in; one whose target path does not end its own path cannot be named this way and is left out
+     * and logged.
+     */
+    public List<java.nio.file.Path> resourceRoots(java.nio.file.Path projectPath) {
+        Set<java.nio.file.Path> tests = new java.util.LinkedHashSet<>();
+        Set<java.nio.file.Path> mains = new java.util.LinkedHashSet<>();
+        collectResourceRoots(projectPath.toAbsolutePath().normalize(), tests, mains, new HashSet<>(), 0);
+        mains.removeAll(tests);
+        List<java.nio.file.Path> roots = new ArrayList<>(tests);
+        roots.addAll(mains);
+        return roots;
+    }
+
+    private void collectResourceRoots(java.nio.file.Path dir, Set<java.nio.file.Path> tests, Set<java.nio.file.Path> mains,
+            Set<java.nio.file.Path> visited, int depth) {
+        if (depth > 10 || !visited.add(dir)) {
+            return;
+        }
+        java.nio.file.Path pom = dir.resolve("pom.xml");
+        if (!readPomPackaging(pom).map("pom"::equals).orElse(false)) {
+            tests.addAll(readResourceRoots(pom, "testResources", "testResource", "src/test/resources"));
+            mains.addAll(readResourceRoots(pom, "resources", "resource", "src/main/resources"));
+        }
+        if (isMultiModuleProject(dir)) {
+            for (java.nio.file.Path module : getModules(dir)) {
+                collectResourceRoots(module.normalize(), tests, mains, visited, depth + 1);
+            }
+        }
+    }
+
+    private static List<java.nio.file.Path> readResourceRoots(java.nio.file.Path pomXml, String list, String item, String standard) {
+        java.nio.file.Path moduleDir = pomXml.getParent();
+        List<Element> declared = new ArrayList<>();
+        if (Files.isRegularFile(pomXml)) {
+            try {
+                Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pomXml.toFile());
+                // Direct children only: a plugin's configuration has resources of its own, which are not the build's.
+                childrenNamed(doc.getDocumentElement(), "build").forEach(build -> childrenNamed(build, list)
+                    .forEach(resources -> declared.addAll(childrenNamed(resources, item))));
+            } catch (Exception e) {
+                log.warn("Failed to parse pom.xml at {}: {}", pomXml, e.getMessage());
+            }
+        }
+        List<java.nio.file.Path> roots = new ArrayList<>();
+        if (declared.isEmpty()) {
+            roots.add(moduleDir.resolve(standard));
+        }
+        for (Element resource : declared) {
+            Optional<String> directory = childrenNamed(resource, "directory").stream().map(found -> found.getTextContent().trim()).findFirst();
+            if (directory.isEmpty()) {
+                continue;
+            }
+            java.nio.file.Path root = moduleDir.resolve(directory.get().replace("${project.build.directory}", moduleDir.resolve("target").toString())
+                .replace("${project.basedir}", moduleDir.toString()).replace("${basedir}", moduleDir.toString())).normalize();
+            Optional<String> target = childrenNamed(resource, "targetPath").stream().map(found -> found.getTextContent().trim()).findFirst()
+                .filter(path -> !path.isEmpty() && !path.equals("."));
+            if (target.isPresent()) {
+                java.nio.file.Path under = java.nio.file.Path.of(target.get());
+                if (!root.endsWith(under)) {
+                    log.warn("{}: resources of {} are copied to {}, which the test runner's classpath cannot name; left out", pomXml, root,
+                        target.get());
+                    continue;
+                }
+                for (int i = 0; i < under.getNameCount(); i++) {
+                    root = root.getParent();
+                }
+            }
+            roots.add(root);
+        }
+        roots.removeIf(root -> !Files.isDirectory(root));
+        return roots;
+    }
+
+    private static List<Element> childrenNamed(Element parent, String name) {
+        List<Element> found = new ArrayList<>();
+        NodeList kids = parent.getChildNodes();
+        for (int i = 0; i < kids.getLength(); i++) {
+            if (kids.item(i) instanceof Element child && name.equals(child.getTagName())) {
+                found.add(child);
+            }
+        }
+        return found;
+    }
 }

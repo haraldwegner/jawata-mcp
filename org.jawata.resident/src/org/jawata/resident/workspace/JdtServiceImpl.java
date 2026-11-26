@@ -377,7 +377,7 @@ public class JdtServiceImpl implements IJdtService {
                     projectsByKey.put(known.projectKey(), new LoadedProject(known.projectKey(), root, imported.javaProject(), known.searchService(),
                         known.pathUtils(), known.loadedAt(), projectImporter.countSourceFiles(root, declared),
                         projectImporter.findPackages(root, declared).size(), projectImporter.findPackages(root, declared), known.buildSystem(),
-                        imported.unresolved()));
+                        imported.unresolved(), projectImporter.resourceRoots(root)));
                 } catch (CoreException | RuntimeException cannotDerive) {
                     log.warn("Cannot re-derive the model of project '{}': {}", known.projectKey(), cannotDerive.getMessage());
                 }
@@ -527,7 +527,7 @@ public class JdtServiceImpl implements IJdtService {
                 project.projectKey(), project.projectRoot(), jp,
                 project.searchService(), project.pathUtils(), project.loadedAt(),
                 project.sourceFileCount(), project.packageCount(),
-                project.packages(), project.buildSystem(), wire.unresolved()));
+                project.packages(), project.buildSystem(), wire.unresolved(), project.resourceRoots()));
         }
     }
 
@@ -624,7 +624,7 @@ public class JdtServiceImpl implements IJdtService {
 
         LoadedProject loaded = new LoadedProject(
             key, absRoot, jp, search, utils, Instant.now(),
-            fileCount, pkgList.size(), pkgList, detected, imported.unresolved()
+            fileCount, pkgList.size(), pkgList, detected, imported.unresolved(), projectImporter.resourceRoots(absRoot)
         );
         projectsByKey.put(key, loaded);
         if (declared != null) {

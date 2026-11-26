@@ -99,8 +99,13 @@ public final class RunnerClasspath {
         }
     }
 
-    /** Tools + project classpath, engine-filtered. */
-    public static Assembled assemble(IJavaProject project, boolean includeTestNgEngine) {
+    /**
+     * Tools, then the project's resource folders, then its classpath, engine-filtered.
+     *
+     * @param resourceRoots the folders the project's tests read their files from; ahead of the compiled output and the libraries, so a
+     *                      file changed in the source is the one a test reads
+     */
+    public static Assembled assemble(IJavaProject project, boolean includeTestNgEngine, List<Path> resourceRoots) {
         List<Path> tools;
         try {
             tools = toolchainJars(includeTestNgEngine);
@@ -138,6 +143,7 @@ public final class RunnerClasspath {
         }
 
         List<Path> cp = new ArrayList<>(tools);
+        cp.addAll(resourceRoots);
         cp.addAll(projectCp);
         return Assembled.of(cp);
     }

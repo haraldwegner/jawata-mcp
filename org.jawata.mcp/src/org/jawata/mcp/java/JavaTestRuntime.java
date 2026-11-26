@@ -46,7 +46,7 @@ public final class JavaTestRuntime implements TestRuntime {
         if (project == null) {
             return new RunnerSpec(java.util.List.of(), "no project named " + projectName + " is loaded");
         }
-        RunnerClasspath.Assembled assembled = RunnerClasspath.assemble(project, includeTestNg);
+        RunnerClasspath.Assembled assembled = RunnerClasspath.assemble(project, includeTestNg, loadedNamed(projectName).resourceRoots());
         return new RunnerSpec(assembled.isRefused() ? java.util.List.of() : assembled.classpath, assembled.refusalReason);
     }
 

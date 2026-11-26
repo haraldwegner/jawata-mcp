@@ -36,6 +36,9 @@ import java.util.List;
  * @param packages           Package list (for health_check response).
  * @param buildSystem        Detected build system (Maven / Gradle / Bazel /
  *                           UNKNOWN).
+ * @param unresolved         The requirements the load could not resolve.
+ * @param resourceRoots      The folders the project's tests read their files from,
+ *                           which the test runner puts on its classpath.
  */
 public record LoadedProject(
     String projectKey,
@@ -48,7 +51,7 @@ public record LoadedProject(
     int packageCount,
     List<String> packages,
     BuildSystem buildSystem,
-    List<org.jawata.core.project.UnresolvedRequirement> unresolved
+    List<org.jawata.core.project.UnresolvedRequirement> unresolved, java.util.List<java.nio.file.Path> resourceRoots
 ) {
     /**
      * EMPTY, never null. A project that resolved everything and a project
@@ -57,6 +60,7 @@ public record LoadedProject(
      */
     public LoadedProject {
         unresolved = unresolved == null ? List.of() : List.copyOf(unresolved);
+        resourceRoots = List.copyOf(resourceRoots);
     }
 
     /**
@@ -82,5 +86,9 @@ public record LoadedProject(
         } catch (Exception e) {
             return 0;
         }
+    }
+
+    public LoadedProject(String projectKey, Path projectRoot, IJavaProject javaProject, SearchService searchService, HostPaths pathUtils, Instant loadedAt, int sourceFileCount, int packageCount, List<String> packages, BuildSystem buildSystem, List<org.jawata.core.project.UnresolvedRequirement> unresolved) {
+        this(projectKey, projectRoot, javaProject, searchService, pathUtils, loadedAt, sourceFileCount, packageCount, packages, buildSystem, unresolved, java.util.List.of());
     }
 }
