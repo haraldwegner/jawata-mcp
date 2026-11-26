@@ -35,11 +35,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      skip: ${{ steps.plan.outputs.skip }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -86,7 +85,27 @@ jobs:
         with:
           path: _site
 
+  # A job of its own, as in GitHub's own Pages workflows. Run right after the upload in the same job, the deploy step asked for the upload
+  # before GitHub listed it and found nothing (2026-11-26, three runs in a row; actions/deploy-pages#451). It also tries once more after a
+  # wait: the failure comes before any deployment is created, so a second try is safe.
+  deploy:
+    needs: build
+    if: needs.build.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_again.outputs.page_url }}
+    steps:
       - name: Deploy
         id: deployment
-        if: steps.plan.outputs.skip != 'true'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+
+      - name: Wait before trying the deploy again
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 30
+
+      - name: Deploy, second try
+        id: deployment_again
+        if: steps.deployment.outcome == 'failure'
         uses: actions/deploy-pages@v4
