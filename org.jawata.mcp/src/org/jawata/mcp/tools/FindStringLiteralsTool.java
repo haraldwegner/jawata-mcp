@@ -112,18 +112,26 @@ public class FindStringLiteralsTool extends AbstractTool {
                 }
                 scan.examined();
                 String formatted = service.getPathUtils().formatPath(path);
-                List<StringLiteral> literals = new ArrayList<>();
+                List<org.eclipse.jdt.core.dom.Expression> literals = new ArrayList<>();
                 ast.accept(new ASTVisitor() {
                     @Override
                     public boolean visit(StringLiteral node) {
                         literals.add(node);
                         return true;
                     }
+
+                    // 28h z148: a text block is a string like any other; a tool description written as one was invisible to this search.
+                    @Override
+                    public boolean visit(org.eclipse.jdt.core.dom.TextBlock node) {
+                        literals.add(node);
+                        return true;
+                    }
                 });
-                for (StringLiteral lit : literals) {
+                for (org.eclipse.jdt.core.dom.Expression lit : literals) {
                     String value;
                     try {
-                        value = lit.getLiteralValue();
+                        value = lit instanceof org.eclipse.jdt.core.dom.TextBlock block ? block.getLiteralValue()
+                            : ((StringLiteral) lit).getLiteralValue();
                     } catch (Exception e) {
                         continue;   // malformed literal — skip
                     }

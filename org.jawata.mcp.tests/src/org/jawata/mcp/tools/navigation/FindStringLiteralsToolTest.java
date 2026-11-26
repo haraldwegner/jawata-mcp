@@ -28,12 +28,13 @@ class FindStringLiteralsToolTest {
     @RegisterExtension
     TestProjectHelper helper = new TestProjectHelper();
 
+    private JdtServiceImpl service;
     private FindStringLiteralsTool tool;
     private ObjectMapper mapper;
 
     @BeforeEach
     void setUp() throws Exception {
-        JdtServiceImpl service = helper.loadProjectCopy("compile-clean");
+        service = helper.loadProjectCopy("compile-clean");
         tool = new FindStringLiteralsTool(() -> service);
         mapper = new ObjectMapper();
     }
@@ -74,6 +75,21 @@ class FindStringLiteralsToolTest {
     @DisplayName("no match: an absent literal returns zero matches")
     void noMatch_returnsEmpty() {
         assertEquals(0, matches(run("zzz-no-such-literal-anywhere", false)).size());
+    }
+
+    @Test
+    @DisplayName("28h z148: a string written as a text block is searched like any other, and answered at the line it starts on")
+    void aTextBlockIsSearched() throws Exception {
+        java.nio.file.Path source = service.allProjects().iterator().next().projectRoot().resolve("src/main/java/com/example/Blocked.java");
+        java.nio.file.Files.createDirectories(source.getParent());
+        java.nio.file.Files.writeString(source,
+            "package com.example;\n\nclass Blocked {\n    static final String NOTE = \"\"\"\n        a wall-clock note\n        \"\"\";\n}\n");
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+
+        List<Map<String, Object>> ms = matches(run("wall-clock note", false));
+
+        assertEquals(1, ms.size(), "the text block was not searched: " + ms);
+        assertEquals(4, ((Number) ms.get(0).get("line")).intValue(), String.valueOf(ms.get(0)));
     }
 
     @Test
