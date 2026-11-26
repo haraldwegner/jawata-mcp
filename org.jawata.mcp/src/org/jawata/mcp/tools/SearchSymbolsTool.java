@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.jdt.core.IField;
 import org.eclipse.jdt.core.IJavaElement;
@@ -120,23 +121,13 @@ public class SearchSymbolsTool extends AbstractTool {
             // and the project's own classes never enter it — ranking after the
             // fact can't fix what was never fetched.
             int window = offset + maxResults + 10;
-            List<SearchMatch> matches = new ArrayList<>(service.getSearchService()
-                .searchSymbolsInSource(query, searchFor, window));
-            if (matches.size() < window) {
-                matches.addAll(service.getSearchService()
-                    .searchSymbols(query, searchFor, window));
-            }
+            List<SearchMatch> matches = matching(service, query, searchFor, window);
 
             // Sprint 22a P2 rider: a bare (no-wildcard) query that finds nothing
             // retries as a substring match — "Recall" then finds ExperienceRecall,
             // "idget" finds Widget. Explicit wildcards are respected as given.
             if (matches.isEmpty() && query.indexOf('*') < 0 && query.indexOf('?') < 0) {
-                matches = new ArrayList<>(service.getSearchService()
-                    .searchSymbolsInSource("*" + query + "*", searchFor, window));
-                if (matches.size() < window) {
-                    matches.addAll(service.getSearchService()
-                        .searchSymbols("*" + query + "*", searchFor, window));
-                }
+                matches = matching(service, "*" + query + "*", searchFor, window);
             }
 
             // Convert the whole fetched window (bounded above by
@@ -409,6 +400,23 @@ public class SearchSymbolsTool extends AbstractTool {
         // entries this prevents false-positive merging across different files.
         Object fp = r.get("filePath");
         return kind + "::" + name + "@" + fp;
+    }
+
+    /**
+     * The matches of one kind, the project's own source first. With no kind (28h z152): types as for any kind, then the methods and fields
+     * of the project's source, private ones included; library members are searched only when a member kind is named.
+     */
+    private static List<SearchMatch> matching(IJdtService service, String pattern, Integer searchFor, int window) throws CoreException {
+        Integer kind = searchFor != null ? searchFor : Integer.valueOf(IJavaSearchConstants.TYPE);
+        List<SearchMatch> matches = new ArrayList<>(service.getSearchService().searchSymbolsInSource(pattern, kind, window));
+        if (matches.size() < window) {
+            matches.addAll(service.getSearchService().searchSymbols(pattern, kind, window));
+        }
+        if (searchFor == null) {
+            matches.addAll(service.getSearchService().searchSymbolsInSource(pattern, IJavaSearchConstants.METHOD, window));
+            matches.addAll(service.getSearchService().searchSymbolsInSource(pattern, IJavaSearchConstants.FIELD, window));
+        }
+        return matches;
     }
 
     private Integer getSearchType(String kind) {

@@ -74,6 +74,17 @@ class SearchSymbolsToolTest {
     }
 
     @Test
+    @DisplayName("28h z152: a search without a kind finds methods, private ones too, and fields, not only types")
+    void aSearchWithoutKindFindsMembers() {
+        List<Map<String, Object>> method = getResults(getData(tool.execute(objectMapper.createObjectNode().put("query", "unusedPrivateMethod"))));
+        List<Map<String, Object>> type = getResults(getData(tool.execute(objectMapper.createObjectNode().put("query", "Calculator"))));
+
+        assertTrue(method.stream().anyMatch(r -> "unusedPrivateMethod".equals(r.get("name")) && "Method".equals(r.get("kind"))),
+            "THE CLAIM: the private method was not found: " + method);
+        assertTrue(type.stream().anyMatch(r -> "com.example.Calculator".equals(r.get("qualifiedName"))), "CONTROL: types are still found");
+    }
+
+    @Test
     @DisplayName("Trailing wildcard pattern matches correctly")
     void trailingWildcard_matchesCorrectly() {
         ObjectNode args = objectMapper.createObjectNode();
