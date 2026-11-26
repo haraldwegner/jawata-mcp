@@ -2874,7 +2874,7 @@
      "type": "string"
     },
     "hirer": {
-     "description": "The seat issuing the brief. Named on the record, so a run can be attributed to whoever asked for it.",
+     "description": "The seat issuing the brief. Leave it out: a hired seat and the chat's main are known by their session. Required only from a caller the engine does not know.",
      "type": "string"
     },
     "instructionsFrom": {
@@ -2890,11 +2890,11 @@
      "type": "string"
     },
     "seat": {
-     "description": "The seat being hired. Named on the record beside the hirer.",
+     "description": "The seat being hired, by name, such as test-manager. Named on the record beside the hirer.",
      "type": "string"
     },
     "seatFile": {
-     "description": "Path to the HIRED seat's markdown. Its frontmatter is the hire \u2014 the brain, the model and the attachable tools. Required and never discovered: where a client keeps its seat files is not the resident's to guess, and the caller executing a seat already knows.",
+     "description": "Only for a seat that is not in the engine's seats folder: the path to its markdown, whose frontmatter is the hire \u2014 the brain, the model and the attachable tools. Left out, the engine reads the file of the seat's name from its own seats folder.",
      "type": "string"
     },
     "steps": {
@@ -2922,9 +2922,7 @@
     }
    },
    "required": [
-    "hirer",
     "seat",
-    "seatFile",
     "brief",
     "steps",
     "workingDirectory"

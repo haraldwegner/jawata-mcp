@@ -3220,6 +3220,55 @@ class HireToolTest {
         }
     }
 
+    /** A seats folder holding the cataloguer's file, as a studio-started engine is given one, and the settings that name it. */
+    private Map<String, String> settingsWithASeatsFolder() throws Exception {
+        Path seats = Files.createTempDirectory(dir, "seats-");
+        Files.writeString(seats.resolve("cataloguer.md"), CATALOGUER_SEAT);
+        return Map.of(org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING, seats.toString(),
+            SettingKeys.SEATS_BRAINS.name(), "cataloguer=claude-code/claude-sonnet-5");
+    }
+
+    @Test
+    @DisplayName("28h z88: a hire names the seat and the engine reads its file from its own seats folder; a name no file carries is refused with the names")
+    void aHireNamesTheSeatAndTheEngineFindsItsFile() throws Exception {
+        StandsIn processes = new StandsIn(host, aBrainThatAnswers());
+        Map<String, String> settings = settingsWithASeatsFolder();
+
+        ToolResponse named = toolWithSettings(processes, settings).execute(sealedHireArgs("cataloguer"));
+        ToolResponse unknown = toolWithSettings(aHostThatMustNotSpawn(), settings).execute(sealedHireArgs("nobody"));
+
+        assertAll(
+            () -> assertTrue(named.isSuccess(), String.valueOf(named.getError())),
+            () -> assertFalse(processes.asked().isEmpty(), "no brain was started for the named seat"),
+            () -> assertFalse(unknown.isSuccess(), "a seat no file carries was hired"),
+            () -> assertTrue(String.valueOf(unknown.getError()).contains("no seat named 'nobody'") && String.valueOf(unknown.getError()).contains("cataloguer"),
+                String.valueOf(unknown.getError())));
+    }
+
+    @Test
+    @DisplayName("28h z88: a hire that names no hirer is made by the caller's own seat; a caller the engine does not know must still name one")
+    void theHirerIsTakenFromTheCallingSession() throws Exception {
+        HireRegistry hires = HireRegistry.shared();
+        try (HireRegistry.Registration lead = hires.begin("chief-engineer", "z88-brief", "")) {
+            hires.planOpened("plan-z88-lead");
+            Map<String, String> settings = settingsWithASeatsFolder();
+            ObjectNode noHirer = sealedHireArgs("cataloguer");
+            noHirer.remove("hirer");
+            StandsIn processes = new StandsIn(host, aBrainThatAnswers());
+            HireTool known = toolWithSettings(processes, settings);
+            HireTool unknownCaller = toolWithSettings(aHostThatMustNotSpawn(), settings);
+
+            ToolResponse byTheLead = org.jawata.mcp.models.CallerIdentity.supplied("plan-z88-lead").speaking(() -> known.execute(noHirer));
+            ToolResponse byNobody = unknownCaller.execute(noHirer);
+
+            assertAll(
+                () -> assertTrue(byTheLead.isSuccess(), String.valueOf(byTheLead.getError())),
+                () -> assertFalse(processes.asked().isEmpty(), "no brain was started"),
+                () -> assertFalse(byNobody.isSuccess(), "a hire with no hirer from an unknown caller ran"),
+                () -> assertTrue(String.valueOf(byNobody.getError()).contains("hirer"), String.valueOf(byNobody.getError())));
+        }
+    }
+
     /** A hire tool that runs the hire to its end, whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new Finishing(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),

@@ -244,8 +244,10 @@ public class HireTool extends NeutralTool {
         return """
             One seat hires another to do a slice of work, and the run is recorded.
 
-            USAGE: hire(hirer="pm", seat="cataloguer", seatFile="...", brief="...", steps=[...],
-                        workingDirectory="...")
+            USAGE: hire(seat="cataloguer", brief="...", steps=[...], workingDirectory="...")
+
+            NAME THE SEAT. The engine reads that seat's file from its own seats folder; seatFile is only for a seat that is
+            not there. hirer is known from your session; pass it only if the engine says it does not know you.
 
             WHICH EXECUTABLE a brain is cannot be set per call — only per seat, by its own file.
             This tool names no binary, because the dialect owns the whole command line.
@@ -278,15 +280,14 @@ public class HireTool extends NeutralTool {
     public Map<String, Object> getInputSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("hirer", Map.of("type", "string",
-            "description", "The seat issuing the brief. Named on the record, so a run can be"
-                + " attributed to whoever asked for it."));
+            "description", "The seat issuing the brief. Leave it out: a hired seat and the chat's main are known by their session. Required"
+                + " only from a caller the engine does not know."));
         properties.put("seat", Map.of("type", "string",
-            "description", "The seat being hired. Named on the record beside the hirer."));
+            "description", "The seat being hired, by name, such as test-manager. Named on the record beside the hirer."));
         properties.put("seatFile", Map.of("type", "string",
-            "description", "Path to the HIRED seat's markdown. Its frontmatter is the hire — the"
-                + " brain, the model and the attachable tools. Required and never"
-                + " discovered: where a client keeps its seat files is not the resident's to"
-                + " guess, and the caller executing a seat already knows."));
+            "description", "Only for a seat that is not in the engine's seats folder: the path to its markdown, whose frontmatter is the"
+                + " hire — the brain, the model and the attachable tools. Left out, the engine reads the file of the seat's name from its"
+                + " own seats folder."));
         properties.put("brief", Map.of("type", "string",
             "description", "The instruction the hired brain is given, verbatim."));
         properties.put("steps", Map.of("type", "array",
@@ -327,7 +328,7 @@ public class HireTool extends NeutralTool {
             "type", "object",
             "properties", properties,
             "required",
-            List.of("hirer", "seat", "seatFile", "brief", "steps", "workingDirectory"));
+            List.of("seat", "brief", "steps", "workingDirectory"));
     }
 
     /**
@@ -515,7 +516,7 @@ public class HireTool extends NeutralTool {
                 answer.put("hireId", plan);
                 answer.put("name", name);
                 answer.put("state", "running");
-                answer.put("hirer", getStringParam(arguments, "hirer"));
+                answer.put("hirer", getStringParam(completed(arguments, call.getServing()), "hirer"));
                 answer.put("hired", getStringParam(arguments, "seat"));
                 // A client that runs this server without the jawata chat has no turn the report can come back in (28h Stage 27, z30): it collects it.
                 // The principal of the chat has one (28h z62): it is told to end its turn, and never to wait in the foreground.
@@ -550,7 +551,38 @@ public class HireTool extends NeutralTool {
         }
     }
 
-    ToolResponse runAndKeep(JsonNode arguments, HireCall call) {
+    /**
+     * 28h z88: what a hire may leave out, filled in from what the engine knows. A hire that names no hirer is made by the caller's own seat,
+     * and one that names no seat file gets the file of that name in the engine's own seats folder, so no agent has to guess where its own
+     * program keeps a copy. A sealed engine hires by name already and is left alone; what cannot be filled in is left for the hire to refuse.
+     */
+    private JsonNode completed(JsonNode arguments, Optional<org.jawata.mcp.models.CallerIdentity> serving) {
+        if (!(arguments instanceof com.fasterxml.jackson.databind.node.ObjectNode given)) {
+            return arguments;
+        }
+        com.fasterxml.jackson.databind.node.ObjectNode complete = given.deepCopy();
+        if (given.path("hirer").asText("").isBlank()) {
+            serving.flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id())).ifPresent(seat -> complete.put("hirer", seat));
+        }
+        String seat = given.path("seat").asText("");
+        if (given.path("seatFile").asText("").isBlank() && !sealedSeats() && seat.matches("[a-z][a-z0-9-]*")) {
+            seatsFolder().map(folder -> folder.resolve(seat + ".md")).filter(Files::isRegularFile)
+                .ifPresent(file -> complete.put("seatFile", file.toString()));
+        }
+        return complete;
+    }
+
+    private boolean sealedSeats() {
+        return settings.get().get(SettingKeys.SEATS_SEALED.name()).map(Boolean::parseBoolean).orElse(false);
+    }
+
+    private Optional<Path> seatsFolder() {
+        return settings.get().get(org.jawata.mcp.execution.ScheduledHires.SEATS_SETTING).filter(folder -> !folder.isBlank()).map(Path::of);
+    }
+
+    ToolResponse runAndKeep(JsonNode given, HireCall asked) {
+        JsonNode arguments = completed(given, asked.getServing());
+        HireCall call = new HireCall(arguments, asked.getServing());
         ToolResponse response = hire(call);
         java.util.Optional<HireRegistry.Ended> ended = HireRegistry.shared().takeEnded();
         // Every exit of the hire, a refusal included, is kept for the agent face, which cannot rely on a brain echoing the answer back.
@@ -637,8 +669,20 @@ public class HireTool extends NeutralTool {
         }
         // D15 (Sprint 28k, Amendment 3): an engine whose host keeps its seats sealed (Eclipse) hires by NAME from the seats sealed in it, with
         // on, off, brain and workflow from the seat settings; a seat file named by path is refused there, so no agent can hand a hire a seat
-        // it wrote. Every other engine reads the seat file the caller names, as before.
-        boolean sealedSeats = settings.get().get(SettingKeys.SEATS_SEALED.name()).map(Boolean::parseBoolean).orElse(false);
+        // it wrote. Every other engine reads the file the caller names, or the one of the seat's name in its seats folder (28h z88).
+        boolean sealedSeats = sealedSeats();
+        String seatName = call.getArguments().path("seat").asText("");
+        if (!sealedSeats && !seatName.isBlank() && call.getArguments().path("seatFile").asText("").isBlank() && seatsFolder().isPresent()) {
+            List<String> held;
+            try (var files = Files.list(seatsFolder().get())) {
+                held = files.map(file -> file.getFileName().toString()).filter(name -> name.endsWith(".md"))
+                    .map(name -> name.substring(0, name.length() - 3)).sorted().toList();
+            } catch (IOException unreadable) {
+                held = List.of();
+            }
+            return ToolResponse.error("INVALID_PARAMETER", "no seat named '" + seatName + "' is in the engine's seats folder, which holds " + held,
+                "name one of them, or pass seatFile for a seat that is not there");
+        }
         for (String required : sealedSeats ? List.of("hirer", "seat", "brief", "workingDirectory") : List.of("hirer", "seat", "seatFile", "brief", "workingDirectory")) {
             ToolResponse missing = requireParam(call.getArguments(), required);
             if (missing != null) {
