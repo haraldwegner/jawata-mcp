@@ -230,12 +230,16 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         extras.put("totalImports", organized.totalImports());
         extras.put("importsAdded", organized.added());
         extras.put("importsRemoved", organized.removed());
-        extras.put("organizedImportBlock", previewImportBlock(cu, organized.edit()));
+        String importBlock = previewImportBlock(cu, organized.edit());
+        // 28h z121: an import moved into order is a changed line, so it is counted and said.
+        int reordered = reordered(cu.getSource(), importBlock);
+        extras.put("importsReordered", reordered);
+        extras.put("organizedImportBlock", importBlock);
         putDeclined(extras, organized.declined());
         putUnresolved(extras, organized.unresolved());
 
         String summary = "organize imports (" + organized.added() + " added, "
-            + organized.removed() + " removed)";
+            + organized.removed() + " removed, " + reordered + " reordered)";
         log.debug("organize_imports via JDT OrganizeImportsOperation: {}", summary);
         return Preparation.of(change, summary, extras);
     }
@@ -428,9 +432,20 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         // skips is RECORDED, name, line and candidates, so the answer can say so (REL44-13).
         List<Map<String, Object>> declined = new ArrayList<>();
         OrganizeImportsOperation.IChooseImportQuery skipAmbiguous = (openChoices, ranges) -> {
+            List<TypeNameMatch> chosen = new ArrayList<>();
             for (int i = 0; i < openChoices.length; i++) {
-                TypeNameMatch[] candidates = openChoices[i];
-                if (candidates == null || candidates.length == 0) {
+                if (openChoices[i] == null) {
+                    continue;
+                }
+                // 28h z121: a build tool's shaded copy of a library is never the type meant, so it is not a candidate.
+                TypeNameMatch[] candidates = java.util.Arrays.stream(openChoices[i])
+                    .filter(candidate -> !candidate.getFullyQualifiedName().contains(".internal.impldep."))
+                    .toArray(TypeNameMatch[]::new);
+                if (candidates.length == 1) {
+                    chosen.add(candidates[0]);
+                    continue;
+                }
+                if (candidates.length == 0) {
                     continue;
                 }
                 Map<String, Object> entry = new LinkedHashMap<>();
@@ -445,7 +460,7 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
                 entry.put("candidates", names);
                 declined.add(entry);
             }
-            return new TypeNameMatch[0];
+            return chosen.toArray(new TypeNameMatch[0]);
         };
         OrganizeImportsOperation operation = new OrganizeImportsOperation(
             cu, ast, /* ignoreLowerCaseNames */ true, /* save */ false,
@@ -550,6 +565,29 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
             default:
                 return null;
         }
+    }
+
+    /** How many of the imports kept by an organize moved: those not in the longest run that kept its order. */
+    private static int reordered(String source, String organizedBlock) {
+        List<String> before = importLines(source);
+        List<String> after = importLines(organizedBlock);
+        before.retainAll(after);
+        after.retainAll(before);
+        int[] longest = new int[after.size() + 1];
+        for (String line : before) {
+            int diagonal = 0;
+            for (int j = 1; j <= after.size(); j++) {
+                int above = longest[j];
+                longest[j] = line.equals(after.get(j - 1)) ? diagonal + 1 : Math.max(above, longest[j - 1]);
+                diagonal = above;
+            }
+        }
+        return before.size() - longest[after.size()];
+    }
+
+    private static List<String> importLines(String text) {
+        return text.lines().map(String::trim).filter(line -> line.startsWith("import ")).distinct()
+            .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
     }
 
     /** The organized import block, for the response: apply the edit to a copy. */

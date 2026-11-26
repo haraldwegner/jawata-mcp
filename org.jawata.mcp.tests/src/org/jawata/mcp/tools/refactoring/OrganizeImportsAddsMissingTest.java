@@ -94,6 +94,37 @@ class OrganizeImportsAddsMissingTest {
     }
 
     @Test
+    @DisplayName("28h z121: imports moved into order are counted and said, and a copy a build tool shades is not offered")
+    @SuppressWarnings("unchecked")
+    void movedImportsAreSaidAndShadedCopiesNotOffered() throws Exception {
+        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
+        Path shaded = service.getProjectRoot().resolve("src/main/java/org/gradle/internal/impldep/com/google/base");
+        Files.createDirectories(shaded);
+        Files.writeString(shaded.resolve("Optional.java"), "package org.gradle.internal.impldep.com.google.base;\n\npublic class Optional<T> {\n}\n");
+        Path file = write(service, "Moved", """
+            package com.example;
+
+            import java.util.List;
+            import java.util.ArrayList;
+
+            public class Moved {
+                List<String> names = new ArrayList<>();
+                Optional<String> first;
+            }
+            """);
+
+        ToolResponse response = organize(service, file);
+
+        assertTrue(response.isSuccess(), String.valueOf(response.getError()));
+        Map<String, Object> data = (Map<String, Object>) response.getData();
+        String after = Files.readString(file);
+        assertAll(
+            () -> assertTrue(after.contains("import java.util.Optional;"), "THE CLAIM: java.util.Optional was not chosen: " + data),
+            () -> assertFalse(after.contains("impldep"), "a shaded copy was imported: " + after),
+            () -> assertEquals(1, data.get("importsReordered"), "the moved import is not counted: " + data));
+    }
+
+    @Test
     @DisplayName("mcp#16: an AMBIGUOUS type is skipped rather than guessed")
     void ambiguityIsNeverGuessed() throws Exception {
         // `List` is java.util.List AND java.awt.List. The tool hands JDT a query that
