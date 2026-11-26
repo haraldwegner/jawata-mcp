@@ -119,7 +119,7 @@ class AcpServerAutocontinueTest {
         /** A connection whose boundary reads {@code ledger}, or the test's own {@link Plan} when that is null. */
         Wire(StepLedger ledger) {
             server = new AcpServer(brain, List::of, message -> sent.add(JSON.valueToTree(message)),
-                new TurnBoundary(ledger == null ? plan : ledger, new AttemptLedger(3)), AgentRecorder.off(), null);
+                new TurnBoundary(ledger == null ? plan : ledger, new AttemptLedger()), AgentRecorder.off(), null);
             opened.add(this);
             JsonNode created = send("session/new", JSON.createObjectNode().put("cwd", "/workspace"));
             session = created.path("result").path("sessionId").asText();

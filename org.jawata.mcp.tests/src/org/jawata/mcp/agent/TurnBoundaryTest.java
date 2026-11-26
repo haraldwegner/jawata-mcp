@@ -52,8 +52,8 @@ class TurnBoundaryTest {
         };
     }
 
-    private static TurnBoundary boundaryOver(PlanLedger ledger, int tries) {
-        return new TurnBoundary(new ToolStepLedger(toolsOver(ledger)), new AttemptLedger(tries));
+    private static TurnBoundary boundaryOver(PlanLedger ledger) {
+        return new TurnBoundary(new ToolStepLedger(toolsOver(ledger)), new AttemptLedger());
     }
 
     private static PrincipalSession session(boolean autonomy) {
@@ -119,11 +119,11 @@ class TurnBoundaryTest {
         PlanLedger ledger = ledgerWithTwoSteps();
         PrincipalSession person = session(true);
 
-        assertEquals(TurnBoundary.Kind.RESUME, boundaryOver(ledger, 3).atTurnEnd(person).kind(), "CONTROL: a waiting step must not be forwarded");
-        assertEquals(TurnBoundary.Kind.FORWARD, boundaryOver(new PlanLedger(), 3).atTurnEnd(person).kind());
+        assertEquals(TurnBoundary.Kind.RESUME, boundaryOver(ledger).atTurnEnd(person).kind(), "CONTROL: a waiting step must not be forwarded");
+        assertEquals(TurnBoundary.Kind.FORWARD, boundaryOver(new PlanLedger()).atTurnEnd(person).kind());
 
         pass(ledger, "compile_workspace", "run_tests");
-        assertEquals(TurnBoundary.Kind.FORWARD, boundaryOver(ledger, 3).atTurnEnd(person).kind(), "both gates passed and the turn was still held");
+        assertEquals(TurnBoundary.Kind.FORWARD, boundaryOver(ledger).atTurnEnd(person).kind(), "both gates passed and the turn was still held");
     }
 
     @Test
@@ -131,11 +131,11 @@ class TurnBoundaryTest {
     void aClosedPlanNoLongerHoldsTheTurnOrShowsInPlanSteps() {
         PlanLedger ledger = ledgerWithTwoSteps();
         PrincipalSession person = session(true);
-        assertEquals(TurnBoundary.Kind.RESUME, boundaryOver(ledger, 3).atTurnEnd(person).kind(), "CONTROL: while open, its waiting step holds the turn");
+        assertEquals(TurnBoundary.Kind.RESUME, boundaryOver(ledger).atTurnEnd(person).kind(), "CONTROL: while open, its waiting step holds the turn");
 
         ledger.close(ledger.pending().get(0).id());
 
-        assertEquals(TurnBoundary.Kind.FORWARD, boundaryOver(ledger, 3).atTurnEnd(person).kind(), "a closed plan still held the turn");
+        assertEquals(TurnBoundary.Kind.FORWARD, boundaryOver(ledger).atTurnEnd(person).kind(), "a closed plan still held the turn");
         assertEquals(0, JSON.valueToTree(new PlanStepsTool(ledger).execute(JSON.createObjectNode()).getData()).path("pending").size(),
             "a closed plan still shows in plan_steps");
     }
@@ -143,49 +143,49 @@ class TurnBoundaryTest {
     @Test
     @DisplayName("while the person is at the keyboard a waiting step is reported by name with its gate, and nobody resumes it")
     void aWaitingStepWithTheGrantOffIsReported() {
-        TurnBoundary.Verdict verdict = boundaryOver(ledgerWithTwoSteps(), 3).atTurnEnd(session(false));
+        TurnBoundary.Verdict verdict = boundaryOver(ledgerWithTwoSteps()).atTurnEnd(session(false));
 
         assertEquals(TurnBoundary.Kind.REPORT, verdict.kind());
         assertTrue(verdict.text().contains("step 0") && verdict.text().contains("compile_workspace"), verdict.text());
     }
 
     @Test
-    @DisplayName("under a grant the loop resumes the brain up to the ceiling, then refuses and names the free check, until the person speaks")
-    void theLoopRefusesTheArrivalAfterTheCeiling() {
-        TurnBoundary boundary = boundaryOver(ledgerWithTwoSteps(), 3);
+    @DisplayName("28h z132: under a grant every resumption is made and numbered, none is refused for its number, and the person's word restarts the count")
+    void everyResumptionIsCountedAndNoneIsRefused() {
+        TurnBoundary boundary = boundaryOver(ledgerWithTwoSteps());
         PrincipalSession person = session(true);
         List<TurnBoundary.Kind> kinds = new ArrayList<>();
         TurnBoundary.Verdict last = null;
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             last = boundary.atTurnEnd(person);
             kinds.add(last.kind());
         }
 
-        assertEquals(List.of(TurnBoundary.Kind.RESUME, TurnBoundary.Kind.RESUME, TurnBoundary.Kind.RESUME, TurnBoundary.Kind.REPORT), kinds);
-        assertTrue(last.text().contains("compile_workspace") && last.text().contains("free check"),
-            "the refusal does not name the free check: " + last.text());
+        assertEquals(java.util.Collections.nCopies(5, TurnBoundary.Kind.RESUME), kinds);
+        assertTrue(last.text().contains("resumption 5") && last.text().contains("compile_workspace"),
+            "the count or the gate is not shown: " + last.text());
 
         boundary.personSpoke(person);
-        assertEquals(TurnBoundary.Kind.RESUME, boundary.atTurnEnd(person).kind(), "the person's word did not restart the count");
+        assertTrue(boundary.atTurnEnd(person).text().contains("resumption 1"), "the person's word did not restart the count");
     }
 
     @Test
-    @DisplayName("two sessions waiting on the same step each have their own tries: one session using up the ceiling leaves the other its full count")
+    @DisplayName("two sessions waiting on the same step each count their own resumptions")
     void eachSessionSpendsItsOwnTries() {
-        TurnBoundary boundary = boundaryOver(ledgerWithTwoSteps(), 3);
+        TurnBoundary boundary = boundaryOver(ledgerWithTwoSteps());
         PrincipalSession one = new PrincipalSession("one", "/w", false);
         PrincipalSession two = new PrincipalSession("two", "/w", false);
         one.setAutonomy(Channel.HOST, true);
         two.setAutonomy(Channel.HOST, true);
         for (int i = 0; i < 3; i++) {
-            assertEquals(TurnBoundary.Kind.RESUME, boundary.atTurnEnd(one).kind());
+            boundary.atTurnEnd(one);
         }
-        assertEquals(TurnBoundary.Kind.REPORT, boundary.atTurnEnd(one).kind(), "CONTROL: session one has spent its tries");
+        String ofOne = boundary.atTurnEnd(one).text();
 
         TurnBoundary.Verdict other = boundary.atTurnEnd(two);
 
-        assertEquals(TurnBoundary.Kind.RESUME, other.kind(), "session one's tries were spent against session two: " + other.text());
-        assertTrue(other.text().contains("resumption 1 of 3"), other.text());
+        assertTrue(ofOne.contains("resumption 4 of this step"), "CONTROL: session one is not at its fourth: " + ofOne);
+        assertTrue(other.text().contains("resumption 1 of this step"), "session one's count ran into session two: " + other.text());
     }
 
     @Test
@@ -206,6 +206,28 @@ class TurnBoundaryTest {
 
     // --- the server around it -------------------------------------------------------------------------------------------------
 
+    /**
+     * Ends a fake brain's loop. Nothing refuses a resumption for its number (28h z132), so a fake brain that never passes its step would be
+     * resumed for ever: after the third resumption of a turn the brake reports the step as being worked on, and the turn ends there.
+     */
+    private static final class Brake {
+        private final java.util.concurrent.atomic.AtomicBoolean on = new java.util.concurrent.atomic.AtomicBoolean();
+        private int resumptions;
+
+        /** The fake brain says what it was asked, at each prompt. */
+        synchronized void prompted(String prompt) {
+            resumptions = prompt.contains("This is resumption") ? resumptions + 1 : 0;
+            on.set(resumptions >= 3);
+        }
+
+        TurnBoundary over(PlanLedger ledger) {
+            StepLedger real = new ToolStepLedger(toolsOver(ledger));
+            return new TurnBoundary(session -> real.pending(session).stream()
+                .map(step -> new StepLedger.Pending(step.planId(), step.index(), step.gateTool(), step.inFlight() || on.get())).toList(),
+                new AttemptLedger());
+        }
+    }
+
     /** One agent connection with a brain that answers {@code says}, and optionally flips the person's switch during its first turn. */
     private static final class Run {
 
@@ -217,8 +239,10 @@ class TurnBoundaryTest {
 
         Run(PlanLedger ledger, boolean switchedOnDuringTurn, String says) {
             AcpServer[] self = new AcpServer[1];
+            Brake brake = new Brake();
             AgentBrain brain = (prompt, chunks) -> {
                 brainSaw.add(prompt);
+                brake.prompted(prompt);
                 if (brainSaw.size() > 12) {
                     throw new AssertionError("the loop did not stop: the brain has been prompted " + brainSaw.size() + " times");
                 }
@@ -227,7 +251,7 @@ class TurnBoundaryTest {
                 }
                 chunks.accept(says);
             };
-            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledger, 3), AgentRecorder.off(), null);
+            server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), brake.over(ledger), AgentRecorder.off(), null);
             self[0] = server;
             server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
             session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
@@ -258,9 +282,12 @@ class TurnBoundaryTest {
             return textSaid(said);
         }
 
-        /** Waits for the turn that switching autonomy on starts, which ends by naming the free check once the tries are spent. */
+        /** Waits for the third resumption of the turn that switching autonomy on starts, which the brake then ends. */
         void awaitTurnEnd() throws InterruptedException {
-            awaitSaid(said, "free check");
+            awaitSaid(said, "resumption 3 of this step");
+            for (int i = 0; i < 100 && brainSaw.size() < 4; i++) {
+                Thread.sleep(20);
+            }
         }
     }
 
@@ -277,7 +304,7 @@ class TurnBoundaryTest {
     }
 
     @Test
-    @DisplayName("on the running server, under a grant, a pending step has the brain resumed three times with the state re-asserted, then the free check is named")
+    @DisplayName("on the running server, under a grant, a pending step has the brain resumed with the state re-asserted and each resumption numbered")
     void aGrantedLoopResumesThenStops() {
         Run run = new Run(ledgerWithTwoSteps(), true, "working");
 
@@ -286,7 +313,7 @@ class TurnBoundaryTest {
         assertEquals("end_turn", result.path("result").path("stopReason").asText());
         assertEquals(4, run.brainSaw.size(), "one turn and three resumptions: " + run.brainSaw);
         assertTrue(run.brainSaw.get(1).startsWith("[jawata] autonomy: on"), "the state was not re-asserted: " + run.brainSaw.get(1));
-        assertTrue(run.answer().contains("free check") && run.answer().contains("compile_workspace"), run.answer());
+        assertTrue(run.answer().contains("resumption 3 of this step") && run.answer().contains("compile_workspace"), run.answer());
     }
 
     @Test
@@ -340,9 +367,11 @@ class TurnBoundaryTest {
     void theBrainIsToldOfEveryChangeOfTheGrant() throws InterruptedException {
         List<Boolean> told = new java.util.concurrent.CopyOnWriteArrayList<>();
         List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Brake brake = new Brake();
         AgentBrain brain = new AgentBrain() {
             @Override
             public void answer(String prompt, java.util.function.Consumer<String> chunks) {
+                brake.prompted(prompt);
                 chunks.accept("ok");
             }
 
@@ -352,7 +381,7 @@ class TurnBoundaryTest {
             }
         };
         // a step is open, so the grant the switch gives stands until the person ends it: with none open the engine would end it itself
-        AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps(), 3),
+        AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), brake.over(ledgerWithTwoSteps()),
             AgentRecorder.off(), null);
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
         String session = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
@@ -361,7 +390,7 @@ class TurnBoundaryTest {
 
         server.receive(JsonRpcMessage.request(2, "session/set_config_option",
             JSON.createObjectNode().put("sessionId", session).put("configId", "autonomy").put("value", "on")), Channel.HOST);
-        awaitSaid(said, "free check");
+        awaitSaid(said, "resumption 3 of this step");
         ObjectNode off = JSON.createObjectNode().put("sessionId", session);
         off.putArray("prompt").addObject().put("type", "text").put("text", "/autocontinue-off");
         server.receive(JsonRpcMessage.request(3, "session/prompt", off), Channel.HOST);
@@ -374,9 +403,11 @@ class TurnBoundaryTest {
     void aNewSessionTellsTheBrainItsOwnGrant() throws InterruptedException {
         List<Boolean> told = new java.util.concurrent.CopyOnWriteArrayList<>();
         List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Brake brake = new Brake();
         AgentBrain brain = new AgentBrain() {
             @Override
             public void answer(String prompt, java.util.function.Consumer<String> chunks) {
+                brake.prompted(prompt);
                 chunks.accept("ok");
             }
 
@@ -386,13 +417,13 @@ class TurnBoundaryTest {
             }
         };
         // a step is open, so the first session's grant stands after its switch-on: with none open the engine would end it itself
-        AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps(), 3),
+        AcpServer server = new AcpServer(brain, List::of, message -> said.add(JSON.valueToTree(message)), brake.over(ledgerWithTwoSteps()),
             AgentRecorder.off(), null);
         server.receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
         String first = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
         server.receive(JsonRpcMessage.request(2, "session/set_config_option",
             JSON.createObjectNode().put("sessionId", first).put("configId", "autonomy").put("value", "on")), Channel.HOST);
-        awaitSaid(said, "free check");
+        awaitSaid(said, "resumption 3 of this step");
         told.clear();
 
         ObjectNode side = JSON.createObjectNode().put("cwd", "/w");
@@ -440,11 +471,10 @@ class TurnBoundaryTest {
         assertFalse(run.answer().contains("Autonomy ended"), "a hired agent's prompt ended the grant: " + run.answer());
         assertTrue(run.said.stream().noneMatch(m -> "config_option_update".equals(m.path("params").path("update").path("sessionUpdate").asText())),
             "a hired agent's prompt changed the switch");
-        // the grant stood (so the turn was held on the waiting step, not reported as one nobody resumes), and the tries were not given back
-        // (so the brain was asked once and the loop named the free check at once)
-        assertEquals(5, run.brainSaw.size(), "the hired agent's prompt gave the tries back, or ended the grant: " + run.brainSaw);
+        // the grant stood (so the turn was held on the waiting step and resumed again), and the count was not restarted
+        assertEquals(8, run.brainSaw.size(), "the hired agent's prompt ended the grant: " + run.brainSaw);
         assertEquals("a subagent reports back", run.brainSaw.get(4));
-        assertTrue(run.answer().contains("free check"), "the grant did not stand, or the tries were restarted: " + run.answer());
+        assertTrue(run.answer().contains("resumption 4 of this step"), "the grant did not stand, or the count was restarted: " + run.answer());
 
         run.prompt("/autocontinue-off");
         assertTrue(run.answer().contains("Autonomy ended"), "CONTROL: the person's own /autocontinue-off must still end the grant: " + run.answer());
@@ -457,13 +487,15 @@ class TurnBoundaryTest {
         List<String> mainSaw = new java.util.concurrent.CopyOnWriteArrayList<>();
         List<String> sideSaw = new java.util.concurrent.CopyOnWriteArrayList<>();
         List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Brake brake = new Brake();
         AcpServer server = new AcpServer((prompt, chunks) -> {
             mainSaw.add(prompt);
+            brake.prompted(prompt);
             if (mainSaw.size() > 12) {
                 throw new AssertionError("the loop did not stop: " + mainSaw.size() + " prompts");
             }
             chunks.accept("main working");
-        }, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledger, 3), AgentRecorder.off(),
+        }, List::of, message -> said.add(JSON.valueToTree(message)), brake.over(ledger), AgentRecorder.off(),
             () -> (prompt, chunks) -> {
                 sideSaw.add(prompt);
                 chunks.accept("side answer");
@@ -472,8 +504,11 @@ class TurnBoundaryTest {
         String main = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
         server.receive(JsonRpcMessage.request(2, "session/set_config_option",
             JSON.createObjectNode().put("sessionId", main).put("configId", "autonomy").put("value", "on")), Channel.HOST);
-        // the switch-on starts the main conversation's own turn (28h z99): one turn and three resumptions, which spend its tries
-        awaitSaid(said, "free check");
+        // the switch-on starts the main conversation's own turn (28h z99): one turn and three resumptions
+        awaitSaid(said, "resumption 3 of this step");
+        for (int i = 0; i < 100 && mainSaw.size() < 4; i++) {
+            Thread.sleep(20);
+        }
         assertEquals(4, mainSaw.size(), "CONTROL: the switch-on did not start one turn and its three resumptions: " + mainSaw);
         ObjectNode sideParams = JSON.createObjectNode().put("cwd", "/w");
         sideParams.putObject("_meta").put("jawata/side", true);
@@ -498,9 +533,9 @@ class TurnBoundaryTest {
         build.putArray("prompt").addObject().put("type", "text").put("text", "build it");
         said.clear();
         server.receive(JsonRpcMessage.request(5, "session/prompt", build), Channel.BRAIN);
-        // the grant stood and the tries were as the turn left them: the brain is asked once and the loop names the free check at once
-        assertEquals(5, mainSaw.size(), "the side question gave the tries back or ended the grant: " + mainSaw);
-        assertTrue(textSaid(said).contains("free check"), "the side question ended the grant or restarted the tries: " + textSaid(said));
+        // the grant stood and the count was as the turn left it: the step is resumed again, numbered from where it was
+        assertEquals(8, mainSaw.size(), "the side question ended the grant: " + mainSaw);
+        assertTrue(textSaid(said).contains("resumption 4 of this step"), "the side question ended the grant or restarted the count: " + textSaid(said));
     }
 
     @Test
@@ -509,13 +544,15 @@ class TurnBoundaryTest {
         PlanLedger ledger = ledgerWithTwoSteps();
         List<String> saw = new java.util.concurrent.CopyOnWriteArrayList<>();
         List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Brake brake = new Brake();
         AcpServer server = new AcpServer((prompt, chunks) -> {
             saw.add(prompt);
+            brake.prompted(prompt);
             if (saw.size() > 20) {
                 throw new AssertionError("the loop did not stop: " + saw.size() + " prompts");
             }
             chunks.accept("working");
-        }, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledger, 3), AgentRecorder.off(), null);
+        }, List::of, message -> said.add(JSON.valueToTree(message)), brake.over(ledger), AgentRecorder.off(), null);
         String[] ids = new String[2];
         for (int i = 0; i < 2; i++) {
             said.clear();
@@ -525,15 +562,21 @@ class TurnBoundaryTest {
         server.receive(JsonRpcMessage.request(20, "session/set_config_option",
             JSON.createObjectNode().put("sessionId", ids[0]).put("configId", "autonomy").put("value", "on")), Channel.HOST);
 
-        // the switch-on starts session one's own turn (28h z99): one turn and three resumptions, which run its tries to the ceiling
-        awaitSaid(said, "free check");
-        assertEquals(4, saw.size(), "CONTROL: session one's tries run to the ceiling (one turn, three resumptions): " + saw);
+        // the switch-on starts session one's own turn (28h z99): one turn and three resumptions
+        awaitSaid(said, "resumption 3 of this step");
+        for (int i = 0; i < 100 && saw.size() < 4; i++) {
+            Thread.sleep(20);
+        }
+        assertEquals(4, saw.size(), "CONTROL: the switch-on did not start one turn and three resumptions: " + saw);
 
         server.receive(JsonRpcMessage.request(31, "session/prompt", promptParams(ids[1], "the person speaks in session two")), Channel.HOST);
         int afterTwo = saw.size();
+        said.clear();
         server.receive(JsonRpcMessage.request(32, "session/prompt", promptParams(ids[0], "a subagent reports back")), Channel.BRAIN);
 
-        assertEquals(1, saw.size() - afterTwo, "the person's message in session two gave session one its tries back: " + saw);
+        // session one's count was not restarted by the person's word in session two: it goes on at 4
+        assertTrue(saw.size() - afterTwo == 4 && textSaid(said).contains("resumption 4 of this step"),
+            "the person's message in session two restarted session one's count: " + saw);
     }
 
     private static ObjectNode promptParams(String session, String text) {
@@ -561,7 +604,7 @@ class TurnBoundaryTest {
                 Thread.currentThread().interrupt();
             }
         };
-        self[0] = new AcpServer(slow, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps(), 3), AgentRecorder.off(), null);
+        self[0] = new AcpServer(slow, List::of, message -> said.add(JSON.valueToTree(message)), boundaryOver(ledgerWithTwoSteps()), AgentRecorder.off(), null);
         self[0].receive(JsonRpcMessage.request(1, "session/new", JSON.createObjectNode().put("cwd", "/w")));
         session[0] = said.stream().filter(m -> m.path("result").has("sessionId")).findFirst().orElseThrow().path("result").path("sessionId").asText();
         ObjectNode params = JSON.createObjectNode().put("sessionId", session[0]);

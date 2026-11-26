@@ -8,8 +8,8 @@ import java.util.List;
  * it acts before the person has seen anything, which a check that only comments afterwards cannot do.
  *
  * <p>A step that is still pending is never passed over in silence. While the person has granted autonomy nobody is at the keyboard, so
- * the agent resumes the brain on that step, as many times as the {@link AttemptLedger} admits, and then reports it with the one cheap
- * thing the person can do. While no grant stands the person is at the keyboard, so the turn ends with the pending step named.</p>
+ * the agent resumes the brain on that step, every time, and shows the number of the resumption the {@link AttemptLedger} counted; the
+ * person stops it when they choose. While no grant stands the person is at the keyboard, so the turn ends with the pending step named.</p>
  *
  * <p>It holds no step state: {@link StepLedger} answers whether a step is pending, and the attempt count is the ledger's.</p>
  */
@@ -43,12 +43,12 @@ public final class TurnBoundary {
 
     /** A boundary that never finds a step pending, for a face with no step state behind it. */
     public static TurnBoundary open() {
-        return new TurnBoundary(session -> List.of(), new AttemptLedger(1));
+        return new TurnBoundary(session -> List.of(), new AttemptLedger());
     }
 
     /**
-     * The person sent a message in {@code session}: the tries a stuck step of that session has used start again, because their word is
-     * what the ceiling waited for. Another session's tries stay as they were.
+     * The person sent a message in {@code session}: the count of the tries of a step of that session starts again. Another session's count
+     * stays as it was.
      */
     public void personSpoke(PrincipalSession session) {
         attempts.personSpoke(session.id());
@@ -102,13 +102,8 @@ public final class TurnBoundary {
             return new Verdict(Kind.REPORT, "The turn ended with " + named + " still waiting. Nobody resumes it while you are at the"
                 + " keyboard: say so to continue it, or run " + step.gateTool() + " yourself.");
         }
-        AttemptLedger.Admission admission = attempts.admit(session.id(), step.planId() + "#" + step.index());
-        if (!admission.allowed()) {
-            return new Verdict(Kind.REPORT, "The turn ended with " + named + " still waiting after " + admission.used() + " resumptions,"
-                + " which is all the loop may spend on one step without your word. The free check comes first: run " + step.gateTool()
-                + " yourself. Another resumption waits for you to say so.");
-        }
+        int used = attempts.admit(session.id(), step.planId() + "#" + step.index());
         return new Verdict(Kind.RESUME, "[jawata] " + named + " has not passed. Carry on until it does, and run " + step.gateTool()
-            + " to show that it has. This is resumption " + admission.used() + " of " + admission.ceiling() + ".");
+            + " to show that it has. This is resumption " + used + " of this step.");
     }
 }

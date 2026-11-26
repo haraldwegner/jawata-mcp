@@ -38,9 +38,6 @@ public final class AgentFace implements RoutedFace {
     /** What a prompt is answered with until a brain is attached to the agent (plan S7a); it says so rather than staying silent. */
     static final String NO_BRAIN = "jawata's agent has no brain attached yet.";
 
-    /** How many times the loop resumes a brain on one pending step before it needs the person's word (S8, D12). */
-    static final int RESUMPTIONS_PER_STEP = 3;
-
     private final Supplier<List<AdvertisedCommand>> commands;
     private final Supplier<AgentBrain> brains;
     private volatile EngineApi engine;
@@ -198,7 +195,7 @@ public final class AgentFace implements RoutedFace {
         if (attached == null) {
             throw new IllegalStateException("the agent face is not attached to an engine");
         }
-        TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools(), brain.toolSessionKey()), new AttemptLedger(RESUMPTIONS_PER_STEP));
+        TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools(), brain.toolSessionKey()), new AttemptLedger());
         String recording = attached.settings() == null ? null : attached.settings().get(AgentRecorder.SETTING).orElse(null);
         AgentRecorder recorder = new AgentRecorder(attached.tools(), AgentRecorder.Depth.of(recording));
         Supplier<List<AdvertisedCommand>> advertised = commands != null ? commands : () -> servedSeats(attached);

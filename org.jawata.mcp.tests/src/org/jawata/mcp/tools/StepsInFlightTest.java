@@ -50,10 +50,10 @@ class StepsInFlightTest {
     void aStepInFlightIsNotAStepLeftBehind() {
         PrincipalSession session = new PrincipalSession("m11-session", "/w", false);
         session.setAutonomy(org.jawata.mcp.agent.Channel.HOST, true);
-        TurnBoundary working = new TurnBoundary(s -> List.of(new StepLedger.Pending("plan-working", 0, "compile_workspace", true)), new AttemptLedger(3));
-        TurnBoundary stuck = new TurnBoundary(s -> List.of(new StepLedger.Pending("plan-stuck", 0, "compile_workspace", false)), new AttemptLedger(3));
+        TurnBoundary working = new TurnBoundary(s -> List.of(new StepLedger.Pending("plan-working", 0, "compile_workspace", true)), new AttemptLedger());
+        TurnBoundary stuck = new TurnBoundary(s -> List.of(new StepLedger.Pending("plan-stuck", 0, "compile_workspace", false)), new AttemptLedger());
 
-        // Five turn ends in a row: a try is spent for each one a boundary resumes, and the ceiling is three.
+        // Five turn ends in a row: each one a boundary resumes is counted, and none is refused for its number (28h z132).
         List<TurnBoundary.Kind> whileWorking = new java.util.ArrayList<>();
         List<TurnBoundary.Kind> whileStuck = new java.util.ArrayList<>();
         for (int i = 0; i < 5; i++) {
@@ -65,7 +65,7 @@ class StepsInFlightTest {
             () -> assertEquals(List.of(TurnBoundary.Kind.FORWARD, TurnBoundary.Kind.FORWARD, TurnBoundary.Kind.FORWARD, TurnBoundary.Kind.FORWARD, TurnBoundary.Kind.FORWARD),
                 whileWorking, "a step whose hire is running held the turn or spent a try"),
             () -> assertEquals(TurnBoundary.Kind.RESUME, whileStuck.get(0), "the control: a step nobody works on is still resumed"),
-            () -> assertEquals(TurnBoundary.Kind.REPORT, whileStuck.get(4), "the control: and reported once the tries are used"));
+            () -> assertEquals(TurnBoundary.Kind.RESUME, whileStuck.get(4), "the control: and resumed every time"));
     }
 
     @Test
