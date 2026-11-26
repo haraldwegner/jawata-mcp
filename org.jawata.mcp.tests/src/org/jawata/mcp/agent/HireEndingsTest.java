@@ -168,6 +168,41 @@ class HireEndingsTest {
     }
 
     @Test
+    @DisplayName("28h D55: a hire whose lead has ended while the lead above it still runs reports to that lead, not to the principal, saying whose hire it was; what it used counts under that lead")
+    void aDeadLeadsHireGoesToTheLivingLeadAboveIt() throws Exception {
+        Connection chat = new Connection();
+        chat.open();
+        aHireIsOut("pm", "d55 the upper lead", chat.session, "d55-upper", false);
+        CountDownLatch leadEnds = aHireIsOut("chief-engineer", "d55 the lead", "d55-upper", "d55-lead", false);
+        aHireIsOut("developer", "d55 the child", "d55-lead", "d55-child", true);
+        HireRegistry.Inbox upper = HireRegistry.shared().inboxFor("d55-upper");
+        List<HireRegistry.Event> got = new java.util.ArrayList<>();
+        try {
+            leadEnds.countDown();
+            Thread.sleep(300);
+            HireRegistry.shared().record("developer", "d55 the child", answered("d55-child", "Joe", "the code is written").put("costUsd", 0.5));
+            got.addAll(upper.await(5_000));
+            Thread.sleep(500);
+
+            assertAll(
+                () -> assertEquals(List.of("d55-child"), got.stream().map(HireRegistry.Event::planId).toList(), "the lead above never got the report"),
+                () -> assertEquals("d55-upper", got.isEmpty() ? "" : got.get(0).leadId()),
+                () -> assertTrue(!got.isEmpty() && got.get(0).answer().path("orphanOf").asText().contains("chief-engineer"),
+                    "the report does not say whose hire it was: " + got),
+                () -> assertTrue(!got.isEmpty() && org.jawata.mcp.execution.HireReport.of(got.get(0), List.of())
+                    .contains("chief-engineer, which has ended before it read this report"), "the lead above is not told so in words: " + got),
+                () -> assertTrue(chat.prompts.isEmpty(), "the principal was given it too: " + chat.prompts),
+                () -> assertTrue(HireRegistry.shared().undeliveredFor(chat.session).stream().noneMatch(e -> "d55-child".equals(e.planId())),
+                    "it is also kept for the chat"),
+                () -> assertEquals(0.5, HireRegistry.shared().usedUnder("d55-upper").map(used -> used.costUsd()).orElse(0.0),
+                    "what it used is not counted under the lead above"));
+        } finally {
+            upper.delivered(got);
+            upper.close();
+        }
+    }
+
+    @Test
     @DisplayName("D57 (l): a hire the chat's own brain started reports back to that chat as a turn, whatever caller id the engine saw the call under")
     void aHireTheChatsBrainStartedReportsBackWhateverCallerIdTheEngineSaw() throws Exception {
         Connection chat = new Connection();

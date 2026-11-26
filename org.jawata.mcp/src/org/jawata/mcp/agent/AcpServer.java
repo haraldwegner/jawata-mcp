@@ -729,7 +729,10 @@ public final class AcpServer {
         // principal, with a line saying whose hire it was (Stage 24, M14).
         if (("finished".equals(event.kind()) || "stalled".equals(event.kind())) && event.background()) {
             boolean own = session.id().equals(event.leadId()) || HireRegistry.shared().isRoot(event.leadId());
-            if (own || !HireRegistry.shared().isRunningPlan(event.leadId())) {
+            // A finished report whose lead has ended is taken by the nearest lead above that still runs (D55); the chat gets it only when none does.
+            boolean aLeadTakesIt = "finished".equals(event.kind()) ? HireRegistry.shared().runningLeadAtOrAbove(event.leadId()).isPresent()
+                : HireRegistry.shared().isRunningPlan(event.leadId());
+            if (own || !aLeadTakesIt) {
                 deliver(session, event, own ? ""
                     : "Note: this hire was started by " + HireRegistry.shared().labelOf(event.leadId()) + ", which has ended, so its report comes to you.\n");
             }

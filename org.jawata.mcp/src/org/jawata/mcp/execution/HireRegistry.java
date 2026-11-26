@@ -604,9 +604,43 @@ public final class HireRegistry {
      * lead's own record while it runs, else kept for its chat.
      */
     private void route(Inbox inbox, Event ended) {
-        if ((inbox == null || !inbox.offer(ended)) && !heldForItsLead(ended.leadId(), List.of(ended))) {
+        if ((inbox == null || !inbox.offer(ended)) && !heldForItsLead(ended.leadId(), List.of(ended)) && !takenAbove(ended)) {
             keepForItsChat(ended);
         }
+    }
+
+    /**
+     * The nearest hire that still runs at or above this caller in the chain of hires, by its plan id; none when no hire there runs, so only the
+     * chat is above.
+     */
+    public Optional<String> runningLeadAtOrAbove(String callerId) {
+        String current = callerId == null ? "" : callerId;
+        for (int steps = 0; steps < 16 && !current.isEmpty(); steps++) {
+            if (isRunningPlan(current)) {
+                return Optional.of(current);
+            }
+            current = issuedBy.getOrDefault(current, "");
+        }
+        return Optional.empty();
+    }
+
+    /**
+     * Gives a report whose lead has ended to the nearest lead above it that still runs (D55), with who hired it written on it: in front of that
+     * lead's brain when its inbox takes it, else held on its record until it ends. False when no lead above runs, so it goes to the chat.
+     */
+    private boolean takenAbove(Event report) {
+        Optional<String> above = runningLeadAtOrAbove(issuedBy.getOrDefault(report.leadId(), ""));
+        if (above.isEmpty()) {
+            return false;
+        }
+        com.fasterxml.jackson.databind.JsonNode answer = report.answer();
+        if (answer instanceof com.fasterxml.jackson.databind.node.ObjectNode told && !told.has("orphanOf")) {
+            answer = told.deepCopy().put("orphanOf", labelOf(report.leadId()));
+        }
+        Event passed = new Event(report.kind(), report.planId(), report.name(), report.seat(), report.brief(), above.get(), answer,
+            report.background());
+        Inbox inbox = inboxes.get(above.get());
+        return inbox != null && inbox.offer(passed) || heldForItsLead(above.get(), List.of(passed));
     }
 
     /** Whether this caller is a principal brain's own key, so a hire it issued has no lead above it but the chat. */
@@ -812,6 +846,9 @@ public final class HireRegistry {
 
     /** Tells a report again for the chat above its ended lead, and keeps it until a connection takes it, as an orphaned report is kept. */
     private void retell(Event report) {
+        if (takenAbove(report)) {
+            return;
+        }
         keepForItsChat(report);
         tell(report);
     }
@@ -963,7 +1000,12 @@ public final class HireRegistry {
             }
             // 28h z136: what it used is added to its lead's one total, before any report of it is read.
             if (!ended.leadId().isEmpty()) {
-                below.merge(ended.leadId(), HireTotals.of(answer), HireTotals::plus);
+                HireTotals used = HireTotals.of(answer);
+                below.merge(ended.leadId(), used, HireTotals::plus);
+                // A lead that has ended sent its total up without this one, so it counts under the nearest lead above that still runs too.
+                if (!isRunningPlan(ended.leadId())) {
+                    runningLeadAtOrAbove(issuedBy.getOrDefault(ended.leadId(), "")).ifPresent(above -> below.merge(above, used, HireTotals::plus));
+                }
             }
             if (ended.background()) {
                 route(inboxes.get(ended.leadId()), ended);

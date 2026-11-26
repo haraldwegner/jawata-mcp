@@ -31,7 +31,7 @@ public final class HireReport {
     /** The keys of a hire's answer a lead is told as they are (28h z52); every other key stays with the record. */
     private static final List<String> SENT_UP = List.of("hirer", "hired", "name", "fixes", "plan", "brain", "complete", "cleanExit",
         "stoppedBy", "timedOut", "exitCode", "stepsPassed", "stepsDeclared", "gates", "changedFileCount", "verdict", "fullRunReasons",
-        "instructionScore", "ownWrites", "ownCodePutBack", "attempt", "escalatesTo", "record", "error", "below");
+        "instructionScore", "ownWrites", "ownCodePutBack", "attempt", "escalatesTo", "record", "error", "below", "orphanOf");
 
     /** The line that opens a brain's own summary: REPORT: or a heading of that word. */
     private static final Pattern REPORT_HEADING = Pattern.compile(
@@ -57,6 +57,10 @@ public final class HireReport {
                 .append("State: ").append(told.path("state").asText()).append("\n");
             if (!reasons.isEmpty()) {
                 text.append("Ended because: ").append(String.join("; ", reasons)).append("\n");
+            }
+            String orphanOf = textOf(told.path("orphanOf"));
+            if (!orphanOf.isBlank()) {
+                text.append("Hired by ").append(orphanOf).append(", which has ended before it read this report\n");
             }
             if (told.path("attempt").isNumber()) {
                 text.append("Attempt ").append(told.path("attempt").asInt()).append(" at this task\n");
