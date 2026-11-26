@@ -35,10 +35,11 @@ class ReplaceFunctionWithCommandToolTest {
     private ExtractTool tool;
     private ObjectMapper mapper;
     private Path pkg;
+    private JdtServiceImpl service;
 
     @BeforeEach
     void setUp() throws Exception {
-        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
+        service = helper.loadProjectCopy("simple-maven");
         tool = new ExtractTool(() -> service, new RefactoringChangeCache());
         mapper = new ObjectMapper();
         pkg = service.allProjects().iterator().next().projectRoot()
@@ -70,6 +71,54 @@ class ReplaceFunctionWithCommandToolTest {
         args.put("column", column);
         args.put("newTypeName", newTypeName);
         return tool.execute(args);
+    }
+
+    private ToolResponse tallyToCommand(String nestedVisibility) throws Exception {
+        Path source = pkg.resolve("Tally.java");
+        Files.writeString(source, """
+            package com.example;
+
+            import java.util.List;
+
+            public class Tally {
+                NESTED record Entry(int points) {}
+
+                static final int BONUS = 2;
+
+                public static int total(List<Entry> entries) {
+                    return entries.stream().mapToInt(Entry::points).sum() + BONUS + twice(1);
+                }
+
+                static int twice(int value) {
+                    return 2 * value;
+                }
+            }
+            """.replace("NESTED ", nestedVisibility));
+        new org.jawata.resident.workspace.OwnedReconciler(() -> service).syncBeforeCall();
+        ObjectNode args = mapper.createObjectNode().put("kind", "function_to_command").put("filePath", source.toString())
+            .put("line", lineOf(source, "static int total")).put("column", 22).put("newTypeName", "TotalCommand");
+        return tool.execute(args);
+    }
+
+    @Test
+    @DisplayName("28h z149: nested types and static members of the old class are named through it in the command")
+    void membersOfTheOldClassAreQualified() throws Exception {
+        ToolResponse response = tallyToCommand("");
+
+        assertTrue(response.isSuccess(), "the replacement must run; got: " + response.getError());
+        String command = read(pkg.resolve("TotalCommand.java"));
+        assertTrue(command.contains("List<Tally.Entry> entries") && command.contains("Tally.Entry::points")
+            && command.contains("Tally.BONUS") && command.contains("Tally.twice(1)"), "THE CLAIM:\n" + command);
+    }
+
+    @Test
+    @DisplayName("28h z149: a private member the command would need is named in a refusal, and nothing is changed")
+    void aPrivateMemberIsRefusedByName() throws Exception {
+        ToolResponse response = tallyToCommand("private ");
+
+        assertFalse(response.isSuccess(), "a command naming a private type was accepted");
+        assertTrue(response.getError().getMessage().contains("Entry"), response.getError().getMessage());
+        assertFalse(Files.exists(pkg.resolve("TotalCommand.java")));
     }
 
     @Test

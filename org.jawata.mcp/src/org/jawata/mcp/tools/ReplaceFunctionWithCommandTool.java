@@ -19,12 +19,22 @@ import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.ASTVisitor;
+import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.ExpressionMethodReference;
+import org.eclipse.jdt.core.dom.FieldAccess;
+import org.eclipse.jdt.core.dom.IBinding;
 import org.eclipse.jdt.core.dom.IMethodBinding;
+import org.eclipse.jdt.core.dom.ITypeBinding;
+import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.MethodInvocation;
 import org.eclipse.jdt.core.dom.Modifier;
+import org.eclipse.jdt.core.dom.QualifiedName;
+import org.eclipse.jdt.core.dom.SimpleName;
 import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
+import org.eclipse.jdt.core.dom.StructuralPropertyDescriptor;
+import org.eclipse.jdt.core.dom.TypeMethodReference;
 import org.eclipse.jdt.core.dom.rewrite.ASTRewrite;
 import org.eclipse.jface.text.Document;
 import org.eclipse.ltk.core.refactoring.CompositeChange;
@@ -228,8 +238,12 @@ public class ReplaceFunctionWithCommandTool extends AbstractApplyingRefactoringT
 
         String packageName = ast.getPackage() == null ? ""
             : ast.getPackage().getName().getFullyQualifiedName();
-        String source = buildCommand(packageName, newTypeName, declaration,
-            unit.getSource(), importsOf(ast, unit.getSource()));
+        java.util.Set<String> refused = new java.util.LinkedHashSet<>();
+        String source = buildCommand(packageName, newTypeName, declaration, unit.getSource(), importsOf(ast, unit.getSource()), refused);
+        if (!refused.isEmpty()) {
+            return Preparation.fail(ToolResponse.invalidParameter("position", "the command would have to name " + refused + ", private to "
+                + (declaring == null ? "the class" : declaring.getElementName()) + ": make them visible to the package first. Nothing was changed."));
+        }
 
         Map<IFile, List<TextEdit>> edits = new LinkedHashMap<>();
         ASTRewrite ownerRewrite = ASTRewrite.create(ast.getAST());
@@ -290,10 +304,62 @@ public class ReplaceFunctionWithCommandTool extends AbstractApplyingRefactoringT
 
     private record Call(ICompilationUnit unit, MethodInvocation node) {}
 
+    /**
+     * The source of a node moved out of the method's class (28h z149): a nested type or static member of that class, or of a class around
+     * it, is named through it, and one that is private, which the new file could not name, is added to {@code refused}.
+     */
+    private static String movedText(String source, ASTNode node, MethodDeclaration moved, java.util.Set<String> refused) {
+        ASTNode parent = moved.getParent();
+        ITypeBinding owner = parent instanceof AbstractTypeDeclaration type ? type.resolveBinding() : null;
+        if (owner == null) {
+            return textOf(source, node);
+        }
+        java.util.TreeMap<Integer, String> qualifiers = new java.util.TreeMap<>(java.util.Comparator.reverseOrder());
+        node.accept(new ASTVisitor() {
+            @Override
+            public boolean visit(SimpleName name) {
+                if (!standsAlone(name)) {
+                    return false;
+                }
+                IBinding binding = name.resolveBinding();
+                ITypeBinding holder = binding instanceof ITypeBinding type ? type.getDeclaringClass()
+                    : binding instanceof IVariableBinding field && field.isField() && Modifier.isStatic(field.getModifiers())
+                        ? field.getDeclaringClass()
+                    : binding instanceof IMethodBinding method && Modifier.isStatic(method.getModifiers())
+                        && !method.getMethodDeclaration().isEqualTo(moved.resolveBinding()) ? method.getDeclaringClass() : null;
+                for (ITypeBinding around = owner; holder != null && around != null; around = around.getDeclaringClass()) {
+                    if (around.getErasure().isEqualTo(holder.getErasure())) {
+                        if (Modifier.isPrivate(binding.getModifiers())) {
+                            refused.add(name.getIdentifier());
+                        }
+                        String qualified = holder.getErasure().getQualifiedName();
+                        String packageName = holder.getPackage() == null ? "" : holder.getPackage().getName();
+                        qualifiers.put(name.getStartPosition(),
+                            (packageName.isEmpty() ? qualified : qualified.substring(packageName.length() + 1)) + ".");
+                        break;
+                    }
+                }
+                return false;
+            }
+        });
+        StringBuilder text = new StringBuilder(textOf(source, node));
+        qualifiers.forEach((at, qualifier) -> text.insert(at - node.getStartPosition(), qualifier));
+        return text.toString();
+    }
+
+    /** Whether a name is written on its own, so a qualifier may stand before it: not the member part of a longer name. */
+    private static boolean standsAlone(SimpleName name) {
+        if (name.isDeclaration()) {
+            return false;
+        }
+        StructuralPropertyDescriptor at = name.getLocationInParent();
+        return at != QualifiedName.NAME_PROPERTY && at != FieldAccess.NAME_PROPERTY
+            && !(at == MethodInvocation.NAME_PROPERTY && ((MethodInvocation) name.getParent()).getExpression() != null)
+            && at != ExpressionMethodReference.NAME_PROPERTY && at != TypeMethodReference.NAME_PROPERTY;
+    }
+
     /** The command class: a field per parameter, a constructor, and the body as execute(). */
-    private static String buildCommand(String packageName, String newTypeName,
-                                       MethodDeclaration declaration, String source,
-                                       String imports) {
+    private static String buildCommand(String packageName, String newTypeName, MethodDeclaration declaration, String source, String imports, java.util.Set<String> refused) {
         StringBuilder out = new StringBuilder();
         if (!packageName.isEmpty()) {
             out.append("package ").append(packageName).append(";\n\n");
@@ -310,7 +376,7 @@ public class ReplaceFunctionWithCommandTool extends AbstractApplyingRefactoringT
         List<?> parameters = declaration.parameters();
         for (Object parameter : parameters) {
             SingleVariableDeclaration p = (SingleVariableDeclaration) parameter;
-            out.append("    private final ").append(p.getType()).append(' ')
+            out.append("    private final ").append(movedText(source, p.getType(), declaration, refused)).append(' ')
                 .append(p.getName().getIdentifier()).append(";\n");
         }
         out.append('\n').append("    public ").append(newTypeName).append('(');
@@ -318,7 +384,7 @@ public class ReplaceFunctionWithCommandTool extends AbstractApplyingRefactoringT
             if (i > 0) {
                 out.append(", ");
             }
-            out.append(parameters.get(i));
+            out.append(movedText(source, (ASTNode) parameters.get(i), declaration, refused));
         }
         out.append(") {\n");
         for (Object parameter : parameters) {
@@ -327,8 +393,8 @@ public class ReplaceFunctionWithCommandTool extends AbstractApplyingRefactoringT
         }
         out.append("    }\n\n");
 
-        out.append("    public ").append(declaration.getReturnType2()).append(" execute() ");
-        out.append(textOf(source, declaration.getBody())).append('\n');
+        out.append("    public ").append(movedText(source, declaration.getReturnType2(), declaration, refused)).append(" execute() ");
+        out.append(movedText(source, declaration.getBody(), declaration, refused)).append('\n');
         out.append("}\n");
         return out.toString();
     }
