@@ -442,6 +442,21 @@ public class HireTool extends NeutralTool {
             "the child process is reaped; nothing is left running; hire again if the work is still wanted");
     }
 
+    /** {@link #stoppedAnswer} naming the files the tree shows changed since the hire started: they are left as they are (28h z130). */
+    private static ToolResponse stoppedAnswer(HireRegistry.Registration stopped, java.util.List<String> left) {
+        ToolResponse answered = stoppedAnswer(stopped);
+        if (left.isEmpty()) {
+            return answered;
+        }
+        return ToolResponse.error(answered.getError().getCode(), answered.getError().getMessage()
+            + ". Since it started the tree shows uncommitted, unchecked changes, left as they are: " + String.join(", ", left),
+            answered.getError().getHint());
+    }
+
+    private static java.util.List<String> leftChanged(org.jawata.mcp.execution.TreeAttribution census) {
+        return census == null ? java.util.List.of() : census.after().changed().orElse(java.util.List.of());
+    }
+
     /** The seat name under which one issuer's observer conversation is kept between its flagged steps (28h Stage 27 (d)). */
     private static final String OBSERVER_SESSION_SEAT = "observer";
 
@@ -868,6 +883,9 @@ public class HireTool extends NeutralTool {
         // 28h Stage 27 (z53): the hires that end while this run is on, kept so a lead's end can tell the code its own hires wrote from its own.
         List<HireRegistry.Event> hiresThatEnded = new java.util.concurrent.CopyOnWriteArrayList<>();
         Runnable stopListening = listeningForEndedHires(hiresThatEnded);
+        // 28h z130: the tree before the brain runs, so a stopped hire can say what it left behind.
+        org.jawata.mcp.execution.TreeAttribution census = base.workingDirectory() == null ? null
+            : org.jawata.mcp.execution.TreeAttribution.before(host, base.workingDirectory());
         try {
             // THE ONE START PATH (S12): a brain the host setting gives an ACP program is started through the engine's ACP client.
             // The registry names a brain by its product name, as the panel's choices and the vendor rule do ("cursor"); the dialect names itself
@@ -888,7 +906,7 @@ public class HireTool extends NeutralTool {
         } catch (InterruptedException e) {
             if (running.wasStopped()) {
                 // The person's stop, or the engine's for a stall, is handled here and ends with this answer, so the thread is left as it is for the next request.
-                return stoppedAnswer(running);
+                return stoppedAnswer(running, leftChanged(census));
             }
             Thread.currentThread().interrupt();
             return ToolResponse.error("INTERNAL_ERROR",
@@ -906,7 +924,7 @@ public class HireTool extends NeutralTool {
             }
         }
         if (stoppedByPerson) {
-            return stoppedAnswer(running);
+            return stoppedAnswer(running, leftChanged(census));
         }
 
         Map<String, Object> data = new LinkedHashMap<>();

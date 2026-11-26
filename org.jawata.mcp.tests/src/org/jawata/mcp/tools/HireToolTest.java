@@ -3226,6 +3226,53 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("z130: a hire stopped from the panel names the files its run left changed, as uncommitted and unchecked")
+    void aStoppedHireNamesWhatItLeftChanged() throws Exception {
+        org.jawata.mcp.execution.HireRegistry registry = org.jawata.mcp.execution.HireRegistry.shared();
+        for (String[] git : new String[][] {{"init", "-q"}, {"config", "user.name", "p"}, {"config", "user.email", "p@invalid"},
+                {"commit", "-q", "--allow-empty", "-m", "base"}}) {
+            List<String> command = new java.util.ArrayList<>(List.of("git", "-C", dir.toString()));
+            command.addAll(List.of(git));
+            assertEquals(0, new ProcessBuilder(command).inheritIO().start().waitFor(), String.join(" ", command));
+        }
+        Path started = dir.resolve("brain-started-z130");
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        Files.writeString(file, """
+            #!/bin/sh
+            echo 'half done' > '%s'
+            echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"working"}]}}'
+            touch '%s'
+            sleep 60
+            """.formatted(dir.resolve("left-behind.txt"), started));
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        List<org.jawata.mcp.execution.HireRegistry.Event> told = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Runnable unsubscribe = registry.subscribe(told::add);
+        try {
+            HireTool background = plainToolWithSettings(new StandsIn(host, HostCommand.of(file.toString())), Map.of());
+            Map<String, Object> opened = dataOf(background.execute(hireWithBrief(seatFile(CATALOGUER_SEAT), "z130 stopped hire")));
+            for (int i = 0; i < 200 && !Files.exists(started); i++) {
+                Thread.sleep(50);
+            }
+            assertTrue(Files.exists(started), "the brain never started");
+            String plan = String.valueOf(opened.get("hireId"));
+
+            registry.stopTree(plan);
+
+            org.jawata.mcp.execution.HireRegistry.Event ended = null;
+            for (int i = 0; i < 200 && ended == null; i++) {
+                ended = told.stream().filter(event -> "finished".equals(event.kind()) && plan.equals(event.planId())).findFirst().orElse(null);
+                if (ended == null) {
+                    Thread.sleep(100);
+                }
+            }
+            String said = ended == null ? "(no finished event)" : ended.answer().path("error").asText();
+            assertTrue(said.contains("left-behind.txt") && said.contains("unchecked"), said);
+        } finally {
+            unsubscribe.run();
+        }
+    }
+
+    @Test
     @DisplayName("S9: a hire stopped from the Agent Control panel ends at once, its answer says the person stopped it, and it is no longer listed as running")
     void aHireStoppedFromThePanelEndsAtOnceAndSaysSo() throws Exception {
         org.jawata.mcp.execution.HireRegistry running = org.jawata.mcp.execution.HireRegistry.shared();
