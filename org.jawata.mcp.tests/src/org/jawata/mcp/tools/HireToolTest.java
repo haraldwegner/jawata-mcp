@@ -2761,7 +2761,9 @@ class HireToolTest {
 
         // The thread that runs the call has no caller of its own: whatever the hire knows of who asked it, it was given in the call.
         java.util.concurrent.ExecutorService engineThread = java.util.concurrent.Executors.newSingleThreadExecutor();
-        try {
+        // 28h z156: the captured caller is a chief engineer the engine knows, because the hirer it names is now checked against it here.
+        try (HireRegistry.Registration issuer = HireRegistry.shared().begin("chief-engineer", "m3-brief", "")) {
+            HireRegistry.shared().planOpened("principal-m3-captured");
             dataOf(engineThread.submit(() -> hire.hire(call)).get(60, java.util.concurrent.TimeUnit.SECONDS));
         } finally {
             engineThread.shutdownNow();
@@ -3198,6 +3200,24 @@ class HireToolTest {
             () -> assertTrue(String.valueOf(answer.get("answer")).contains("finished my work"), "the hire did not run to its end: " + answer),
             () -> assertEquals(5.0, ((Number) answer.get("costUsd")).doubleValue(), 1e-9, "its cost is no longer counted: " + answer),
             () -> assertFalse(started.asked().contains("--max-turns"), "the brain was given a turn limit: " + started.asked()));
+    }
+
+    @Test
+    @DisplayName("28h z156: a hire runs on the engine's own thread, and the hirer is still checked against the caller's own seat there")
+    void theHirerIsCheckedOnTheEnginesOwnThread() throws Exception {
+        HireRegistry hires = HireRegistry.shared();
+        try (HireRegistry.Registration developer = hires.begin("developer", "z156-brief", "")) {
+            hires.planOpened("plan-z156-developer");
+            ObjectNode claimed = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+            HireTool asTheEngineRunsIt = plainToolWithSettings(aHostThatMustNotSpawn(),
+                Map.of(SettingKeys.SEATS_BRAINS.name(), "cataloguer=claude-code/claude-sonnet-5"));
+
+            ToolResponse refused = org.jawata.mcp.models.CallerIdentity.supplied("plan-z156-developer").speaking(() -> asTheEngineRunsIt.execute(claimed));
+
+            assertAll(
+                () -> assertFalse(refused.isSuccess(), "a developer's session was let hire as the chief engineer"),
+                () -> assertTrue(String.valueOf(refused.getError()).contains("developer"), "the refusal does not name the caller's seat: " + refused.getError()));
+        }
     }
 
     /** A hire tool that runs the hire to its end, whose host settings are exactly these, by key. */

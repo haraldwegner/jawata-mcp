@@ -726,8 +726,9 @@ public class HireTool extends NeutralTool {
         }
         // 28h Stage 27 (z25): `hirer` is free text, so the seat the engine knows the caller to be is checked against it first; a caller the registry does
         // not know keeps what it wrote.
-        Optional<String> notHirable = deciding.refuseClaim(hirer, org.jawata.mcp.models.CallerIdentity.serving()
-            .flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id())), org.jawata.mcp.models.CallerIdentity.serving().isPresent());
+        // 28h z156: the caller the hire captured, not the thread's: a hire runs on the engine's own thread, which serves nobody.
+        Optional<String> notHirable = deciding.refuseClaim(hirer, call.getServing()
+            .flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id())), call.getServing().isPresent());
         if (notHirable.isEmpty()) {
             notHirable = deciding.refuseKnown(hirer, hired);
             // 28h z39: when the tree is what refused, the seat to hire through is told with the refusal, so a card can say it and not show a failure.
