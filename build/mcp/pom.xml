@@ -14,6 +14,12 @@
 
     <artifactId>org.jawata.mcp</artifactId>
 
+    <properties>
+        <!-- 28h z-step 12: the seat files sealed in the engine are generated from jawata-studio at the commit named in
+             build/seats.ref; the engine repository holds no copy. A checkout elsewhere is named with -Djawata.studio=<folder>. -->
+        <jawata.studio>${project.basedir}/../../../jawata-studio</jawata.studio>
+    </properties>
+
     <dependencies>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.catalogue</artifactId><version>${project.version}</version></dependency>
         <dependency><groupId>org.jawata</groupId><artifactId>org.jawata.core</artifactId><version>${project.version}</version></dependency>
@@ -43,8 +49,51 @@
             <resource>
                 <directory>${project.basedir}/../../org.jawata.mcp/resources</directory>
             </resource>
+            <!-- The generated seats, at /seats in the bundle (written by the generate-seats step below). -->
+            <resource>
+                <directory>${project.build.directory}/generated-seats</directory>
+            </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>generate-seats</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>run</goal></goals>
+                        <configuration>
+                            <target>
+                                <fail message="No jawata-studio checkout at ${jawata.studio}: the engine's seat files are generated from it. Check it out beside this repository, or name it with -Djawata.studio=&lt;folder&gt;.">
+                                    <condition><not><available file="${jawata.studio}/seats" type="dir"/></not></condition>
+                                </fail>
+                                <loadfile property="seats.ref" srcFile="${project.basedir}/../seats.ref">
+                                    <filterchain><striplinebreaks/></filterchain>
+                                </loadfile>
+                                <delete dir="${project.build.directory}/generated-seats"/>
+                                <delete dir="${project.build.outputDirectory}/seats"/>
+                                <mkdir dir="${project.build.directory}"/>
+                                <exec executable="git" dir="${jawata.studio}" failonerror="true">
+                                    <arg value="-c"/>
+                                    <arg value="core.autocrlf=false"/>
+                                    <arg value="archive"/>
+                                    <arg value="--format=zip"/>
+                                    <arg value="-o"/>
+                                    <arg file="${project.build.directory}/seats.zip"/>
+                                    <arg value="${seats.ref}"/>
+                                    <arg value="seats"/>
+                                </exec>
+                                <unzip src="${project.build.directory}/seats.zip" dest="${project.build.directory}/generated-seats"/>
+                                <!-- A pin that holds no seat file must not build an engine without seats. -->
+                                <fail message="jawata-studio ${seats.ref} holds no seats/*.md, so the engine would be built without seats.">
+                                    <condition><not><resourcecount count="0" when="greater"><fileset dir="${project.build.directory}/generated-seats" includes="seats/*.md" erroronmissingdir="false"/></resourcecount></not></condition>
+                                </fail>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

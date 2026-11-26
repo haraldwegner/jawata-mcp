@@ -27,7 +27,7 @@ import org.osgi.framework.FrameworkUtil;
  */
 final class SeatFiles {
 
-    /** Where the sealed seats sit in the engine bundle, as {@code org.jawata.mcp/resources/seats} puts them. */
+    /** Where the sealed seats sit in the engine bundle; the build generates them there from jawata-studio at {@code build/seats.ref}. */
     static final String SEALED_FOLDER = "seats";
 
     private SeatFiles() {

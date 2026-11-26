@@ -26,6 +26,19 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
+    # 28h: the engine's seat files are generated from jawata-studio at the commit in build/seats.ref; this repository holds no copy.
+    - name: Read the pinned jawata-studio commit
+      id: seats
+      shell: bash
+      run: echo "ref=$(tr -d '[:space:]' < build/seats.ref)" >> "$GITHUB_OUTPUT"
+
+    - name: Checkout jawata-studio at that commit
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ github.repository_owner }}/jawata-studio
+        ref: ${{ steps.seats.outputs.ref }}
+        path: _studio
+
     # THE PATCH-STREAK GATE IS NOT HERE ANY MORE, AND ITS ABSENCE IS A DECISION
     # (Harald, 2026-09-02): "A quality gate like too many patches is a dev
     # quality gate which stays on this machine and should not be part of the CI."
@@ -54,7 +67,7 @@ jobs:
 
     # 22d: plain Maven build (Eclipse bundles from Maven Central; no Tycho, no p2).
     - name: Build
-      run: mvn -B -f build/pom.xml install
+      run: mvn -B -f build/pom.xml install "-Djawata.studio=${{ github.workspace }}/_studio"
 
     # 100, not 75 — see the same step in ci.yml for the derivation. Short version:
     # this step's runner carries a stall backstop that names the stuck test and

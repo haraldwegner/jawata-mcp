@@ -25,6 +25,19 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
+    # 28h: the engine's seat files are generated from jawata-studio at the commit in build/seats.ref; this repository holds no copy.
+    - name: Read the pinned jawata-studio commit
+      id: seats
+      shell: bash
+      run: echo "ref=$(tr -d '[:space:]' < build/seats.ref)" >> "$GITHUB_OUTPUT"
+
+    - name: Checkout jawata-studio at that commit
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ github.repository_owner }}/jawata-studio
+        ref: ${{ steps.seats.outputs.ref }}
+        path: _studio
+
     - name: Set up JDK 21
       uses: actions/setup-java@v5
       with:
@@ -35,7 +48,7 @@ jobs:
     # 22d: plain Maven build (Eclipse bundles from Maven Central; no Tycho, no p2).
     - name: Build
       shell: bash
-      run: mvn -B -f build/pom.xml install
+      run: mvn -B -f build/pom.xml install "-Djawata.studio=${{ github.workspace }}/_studio"
 
     # The full suite runs in-framework (the tycho-surefire replacement): the boot
     # module starts Equinox, installs the test fragments, runs JUnit inside.
@@ -159,6 +172,19 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
+    # 28h: the engine's seat files are generated from jawata-studio at the commit in build/seats.ref; this repository holds no copy.
+    - name: Read the pinned jawata-studio commit
+      id: seats
+      shell: bash
+      run: echo "ref=$(tr -d '[:space:]' < build/seats.ref)" >> "$GITHUB_OUTPUT"
+
+    - name: Checkout jawata-studio at that commit
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ github.repository_owner }}/jawata-studio
+        ref: ${{ steps.seats.outputs.ref }}
+        path: _studio
+
     - name: Set up JDK 21
       uses: actions/setup-java@v5
       with:
@@ -171,7 +197,7 @@ jobs:
 
     - name: Build
       shell: bash
-      run: mvn -B -f build/pom.xml install -DskipTests
+      run: mvn -B -f build/pom.xml install -DskipTests "-Djawata.studio=${{ github.workspace }}/_studio"
 
     - name: The Gradle and PDE jar cells must PASS, not skip
       timeout-minutes: 20
@@ -269,6 +295,19 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v5
 
+    # 28h: the engine's seat files are generated from jawata-studio at the commit in build/seats.ref; this repository holds no copy.
+    - name: Read the pinned jawata-studio commit
+      id: seats
+      shell: bash
+      run: echo "ref=$(tr -d '[:space:]' < build/seats.ref)" >> "$GITHUB_OUTPUT"
+
+    - name: Checkout jawata-studio at that commit
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ github.repository_owner }}/jawata-studio
+        ref: ${{ steps.seats.outputs.ref }}
+        path: _studio
+
     - name: Set up JDK 21
       uses: actions/setup-java@v5
       with:
@@ -278,7 +317,7 @@ jobs:
 
     - name: Build
       shell: bash
-      run: mvn -B -f build/pom.xml install -DskipTests
+      run: mvn -B -f build/pom.xml install -DskipTests "-Djawata.studio=${{ github.workspace }}/_studio"
 
     - name: The suite with the embedder switched off
       # 100: the slowest healthy run took 58 min (windows, run 42721138523). The 240 of 4.6.5 hid a test that leaked a
