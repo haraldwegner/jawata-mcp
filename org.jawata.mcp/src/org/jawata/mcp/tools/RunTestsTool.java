@@ -2180,7 +2180,7 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
     }
 
     /** Map a runner result onto the response shape (shared by run/status/cancel). */
-    private static void appendResult(Map<String, Object> data, ForkedTestRunner.Result r) {
+    static void appendResult(Map<String, Object> data, ForkedTestRunner.Result r) {
         Map<String, Object> summary = new LinkedHashMap<>();
         summary.put("total", r.total);
         summary.put("passed", r.passed);
@@ -2231,6 +2231,11 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
                     + "project's test output exists before reading this as green.");
         }
         data.put("summary", summary);
+        // 28h z51: the verdict a plan step reads (ResponseFacts#errorCount), at the top of the answer. Only a run that can be judged states it:
+        // one that found no test, was cancelled, timed out or ended abnormally states none, which a gate reads as not answered, never a pass.
+        if (r.total > 0 && r.evidenceFinalized && !r.cancelled && !r.timedOut) {
+            data.put("errorCount", r.failed);
+        }
 
         List<Map<String, Object>> failures = new ArrayList<>();
         for (ForkedTestRunner.CaseResult c : r.failures) {

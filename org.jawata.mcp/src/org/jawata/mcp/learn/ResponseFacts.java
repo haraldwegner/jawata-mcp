@@ -27,8 +27,10 @@ import org.jawata.mcp.step.GateOutcome;
  * gate maps it to <i>did not answer</i>.</p>
  *
  * <p>The two keys are the measured ones, in the copies' own order: {@code errorCount}, which the
- * compile, diagnostics, refresh and syntax tools publish, then {@code failed}, which the test
- * runner publishes. A response carrying neither is not a response this reader can speak for.</p>
+ * compile, diagnostics, refresh, syntax and test-run tools publish, then a top-level {@code failed}.
+ * A response carrying neither is not a response this reader can speak for. (28h z51: the test runner
+ * keeps its {@code failed} inside {@code summary}, so it states {@code errorCount} for a run it can
+ * judge.)</p>
  */
 public final class ResponseFacts {
 
