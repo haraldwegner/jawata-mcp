@@ -258,7 +258,7 @@ public class OverrideMethodsTool extends AbstractTool
                 cu.getResource().getLocation().toFile().toPath()));
             data.put("methodsAdded", methodsAdded);
             data.put("warnings", warnings);
-            data.put("generatedSource", newSource);
+            putGeneratedSource(data, newSource);
 
             data.put("applied", true);
             data.put("filesModified", List.of(committed.filePath()));

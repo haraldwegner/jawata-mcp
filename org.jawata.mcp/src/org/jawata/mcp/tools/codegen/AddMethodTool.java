@@ -229,7 +229,7 @@ public class AddMethodTool extends AbstractTool
         data.put("operation", "add_method");
         data.put("filePath", service.getPathUtils().formatPath(cu.getResource().getLocation().toFile().toPath()));
         data.put("methodsAdded", List.of(methodName));
-        data.put("generatedSource", newSource);
+        putGeneratedSource(data, newSource);
         data.put("applied", true);
         data.put("filesModified", List.of(committed.filePath()));
         putDiff(data, committed.diff(), arguments);

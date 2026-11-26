@@ -155,6 +155,21 @@ public abstract class AbstractTool extends WorkspaceTool<IJdtService> {
     }
 
     /**
+     * Writes the whole source a generator produced, only while it is small enough to be read (28h z153): a method added to a large class
+     * answered with the whole file, which the client could not take. The change itself is in the diff and the file holds the rest.
+     *
+     * @param data   the response's data map, written in place
+     * @param source the file's whole text after the change
+     */
+    protected static void putGeneratedSource(Map<String, Object> data, String source) {
+        if (source.length() <= org.jawata.mcp.change.DiffView.DEFAULT_MAX_CHARS) {
+            data.put("generatedSource", source);
+        } else {
+            data.put("generatedSourceNote", "The file is " + source.length() + " characters and is not repeated here: the change is in the diff.");
+        }
+    }
+
+    /**
      * Says, on a STAGED response, that nothing has been compiled yet.
      *
      * <p><strong>Why this is not left implicit.</strong> Both refactoring bases return from

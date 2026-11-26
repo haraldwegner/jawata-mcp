@@ -213,7 +213,7 @@ public class CopyClassTool extends AbstractTool
                 org.jawata.mcp.change.DiffView.of(diff,
                     org.jawata.mcp.change.DiffView.fullRequested(arguments)).putInto(data);
                 data.put("summary", summary);
-                data.put("generatedSource", newSource);
+                putGeneratedSource(data, newSource);
                 return ToolResponse.success(data, ResponseMeta.builder()
                     .suggestedNextTools(List.of(
                         "refactoring(action=apply) with this changeId to create the file",
@@ -241,7 +241,7 @@ public class CopyClassTool extends AbstractTool
             data.put("undoChangeId", undoChangeId);
             data.put("summary", summary);
             data.put("newType", newName);
-            data.put("generatedSource", newSource);
+            putGeneratedSource(data, newSource);
             return ToolResponse.success(data, ResponseMeta.builder()
                 .totalCount(outcome.modifiedFilePaths().size())
                 .returnedCount(outcome.modifiedFilePaths().size())

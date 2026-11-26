@@ -192,7 +192,7 @@ public class GenerateTestSkeletonTool extends AbstractTool
                 stagedData.put("applied", false);
                 stagedData.put("generatedFilePath", service.getPathUtils().formatPath(testFile));
                 putDiff(stagedData, newFileDiff, arguments);
-                stagedData.put("generatedSource", generatedSource);
+                putGeneratedSource(stagedData, generatedSource);
                 stagedData.put("note", "Re-run with auto_apply: true (default) to create the file.");
                 return ToolResponse.success(stagedData, ResponseMeta.builder().build());
             }
@@ -227,7 +227,7 @@ public class GenerateTestSkeletonTool extends AbstractTool
             data.put("framework", resolvedFramework);
             data.put("generatedFilePath", service.getPathUtils().formatPath(testFile));
             data.put("methodsStubbed", methodNames);
-            data.put("generatedSource", generatedSource);
+            putGeneratedSource(data, generatedSource);
 
             data.put("applied", true);
             data.put("filesModified", List.of(data.get("generatedFilePath")));

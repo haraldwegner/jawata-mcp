@@ -243,7 +243,7 @@ public class GenerateToStringTool extends AbstractTool
             data.put("methodsAdded", methodsAdded);
             data.put("warnings", warnings);
             data.put("style", style.toUpperCase());
-            data.put("generatedSource", newSource);
+            putGeneratedSource(data, newSource);
 
             data.put("applied", true);
             data.put("filesModified", List.of(committed.filePath()));

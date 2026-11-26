@@ -83,6 +83,19 @@ class AddMethodToolTest {
     }
 
     @Test
+    @DisplayName("28h z153: a method added to a large file is answered with the change, not the whole file")
+    void aLargeFileIsNotAnsweredWhole() throws Exception {
+        Files.writeString(classFile, Files.readString(classFile).replaceFirst("\\{",
+            "{\n" + "    // a long file, as a large class is\n".repeat(900)));
+        service.getJavaProject().getProject().refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, null);
+
+        Map<String, Object> data = data(generate.execute(request(classFile, 910, 4, "describe")));
+
+        assertTrue(new ObjectMapper().writeValueAsString(data).length() < 30_000, "the answer is still too large to read");
+        assertTrue(String.valueOf(data.get("diff")).contains("describe"), "CONTROL: the change itself is still answered");
+    }
+
+    @Test
     @DisplayName("undo puts the file back byte for byte")
     void undoRestoresTheFile() throws Exception {
         String original = Files.readString(classFile);

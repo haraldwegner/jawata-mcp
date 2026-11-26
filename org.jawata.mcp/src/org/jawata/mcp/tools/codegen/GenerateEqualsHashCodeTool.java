@@ -208,7 +208,7 @@ public class GenerateEqualsHashCodeTool extends AbstractTool
                 cu.getResource().getLocation().toFile().toPath()));
             data.put("methodsAdded", methodsAdded);
             data.put("warnings", warnings);
-            data.put("generatedSource", finalSource);
+            putGeneratedSource(data, finalSource);
 
             data.put("applied", true);
             data.put("filesModified", List.of(committed.filePath()));

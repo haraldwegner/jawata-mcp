@@ -295,7 +295,7 @@ public class GenerateConstructorTool extends AbstractTool
                 cu.getResource().getLocation().toFile().toPath()));
             data.put("methodName", typeDecl.getName().getIdentifier());
             data.put("fieldsInitialized", fieldNames);
-            data.put("generatedSource", newSource);
+            putGeneratedSource(data, newSource);
 
             data.put("applied", true);
             data.put("filesModified", List.of(committed.filePath()));
