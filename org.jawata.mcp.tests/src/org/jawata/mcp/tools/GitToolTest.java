@@ -91,6 +91,41 @@ class GitToolTest {
     }
 
     @Test
+    @DisplayName("28h z120: a file another hire wrote stays out of a commit though the tree's change set held it; a file recorded for nobody is committed as before")
+    void aFileAnotherHireWroteIsLeftOut() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        Files.writeString(repo.resolve("theirs.txt"), "another hire's work\n");
+        Files.writeString(repo.resolve("shell.txt"), "written by a shell, recorded for nobody\n");
+        String plan = hireThatChanged(true, "a.txt", "theirs.txt", "shell.txt");
+        org.jawata.mcp.execution.WrittenFiles.shared().record(plan, List.of(repo.resolve("a.txt").toString()));
+        org.jawata.mcp.execution.WrittenFiles.shared().record("plan-z120-other", List.of(repo.resolve("theirs.txt").toString()));
+
+        ToolResponse answer = commit(plan, "Step 1");
+
+        assertTrue(answer.isSuccess(), String.valueOf(answer.getError()));
+        assertEquals("a.txt\nshell.txt", run(repo, "show", "--name-only", "--format=", "HEAD"), "the commit held another hire's file");
+        assertEquals("?? theirs.txt", run(repo, "status", "--porcelain"), "the other hire's file was committed or lost");
+        assertTrue(String.valueOf(answer.getData()).contains("theirs.txt"), "the answer does not name what it left out: " + answer.getData());
+    }
+
+    @Test
+    @DisplayName("28h z120: a file that a hire still running also wrote is not committed, and the refusal names the file")
+    void aFileARunningHireAlsoWroteIsRefused() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatChanged(true, "a.txt");
+        try (HireRegistry.Registration other = HireRegistry.shared().begin("developer", "z120 still running", "")) {
+            HireRegistry.shared().planOpened("plan-z120-running");
+            org.jawata.mcp.execution.WrittenFiles.shared().record(plan, List.of(repo.resolve("a.txt").toString()));
+            org.jawata.mcp.execution.WrittenFiles.shared().record("plan-z120-running", List.of(repo.resolve("a.txt").toString()));
+
+            ToolResponse answer = commit(plan, "Step 1");
+
+            assertFalse(answer.isSuccess(), "a file two hires wrote was committed while one still works on it");
+            assertTrue(answer.getError().getMessage().contains("a.txt"), answer.getError().getMessage());
+        }
+    }
+
+    @Test
     @DisplayName("28h D57 (j): a step whose checks passed is committed, with only the files it produced; another changed file stays out")
     void aPassedStepIsCommittedWithOnlyItsFiles() throws Exception {
         Files.writeString(repo.resolve("a.txt"), "two\n");

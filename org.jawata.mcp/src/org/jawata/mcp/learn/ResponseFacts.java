@@ -1,11 +1,14 @@
 package org.jawata.mcp.learn;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 
 import org.jawata.mcp.models.ToolResponse;
 import org.jawata.mcp.step.GateOutcome;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 /**
  * What a tool's own response reported about what it did — read in ONE place (Sprint 28g S16).
@@ -53,6 +56,28 @@ public final class ResponseFacts {
             }
         }
         return OptionalLong.empty();
+    }
+
+    /**
+     * The files a call changed on disk, as its answer names them (28h z120): the two lists a modifying tool publishes, and the document the
+     * {@code files} tool wrote or edited. A staged change and a dry run name files they did not change, so they give none.
+     */
+    public static List<String> filesWritten(String tool, JsonNode arguments, ToolResponse response) {
+        if (response == null || !response.isSuccess() || !(response.getData() instanceof Map<?, ?> map)
+                || Boolean.FALSE.equals(map.get("applied")) || Boolean.TRUE.equals(map.get("dryRun"))) {
+            return List.of();
+        }
+        List<String> written = new ArrayList<>();
+        for (String key : List.of("filesModified", "modifiedFiles")) {
+            if (map.get(key) instanceof List<?> files) {
+                files.forEach(file -> written.add(String.valueOf(file)));
+            }
+        }
+        String action = arguments == null ? "" : arguments.path("action").asText("");
+        if ("files".equals(tool) && ("write".equals(action) || "edit".equals(action)) && map.get("path") instanceof String path) {
+            written.add(path);
+        }
+        return written;
     }
 
     /**

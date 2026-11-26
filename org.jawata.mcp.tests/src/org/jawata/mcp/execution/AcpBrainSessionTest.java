@@ -429,6 +429,18 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h z120: a file a hired brain writes with its own editor is kept as written by that hire's plan, while it still runs")
+    void aHiredBrainsOwnWriteIsKeptForItsPlan() throws Exception {
+        try (HireRegistry.Registration ignored = HireRegistry.shared().begin("developer", "own write", "")) {
+            HireRegistry.shared().planOpened("plan-own-writes-1");
+            hire("CLAUDEWRITE:/p/src/OwnWrite.java");
+
+            assertEquals(java.util.Set.of("plan-own-writes-1"), WrittenFiles.shared().writersOf(java.nio.file.Path.of("/p"), "src/OwnWrite.java"),
+                "THE CLAIM: the brain's own write was not kept, so a commit for another hire takes this file");
+        }
+    }
+
+    @Test
     @DisplayName("28h Stage 19, the hire-time split: the time between a tool call opening and completing on the wire is kept as the time in tools, and a run with no call keeps none")
     void aToolsTimeIsReadFromWhenItsCallOpensAndCloses() throws Exception {
         HiredBrain.Outcome timed = hire("TIMEDCALL");

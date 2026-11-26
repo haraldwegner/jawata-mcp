@@ -894,6 +894,10 @@ public final class AcpBrainSession {
                                 }
                             }
                         }
+                        // 28h z120: a call that completed has its whole input, so what the brain's own editor wrote is kept as the hire's now.
+                        if (index != null && "completed".equals(update.path("status").asText())) {
+                            HireRegistry.shared().noteOwnWrites(List.of(toolCalls.get(index)));
+                        }
                     }
                     case "usage_update" -> {
                         JsonNode amount = update.path("cost").path("amount");

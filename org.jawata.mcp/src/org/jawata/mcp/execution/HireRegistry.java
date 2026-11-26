@@ -267,6 +267,18 @@ public final class HireRegistry {
     }
 
     /**
+     * Keeps the files these calls of its own editor wrote as written by the plan of the hire running on the current thread (28h z120); a
+     * thread running no hire, or a hire whose plan is not open yet, is ignored.
+     */
+    public void noteOwnWrites(List<ToolCall> made) {
+        for (Running hire : running) {
+            if (hire.thread == Thread.currentThread()) {
+                WrittenFiles.shared().record(hire.planId, OwnWrites.pathsWritten(made));
+            }
+        }
+    }
+
+    /**
      * Records what the brain of the hire running on the current thread last reported about its usage. A figure the report did not carry keeps
      * the value the hire had before it: a report that names only a context size has not said the cost fell to nothing.
      */
@@ -656,6 +668,18 @@ public final class HireRegistry {
             report.background());
         Inbox inbox = inboxes.get(above.get());
         return inbox != null && inbox.offer(passed) || heldForItsLead(above.get(), List.of(passed));
+    }
+
+    /** Whether this plan is the account's own or was issued under it, directly or through other hires (28h z120). */
+    public boolean isOfAccount(String planId, String accountPlan) {
+        String at = planId;
+        for (int depth = 0; at != null && !at.isEmpty() && depth < 32; depth++) {
+            if (at.equals(accountPlan)) {
+                return true;
+            }
+            at = issuedBy.get(at);
+        }
+        return false;
     }
 
     /** Whether this caller is a principal brain's own key, so a hire it issued has no lead above it but the chat. */

@@ -4,8 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -13,6 +16,7 @@ import org.jawata.mcp.execution.CallOutcomes;
 import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.execution.TestFirst;
 import org.jawata.mcp.execution.TestRuns;
+import org.jawata.mcp.execution.WrittenFiles;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
 import org.junit.jupiter.api.AfterEach;
@@ -115,5 +119,32 @@ class ToolRegistryRecordsHireFailuresTest {
             () -> assertEquals(List.of(TestFirst.Run.RED, TestFirst.Run.GREEN), TestRuns.shared().take("plan-testruns-1"),
                 "THE CLAIM: the hire's test runs were not kept, or another tool's answer was"),
             () -> assertTrue(TestRuns.shared().take("not-a-hire-session").isEmpty(), "CONTROL: a session that is no running hire was kept"));
+    }
+
+    @Test
+    @DisplayName("28h z120: the files a running hire's calls changed are kept as written by it; a staged change, a dry run, a read and a caller that is no hire are not")
+    void aRunningHiresWritesAreKept() throws Exception {
+        aHireIsRunning("plan-writes-1");
+        JsonNode none = OM.readTree("{}");
+        JsonNode write = OM.readTree("{\"action\":\"write\"}");
+        JsonNode read = OM.readTree("{\"action\":\"read\"}");
+        CallerIdentity hired = CallerIdentity.supplied("plan-writes-1");
+        registryWith("rename_symbol", ToolResponse.success(Map.of("applied", true, "filesModified", List.of("src/Renamed.java")))).callTool("rename_symbol", none, hired);
+        registryWith("format", ToolResponse.success(Map.of("modifiedFiles", List.of("src/Formatted.java")))).callTool("format", none, hired);
+        registryWith("move", ToolResponse.success(Map.of("applied", false, "filesModified", List.of("src/Staged.java")))).callTool("move", none, hired);
+        registryWith("format", ToolResponse.success(Map.of("dryRun", true, "modifiedFiles", List.of("src/DryRun.java")))).callTool("format", none, hired);
+        registryWith("files", ToolResponse.success(Map.of("path", "/repo/plan.md"))).callTool("files", write, hired);
+        registryWith("files", ToolResponse.success(Map.of("path", "/repo/read.md"))).callTool("files", read, hired);
+        registryWith("rename_symbol", ToolResponse.success(Map.of("filesModified", List.of("src/Others.java"))))
+            .callTool("rename_symbol", none, CallerIdentity.supplied("not-a-hire-session"));
+
+        Path top = Path.of("/repo");
+        Map<String, Set<String>> writers = new LinkedHashMap<>();
+        for (String file : List.of("src/Renamed.java", "src/Formatted.java", "src/Staged.java", "src/DryRun.java", "plan.md", "read.md", "src/Others.java")) {
+            writers.put(file, WrittenFiles.shared().writersOf(top, file));
+        }
+        Set<String> kept = Set.of("plan-writes-1");
+        assertEquals(Map.of("src/Renamed.java", kept, "src/Formatted.java", kept, "src/Staged.java", Set.of(), "src/DryRun.java", Set.of(), "plan.md", kept,
+            "read.md", Set.of(), "src/Others.java", Set.of()), writers, "THE CLAIM: what the hire wrote was not kept, or what it did not write was");
     }
 }

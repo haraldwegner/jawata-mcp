@@ -232,6 +232,23 @@ class HiredBrainTest {
     }
 
     @Test
+    @DisplayName("28h z120: a file a brain started by command line writes with its own editor is kept as written by that hire's plan")
+    void aCommandLineBrainsOwnWriteIsKeptForItsPlan() throws Exception {
+        HostCommand command = script("""
+            echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Write","input":{"file_path":"/p/src/FromCli.java"}}]}}'
+            echo '{"type":"result","result":"done","total_cost_usd":0.01}'
+            """);
+        try (HireRegistry.Registration hire = HireRegistry.shared().begin("developer", "z120 command line", "")) {
+            HireRegistry.shared().planOpened("plan-z120-cli");
+            HiredBrain.hire(host, new ClaudeCodeDialect(command.argv().get(0), 12, null, false), site(command), "brief", List.of(),
+                HiredBrain.Ceilings.of(Duration.ofSeconds(20)));
+
+            assertEquals(java.util.Set.of("plan-z120-cli"), WrittenFiles.shared().writersOf(Path.of("/p"), "src/FromCli.java"),
+                "THE CLAIM: the brain's own write was not kept, so a commit for another hire takes this file");
+        }
+    }
+
+    @Test
     @DisplayName("z102: what a brain started by command line prints counts as a sign of life, so a working hire is not stopped as silent")
     void aCommandLineHireShowsSignsOfLife() throws Exception {
         HostCommand command = script("""

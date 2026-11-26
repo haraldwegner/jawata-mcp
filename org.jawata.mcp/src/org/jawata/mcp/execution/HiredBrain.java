@@ -267,6 +267,7 @@ public final class HiredBrain {
                 toolSteps += read.toolSteps();
                 toolNames.addAll(read.toolNames());
                 toolCalls.addAll(read.toolCalls());
+                HireRegistry.shared().noteOwnWrites(read.toolCalls());
                 if (read.tokens().isPresent()) {
                     tokens = tokens.isPresent() ? Optional.of(tokens.get().plus(read.tokens().get())) : read.tokens();
                 }

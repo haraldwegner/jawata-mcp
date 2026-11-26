@@ -70,7 +70,8 @@ public final class GitTool implements Tool {
 
             commit: only when every check of that hire's plan passed, and only the files the hire reported changed (any other change in the
             tree stays uncommitted); the author is the repository's own configured person. A refusal names each check that did not pass;
-            recheck=true runs the open checks again on the files as they stand and commits when they pass.
+            recheck=true runs the open checks again on the files as they stand and commits when they pass. A file another hire is recorded
+            as writing, and this one is not, is left out and listed under leftOut; one both wrote is refused while the other still runs.
             release: only when the person's own last message is the order, "/release" (with a tag or notes after it) or the word "release"
             alone (at most with "please", "it" or "now"), never a sentence that only mentions a release; refused while any unpushed commit names an AI agent as author
             or co-author. Pushes the branch to its upstream, makes the annotated tag and pushes it, and with publish (default true) publishes
@@ -154,15 +155,41 @@ public final class GitTool implements Tool {
             return refused("NOTHING_PRODUCED", "plan " + planId + " changed no file, so there is nothing to commit");
         }
         Path top = Path.of(git(folder, "rev-parse", "--show-toplevel"));
+        // 28h z120: the change set is what changed in the tree while the hire ran, which holds what hires beside it wrote. A file another hire
+        // is recorded as writing, and this one and those under it are not, is theirs and stays out; one nobody is recorded for stays in.
+        List<String> own = new ArrayList<>();
+        Map<String, String> leftOut = new LinkedHashMap<>();
+        for (String file : files) {
+            java.util.Set<String> writers = org.jawata.mcp.execution.WrittenFiles.shared().writersOf(top, file);
+            List<String> others = writers.stream().filter(writer -> !HireRegistry.shared().isOfAccount(writer, planId)).toList();
+            if (others.isEmpty()) {
+                own.add(file);
+            } else if (others.size() == writers.size()) {
+                leftOut.put(file, "written by " + String.join(", ", others.stream().map(HireRegistry.shared()::labelOf).toList()));
+            } else {
+                Optional<String> working = others.stream().filter(HireRegistry.shared()::isRunningPlan).findFirst();
+                if (working.isPresent()) {
+                    return refused("WRITTEN_BY_ANOTHER_HIRE", file + " was also written by " + HireRegistry.shared().labelOf(working.get())
+                        + ", which still runs, so nothing is committed; commit when it has ended");
+                }
+                own.add(file);
+            }
+        }
+        if (own.isEmpty()) {
+            return refused("NOTHING_PRODUCED", "every file plan " + planId + " has as changed was written by other hires: " + leftOut);
+        }
         List<String> add = new ArrayList<>(List.of("add", "--"));
-        add.addAll(files);
+        add.addAll(own);
         git(top, add.toArray(String[]::new));
         List<String> commit = new ArrayList<>(List.of("commit", "-q", "-m", message, "--"));
-        commit.addAll(files);
+        commit.addAll(own);
         git(top, commit.toArray(String[]::new));
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("commit", git(top, "rev-parse", "HEAD"));
-        data.put("files", files);
+        data.put("files", own);
+        if (!leftOut.isEmpty()) {
+            data.put("leftOut", leftOut);
+        }
         return ToolResponse.success(data);
     }
 

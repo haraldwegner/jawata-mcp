@@ -712,6 +712,11 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         if ("run_tests".equals(name) && org.jawata.mcp.execution.HireRegistry.shared().isRunningPlan(caller.id())) {
             org.jawata.mcp.execution.TestRuns.shared().record(caller.id(), name, response);
         }
+        // 28h z120: what a running hire's call changed on disk is kept as written by it, so a commit for one hire leaves another's files out.
+        java.util.List<String> written = org.jawata.mcp.learn.ResponseFacts.filesWritten(name, arguments, response);
+        if (!written.isEmpty() && org.jawata.mcp.execution.HireRegistry.shared().isRunningPlan(caller.id())) {
+            org.jawata.mcp.execution.WrittenFiles.shared().record(caller.id(), written);
+        }
         return response;
     }
 
