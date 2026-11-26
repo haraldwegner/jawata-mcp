@@ -3179,7 +3179,17 @@ public final class ExperienceTool implements Tool {
         List<String> asked = new java.util.ArrayList<>();
         long budget = budgetIn(args);
         int[] outsideWorkspace = {0};
+        // 28h z106: a method the edit's replaced text already held is not one the write adds, so the hold names nothing the write did not
+        // add. z123: a test's job is the code it tests and an override's is its supertype's, so neither is compared with other members.
+        java.util.Set<String> replaced = org.jawata.mcp.tools.shared.DraftSource.methodsIn(text(args, "replacing")).stream()
+            .map(org.jawata.mcp.tools.shared.DraftSource.DraftMethod::name).collect(java.util.stream.Collectors.toSet());
+        List<String> notAsked = new java.util.ArrayList<>();
         for (org.jawata.mcp.tools.shared.DraftSource.DraftMethod m : drafted) {
+            String why = replaced.contains(m.name()) ? "already in the text the edit replaces" : m.givenBy();
+            if (why != null) {
+                notAsked.add(m.name() + ": " + why);
+                continue;
+            }
             if (already.contains(m.name())) {
                 continue;
             }
@@ -3212,6 +3222,7 @@ public final class ExperienceTool implements Tool {
             + " answer and is often the right one.");
         out.put("draftMethods", drafted.size());
         out.put("asked", asked);
+        out.put("notAsked", notAsked);
         // A nominee whose job is anchored in code the loaded workspace does not hold is skipped, never offered to a developer who cannot open it
         // (row 28h-C27-21), and the skipping is said so that an empty list is not read as "nothing like this exists".
         out.put("nomineesOutsideWorkspace", outsideWorkspace[0]);

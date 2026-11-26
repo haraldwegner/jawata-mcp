@@ -257,6 +257,43 @@ class DuplicateCheckTest {
     }
 
     @Test
+    @DisplayName("28h z106 z123: a method the edit already held, an override and a test method are not asked about, and the answer says why")
+    @SuppressWarnings("unchecked")
+    void onlyWhatTheWriteAddsIsAsked() {
+        ObjectNode a = json.createObjectNode();
+        a.put("kind", "duplicate_check");
+        a.put("filePath", "/p/src/OtherTest.java");
+        a.put("replacing", "@Test\nvoid readsTheTree() {\n    assertEquals(1, 1);\n}\n");
+        a.put("draft", """
+            void readsTheTree() {
+                assertEquals(1, 2);
+            }
+
+            @org.junit.jupiter.api.Test
+            void parsesTheSyntaxTree() {
+            }
+
+            @Override
+            public Tree buildSyntaxTree(Source source) {
+                return null;
+            }
+
+            /** Rounds a monetary amount to the nearest cent, half up. */
+            private static long cents(long micros) {
+                return micros;
+            }
+            """);
+        ToolResponse r = tool.execute(a);
+        assertTrue(r.isSuccess(), "duplicate_check must answer: " + r.getError());
+        Map<String, Object> data = (Map<String, Object>) r.getData();
+
+        assertAll(
+            () -> assertEquals(List.of("cents"), data.get("asked"), "CONTROL and THE CLAIM: only the new production method is asked: " + data),
+            () -> assertEquals(List.of("readsTheTree: already in the text the edit replaces", "parsesTheSyntaxTree: a test method",
+                "buildSyntaxTree: an override, whose job is the supertype's"), data.get("notAsked"), "the answer must say what it left out: " + data));
+    }
+
+    @Test
     @DisplayName("what could not be checked is SAID, never left to read as nothing")
     void whatCouldNotBeCheckedIsSaid() {
         Map<String, Object> data = check("/p/src/Other.java", "void alpha() {}");

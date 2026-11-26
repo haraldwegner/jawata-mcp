@@ -63,7 +63,7 @@ public final class DraftSource {
      * question — {@code process}, {@code handle}, {@code run} name nothing — and the sentence
      * above the method is usually the only place the intent is written down.</p>
      */
-    public record DraftMethod(String name, String comment) {
+    public record DraftMethod(String name, String comment, String givenBy) {
 
         /** The question to put to the lane: what this method is called and what it is for. */
         public String asQuestion() {
@@ -87,6 +87,27 @@ public final class DraftSource {
             return found;
         }
         return collect("class " + WRAPPER + " {\n" + draft + "\n}\n");
+    }
+
+    /** The annotations that make a method a test. */
+    private static final java.util.Set<String> TESTS = java.util.Set.of("Test", "ParameterizedTest", "RepeatedTest", "TestFactory",
+        "TestTemplate");
+
+    /** Why a method's job is not its own to name — a test of other code, or a supertype's method — or null when it is. */
+    private static String givenBy(MethodDeclaration node) {
+        for (Object modifier : node.modifiers()) {
+            if (modifier instanceof org.eclipse.jdt.core.dom.Annotation annotation) {
+                String written = annotation.getTypeName().getFullyQualifiedName();
+                String name = written.substring(written.lastIndexOf('.') + 1);
+                if (TESTS.contains(name)) {
+                    return "a test method";
+                }
+                if (name.equals("Override")) {
+                    return "an override, whose job is the supertype's";
+                }
+            }
+        }
+        return null;
     }
 
     private static List<DraftMethod> collect(String source) {
@@ -113,7 +134,7 @@ public final class DraftSource {
                     }
                     String comment = node.getJavadoc() == null
                         ? "" : node.getJavadoc().toString().replaceAll("[*/\\n\\r]", " ").trim();
-                    out.add(new DraftMethod(node.getName().getIdentifier(), comment));
+                    out.add(new DraftMethod(node.getName().getIdentifier(), comment, givenBy(node)));
                     return false;
                 }
             });
