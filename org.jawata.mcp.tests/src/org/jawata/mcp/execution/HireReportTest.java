@@ -103,11 +103,58 @@ class HireReportTest {
     @Test
     @DisplayName("D57 (d), the control: a hire with no instruction score gets no instruction lines")
     void aHireWithNoScoreGetsNoInstructionLines() throws Exception {
-        String report = reportOf("{\"cleanExit\":true,\"answer\":\"PROBE OK\"}");
+        String report = reportOf("{\"cleanExit\":true,\"answer\":\"REPORT: PROBE OK\"}");
 
         assertAll(
-            () -> assertTrue(report.contains("Answer: PROBE OK"), report),
+            () -> assertTrue(report.contains("Report: PROBE OK"), report),
             () -> assertFalse(report.contains("Instructions:"), report));
+    }
+
+    @Test
+    @DisplayName("28h z52: a lead is told the worker's REPORT section and where the record is, never the rest of the answer")
+    void aReportCarriesTheWorkersOwnSectionAndNotTheRestOfItsAnswer() throws Exception {
+        String report = reportOf("""
+            {"cleanExit":true,"record":"/tmp/records/a1/proposal.md",
+             "answer":"I read A.java and rewrote the loop line by line, as follows\\n\\n## REPORT\\nRenamed total to sum. Open: nothing.",
+             "changes":[{"path":"A.java","oldText":"int total;","newText":"int sum;"}]}
+            """);
+
+        assertAll(
+            () -> assertTrue(report.contains("Report: Renamed total to sum. Open: nothing."), report),
+            () -> assertTrue(report.contains("Record: /tmp/records/a1/proposal.md"), report),
+            () -> assertFalse(report.contains("line by line"), "the working-out of the level below went up: " + report),
+            () -> assertFalse(report.contains("int total;"), "the changed text went up: " + report));
+    }
+
+    @Test
+    @DisplayName("28h z52: a worker that wrote no REPORT section is reported as such, with its record, and its answer does not go up")
+    void anAnswerWithNoReportSectionDoesNotGoUp() throws Exception {
+        String report = reportOf("{\"cleanExit\":true,\"record\":\"/tmp/records/a2/proposal.md\",\"answer\":\"first I looked at the tree, then\"}");
+
+        assertAll(
+            () -> assertTrue(report.contains("Report: no REPORT section was written; the whole answer is in the record"), report),
+            () -> assertTrue(report.contains("Record: /tmp/records/a2/proposal.md"), report),
+            () -> assertFalse(report.contains("first I looked"), report));
+    }
+
+    @Test
+    @DisplayName("28h z136: a report says the money, time, tokens and number of files, and 'no figure' where there is none, never zero")
+    void aReportCarriesItsFigures() throws Exception {
+        String told = reportOf("""
+            {"cleanExit":true,"answer":"REPORT: done","costUsd":0.25,"tokens":{"spent":1200},"changedFileCount":3,
+             "journalRow":{"detail":{"elapsedMs":42000}}}
+            """);
+        String untold = reportOf("{\"cleanExit\":true,\"answer\":\"REPORT: done\",\"costUsd\":\"NOT PUBLISHED BY THIS BRAIN\"}");
+
+        assertAll(
+            () -> assertTrue(told.contains("Money: 0.25 USD"), told),
+            () -> assertTrue(told.contains("Time: 42 s"), told),
+            () -> assertTrue(told.contains("Tokens: 1200"), told),
+            () -> assertTrue(told.contains("Files changed: 3"), told),
+            () -> assertTrue(untold.contains("Money: no figure"), untold),
+            () -> assertTrue(untold.contains("Time: no figure"), untold),
+            () -> assertTrue(untold.contains("Tokens: no figure"), untold),
+            () -> assertTrue(untold.contains("Files changed: not measured"), untold));
     }
 
     @Test
@@ -118,7 +165,7 @@ class HireReportTest {
         assertAll(
             () -> assertTrue(report.contains("State: failed"), report),
             () -> assertTrue(report.contains("Ended because: the answer was empty"), report),
-            () -> assertTrue(report.contains("Answer: (empty)"), report));
+            () -> assertTrue(report.contains("Report: (empty answer)"), report));
     }
 
     @Test

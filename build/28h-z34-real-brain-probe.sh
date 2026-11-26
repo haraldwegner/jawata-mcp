@@ -107,6 +107,14 @@ def rpc(method, params, session=None):
     with urllib.request.urlopen(r, timeout=300) as resp:
         return json.loads(resp.read().decode())
 
+def recorded(short):
+    # 28h z52: the short report carries no whole answer and no tool list; both are in the record it names.
+    path = short.get("record")
+    try:
+        return open(path).read() if path else ""
+    except OSError:
+        return ""
+
 def call(tool, args, session=None):
     answer = rpc("tools/call", {"name": tool, "arguments": args}, session)
     for part in answer.get("result", {}).get("content", []):
@@ -171,7 +179,7 @@ for n in range(RUNS):
         wd = call("hire_wait", {"hireId": wid, "waitSeconds": 50}).get("data", {})
         if wd.get("state") not in ("running", None): break
     wr = wd.get("report") or {}
-    print("  note  write attempt %d: %s; tools called: %s" % (n + 1, json.dumps(wr.get("answer"))[:160], wr.get("toolsCalled")))
+    print("  note  write attempt %d: %s; record: %s" % (n + 1, json.dumps(wr.get("report"))[:160], wr.get("record")))
     if wd.get("state") == "finished": finished += 1
     for base in (WS, os.environ["PROBE_PROJECT"]):
         for root, dirs, files in os.walk(base):
@@ -192,12 +200,12 @@ if os.environ.get("Z34_DEV"):
         dd = call("hire_wait", {"hireId": did, "waitSeconds": 50}).get("data", {})
         if dd.get("state") not in ("running", None): break
     dr = dd.get("report") or {}
-    print("  note  the developer brain said: %s; tools called: %s" % (json.dumps(dr.get("answer"))[:300], dr.get("toolsCalled")))
+    print("  note  the developer brain said: %s; record: %s" % (json.dumps(dr.get("report"))[:300], dr.get("record")))
     renamed = os.path.exists(os.environ["PROBE_PROJECT"] + "/src/main/java/com/example/SharedHelperZ34.java")
-    staged = bool(os.environ.get("Z34_ACP")) and "staged" in json.dumps(dr.get("answer")).lower() and "mcp__jawata__rename_symbol" in (dr.get("toolsCalled") or [])
+    staged = bool(os.environ.get("Z34_ACP")) and "staged" in recorded(dr).lower() and "mcp__jawata__rename_symbol" in recorded(dr)
     if dd.get("state") == "finished" and renamed: ok("a real hired developer renamed a class through rename_symbol")
     elif dd.get("state") == "finished" and staged: ok("a real hired developer, over the chat's path, called rename_symbol and STAGED the change as that path's propose-don't-apply rule asks")
-    else: bad("the developer did not rename the class: state=%s renamed=%s answer=%s" % (dd.get("state"), renamed, json.dumps(dr.get("answer"))[:200]))
+    else: bad("the developer did not rename the class: state=%s renamed=%s answer=%s" % (dd.get("state"), renamed, json.dumps(dr.get("report"))[:200]))
 
 print("\n%d passed, %d failed" % (passed, failed))
 raise SystemExit(1 if failed else 0)

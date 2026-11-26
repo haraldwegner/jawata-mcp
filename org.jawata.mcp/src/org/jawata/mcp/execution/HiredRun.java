@@ -233,8 +233,9 @@ public final class HiredRun {
             // THE GROUND (S14, D16): only a seat that changes code is bound to the area's jobs. The map is the catalogue's own rows for the
             // brief, asked now, so a job described after the build is in this hire's prompt; a lookup that failed says so in the text.
             ExperienceRetrieval.AreaMap ground = area == null || !seat.changesCode() ? null : groundFor(brief);
-            return conduct(asThisHire, base, seat.prompt(brief, binding, ground == null ? "" : ground.text()), seat.tools(), seat.ceilings(), gates,
-                planned, plan, seat.model(), acp, ground == null ? List.of() : ground.shown());
+            // 28h z52: every hired brain is asked for the summary its lead will be told; the rest of its answer stays in the record.
+            return conduct(asThisHire, base, seat.prompt(brief, binding, ground == null ? "" : ground.text()) + HireReport.ASK, seat.tools(),
+                seat.ceilings(), gates, planned, plan, seat.model(), acp, ground == null ? List.of() : ground.shown());
         } finally {
             plans.close(plan);
         }

@@ -150,7 +150,8 @@ class HireWaitToolTest {
         try (HireRegistry.Registration hire = hires.begin("developer", "z30 finished", chat)) {
             hires.planOpened(plan);
         }
-        JsonNode answer = JSON.createObjectNode().put("plan", plan).put("name", "Zed").put("result", "done");
+        JsonNode answer = JSON.createObjectNode().put("plan", plan).put("name", "Zed").put("record", "/tmp/records/z/proposal.md")
+            .put("answer", "I went through the file line by line\nREPORT: Renamed it. Open: nothing.");
         hires.record("developer", "z30 finished", answer);
 
         Map<String, Object> first = dataOf(ask(plan, 0));
@@ -158,7 +159,8 @@ class HireWaitToolTest {
 
         assertAll(
             () -> assertEquals("finished", first.get("state"), String.valueOf(first)),
-            () -> assertEquals(answer, JSON.valueToTree(first.get("report")), "the report is not the hire's answer"),
+            () -> assertEquals("Renamed it. Open: nothing.", JSON.valueToTree(first.get("report")).path("report").asText(), "the report is not the worker's report section: " + first),
+            () -> assertTrue(JSON.valueToTree(first.get("report")).path("answer").isMissingNode(), "28h z52: the whole answer went to the caller: " + first),
             () -> assertEquals(Boolean.TRUE, first.get("newToYou"), "the first read was not marked new"),
             () -> assertEquals(Boolean.FALSE, again.get("newToYou"), "the second read of the same report was marked new again"),
             () -> assertEquals(List.of(), hires.undeliveredFor(chat), "the chat would still hand over a report the tool already gave"));

@@ -784,6 +784,9 @@ class HiredRunProposesTest {
             () -> assertTrue(pmAsked.contains("never ask a second time before a release push"),
                 "the PM carries the release activity, so the release rule is in its text: " + pmAsked),
             () -> assertTrue(pmAsked.contains("keep every message short"), "and the rule bound to no seat"),
+            // 28h z52: every hired brain is asked for the summary its lead will be told.
+            () -> assertTrue(pmAsked.contains("End your answer with a line that reads REPORT:"),
+                "the brain was not asked for its report section: " + pmAsked),
             () -> assertFalse(workerAsked.contains("release push"),
                 "a worker answers for no release, so the release rule is not in its text: " + workerAsked),
             () -> assertTrue(workerAsked.contains("keep every message short"), "but it carries the general rule"),

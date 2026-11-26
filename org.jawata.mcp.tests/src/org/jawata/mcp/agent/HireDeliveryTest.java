@@ -117,7 +117,8 @@ class HireDeliveryTest {
     }
 
     private static ObjectNode answered(String planId, String name, String text) {
-        return JSON.createObjectNode().put("plan", planId).put("name", name).put("cleanExit", true).put("answer", text);
+        // 28h z52: only a hire's REPORT section reaches the one that hired it.
+        return JSON.createObjectNode().put("plan", planId).put("name", name).put("cleanExit", true).put("answer", "REPORT: " + text);
     }
 
     private boolean waitUntil(java.util.function.BooleanSupplier condition, int seconds) throws InterruptedException {

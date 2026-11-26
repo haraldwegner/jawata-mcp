@@ -413,13 +413,14 @@ class LeadLoopTest {
         // THE CONTROL: no ceiling, the same two turns of five tool calls each end clean.
         String free = "m12-lead-free";
         HireRegistry.Inbox freeInbox = HireRegistry.shared().inboxFor(free);
-        aHireIsOut(free, "m12-child-free", "SPEND", 1_500, null);
+        // 28h z52: only a child's REPORT section reaches the lead, so the word that makes the stand-in spend again is written there.
+        aHireIsOut(free, "m12-child-free", "REPORT: SPEND", 1_500, null);
         HiredBrain.Outcome unlimited = runAsLead("SPEND", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), free, freeInbox);
 
         // WITH A CEILING OF SEVEN across the turns: the first turn spends five, and the second goes over.
         String bounded = "m12-lead-bounded";
         HireRegistry.Inbox boundedInbox = HireRegistry.shared().inboxFor(bounded);
-        aHireIsOut(bounded, "m12-child-bounded", "SPEND", 1_500, null);
+        aHireIsOut(bounded, "m12-child-bounded", "REPORT: SPEND", 1_500, null);
         HiredBrain.Outcome capped = runAsLead("SPEND", new HiredBrain.Ceilings(Duration.ofSeconds(60), 7, null), bounded, boundedInbox);
 
         assertAll(

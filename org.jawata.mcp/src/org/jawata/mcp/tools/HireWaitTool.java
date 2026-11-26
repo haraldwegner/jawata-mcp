@@ -50,8 +50,10 @@ public final class HireWaitTool implements Tool {
             as a new turn only where jawata itself is that seat (the jawata chat). A client that calls this server's tools is its own principal, so it
             asks here. Answers {state, hireId}: running (with idleSeconds, how long it has shown no sign of life, and stalled, true once that passes
             the ceiling, 300 seconds unless the host's setting jawata.hire.stallSeconds says another, so a hire that has gone quiet is told to you and not waited for;
-            a lead with a hire running under it is never stalled, and waitingFor names those hires), finished (with report, the hire's own answer,
-            and newToYou, false when the report was already handed over, by this tool or to the chat), or unknown (no hire has that id on this engine).
+            a lead with a hire running under it is never stalled, and waitingFor names those hires), finished (with report, the hire's short report:
+            state, checks, number of files changed, money, time and tokens ("no figure" where the brain published none), report, the summary it
+            wrote, and record, the file that holds its whole answer and changes; and newToYou, false when the report was already handed over, by
+            this tool or to the chat), or unknown (no hire has that id on this engine).
             waitSeconds (0 to 50, default 0) is how long to wait for a running hire before answering running: call again, and between the calls
             you are free to answer the person. A finished report is handed over once as new and marked read, so the chat does not hand it over again.
             """;
@@ -108,7 +110,8 @@ public final class HireWaitTool implements Tool {
             }
         } else if (report.isPresent()) {
             data.put("state", "finished");
-            data.put("report", report.get());
+            // 28h z52: the caller is told the short report; the whole answer and the changes are in the record it names.
+            data.put("report", org.jawata.mcp.execution.HireReport.shortOf(report.get()));
             data.put("newToYou", hires.takeReportOf(hireId));
         } else if (hires.labelOf(hireId).equals(hireId)) {
             data.put("state", "unknown");

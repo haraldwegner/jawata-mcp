@@ -206,7 +206,7 @@ elif PHASE == "acp":
                           "brief": "Answer in one short line with only the name of the model you are running as. No tools. (" + str(time.time()) + ")",
                           "boardFile": WS + "/sprint-z53-plan.md", "workingDirectory": WS, "steps": [{"tool": "health_check", "arguments": {}}]})
         r = finished_report(h)
-        return r, str(r.get("answer") or "")
+        return r, str(r.get("report") or "")  # the summary the brain wrote: the short report carries no whole answer (28h z52)
     r1, a1 = ask("Haiku 5.5")
     print("  note  stored Haiku 5.5, the brain said: %s | cost %s" % (a1[:120], r1.get("costUsd")))
     if (r1.get("brain") or {}).get("model") == "Haiku 5.5": ok("the hire's record names the stored model Haiku 5.5")
