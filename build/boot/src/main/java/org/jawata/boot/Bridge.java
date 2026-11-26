@@ -269,11 +269,7 @@ final class Bridge {
     private final PrintStream out;
     private final PrintStream err;
     private volatile boolean closing;
-    /** The event stream stopped waiting for an engine that did not answer; the next message the engine accepts opens it again. */
-    private volatile boolean eventsGaveUp;
 
-    /** How long a refused event stream is tried again: longer than an engine takes from listening to answering, short of a person's patience. */
-    private static final long EVENTS_WAIT_MILLIS = 30_000;
     private static final long EVENTS_RETRY_MILLIS = 200;
 
     Bridge(String flag, String route, Framing framing, String base, String key, PrintStream out, PrintStream err) {
@@ -335,13 +331,6 @@ final class Bridge {
                 err.println("jawata " + flag + ": the resident answered " + status + " to a message" + (status == 401 ? " (the key was refused)" : ""));
                 return REFUSED;
             }
-            if (eventsGaveUp) {
-                // the engine answers now, after the event stream stopped waiting for it: its answers need a stream again (28h C26)
-                eventsGaveUp = false;
-                events = new Thread(this::stream, flag.substring(2) + "-events");
-                events.setDaemon(true);
-                events.start();
-            }
         }
         closing = true;
         send("DELETE", route, HttpRequest.BodyPublishers.noBody());
@@ -361,9 +350,11 @@ final class Bridge {
      */
     private int unreachable(String message) {
         String why = "The jawata engine at " + base + " does not answer; start the jawata studio, which starts it, then connect again.";
-        java.util.regex.Matcher id = java.util.regex.Pattern.compile("\"id\"\\s*:\\s*(\"(?:[^\"\\\\]|\\\\.)*\"|-?\\d+)").matcher(message);
-        if (framing != DAP && message.contains("\"method\"") && id.find()) {
-            framing.write(out, "{\"jsonrpc\":\"2.0\",\"id\":" + id.group(1) + ",\"error\":{\"code\":-32000,\"message\":\"" + why + "\"}}");
+        // the request's own members, never an "id" its parameters happen to carry
+        java.util.Map<String, String> members = topLevelMembers(message);
+        String id = members.get("id");
+        if (framing != DAP && members.containsKey("method") && id != null && !"null".equals(id)) {
+            framing.write(out, "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":-32000,\"message\":\"" + why + "\"}}");
             out.flush();
         }
         err.println("jawata " + flag + ": " + why);
@@ -383,6 +374,9 @@ final class Bridge {
     private void stream() {
         try {
             HttpResponse<java.util.stream.Stream<String>> response = connectEvents();
+            if (response == null) {
+                return; // the host closed its input before anything listened
+            }
             if (response.statusCode() != 200) {
                 err.println("jawata " + flag + ": the resident answered " + response.statusCode() + " to the event stream"
                     + (response.statusCode() == 401 ? " (the key was refused)" : ""));
@@ -393,12 +387,6 @@ final class Bridge {
                     framing.write(out, line.substring("data: ".length()));
                 }
             });
-        } catch (java.net.ConnectException unreachable) {
-            // nothing listened at the address for the whole wait: the request the host sent is answered with why, by pipe(), which then ends
-            // the bridge (28h D57 (e)); a host that sent nothing meanwhile is told the same way at its first message, or, if the engine
-            // answers by then, pipe() opens the stream again
-            eventsGaveUp = true;
-            return;
         } catch (IOException | UncheckedIOException e) {
             err.println("jawata " + flag + ": the event stream ended: " + e.getMessage());
         } catch (InterruptedException e) {
@@ -413,23 +401,20 @@ final class Bridge {
     }
 
     /**
-     * Opens the event stream, trying again while nothing listens at the address, for at most {@link #EVENTS_WAIT_MILLIS} (the architect's watch of
-     * 28h C26): the engine may finish starting between this connect and the first message, which then goes through, and a bridge whose event
-     * stream gave up at once would carry messages to an engine whose answers reach no one, the host waiting with nothing said. While the engine
-     * still does not answer, the first message is refused too and {@link #unreachable(String)} tells the host why, so the wait adds no delay there.
+     * Opens the event stream, trying again for as long as nothing listens at the address and the host's input is open (the architect's watch of
+     * 28h C26 and 28h-C26-10): the engine may finish starting at any time before a message that then goes through, and a bridge that had stopped
+     * trying would carry messages to an engine whose answers reach no one. While the engine still does not answer, a message is refused and
+     * {@link #unreachable(String)} tells the host why, so the trying adds no delay there. Null when the input closed first.
      */
     private HttpResponse<java.util.stream.Stream<String>> connectEvents() throws IOException, InterruptedException {
-        long until = System.currentTimeMillis() + EVENTS_WAIT_MILLIS;
-        while (true) {
+        while (!closing) {
             try {
                 return http.send(request(route + "/events").GET().build(), HttpResponse.BodyHandlers.ofLines());
             } catch (java.net.ConnectException refused) {
-                if (System.currentTimeMillis() >= until) {
-                    throw refused;
-                }
                 Thread.sleep(EVENTS_RETRY_MILLIS);
             }
         }
+        return null;
     }
 
     private HttpRequest.Builder request(String path) {

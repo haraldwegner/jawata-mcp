@@ -39,6 +39,23 @@ class BridgeTest {
         assertTrue(!err.toString(StandardCharsets.UTF_8).contains("\tat "), "no stack trace: " + err);
     }
 
+    /** The architect's watch, 28h-C26-10: the id answered was the first "id" anywhere in the message, a nested one included. */
+    @Test
+    void theErrorAnswersTheRequestsOwnIdAndNotOneInsideItsParameters() throws Exception {
+        int port;
+        try (ServerSocket taken = new ServerSocket(0)) {
+            port = taken.getLocalPort(); // closed again at once: nothing listens there
+        }
+        String request = "{\"jsonrpc\":\"2.0\",\"method\":\"session/load\",\"params\":{\"id\":\"inner\"},\"id\":7}\n";
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        Bridge.runAcp(new String[] {"--url", "http://127.0.0.1:" + port}, new ByteArrayInputStream(request.getBytes(StandardCharsets.UTF_8)),
+            new PrintStream(out, true, StandardCharsets.UTF_8), new PrintStream(new ByteArrayOutputStream()));
+
+        String answered = out.toString(StandardCharsets.UTF_8);
+        assertTrue(answered.contains("\"id\":7"), "the host waits for 7 and was answered: " + answered);
+    }
+
     /**
      * The architect's watch of 28h C26: the engine can finish starting between the bridge's two connects, the event stream (refused) and the
      * first message (accepted). The bridge must then still reach the engine's answers, never run with a message line and no answer line, where
