@@ -63,8 +63,8 @@ public final class CompileVerify {
      * project siblings yet (a persistent model-timing artifact, not a defect —
      * documented independently in RefactorToVisitorToolTest long before this
      * gate existed), so for created files only SYNTAX errors count: their
-     * semantic validity is proven transitively by the MODIFIED files that
-     * reference them, which do resolve them and are fully verified.</p>
+     * semantic validity is not read here. {@code GatedApply} reads it afterwards
+     * from a build of the project that holds them (28h z155).</p>
      */
     public static List<String> introducedErrors(Map<String, Set<String>> before,
                                                 Map<String, Set<String>> after) {
