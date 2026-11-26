@@ -244,7 +244,8 @@ public class FindQualityIssueTool extends AbstractTool {
                 + "the source root's test attribute in the loaded model, not from a path or name "
                 + "convention, so a flat-layout test bundle is recognised too. "
                 + "Default false: test code legitimately has long methods and subject-under-test "
-                + "access, so it is excluded to keep findings actionable.");
+                + "access, so it is excluded to keep findings actionable. kind=forbidden_edge leaves test sources out the same "
+                + "way, since a test may cross a boundary the product may not.");
         properties.put("includeTests", includeTests);
 
         properties.put("from", Map.of("type", "string",

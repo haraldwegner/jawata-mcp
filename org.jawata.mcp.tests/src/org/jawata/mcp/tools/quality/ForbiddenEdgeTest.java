@@ -76,6 +76,16 @@ class ForbiddenEdgeTest {
     }
 
     @Test
+    @DisplayName("28h z124: a forbidden import in a test source is counted only when the tests are asked for")
+    void testSourcesAreLeftOutUnlessAskedFor() {
+        ObjectNode withTests = mapper.createObjectNode().put("kind", "forbidden_edge").put("from", "com.example.api")
+            .put("forbidden", "com.example.internal").put("includeTests", true);
+
+        assertEquals(1, findings(run("com.example.api", "com.example.internal")).size(), "a test source was counted by default");
+        assertEquals(2, findings(tool.execute(withTests)).size(), "CONTROL: the test source's import is not seen when asked for");
+    }
+
+    @Test
     @DisplayName("the reverse rule internal -> api reports nothing")
     void reverseRule_reportsNothing() {
         assertEquals(0, findings(run("com.example.internal", "com.example.api")).size());

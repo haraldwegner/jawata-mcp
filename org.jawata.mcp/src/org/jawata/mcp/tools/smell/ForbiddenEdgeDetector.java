@@ -49,7 +49,10 @@ public class ForbiddenEdgeDetector implements Detector {
         if (from == null || from.isBlank() || forbidden == null || forbidden.isBlank()) {
             return Findings.toResponse(out);   // no rule → no violations
         }
-        SourceScan scan = SourceScan.of(service.getAllJavaFiles());
+        // 28h z124: a test may cross a boundary the product may not, so test sources count only when asked for.
+        boolean includeTests = AbstractAstDetector.includeTests(arguments);
+        SourceScan scan = SourceScan.of(service.getAllJavaFiles().stream()
+            .filter(path -> includeTests || !AbstractAstDetector.isTestSource(path, service)).toList());
         try {
             for (Path path : scan.files()) {
                 ICompilationUnit cu = scan.resolve(service, path);
