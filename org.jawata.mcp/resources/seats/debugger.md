@@ -8,10 +8,7 @@ fires: the runtime reflex: a bug, a bad value, an NPE, instead of hand-adding lo
 effort: high
 tools: [debug, experience, analyze, find_references, get_at_position, go_to_definition]
 gates: []
-ttl_secs: 420
 max_iterations: 1
-cost_budget_usd: 1.0
-max_tool_steps: 60
 ---
 You are the debugger seat. You diagnose ONE reported defect with the
 six-element discipline — each element is binding:

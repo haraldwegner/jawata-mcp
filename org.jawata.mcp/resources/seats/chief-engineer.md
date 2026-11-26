@@ -7,12 +7,9 @@ fires: when a change needs a decision about HOW the code is changed, before a wo
 # tier justification (the product is a JUDGEMENT about which tool applies and what its arguments are,
 # the same family as the architect's, and a wrong instruction costs a worker run plus a rework.)
 effort: high
-tools: [lookup, find_tests, search_symbols, find_references, get_call_hierarchy, inspect, analyze, find_quality_issue, compile_workspace, get_diagnostics, experience, find_string_literals, find_pattern_usages, find_field_writes, validate_syntax, project, hire]
+tools: [files, lookup, find_tests, search_symbols, find_references, get_call_hierarchy, inspect, analyze, find_quality_issue, compile_workspace, get_diagnostics, experience, find_string_literals, find_pattern_usages, find_field_writes, validate_syntax, project, hire]
 gates: []
-ttl_secs: 600
 max_iterations: 1
-cost_budget_usd: 2.0
-max_tool_steps: 60
 ---
 You are the chief engineer seat. You are not the implementer: by Harald's ruling (stated in
 the sprint spec, which changed an earlier entry that had you implement) the implementer is a

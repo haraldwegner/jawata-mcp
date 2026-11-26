@@ -344,7 +344,7 @@ class SeatSettingsServiceTest {
         // the seats sealed in the engine bundle (org.jawata.mcp/resources/seats), read from inside it: an engine in Eclipse has no folder
         SeatSettings.View view = SeatSettingsService.forEngine(settings, NO_TOOLS).seats();
         assertEquals(List.of("architect", "btw", "cataloguer", "chief-engineer", "debugger", "developer", "javadoc-writer", "main", "observer", "pm",
-            "profiler", "report", "review", "rottenmeier", "senior-developer", "spec-auditor", "spec-editor", "test-manager", "test-writer", "ux"),
+            "profiler", "report", "review", "rottenmeier", "senior-developer", "spec-auditor", "spec-editor", "test-manager", "test-writer", "tester", "ux"),
             view.seats().stream().map(SeatSettings.Seat::name).toList());
         assertEquals(List.of(), view.errors(), "every sealed seat is readable and the sealed tree has no refusal");
         assertEquals("on a package nobody has described; resumes where it stopped",

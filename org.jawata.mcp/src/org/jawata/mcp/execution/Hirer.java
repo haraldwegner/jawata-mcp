@@ -236,14 +236,15 @@ public final class Hirer {
 
     /**
      * Whether a call may run the tests of a whole package (28h Stage 27, z27): running tests beyond the ones a change reaches is the work of the
-     * test manager and of the test writer, so a developer, a chief engineer or a pm that asks for a package is refused and told to run the class
-     * or method its change reaches. A caller whose seat the engine does not know is not refused, as in {@link #refuseFullRun}.
+     * test manager and of its two workers, the test writer and the tester (z94), so a developer, a chief engineer or a pm that asks for a
+     * package is refused and told to run the class or method its change reaches. A caller whose seat the engine does not know is not refused,
+     * as in {@link #refuseFullRun}.
      */
     public Optional<String> refusePackageRun(Optional<String> callerSeat) {
-        if (callerSeat.isEmpty() || "test-manager".equals(callerSeat.get()) || "test-writer".equals(callerSeat.get())) {
+        if (callerSeat.isEmpty() || List.of("test-manager", "test-writer", "tester").contains(callerSeat.get())) {
             return Optional.empty();
         }
-        return Optional.of("a package-wide test run is the test manager's and the test writer's work, and this call is made by " + callerSeat.get()
-            + "; run the class or the method your change reaches, or ask the test-manager");
+        return Optional.of("a package-wide test run is the work of the test manager, the test writer and the tester, and this call is made by "
+            + callerSeat.get() + "; run the class or the method your change reaches, or ask the test-manager");
     }
 }

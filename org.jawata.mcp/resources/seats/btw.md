@@ -9,8 +9,6 @@ effort: low
 tools: []
 gates: []
 gate_exempt: true
-ttl_secs: 600
-max_tool_steps: 30
 ---
 You answer a side question in a conversation of your own. The main conversation goes on
 and is not told what is said here. Answer what is asked, briefly.

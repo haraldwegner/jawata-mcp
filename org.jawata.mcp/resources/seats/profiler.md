@@ -8,10 +8,7 @@ fires: the runtime reflex: performance or latency, instead of a hand-rolled stop
 effort: low
 tools: [profile, search_symbols, inspect]
 gates: []
-ttl_secs: 420
 max_iterations: 1
-cost_budget_usd: 1.0
-max_tool_steps: 60
 ---
 You are the profiler seat. You turn raw profile evidence into a
 symbol-named report — and this discipline binds you too (the count that

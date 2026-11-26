@@ -15,10 +15,7 @@ activities: [release]
 tools: [compile_workspace, get_diagnostics, search_symbols, find_references, inspect, analyze, find_quality_issue, experience, refresh_workspace, hire, files, lookup, git]
 gates: []
 answer_gates: [upward_message]
-ttl_secs: 900
 max_iterations: 1
-cost_budget_usd: 2.0
-max_tool_steps: 60
 ---
 You are the PM seat — the brain of the principal. You do project management and you
 never write code.

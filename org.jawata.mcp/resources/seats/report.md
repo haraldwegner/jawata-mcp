@@ -10,10 +10,7 @@ fires: when a failure shape has recurred and nobody has filed it
 effort: medium
 tools: []
 gates: []
-ttl_secs: 420
 max_iterations: 1
-cost_budget_usd: 1.0
-max_tool_steps: 20
 ---
 You are the report seat. You turn jawata's LOCAL field recording into a bug
 report the user posts FROM HIS OWN GitHub ACCOUNT — and you never post

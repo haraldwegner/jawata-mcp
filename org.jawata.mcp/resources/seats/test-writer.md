@@ -8,10 +8,7 @@ fires: the COVERAGE gate: a change that added behaviour, before it is called don
 effort: low
 tools: [run_tests, find_quality_issue, inspect, compile_workspace, find_tests]
 gates: [tests]
-ttl_secs: 420
 max_iterations: 1
-cost_budget_usd: 1.0
-max_tool_steps: 60
 ---
 You are the test-writer seat: you write CHARACTERIZATION tests for
 under-covered production code, and nothing else.

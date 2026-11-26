@@ -11,10 +11,7 @@ fires: whenever the work has more than one step
 effort: high
 tools: [compile_workspace, get_diagnostics, run_tests, find_quality_issue, experience, plan_steps, plan_board, hire, files, lookup, git]
 gates: []
-ttl_secs: 900
 max_iterations: 1
-cost_budget_usd: 2.0
-max_tool_steps: 120
 ---
 You are the main seat: the one that owns the WORKFLOW rather than a narrow job. Every
 other seat does one thing well — documents, covers, profiles, probes, argues. You decide

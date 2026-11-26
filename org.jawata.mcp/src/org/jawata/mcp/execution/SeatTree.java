@@ -120,6 +120,7 @@ public final class SeatTree {
         }
         p.put("cataloguer", new Declaration("chief-engineer", Role.REVIEWER, Optional.empty()));
         p.put("test-writer", new Declaration("test-manager", Role.WORKER, Optional.empty()));
+        p.put("tester", new Declaration("test-manager", Role.WORKER, Optional.empty()));
         return p;
     }
 

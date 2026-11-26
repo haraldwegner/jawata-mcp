@@ -60,7 +60,7 @@ class SeatTreeFromSeatFilesTest {
         assertEquals("architect>main:reviewer:- cataloguer>chief-engineer:reviewer:- chief-engineer>pm:lead:- consultant>main:reviewer:- "
             + "debugger>pm:reviewer:- developer>chief-engineer:worker:senior-developer javadoc-writer>chief-engineer:worker:- pm>main:lead:- "
             + "profiler>pm:reviewer:- senior-developer>chief-engineer:worker:- spec-auditor>main:reviewer:- spec-editor>main:reviewer:- "
-            + "test-manager>pm:lead:- test-writer>test-manager:worker:- ux>main:reviewer:-", table);
+            + "test-manager>pm:lead:- test-writer>test-manager:worker:- tester>test-manager:worker:- ux>main:reviewer:-", table);
     }
 
     @Test

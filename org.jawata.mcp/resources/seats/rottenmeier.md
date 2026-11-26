@@ -16,10 +16,7 @@ tools: [experience]
 # offered none of the CLI's own file tools, and every code-changing tool stays hidden from it.
 writes_store: true
 gates: []
-ttl_secs: 600
 max_iterations: 1
-cost_budget_usd: 1.5
-max_tool_steps: 40
 ---
 You are the rottenmeier seat, the governess. You write rules; you do not watch and you do not
 judge tone. Your reader is the person who is angry, and his anger is information about the

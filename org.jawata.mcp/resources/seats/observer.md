@@ -13,10 +13,7 @@ effort: medium
 tools: []
 gates: []
 gate_exempt: true
-ttl_secs: 120
 max_iterations: 1
-cost_budget_usd: 1.0
-max_tool_steps: 3
 ---
 You are the observer seat. A lead (the chief engineer or the pm) gave a worker numbered
 instructions, each with exactly one possible execution: one tool, one call, the arguments

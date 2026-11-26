@@ -164,12 +164,14 @@ class FullRunByCallerTest {
         Thread pm = holdRunning("pm", "plan-z27p-pm", end);
         Thread manager = holdRunning("test-manager", "plan-z27p-manager", end);
         Thread writer = holdRunning("test-writer", "plan-z27p-writer", end);
+        Thread tester = holdRunning("tester", "plan-z27p-tester", end);
         try {
             ToolResponse byDeveloper = asCaller("plan-z27p-developer", scoped("package"));
             ToolResponse byChief = asCaller("plan-z27p-chief", scoped("package"));
             ToolResponse byPm = asCaller("plan-z27p-pm", scoped("package"));
             ToolResponse byManager = asCaller("plan-z27p-manager", scoped("package"));
             ToolResponse byWriter = asCaller("plan-z27p-writer", scoped("package"));
+            ToolResponse byTester = asCaller("plan-z27p-tester", scoped("package"));
             ToolResponse classByDeveloper = asCaller("plan-z27p-developer", scoped("class"));
             ToolResponse stranger = asCaller("z27p-nobody-registered", scoped("package"));
 
@@ -180,11 +182,12 @@ class FullRunByCallerTest {
                 () -> assertTrue(refusedAsAPackageRun(byPm), "a pm's session was let run a package: " + byPm.getError()),
                 () -> assertFalse(refusedAsAPackageRun(byManager), "CONTROL: the test manager's package run was refused by this rule"),
                 () -> assertFalse(refusedAsAPackageRun(byWriter), "CONTROL: the test writer's package run was refused by this rule"),
+                () -> assertFalse(refusedAsAPackageRun(byTester), "28h z94: the tester's briefed package run was refused: " + byTester.getError()),
                 () -> assertFalse(refusedAsAPackageRun(classByDeveloper), "CONTROL: a developer's class run was refused by this rule"),
                 () -> assertFalse(refusedAsAPackageRun(stranger), "CONTROL: a caller nobody registered was refused by this rule"));
         } finally {
             end.countDown();
-            for (Thread held : new Thread[] {developer, chief, pm, manager, writer}) {
+            for (Thread held : new Thread[] {developer, chief, pm, manager, writer, tester}) {
                 held.join(5_000);
             }
         }
