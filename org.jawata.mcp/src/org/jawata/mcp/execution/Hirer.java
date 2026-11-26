@@ -247,4 +247,32 @@ public final class Hirer {
         return Optional.of("a package-wide test run is the work of the test manager, the test writer and the tester, and this call is made by "
             + callerSeat.get() + "; run the class or the method your change reaches, or ask the test-manager");
     }
+
+    /**
+     * Whether a hire may declare this check (28h z27). The engine runs a hire's checks itself, under no caller, so a test run that only some
+     * seats may order is judged when the hire is asked for. The test manager cannot call {@code run_tests}, so a full run declared on its own
+     * hire is its run; a package run declared on the hire of a seat that may order one is that seat's. Otherwise the asker is judged.
+     *
+     * @param step  one declared check
+     * @param hired the seat being hired
+     * @param asker the seat that asks for the hire; empty when the engine does not know it
+     */
+    public Optional<String> refuseCheck(org.jawata.mcp.learn.GatedStep step, String hired, Optional<String> asker) {
+        Optional<String> fullRunReason = fullRunReasonOf(step);
+        if (fullRunReason.isPresent()) {
+            return refuseFullRun(hired.equals("test-manager") ? Optional.of(hired) : asker, fullRunReason.get());
+        }
+        if (step.tool().equals("run_tests") && "package".equals(step.gateArguments().path("scope").path("kind").asText(""))
+                && refusePackageRun(Optional.of(hired)).isPresent()) {
+            return refusePackageRun(asker);
+        }
+        return Optional.empty();
+    }
+
+    /** Present when a check asks for the whole test suite: the reason it states, blank when it states none (28h z27). */
+    static Optional<String> fullRunReasonOf(org.jawata.mcp.learn.GatedStep step) {
+        return step.tool().equals("run_tests") && step.gateArguments().path("fullRun").asBoolean(false)
+            ? Optional.of(step.gateArguments().path("reason").asText(""))
+            : Optional.empty();
+    }
 }

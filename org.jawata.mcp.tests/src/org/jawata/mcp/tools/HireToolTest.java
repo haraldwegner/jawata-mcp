@@ -2627,6 +2627,19 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h z27: the reason of a full run declared as a hire's check is on the hire's answer, though the engine runs the check under no caller")
+    void theReasonOfADeclaredFullRunIsOnTheHiresAnswer() throws Exception {
+        ObjectNode args = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.set("steps", JSON.createArrayNode().add(JSON.createObjectNode().put("tool", "run_tests")
+            .set("arguments", JSON.createObjectNode().put("fullRun", true).put("reason", "the checkpoint C5 gate"))));
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate());
+
+        Map<String, Object> answered = dataOf(hire.execute(args));
+
+        assertEquals(List.of("the checkpoint C5 gate"), answered.get("fullRunReasons"), "the reason is not in the hire's answer: " + answered.keySet());
+    }
+
+    @Test
     @DisplayName("D4: a later hire of the same seat in the same principal session continues the brain's own session and answers what only the first hire saw")
     void aLaterHireOfTheSameSeatContinuesTheBrainsSession() throws Exception {
         Map<String, Object> program = theStandInAcpProgram();
@@ -3228,10 +3241,16 @@ class HireToolTest {
         withAFullRun.set("steps", JSON.createArrayNode().add(JSON.createObjectNode().put("tool", "run_tests")
             .set("arguments", JSON.createObjectNode().put("fullRun", true).put("reason", "all of it"))));
         HireTool tool = toolWith(aHostThatMustNotSpawn(), events, aRegistryWithACleanGate());
+        ObjectNode withAPackageRun = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        ObjectNode packageRun = JSON.createObjectNode();
+        packageRun.putObject("scope").put("kind", "package").put("packageName", "org.jawata.mcp.tools");
+        withAPackageRun.set("steps", JSON.createArrayNode().add(JSON.createObjectNode().put("tool", "run_tests").set("arguments", packageRun)));
         ToolResponse refused;
+        ToolResponse refusedPackage;
         try (HireRegistry.Registration lead = hires.begin("chief-engineer", "z27-gate-brief", "")) {
             hires.planOpened("plan-z27-gate-lead");
             refused = org.jawata.mcp.models.CallerIdentity.supplied("plan-z27-gate-lead").speaking(() -> tool.execute(withAFullRun));
+            refusedPackage = org.jawata.mcp.models.CallerIdentity.supplied("plan-z27-gate-lead").speaking(() -> tool.execute(withAPackageRun));
         }
         // CONTROL: the test manager cannot call run_tests itself, so the run it is hired for is declared as a check by whoever hires it.
         ObjectNode ofTheTestManager = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT.replace("name: cataloguer", "name: test-manager")), "test-manager");
@@ -3247,6 +3266,8 @@ class HireToolTest {
         assertAll(
             () -> assertFalse(refused.isSuccess(), "a chief engineer had a full run made as a check of its hire"),
             () -> assertTrue(String.valueOf(refused.getError()).contains("test-manager"), String.valueOf(refused.getError())),
+            () -> assertFalse(refusedPackage.isSuccess(), "a chief engineer had a package-wide run made as a check of its hire"),
+            () -> assertTrue(String.valueOf(refusedPackage.getError()).contains("package-wide"), String.valueOf(refusedPackage.getError())),
             () -> assertTrue(checkpoint.isSuccess(), "CONTROL: a hire of the test manager with its full run was refused: " + checkpoint.getError()));
     }
 

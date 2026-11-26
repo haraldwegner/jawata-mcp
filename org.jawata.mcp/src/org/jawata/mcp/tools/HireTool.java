@@ -800,16 +800,12 @@ public class HireTool extends NeutralTool {
         } catch (IllegalArgumentException e) {
             return ToolResponse.invalidParameter("steps", e.getMessage());
         }
-        // 28h z27: the engine runs a hire's checks itself, under no caller, so a full test run asked for as a check is judged here. The
-        // test manager cannot call run_tests, so a run declared as a check of its own hire is its run; any other hire's is the asker's.
-        Optional<String> asks = hired.equals("test-manager") ? Optional.of(hired)
-            : call.getServing().flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id()));
-        Optional<String> fullRunRefused = steps.stream()
-            .filter(step -> step.tool().equals("run_tests") && step.gateArguments() != null && step.gateArguments().path("fullRun").asBoolean(false))
-            .findFirst().flatMap(step -> hiring.refuseFullRun(asks, step.gateArguments().path("reason").asText(null)));
-        if (fullRunRefused.isPresent()) {
-            return ToolResponse.error("PRECONDITION_NOT_MET", fullRunRefused.get(),
-                "name the tests the change reaches in the check, or have the test manager hire with the full run and its reason");
+        // 28h z27: the engine runs a hire's checks itself, under no caller, so a test run only some seats may order is judged here.
+        Optional<String> asks = call.getServing().flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id()));
+        Optional<String> checkRefused = steps.stream().map(step -> hiring.refuseCheck(step, hired, asks)).flatMap(Optional::stream).findFirst();
+        if (checkRefused.isPresent()) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", checkRefused.get(),
+                "name the classes or methods the change reaches in the check, or have the test manager hire with the run and its reason");
         }
         if (steps.isEmpty()) {
             // PlanLedger.open refuses an empty step list, so this would fail one layer down with a

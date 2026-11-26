@@ -251,6 +251,8 @@ public final class HiredRun {
         issuingLead = owner.filter(id -> HireRegistry.shared().seatOfCaller(id).isPresent());
         // The registry learns the plan id of the hire running on this thread, so a hire this hire's brain issues can name this one as its lead.
         HireRegistry.shared().planOpened(plan.value());
+        // 28h z27: the engine runs a declared check under no caller, so what a full run among them was argued for is kept on the record here.
+        planned.forEach(step -> Hirer.fullRunReasonOf(step).ifPresent(reason -> HireRegistry.shared().noteFullRunReason(plan.value(), reason)));
         return plan;
     }
 
