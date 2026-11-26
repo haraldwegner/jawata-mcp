@@ -262,20 +262,58 @@ public final class FilesTool implements Tool {
             return ToolResponse.invalidParameter("path", given + " is not a document that exists: edit changes one, it does not make one (write does)", "FILE_NOT_FOUND");
         }
         String text = Files.readString(path, StandardCharsets.UTF_8);
+        String newText = arguments.get("newText").asText();
+        // 28h z126: a passage written with plain line breaks is found in a document with Windows ones, which the edit keeps.
+        if (text.indexOf(oldText) < 0 && text.contains("\r\n") && oldText.indexOf('\r') < 0) {
+            oldText = oldText.replace("\n", "\r\n");
+            newText = newText.replace("\r\n", "\n").replace("\n", "\r\n");
+        }
         int first = text.indexOf(oldText);
         if (first < 0) {
-            return ToolResponse.invalidParameter("oldText", "the passage occurs nowhere in " + given + ", so nothing was changed", "PASSAGE_NOT_FOUND");
+            return ToolResponse.invalidParameter("oldText", "the passage occurs nowhere in " + given + ", so nothing was changed. "
+                + whereItParts(text, oldText), "PASSAGE_NOT_FOUND");
         }
         if (text.indexOf(oldText, first + 1) >= 0) {
             return ToolResponse.invalidParameter("oldText", "the passage occurs more than once in " + given + ", so nothing was changed: name more of the text around it so it occurs once",
                 "PASSAGE_NOT_UNIQUE");
         }
-        String edited = text.substring(0, first) + arguments.get("newText").asText() + text.substring(first + oldText.length());
+        String edited = text.substring(0, first) + newText + text.substring(first + oldText.length());
         Files.writeString(path, edited, StandardCharsets.UTF_8);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("path", path.toString());
         data.put("replaced", 1);
         data.put("bytes", edited.getBytes(StandardCharsets.UTF_8).length);
         return ToolResponse.success(data);
+    }
+
+    /** Where a passage the document does not hold parts from the nearest text it does: the line, and what each has next. */
+    private static String whereItParts(String text, String passage) {
+        int low = 0;
+        int high = passage.length() - 1;
+        while (low < high) {
+            int middle = (low + high + 1) / 2;
+            if (text.contains(passage.substring(0, middle))) {
+                low = middle;
+            } else {
+                high = middle - 1;
+            }
+        }
+        if (low == 0) {
+            return "Not even its first character occurs there.";
+        }
+        int at = text.indexOf(passage.substring(0, low));
+        int start = text.lastIndexOf('\n', at) + 1;
+        int end = text.indexOf('\n', at);
+        long line = 1 + text.substring(0, at).chars().filter(c -> c == '\n').count();
+        return "Nearest: line " + line + " reads \"" + text.substring(start, end < 0 ? text.length() : end).strip() + "\". They agree for "
+            + low + " character(s); then the document has " + shown(text, at + low) + " where the passage has " + shown(passage, low) + ".";
+    }
+
+    /** The few characters at a place, with the ones that cannot be seen written out. */
+    private static String shown(String text, int at) {
+        if (at >= text.length()) {
+            return "nothing more";
+        }
+        return "\"" + text.substring(at, Math.min(text.length(), at + 12)).replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t") + "\"";
     }
 }

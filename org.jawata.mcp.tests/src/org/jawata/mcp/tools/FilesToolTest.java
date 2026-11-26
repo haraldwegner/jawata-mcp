@@ -164,6 +164,29 @@ class FilesToolTest {
     }
 
     @Test
+    @DisplayName("28h z112: a passage not found is refused naming the line where it parts from the document")
+    void aPassageNotFoundNamesWhereItParts(@TempDir Path folder) throws Exception {
+        Path plan = Files.writeString(folder.resolve("plan.md"), "# Plan\nthe pm said \"go\" today\nEnd.\n");
+
+        ToolResponse answer = call("edit", Map.of("path", plan.toString(), "oldText", "the pm said \\\"go\\\" today", "newText", "x"));
+
+        assertFalse(answer.isSuccess(), "an escaped passage was replaced");
+        String message = answer.getError().getMessage();
+        assertTrue(message.contains("line 2") && message.contains("the pm said \"go\" today"), "the nearest line is not named: " + message);
+    }
+
+    @Test
+    @DisplayName("28h z126: a passage over a blank line before a heading is found in a document with Windows line endings, which are kept")
+    void aPassageOverLinesIsFoundWhateverTheLineEnding(@TempDir Path folder) throws Exception {
+        Path plan = Files.writeString(folder.resolve("plan.md"), "- last sentence.\r\n\r\n## 5. Deliverable\r\n");
+
+        data(call("edit", Map.of("path", plan.toString(), "oldText", "last sentence.\n\n## 5. Deliverable", "newText",
+            "last sentence.\nMore.\n\n## 5. Deliverable")));
+
+        assertEquals("- last sentence.\r\nMore.\r\n\r\n## 5. Deliverable\r\n", Files.readString(plan));
+    }
+
+    @Test
     @DisplayName("Stage 27 (q): an edit is held to the writer's refusals: any file that is not a .md, a document that tells an agent what it may do, and a file that is not there")
     void anEditIsHeldToTheWritersRefusals(@TempDir Path folder) throws Exception {
         for (String name : List.of("Foo.java", "main.rs", "view.tsx", "CLAUDE.md", "seats/main.md", ".claude/skills/x/skill.md")) {
