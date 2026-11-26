@@ -460,6 +460,18 @@ class AgentContractLevel1Test {
     }
 
     @Test
+    @DisplayName("28h step 13: a pick of a brain the engine does not know is refused naming every brain a hire can start, Antigravity among them")
+    void anUnknownBrainPickNamesEveryBrain(@TempDir Path dir) throws Exception {
+        Wire wire = new Wire(List.of(new Hire("p-pm", "pm", "Run sprint 28i.", seatFile(dir, "pm-r12", "pm"), null)));
+        ObjectNode pick = JSON.createObjectNode().put("planId", "p-pm").put("brain", "not-a-brain");
+
+        JsonNode refused = wire.send(JsonRpcMessage.request(93, "_jawata/hire/brain", pick));
+
+        assertEquals("brain must be one of claude-code, codex, cursor, copilot, antigravity; the script brain needs a program of its own and cannot be picked",
+            refused.path("error").path("message").asText(), refused.toString());
+    }
+
+    @Test
     @DisplayName("28h z79: an agent set because a window reopens its last conversation is not stored as the person's default, which a pick of theirs is")
     void aRestoredAgentIsNotStoredAsTheDefault(@TempDir Path dir) throws Exception {
         Wire wire = new Wire(List.of());

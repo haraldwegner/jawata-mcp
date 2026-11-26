@@ -1,10 +1,12 @@
 package org.jawata.mcp.execution;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.jawata.mcp.access.LookupDriver;
 
@@ -69,24 +71,81 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
                        HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script,
                        boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command, String launchModel) {
 
-    /** The brains this product has a dialect for. A seat may name no other. */
+    /**
+     * The brains this product has a dialect for, each with the facts of its program (28h step 13): what a person calls it, how it is started
+     * and logged in, which programs speak ACP for it, and what a seat may ask of it. Every list of agent programs is read from here, so the
+     * order of the constants is the order those lists show. A seat may name no other.
+     */
     public enum Brain {
-        CLAUDE_CODE("claude-code", "claude"),
-        CURSOR("cursor", "cursor-agent"),
-        COPILOT("copilot"),
-        CODEX("codex"),
+        CLAUDE_CODE(new Program("Claude Code", "claude", "claude auth login", Set.of(Can.TAKE_A_MODEL, Can.CHANGE_CODE, Can.READ_FILES),
+            List.of(new Start("claude-agent-acp", List.of(), "npm install -g @agentclientprotocol/claude-agent-acp"),
+                new Start("claude-code-acp", List.of(), "npm install -g @zed-industries/claude-code-acp")),
+            List.of()), "claude-code", "claude"),
+        CODEX(new Program("Codex", "codex", "codex login", Set.of(),
+            List.of(new Start("codex-acp", List.of(), "npm install -g @zed-industries/codex-acp")), List.of()), "codex"),
+        CURSOR(new Program("Cursor-Grok", "cursor-agent", "cursor-agent login", Set.of(Can.TAKE_A_MODEL, Can.CHANGE_CODE, Can.WRITE_UNHELD),
+            List.of(), List.of("agent")), "cursor", "cursor-agent"),
+        COPILOT(new Program("Copilot", "copilot", "copilot login", Set.of(),
+            List.of(new Start("copilot", List.of("--acp"), "npm install -g @github/copilot")), List.of()), "copilot"),
         /** Google's Antigravity command-line agent, started over ACP as {@code agy acp}, or in print mode through {@link AntigravityDialect} (28h z54). */
-        ANTIGRAVITY("antigravity", "agy"),
+        ANTIGRAVITY(new Program("Antigravity", "agy", "agy acp --login", Set.of(Can.TAKE_A_MODEL, Can.WRITE_UNHELD),
+            List.of(new Start("agy", List.of("acp"), "curl -fsSL https://antigravity.google/cli/install.sh | bash")), List.of()), "antigravity", "agy"),
         /**
          * Any executable, named by the seat's {@code script:} line — {@link ScriptDialect}, the
-         * escape hatch for a CLI with no dialect of its own (S16-6).
+         * escape hatch for a CLI with no dialect of its own (S16-6). No program of its own, so no facts.
          */
-        SCRIPT("script");
+        SCRIPT(new Program("Script", "", "", Set.of(), List.of(), List.of()), "script");
 
+        /** What a seat may ask of a brain, or what is known to be true of it. */
+        public enum Can {
+            /** A hire passes it a model on its command line; the others route or configure their own. */
+            TAKE_A_MODEL,
+            /** It has a mode that changes code and writes the store ({@code changes_code}, {@code writes_store}). */
+            CHANGE_CODE,
+            /** It has a built-in file reader that can be offered alone ({@code reads_files}). */
+            READ_FILES,
+            /** No mechanism refuses its writes: Cursor's are held by an instruction to the model, Antigravity's by nothing usable (measured 2026-11-23). */
+            WRITE_UNHELD
+        }
+
+        /** A program that speaks ACP for a brain, with its arguments and the command that installs it. */
+        public record Start(String program, List<String> args, String install) {
+        }
+
+        /**
+         * The facts of one agent program.
+         *
+         * @param title      the name a person reads
+         * @param command    the program asked for its version, login and models
+         * @param login      what a person types to log in
+         * @param can        what may be asked of it
+         * @param acp        the programs that speak ACP for it, in the order they are tried
+         * @param otherNames the other binaries it installs as, beside its spellings and those programs
+         */
+        public record Program(String title, String command, String login, Set<Can> can, List<Start> acp, List<String> otherNames) {
+        }
+
+        private final Program program;
         private final List<String> spellings;
 
-        Brain(String... spellings) {
+        Brain(Program program, String... spellings) {
+            this.program = program;
             this.spellings = List.of(spellings);
+        }
+
+        /** The facts of its program. */
+        public Program program() {
+            return program;
+        }
+
+        /** The brains a hire can start: every one but the script seat's own executable. */
+        public static List<Brain> programs() {
+            return Arrays.stream(values()).filter(brain -> brain != SCRIPT).toList();
+        }
+
+        /** Whether this may be asked of it, or is true of it. */
+        public boolean can(Can what) {
+            return program.can().contains(what);
         }
 
         /** The name the host's registry settings know this brain by: the first spelling, which is also how its dialect names itself. */
@@ -99,7 +158,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
          * codex's is set in its config out of band, so a model named for either would be a flag invented and is not applied.
          */
         public boolean takesAModel() {
-            return this == CLAUDE_CODE || this == CURSOR || this == ANTIGRAVITY;
+            return can(Can.TAKE_A_MODEL);
         }
 
         /**
@@ -186,7 +245,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         // that names no brain yet is not checked here: the stored choice is not known, and treating
         // the blank as Claude would accept a switch that brain cannot carry.
         boolean changesCode = Frontmatter.readSwitch("changes_code", front.get("changes_code"), false);
-        if (brain != null && changesCode && brain != Brain.CLAUDE_CODE && brain != Brain.CURSOR) {
+        if (brain != null && changesCode && !brain.can(Brain.Can.CHANGE_CODE)) {
             throw new IllegalArgumentException("seat declares changes_code: true on brain '"
                 + brain.spellings.get(0) + "', whose dialect has no write-capable mode to select, so the"
                 + " declaration would be IGNORED. Only claude-code and cursor carry it");
@@ -194,7 +253,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         // The same refusal for the same reason: the read-only built-ins are a claude start-up
         // choice, and a seat on another brain would be told it can read and never be offered it.
         boolean readsFiles = Frontmatter.readSwitch("reads_files", front.get("reads_files"), false);
-        if (brain != null && readsFiles && brain != Brain.CLAUDE_CODE) {
+        if (brain != null && readsFiles && !brain.can(Brain.Can.READ_FILES)) {
             throw new IllegalArgumentException("seat declares reads_files: true on brain '"
                 + brain.spellings.get(0) + "', whose dialect has no built-in file reader to offer, so"
                 + " the declaration would be IGNORED. Only claude-code carries it");
@@ -211,7 +270,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         // bound on the CLI's own file tools is that none are offered. So this seat is hired outside
         // plan mode, with every code-changing tool still hidden and no built-in tool offered.
         boolean writesStore = Frontmatter.readSwitch("writes_store", front.get("writes_store"), false);
-        if (brain != null && writesStore && brain != Brain.CLAUDE_CODE && brain != Brain.CURSOR) {
+        if (brain != null && writesStore && !brain.can(Brain.Can.CHANGE_CODE)) {
             throw new IllegalArgumentException("seat declares writes_store: true on brain '"
                 + brain.spellings.get(0) + "', whose dialect has no mode outside plan mode to select, so"
                 + " the declaration would be IGNORED. Only claude-code and cursor carry it");
@@ -327,15 +386,15 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         if (picked == Brain.SCRIPT && (script == null || script.isBlank())) {
             throw new IllegalArgumentException("seat '" + seat + "' is set to run on 'script' and names no script to run");
         }
-        if (changesCode && picked != Brain.CLAUDE_CODE && picked != Brain.CURSOR) {
+        if (changesCode && !picked.can(Brain.Can.CHANGE_CODE)) {
             throw new IllegalArgumentException("seat '" + seat + "' is set to run on '" + picked.label()
                 + "', which cannot carry changes_code");
         }
-        if (readsFiles && picked != Brain.CLAUDE_CODE) {
+        if (readsFiles && !picked.can(Brain.Can.READ_FILES)) {
             throw new IllegalArgumentException("seat '" + seat + "' is set to run on '" + picked.label()
                 + "', which cannot carry reads_files");
         }
-        if (writesStore && picked != Brain.CLAUDE_CODE && picked != Brain.CURSOR) {
+        if (writesStore && !picked.can(Brain.Can.CHANGE_CODE)) {
             throw new IllegalArgumentException("seat '" + seat + "' is set to run on '" + picked.label()
                 + "', which cannot carry writes_store");
         }

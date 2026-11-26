@@ -236,16 +236,6 @@ public final class PrincipalBrain implements AgentBrain {
     }
 
     /**
-     * The binaries each brain is started by that its seat spellings do not already name: Cursor's CLI installs as {@code agent}, and the
-     * Claude and Codex ACP adapters are started by their package names.
-     */
-    private static final Map<String, SeatHire.Brain> STARTED_BY = Map.of(
-        "agent", SeatHire.Brain.CURSOR,
-        "claude-agent-acp", SeatHire.Brain.CLAUDE_CODE,
-        "claude-code-acp", SeatHire.Brain.CLAUDE_CODE,
-        "codex-acp", SeatHire.Brain.CODEX);
-
-    /**
      * The brain product a start command runs, named the way its dialect names itself ({@code cursor}, {@code copilot},
      * {@code claude-code}, {@code codex}): the first word of the command line that is the binary of one of them, taken without its folder
      * and its {@code .exe} or {@code .cmd}. None when no word is, because a vendor is read from the command line and never guessed.
@@ -256,7 +246,10 @@ public final class PrincipalBrain implements AgentBrain {
             name = name.replaceFirst("\\.(exe|cmd|bat)$", "");
             Optional<SeatHire.Brain> brain = SeatHire.Brain.named(name).filter(known -> known != SeatHire.Brain.SCRIPT);
             if (brain.isEmpty()) {
-                brain = Optional.ofNullable(STARTED_BY.get(name));
+                // the other binaries a brain is started by, from its description: an ACP adapter's name, or another name it installs as
+                String started = name;
+                brain = SeatHire.Brain.programs().stream().filter(known -> known.program().otherNames().contains(started)
+                    || known.program().acp().stream().anyMatch(start -> start.program().equals(started))).findFirst();
             }
             if (brain.isPresent()) {
                 return Optional.of(brain.get().label());

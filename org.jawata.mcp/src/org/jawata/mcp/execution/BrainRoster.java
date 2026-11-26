@@ -6,7 +6,6 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -102,12 +101,9 @@ public final class BrainRoster {
     }
 
     /** The adapters in the order they are tried: for a brain with two, the first found is used and the first is the one a person is told to install. */
-    public static final List<Adapter> ADAPTERS = List.of(
-        new Adapter("claude-code", "claude-agent-acp", List.of(), "npm install -g @agentclientprotocol/claude-agent-acp"),
-        new Adapter("claude-code", "claude-code-acp", List.of(), "npm install -g @zed-industries/claude-code-acp"),
-        new Adapter("codex", "codex-acp", List.of(), "npm install -g @zed-industries/codex-acp"),
-        new Adapter("copilot", "copilot", List.of("--acp"), "npm install -g @github/copilot"),
-        new Adapter("antigravity", "agy", List.of("acp"), "curl -fsSL https://antigravity.google/cli/install.sh | bash"));
+    public static final List<Adapter> ADAPTERS = SeatHire.Brain.programs().stream()
+        .flatMap(brain -> brain.program().acp().stream().map(start -> new Adapter(brain.label(), start.program(), start.args(), start.install())))
+        .toList();
 
     private record Spec(String id, String label, String program, String loginCommand) {
     }
@@ -115,17 +111,18 @@ public final class BrainRoster {
     private record Outcome(boolean success, String text) {
     }
 
-    private static final List<Spec> SPECS = List.of(new Spec("claude-code", "Claude Code", "claude", "claude auth login"),
-        new Spec("codex", "Codex", "codex", "codex login"), new Spec("cursor", "Cursor-Grok", "cursor-agent", "cursor-agent login"),
-        new Spec("copilot", "Copilot", "copilot", "copilot login"), new Spec("antigravity", "Antigravity", "agy", "agy acp --login"));
+    /** One row per agent program, read from the engine's one description of each ({@link SeatHire.Brain}). */
+    private static final List<Spec> SPECS = SeatHire.Brain.programs().stream()
+        .map(brain -> new Spec(brain.label(), brain.program().title(), brain.program().command(), brain.program().login())).toList();
     /** What a hire can start and which of those take a model are the engine's own answers, not a second list. */
-    private static final List<String> HIRABLE = Arrays.stream(SeatHire.Brain.values()).filter(brain -> brain != SeatHire.Brain.SCRIPT).map(SeatHire.Brain::label).toList();
-    private static final List<String> TAKES_MODEL = Arrays.stream(SeatHire.Brain.values()).filter(SeatHire.Brain::takesAModel).map(SeatHire.Brain::label).toList();
+    private static final List<String> HIRABLE = SeatHire.Brain.programs().stream().map(SeatHire.Brain::label).toList();
+    private static final List<String> TAKES_MODEL = SeatHire.Brain.programs().stream().filter(SeatHire.Brain::takesAModel).map(SeatHire.Brain::label).toList();
     /**
-     * The brains whose writes no mechanism refuses: Cursor's are held by an instruction to the model, Antigravity's by nothing usable (measured
-     * 2026-11-23). Each dialect holds this answer, which needs a running resident's address to ask; BrainRosterTest pins this line to it.
+     * The brains whose writes no mechanism refuses. Each dialect holds the same answer, which needs a running resident's address to ask;
+     * BrainRosterTest pins the description to the dialects.
      */
-    private static final List<String> HELD_BY_AN_INSTRUCTION = List.of("cursor", "antigravity");
+    private static final List<String> HELD_BY_AN_INSTRUCTION = SeatHire.Brain.programs().stream()
+        .filter(brain -> brain.can(SeatHire.Brain.Can.WRITE_UNHELD)).map(SeatHire.Brain::label).toList();
     private static final ExecutorService WORK = Executors.newVirtualThreadPerTaskExecutor();
     /** The one place a process is launched and an executable is spelled for this operating system. */
     private static final HostProcesses HOST = HostProcesses.system();

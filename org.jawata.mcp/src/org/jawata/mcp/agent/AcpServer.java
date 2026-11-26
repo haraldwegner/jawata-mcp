@@ -312,7 +312,8 @@ public final class AcpServer {
         java.util.Optional<SeatHire.Brain> brain = SeatHire.Brain.named(textField(params, "brain"));
         if (brain.isEmpty() || brain.get() == SeatHire.Brain.SCRIPT) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
-                "brain must be one of claude-code, cursor, copilot, codex; the script brain needs a program of its own and cannot be picked", null);
+                "brain must be one of " + SeatHire.Brain.programs().stream().map(SeatHire.Brain::label).collect(java.util.stream.Collectors.joining(", "))
+                    + "; the script brain needs a program of its own and cannot be picked", null);
         }
         String model = textField(params, "model");
         org.jawata.mcp.execution.SeatBrains.Store store = org.jawata.mcp.execution.SeatBrains.installed().orElse(null);
