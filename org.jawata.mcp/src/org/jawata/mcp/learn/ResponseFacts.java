@@ -77,6 +77,9 @@ public final class ResponseFacts {
         if ("files".equals(tool) && ("write".equals(action) || "edit".equals(action)) && map.get("path") instanceof String path) {
             written.add(path);
         }
+        if ("plan_board".equals(tool) && Boolean.TRUE.equals(map.get("rewritten")) && map.get("file") instanceof String file) {
+            written.add(file);
+        }
         return written;
     }
 

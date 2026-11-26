@@ -68,10 +68,11 @@ public final class GitTool implements Tool {
             USAGE: git(action="commit",  folder="/abs/repo", planId="<the hire's plan id>", message="...")
                    git(action="release", folder="/abs/repo", tag="v1.2.3", notes="..." [, publish=true])
 
-            commit: only when every check of that hire's plan passed, and only the files the hire reported changed (any other change in the
-            tree stays uncommitted); the author is the repository's own configured person. A refusal names each check that did not pass;
-            recheck=true runs the open checks again on the files as they stand and commits when they pass. A file another hire is recorded
-            as writing, and this one is not, is left out and listed under leftOut; one both wrote is refused while the other still runs.
+            commit: only when every check of that hire's plan passed, and only the files the hire reported changed that it is also recorded
+            as writing (its jawata calls and its brain's editor, or those of a hire under it); any other change stays uncommitted, one
+            another hire wrote listed under leftOut and one nobody claims (a shell's writes) under unclaimed. One that another hire still
+            running also wrote refuses the commit. The author is the repository's own configured person. A refusal names each check that
+            did not pass; recheck=true runs the open checks again on the files as they stand and commits when they pass.
             release: only when the person's own last message is the order, "/release" (with a tag or notes after it) or the word "release"
             alone (at most with "please", "it" or "now"), never a sentence that only mentions a release; refused while any unpushed commit names an AI agent as author
             or co-author. Pushes the branch to its upstream, makes the annotated tag and pushes it, and with publish (default true) publishes
@@ -155,14 +156,17 @@ public final class GitTool implements Tool {
             return refused("NOTHING_PRODUCED", "plan " + planId + " changed no file, so there is nothing to commit");
         }
         Path top = Path.of(git(folder, "rev-parse", "--show-toplevel"));
-        // 28h z120: the change set is what changed in the tree while the hire ran, which holds what hires beside it wrote. A file another hire
-        // is recorded as writing, and this one and those under it are not, is theirs and stays out; one nobody is recorded for stays in.
+        // 28h z120: the change set is what changed in the tree while the hire ran, which holds what hires beside it wrote. A commit takes only
+        // what this hire and those under it are recorded as writing; another hire's file stays out, and one nobody claims is listed.
         List<String> own = new ArrayList<>();
         Map<String, String> leftOut = new LinkedHashMap<>();
+        List<String> unclaimed = new ArrayList<>();
         for (String file : files) {
             java.util.Set<String> writers = org.jawata.mcp.execution.WrittenFiles.shared().writersOf(top, file);
             List<String> others = writers.stream().filter(writer -> !HireRegistry.shared().isOfAccount(writer, planId)).toList();
-            if (others.isEmpty()) {
+            if (writers.isEmpty()) {
+                unclaimed.add(file);
+            } else if (others.isEmpty()) {
                 own.add(file);
             } else if (others.size() == writers.size()) {
                 leftOut.put(file, "written by " + String.join(", ", others.stream().map(HireRegistry.shared()::labelOf).toList()));
@@ -176,7 +180,9 @@ public final class GitTool implements Tool {
             }
         }
         if (own.isEmpty()) {
-            return refused("NOTHING_PRODUCED", "every file plan " + planId + " has as changed was written by other hires: " + leftOut);
+            return refused("NOTHING_PRODUCED", "no changed file is recorded as written by plan " + planId + " or a hire under it, so nothing is committed."
+                + (leftOut.isEmpty() ? "" : " Written by other hires: " + leftOut + ".")
+                + (unclaimed.isEmpty() ? "" : " Claimed by nobody (a shell, the person or the main chat wrote them, or the engine restarted): " + unclaimed));
         }
         List<String> add = new ArrayList<>(List.of("add", "--"));
         add.addAll(own);
@@ -189,6 +195,9 @@ public final class GitTool implements Tool {
         data.put("files", own);
         if (!leftOut.isEmpty()) {
             data.put("leftOut", leftOut);
+        }
+        if (!unclaimed.isEmpty()) {
+            data.put("unclaimed", unclaimed);
         }
         return ToolResponse.success(data);
     }

@@ -70,8 +70,15 @@ class GitToolTest {
         git = new GitTool(ledger);
     }
 
-    /** A hire whose plan has one step, passed or not, that reported these files changed. */
+    /** A hire whose plan has one step, passed or not, that reported these files changed and is recorded as writing them. */
     private String hireThatChanged(boolean passed, String... files) {
+        String plan = hireThatReported(passed, files);
+        org.jawata.mcp.execution.WrittenFiles.shared().record(plan, java.util.Arrays.stream(files).map(file -> repo.resolve(file).toString()).toList());
+        return plan;
+    }
+
+    /** The same hire with no write recorded: the tree changed while it ran, and nothing says who wrote what. */
+    private String hireThatReported(boolean passed, String... files) {
         ObjectNode none = JSON.createObjectNode();
         PlanId plan = ledger.open(List.of(new GatedStep(0, "compile_workspace", none)));
         if (passed) {
@@ -91,21 +98,35 @@ class GitToolTest {
     }
 
     @Test
-    @DisplayName("28h z120: a file another hire wrote stays out of a commit though the tree's change set held it; a file recorded for nobody is committed as before")
+    @DisplayName("28h z120: a commit holds only the files recorded for the hire; another hire's file and one recorded for nobody stay out and are listed")
     void aFileAnotherHireWroteIsLeftOut() throws Exception {
         Files.writeString(repo.resolve("a.txt"), "two\n");
         Files.writeString(repo.resolve("theirs.txt"), "another hire's work\n");
         Files.writeString(repo.resolve("shell.txt"), "written by a shell, recorded for nobody\n");
-        String plan = hireThatChanged(true, "a.txt", "theirs.txt", "shell.txt");
+        String plan = hireThatReported(true, "a.txt", "theirs.txt", "shell.txt");
         org.jawata.mcp.execution.WrittenFiles.shared().record(plan, List.of(repo.resolve("a.txt").toString()));
         org.jawata.mcp.execution.WrittenFiles.shared().record("plan-z120-other", List.of(repo.resolve("theirs.txt").toString()));
 
         ToolResponse answer = commit(plan, "Step 1");
 
         assertTrue(answer.isSuccess(), String.valueOf(answer.getError()));
-        assertEquals("a.txt\nshell.txt", run(repo, "show", "--name-only", "--format=", "HEAD"), "the commit held another hire's file");
-        assertEquals("?? theirs.txt", run(repo, "status", "--porcelain"), "the other hire's file was committed or lost");
-        assertTrue(String.valueOf(answer.getData()).contains("theirs.txt"), "the answer does not name what it left out: " + answer.getData());
+        assertEquals("a.txt", run(repo, "show", "--name-only", "--format=", "HEAD"), "the commit held a file the hire is not recorded for");
+        assertEquals("?? shell.txt\n?? theirs.txt", run(repo, "status", "--porcelain"), "a file left out was committed or lost");
+        String told = String.valueOf(answer.getData());
+        assertTrue(told.contains("theirs.txt") && told.contains("unclaimed=[shell.txt]"), "the answer does not list what it left out: " + told);
+    }
+
+    @Test
+    @DisplayName("28h z120: a plan with no file recorded for it commits nothing, and the refusal names the files nobody claims")
+    void aPlanThatWroteNothingRecordedIsRefused() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatReported(true, "a.txt");
+
+        ToolResponse answer = commit(plan, "Step 1");
+
+        assertFalse(answer.isSuccess(), "a change nobody claims was committed");
+        assertTrue(answer.getError().getMessage().contains("a.txt"), answer.getError().getMessage());
+        assertEquals("start", run(repo, "log", "-1", "--format=%s"), "a commit was made");
     }
 
     @Test

@@ -135,16 +135,18 @@ class ToolRegistryRecordsHireFailuresTest {
         registryWith("format", ToolResponse.success(Map.of("dryRun", true, "modifiedFiles", List.of("src/DryRun.java")))).callTool("format", none, hired);
         registryWith("files", ToolResponse.success(Map.of("path", "/repo/plan.md"))).callTool("files", write, hired);
         registryWith("files", ToolResponse.success(Map.of("path", "/repo/read.md"))).callTool("files", read, hired);
+        registryWith("plan_board", ToolResponse.success(Map.of("file", "/repo/board-plan.md", "rewritten", true))).callTool("plan_board", none, hired);
         registryWith("rename_symbol", ToolResponse.success(Map.of("filesModified", List.of("src/Others.java"))))
             .callTool("rename_symbol", none, CallerIdentity.supplied("not-a-hire-session"));
 
         Path top = Path.of("/repo");
         Map<String, Set<String>> writers = new LinkedHashMap<>();
-        for (String file : List.of("src/Renamed.java", "src/Formatted.java", "src/Staged.java", "src/DryRun.java", "plan.md", "read.md", "src/Others.java")) {
+        for (String file : List.of("src/Renamed.java", "src/Formatted.java", "src/Staged.java", "src/DryRun.java", "plan.md", "read.md", "board-plan.md",
+                "src/Others.java")) {
             writers.put(file, WrittenFiles.shared().writersOf(top, file));
         }
         Set<String> kept = Set.of("plan-writes-1");
         assertEquals(Map.of("src/Renamed.java", kept, "src/Formatted.java", kept, "src/Staged.java", Set.of(), "src/DryRun.java", Set.of(), "plan.md", kept,
-            "read.md", Set.of(), "src/Others.java", Set.of()), writers, "THE CLAIM: what the hire wrote was not kept, or what it did not write was");
+            "read.md", Set.of(), "board-plan.md", kept, "src/Others.java", Set.of()), writers, "THE CLAIM: what the hire wrote was not kept, or what it did not write was");
     }
 }
