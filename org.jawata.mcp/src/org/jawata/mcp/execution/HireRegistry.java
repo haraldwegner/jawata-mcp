@@ -818,6 +818,17 @@ public final class HireRegistry {
         return names;
     }
 
+    /** The running hires this caller issued, each as "first name · seat (plan id)": what a lead that stopped hands to whoever hired it (28h z109). */
+    public List<String> runningWithPlansFor(String callerId) {
+        List<String> listed = new java.util.ArrayList<>();
+        for (Running hire : running) {
+            if (hire.leadId.equals(callerId) && !hire.leadId.isEmpty()) {
+                listed.add(hire.name + " · " + hire.seat + " (" + hire.planId + ")");
+            }
+        }
+        return listed;
+    }
+
     /**
      * Whether this plan id is the plan of a hire that is running right now (Stage 24, M11): a step of such a plan is waiting because a hire is
      * working on it, which is the normal state while a lead has hires out, and not a step that has been left behind.

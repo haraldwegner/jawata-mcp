@@ -360,6 +360,11 @@ public final class AcpBrainSession {
             } else if (stoppedBy.isPresent() && stoppedBy.get().startsWith("tool steps")) {
                 stoppedBy = Optional.of("tool steps: " + steps + " over the ceiling of " + ceilings.maxToolSteps());
             }
+            // 28h z109: a lead that was stopped does not wait for its hires, so it says which of them still run; they are its hirer's now.
+            List<String> stillRunning = HireRegistry.shared().runningWithPlansFor(leadId);
+            if (stoppedBy.isPresent() && !stillRunning.isEmpty()) {
+                stoppedBy = Optional.of(stoppedBy.get() + "; its hires still running, now yours: " + String.join(", ", stillRunning));
+            }
             return new HiredBrain.Outcome(last.text(), last.costUsd(), steps, last.unreadableLines(), last.sawTerminalCost(), last.timedOut(),
                 exit, last.stderrTail(), stoppedBy, List.copyOf(names), Optional.empty(), Optional.empty(), List.copyOf(calls),
                 last.brainSessionId(), toolMillis);

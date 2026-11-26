@@ -392,6 +392,22 @@ class LeadLoopTest {
     }
 
     @Test
+    @DisplayName("z109, z113: a lead stopped by its cost ceiling while a hire of its own runs names that hire and its plan id, which now belong to whoever hired the lead")
+    void aLeadStoppedByItsCostCeilingNamesItsRunningHires() throws Exception {
+        String lead = "z109-lead-cost";
+        HireRegistry.Inbox inbox = HireRegistry.shared().inboxFor(lead);
+        aHireIsOut(lead, "z109-child", "done", 3_000, null);
+
+        HiredBrain.Outcome capped = runAsLead("SPEND", new HiredBrain.Ceilings(Duration.ofSeconds(60), 0, 0.0001), lead, inbox);
+
+        String stopped = capped.stoppedBy().orElse("");
+        assertAll(
+            () -> assertTrue(stopped.startsWith("cost: "), "CONTROL: the lead was not stopped by its cost ceiling: " + stopped),
+            () -> assertTrue(stopped.contains("still running") && stopped.contains("(z109-child)"),
+                "the stop does not name the hire left running: " + stopped));
+    }
+
+    @Test
     @DisplayName("T9: a lead's tool-step ceiling is counted across its turns, so a lead that keeps going stops; with no ceiling the same two turns end clean")
     void aLeadOverSeveralTurnsStopsAtItsToolStepCeiling() throws Exception {
         // THE CONTROL: no ceiling, the same two turns of five tool calls each end clean.
