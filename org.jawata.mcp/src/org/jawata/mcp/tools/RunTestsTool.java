@@ -1968,8 +1968,19 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
                 }
             }
 
-            // S19-63b: the target classes are types, which do not say which project holds them.
+            // S19-63b, 28h z119: the only project loaded, else the one project that holds every target class; a class no project or several
+            // projects hold does not name one, and the call is refused.
             LoadedWorkspace.ProjectInfo project = onlyProject(workspace);
+            if (project == null) {
+                java.util.Set<String> holding = new java.util.HashSet<>();
+                boolean eachNamesOne = true;
+                for (String clazz : targetClasses) {
+                    java.util.List<String> holders = workspace.projectsHoldingType(clazz);
+                    eachNamesOne &= holders.size() == 1;
+                    holding.addAll(holders);
+                }
+                project = eachNamesOne && holding.size() == 1 ? workspace.project(holding.iterator().next()).orElse(null) : null;
+            }
             if (project == null) {
                 return projectNotNamed(workspace);
             }

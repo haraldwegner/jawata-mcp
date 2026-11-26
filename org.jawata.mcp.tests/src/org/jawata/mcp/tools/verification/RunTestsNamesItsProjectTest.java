@@ -150,6 +150,22 @@ class RunTestsNamesItsProjectTest {
     }
 
     @Test
+    @DisplayName("z119: coverage_mutation naming a class one loaded project holds does not ask for a projectKey")
+    void coverageMutationFindsItsProjectFromTheClass() throws Exception {
+        JdtServiceImpl service = helper.loadWorkspaceCopy("compile-clean", OWNER_FIXTURE);
+        ObjectNode args = new ObjectMapper().createObjectNode();
+        args.put("action", "coverage_mutation");
+        args.putArray("targetClasses").add("com.example.rel.RelativeFileTest");
+        args.putArray("targetTests").add("com.example.rel.RelativeFileTest");
+        args.put("timeoutSeconds", 60);
+
+        ToolResponse r = toolOver(service).execute(args);
+
+        assertFalse(!r.isSuccess() && String.valueOf(r.getError()).contains("This workspace holds"),
+            "the class names its project, yet the call was refused for not naming one: " + r.getError());
+    }
+
+    @Test
     @DisplayName("run_tests: a scope that names an absolute file inside a project runs that project with no projectKey (S19-63)")
     void anAbsoluteFileInsideAProjectNamesItsProject() throws Exception {
         JdtServiceImpl service = helper.loadWorkspaceCopy("compile-clean", OWNER_FIXTURE);

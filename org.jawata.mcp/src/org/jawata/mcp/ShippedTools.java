@@ -220,7 +220,7 @@ public final class ShippedTools {
         // lookup answers git status, history and diff and the running processes, read-only; git commits a passed step (the pm) and releases
         // on the person's word (main), reading the same plan ledger the hire path opens (28h D57 (j)).
         tools.add(new LookupTool());
-        tools.add(new GitTool(planLedger));
+        tools.add(new GitTool(planLedger, w.registry()));
         // brains answers a host outside this process, the studio, about the agent programs: each chat brain's models from the one catalogue,
         // which programs this machine has, and the one-word test run, so the studio checks no program itself (28h D57 (c), the C26 review).
         tools.add(new BrainsTool(() -> org.jawata.mcp.execution.SeatSettingsService.forEngine(w.settings().get(), w.registry().get())));

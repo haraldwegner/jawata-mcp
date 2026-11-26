@@ -17,6 +17,8 @@ import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.execution.PersonsWords;
+import org.jawata.mcp.execution.ToolGateRunner;
+import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.PlanLedger;
 import org.jawata.mcp.models.CallerIdentity;
 import org.jawata.mcp.models.ToolResponse;
@@ -41,7 +43,15 @@ public final class GitTool implements Tool {
 
     private final PlanLedger plans;
 
+    /** The engine's tools, which a commit with recheck runs a plan's open checks through; answers null where no tools are wired. */
+    private final java.util.function.Supplier<? extends org.jawata.mcp.engine.ToolCalls> engineTools;
+
     public GitTool(PlanLedger plans) {
+        this(plans, () -> null);
+    }
+
+    public GitTool(PlanLedger plans, java.util.function.Supplier<? extends org.jawata.mcp.engine.ToolCalls> engineTools) {
+        this.engineTools = engineTools;
         this.plans = plans;
     }
 
@@ -59,7 +69,8 @@ public final class GitTool implements Tool {
                    git(action="release", folder="/abs/repo", tag="v1.2.3", notes="..." [, publish=true])
 
             commit: only when every check of that hire's plan passed, and only the files the hire reported changed (any other change in the
-            tree stays uncommitted); the author is the repository's own configured person.
+            tree stays uncommitted); the author is the repository's own configured person. A refusal names each check that did not pass;
+            recheck=true runs the open checks again on the files as they stand and commits when they pass.
             release: only when the person's own last message is the order, "/release" (with a tag or notes after it) or the word "release"
             alone (at most with "please", "it" or "now"), never a sentence that only mentions a release; refused while any unpushed commit names an AI agent as author
             or co-author. Pushes the branch to its upstream, makes the annotated tag and pushes it, and with publish (default true) publishes
@@ -75,6 +86,8 @@ public final class GitTool implements Tool {
         properties.put("folder", Map.of("type", "string", "description", "The repository, or a folder inside it, as an absolute path."));
         properties.put("planId", Map.of("type", "string", "description", "commit: the plan id of the hire whose step is committed."));
         properties.put("message", Map.of("type", "string", "description", "commit: the commit message."));
+        properties.put("recheck", Map.of("type", "boolean", "description",
+            "commit: when checks of the plan did not pass, run those checks again on the files as they stand; commit if they all pass."));
         properties.put("tag", Map.of("type", "string", "description", "release: the tag to make, such as v1.2.3."));
         properties.put("notes", Map.of("type", "string", "description", "release: the release notes, also the tag's message."));
         properties.put("publish", Map.of("type", "boolean", "description", "release: publish the GitHub release through gh (default true)."));
@@ -121,11 +134,17 @@ public final class GitTool implements Tool {
         }
         // passedStep is the index of the last step whose gate passed, -1 for none, so every step has passed at the last index
         int passed = plan.get().passedStep() + 1;
-        if (passed < plan.get().steps().size()) {
-            return refused("CHECKS_NOT_PASSED", "the step's checks have not all passed (" + passed + " of " + plan.get().steps().size()
-                + "), so it is not committed");
-        }
         Optional<JsonNode> answer = HireRegistry.shared().answerOfPlan(planId);
+        if (passed < plan.get().steps().size()) {
+            // 28h z103, z125: the refusal names what did not pass, and recheck runs the open checks on the files as they stand.
+            boolean recheck = arguments.path("recheck").asBoolean(false);
+            List<String> open = recheck ? stillFailing(plan.get(), passed) : List.of(lastFailure(plan.get(), passed, answer));
+            if (!open.isEmpty()) {
+                return refused("CHECKS_NOT_PASSED", "the step's checks have not all passed (" + passed + " of " + plan.get().steps().size()
+                    + "), so it is not committed. " + String.join("; ", open)
+                    + (recheck ? "" : ". commit with recheck=true runs the open checks again on the files as they stand"));
+            }
+        }
         if (answer.isEmpty() || !answer.get().path("changedFiles").isArray()) {
             return refused("CHANGES_UNKNOWN", "the files plan " + planId + " produced are not known to this engine, so nothing is committed");
         }
@@ -145,6 +164,44 @@ public final class GitTool implements Tool {
         data.put("commit", git(top, "rev-parse", "HEAD"));
         data.put("files", files);
         return ToolResponse.success(data);
+    }
+
+    /** The first check that did not pass, as the hire's own record has it: its step, tool, arguments and why. */
+    private static String lastFailure(PlanLedger.PlanView plan, int index, Optional<JsonNode> answer) {
+        GatedStep step = plan.steps().get(index);
+        String why = "it has not been run";
+        for (JsonNode gate : answer.map(a -> a.path("gates")).orElse(com.fasterxml.jackson.databind.node.MissingNode.getInstance())) {
+            if (!step.tool().equals(gate.path("tool").asText())) {
+                continue;
+            }
+            if (!gate.path("answered").asBoolean(false)) {
+                why = "it did not answer: " + gate.path("notAnsweredBecause").asText("no reason given");
+            } else if (gate.path("errorCount").asInt() > 0) {
+                why = "it reported " + gate.path("errorCount").asInt() + " error(s)";
+            }
+        }
+        return "Check " + (index + 1) + ", " + step.tool() + " " + step.gateArguments() + ": " + why;
+    }
+
+    /** Runs the plan's open checks again, in order, and names each that still does not pass; none means the files as they stand pass them. */
+    private List<String> stillFailing(PlanLedger.PlanView plan, int from) {
+        org.jawata.mcp.engine.ToolCalls tools = engineTools.get();
+        List<String> open = new ArrayList<>();
+        for (int index = from; index < plan.steps().size(); index++) {
+            GatedStep step = plan.steps().get(index);
+            String name = "Check " + (index + 1) + ", " + step.tool() + " " + step.gateArguments() + ": ";
+            if (tools == null || step.tool().startsWith(PlanLedger.ANSWER_GATE_PREFIX)) {
+                open.add(name + "it cannot be run again here");
+                continue;
+            }
+            org.jawata.mcp.step.GateOutcome outcome = new ToolGateRunner(tools).run(step);
+            if (!outcome.succeeded()) {
+                open.add(name + "re-run did not answer: " + outcome.notAnsweredBecause());
+            } else if (outcome.errorCount() > 0) {
+                open.add(name + "re-run reported " + outcome.errorCount() + " error(s)");
+            }
+        }
+        return open;
     }
 
     private ToolResponse release(Path folder, JsonNode arguments) throws IOException, InterruptedException {

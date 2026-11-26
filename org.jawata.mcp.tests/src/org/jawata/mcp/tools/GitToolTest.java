@@ -117,6 +117,57 @@ class GitToolTest {
     }
 
     @Test
+    @DisplayName("z103, z119: a refused commit names the check that did not pass, with its arguments and why")
+    void aRefusedCommitNamesTheFailedCheck() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        PlanId plan = ledger.open(List.of(new GatedStep(0, "run_tests", JSON.createObjectNode().put("targetClasses", "X"))));
+        ObjectNode answer = JSON.createObjectNode().put("plan", plan.toString());
+        answer.putArray("changedFiles").add("a.txt");
+        answer.putArray("gates").addObject().put("tool", "run_tests").put("answered", false)
+            .put("notAnsweredBecause", "Invalid parameter 'projectKey'");
+        HireRegistry.shared().record("developer", "brief for " + plan, answer);
+
+        ToolResponse refused = commit(plan.toString(), "Step 1");
+
+        String said = refused.getError().getMessage();
+        assertTrue(said.contains("run_tests") && said.contains("targetClasses") && said.contains("projectKey"), said);
+    }
+
+    @Test
+    @DisplayName("z125: a plan whose check did not pass is committed with recheck once the check passes on the files as they stand, and not while it fails")
+    void aRecheckThatPassesCommitsThePlan() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatChanged(false, "a.txt");
+        int[] errors = {1};
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(new Tool() {
+            @Override public String getName() {
+                return "compile_workspace";
+            }
+            @Override public String getDescription() {
+                return "a compile stand-in";
+            }
+            @Override public java.util.Map<String, Object> getInputSchema() {
+                return java.util.Map.of();
+            }
+            @Override public ToolResponse execute(com.fasterxml.jackson.databind.JsonNode arguments) {
+                return ToolResponse.success(java.util.Map.of("errorCount", errors[0]));
+            }
+        });
+        git = new GitTool(ledger, () -> tools);
+        ObjectNode commit = JSON.createObjectNode().put("action", "commit").put("folder", repo.toString()).put("planId", plan)
+            .put("message", "Step 1").put("recheck", true);
+
+        ToolResponse whileFailing = git.execute(commit);
+        errors[0] = 0;
+        ToolResponse oncePassing = git.execute(commit);
+
+        assertFalse(whileFailing.isSuccess(), "a failing check was committed on recheck");
+        assertTrue(oncePassing.isSuccess(), String.valueOf(oncePassing.getError()));
+        assertEquals("a.txt", run(repo, "show", "--name-only", "--format=", "HEAD"));
+    }
+
+    @Test
     @DisplayName("28h D57 (j): a commit message naming an AI agent as co-author is refused, and nothing is committed")
     void anAgentCoAuthorIsRefused() throws Exception {
         Files.writeString(repo.resolve("a.txt"), "two\n");
