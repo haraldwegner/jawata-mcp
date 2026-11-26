@@ -214,6 +214,17 @@ class HireReportTest {
     }
 
     @Test
+    @DisplayName("28h z85: a report carries the progress lines the hire wrote for its lead, and says when it wrote none")
+    void aReportCarriesTheHiresProgressLines() throws Exception {
+        String told = reportOf("{\"answer\":\"REPORT: done\",\"progressLines\":[\"I will rename it\",\"renamed, compiling\"]}");
+        String silent = reportOf("{\"answer\":\"REPORT: done\",\"progressLines\":[]}");
+
+        assertAll(
+            () -> assertTrue(told.contains("Progress: I will rename it\nProgress: renamed, compiling"), told),
+            () -> assertTrue(silent.contains("Progress: no kick-off line was written"), silent));
+    }
+
+    @Test
     @DisplayName("28h z90 (a): a run that exited cleanly with every step passed but answered nothing is failed, not done, and the report says the answer was empty")
     void aCleanRunWithAnEmptyAnswerIsFailed() throws Exception {
         String report = reportOf("{\"cleanExit\":true,\"answer\":\"\",\"stepsPassed\":3,\"stepsDeclared\":3}");

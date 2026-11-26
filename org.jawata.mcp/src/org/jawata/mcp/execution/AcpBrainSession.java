@@ -815,6 +815,8 @@ public final class AcpBrainSession {
             }
             try {
                 String id = sessionId;
+                // A new turn starts a new line, so a STEP line that opens it is not read as the end of the turn before (28h z85).
+                HireRegistry.shared().noteText("\n");
                 JsonNode stop = wire.call(promptId++, "session/prompt", params -> {
                     params.put("sessionId", id);
                     ArrayNode blocks = params.putArray("prompt");
@@ -1305,6 +1307,9 @@ public final class AcpBrainSession {
             if (compaction.isPresent()) {
                 // The brain compacting its context is not a tool call of the hire's work.
                 HireRegistry.shared().noteCompaction(compaction.get());
+            } else if ("agent_message_chunk".equals(kind)) {
+                // 28h z85: its text as it arrives, so the lines it writes for its lead can be read while it runs.
+                HireRegistry.shared().noteText(update.path("content").path("text").asText(""));
             } else if ("tool_call".equals(kind)) {
                 HireRegistry.shared().noteToolCall(update.path("title").asText(""));
             } else if ("usage_update".equals(kind)) {

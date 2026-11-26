@@ -164,6 +164,21 @@ class HireWaitToolTest {
     }
 
     @Test
+    @DisplayName("28h z85: a running hire's answer carries the STEP lines it has written so far, a line split over chunks and one still being written included, and nothing else of its text")
+    void aRunningHireSaysItsProgressLines() throws Exception {
+        try (HireRegistry.Registration working = hires.begin("developer", "z85 working", "")) {
+            hires.planOpened("plan-z85-lines");
+            hires.noteText("let me look first\nSTEP: I will ren");
+            hires.noteText("ame it\n- read the class\nSTEP: renaming");
+
+            Map<String, Object> answer = dataOf(ask("plan-z85-lines", 0));
+
+            assertEquals("[\"I will rename it\",\"renaming\"]", JSON.valueToTree(answer.get("soFar")).path("progressLines").toString(),
+                String.valueOf(answer));
+        }
+    }
+
+    @Test
     @DisplayName("28h z28: a running hire that has done nothing for longer than the stall ceiling is answered as stalled with the seconds it has been idle; one that has just acted is not")
     void aQuietHireIsAnsweredAsStalled() throws Exception {
         HireWaitTool strict = new HireWaitTool(hires, 1);

@@ -21,9 +21,12 @@ public final class HireReport {
     public static final String MARK = "A hire you started has ended";
 
     /** What every hired brain is asked so that its lead is told its own summary and not its working-out (28h z52). */
-    public static final String ASK = "\n\n## Your report\n\nEnd your answer with a line that reads REPORT: and, under it, a short summary for"
-        + " the agent that hired you: what you claim you did, and what is still open. Only that summary goes to the agent that hired you; the"
-        + " rest of your answer is kept in the hire's record.\n";
+    public static final String ASK = "\n\n## While you work\n\nTell the agent that hired you what you are doing in single lines that start"
+        + " STEP: — one before your first tool call, saying what you understood and what you will do first, then one at each step or when"
+        + " something blocks you. Only those lines reach it while you work.\n"
+        + "\n## Your report\n\nEnd your answer with a line that reads REPORT: and, under it, a short summary for"
+        + " the agent that hired you: what you claim you did, and what is still open. Only that summary and your STEP: lines go to the agent that"
+        + " hired you; the rest of your answer is kept in the hire's record.\n";
 
     /** What stands where a brain published no figure: never zero (28h z136). */
     private static final String NO_FIGURE = "no figure";
@@ -31,7 +34,7 @@ public final class HireReport {
     /** The keys of a hire's answer a lead is told as they are (28h z52); every other key stays with the record. */
     private static final List<String> SENT_UP = List.of("hirer", "hired", "name", "fixes", "plan", "brain", "complete", "cleanExit",
         "stoppedBy", "timedOut", "exitCode", "stepsPassed", "stepsDeclared", "gates", "changedFileCount", "verdict", "fullRunReasons",
-        "instructionScore", "ownWrites", "ownCodePutBack", "attempt", "escalatesTo", "record", "error", "below", "orphanOf");
+        "instructionScore", "ownWrites", "ownCodePutBack", "attempt", "escalatesTo", "record", "error", "below", "orphanOf", "progressLines");
 
     /** The line that opens a brain's own summary: REPORT: or a heading of that word. */
     private static final Pattern REPORT_HEADING = Pattern.compile(
@@ -79,6 +82,11 @@ public final class HireReport {
                 told.path("fullRunReasons").forEach(why -> text.append(" ").append(why.asText()).append(";"));
                 text.append("\n");
             }
+            JsonNode progress = told.path("progressLines");
+            if (progress.isArray() && progress.isEmpty()) {
+                text.append("Progress: no kick-off line was written\n");
+            }
+            progress.forEach(line -> text.append("Progress: ").append(line.asText()).append("\n"));
             text.append("Report: ").append(told.path("report").asText()).append("\n");
             String error = textOf(told.path("error"));
             if (!error.isBlank()) {
@@ -130,6 +138,7 @@ public final class HireReport {
         figures.put("seconds", running.seconds());
         figures.put("costUsd", seen.costUsd().isPresent() ? seen.costUsd().getAsDouble() : NO_FIGURE);
         figures.put("contextTokens", seen.contextTokens().isPresent() ? seen.contextTokens().getAsLong() : NO_FIGURE);
+        figures.put("progressLines", running.progressLines());
         below.ifPresent(used -> figures.put("below", used.asMap()));
         return figures;
     }

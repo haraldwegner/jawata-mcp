@@ -181,6 +181,10 @@ public class FakeAcpAgent {
                     + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"l1\",\"status\":\"completed\"}}}");
             }
             chunk(session, "done");
+        } else if (text.contains("SAYSTEPS")) {
+            // a hired seat that tells its lead what it is doing (28h z85), in pieces as a real brain streams its text
+            chunk(session, "STEP: I will look at");
+            chunk(session, " the class\nlooking now\nSTEP: looked\nREPORT: nothing to change");
         } else if (text.contains("EDITS:")) {
             // the brain edits N times, each call reported as pending and then completed (an editing kind, as a real brain's own Edit is), then waits
             // 700 ms, drops $FAKE_ACP_STATE/answered.marker and ANSWERS: a gate that ran for a step before the marker ran while the brain worked
@@ -477,7 +481,7 @@ public class FakeAcpAgent {
 
     static void chunk(String session, String text) {
         send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
-            + "\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"" + text.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}}}}");
+            + "\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n") + "\"}}}}");
     }
 
     static void reply(String id, String result) {

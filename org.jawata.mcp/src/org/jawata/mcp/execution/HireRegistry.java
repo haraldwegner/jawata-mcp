@@ -67,6 +67,16 @@ public final class HireRegistry {
          * chat (28h-C27-18). Read and written only under the registry's lock, which closing this hire holds too, so none is added after the drain.
          */
         final List<Event> handedUp = new java.util.ArrayList<>();
+        /** What this hire's brain has written to its caller so far, from which its progress lines are read (28h z85); guarded by itself. */
+        final StringBuilder written = new StringBuilder();
+
+        /** The lines it wrote that start STEP:, without the mark, in the order written; a line still being written is included. */
+        List<String> progressLines() {
+            synchronized (written) {
+                return written.toString().lines().map(String::strip).filter(line -> line.startsWith("STEP:"))
+                    .map(line -> line.substring("STEP:".length()).strip()).filter(line -> !line.isEmpty()).toList();
+            }
+        }
 
         Running(String seat, String brief, String name, String leadId, Thread thread) {
             this.seat = seat;
@@ -96,6 +106,11 @@ public final class HireRegistry {
          */
         public Optional<String> claim(java.util.Collection<String> packages) {
             return HireRegistry.this.claim(hire, packages);
+        }
+
+        /** The progress lines this hire has written for its lead (28h z85). */
+        public List<String> progressLines() {
+            return hire.progressLines();
         }
 
         /** Whether the person stopped this hire; true once, then the mark is gone. */
@@ -297,14 +312,14 @@ public final class HireRegistry {
     }
 
     /** What a running hire has reported so far and for how many seconds it has run (28h z136). */
-    public record SoFar(Progress progress, long seconds) {
+    public record SoFar(Progress progress, long seconds, List<String> progressLines) {
     }
 
     /** What the running hire of this plan has used so far; none when no such hire is running. */
     public Optional<SoFar> soFarOfPlan(String planId) {
         for (Running hire : running) {
             if (hire.planId.equals(planId)) {
-                return Optional.of(new SoFar(hire.progress, (System.currentTimeMillis() - hire.startedAtMs) / 1000));
+                return Optional.of(new SoFar(hire.progress, (System.currentTimeMillis() - hire.startedAtMs) / 1000, hire.progressLines()));
             }
         }
         return Optional.empty();
@@ -1174,5 +1189,17 @@ public final class HireRegistry {
     /** Which attempt at its task this ended hire was: 1 unless it corrected an earlier one, and then one more than that one's. */
     public int attemptOf(String planId) {
         return attempts.getOrDefault(planId == null ? "" : planId, 1);
+    }
+
+    /** Keeps what the brain of the hire running on the current thread wrote to its caller, so its progress lines can be read while it runs (28h z85). */
+    public void noteText(String chunk) {
+        for (Running hire : running) {
+            if (hire.thread == Thread.currentThread()) {
+                synchronized (hire.written) {
+                    hire.written.append(chunk);
+                }
+                hire.lastActivityMs = System.currentTimeMillis();
+            }
+        }
     }
 }

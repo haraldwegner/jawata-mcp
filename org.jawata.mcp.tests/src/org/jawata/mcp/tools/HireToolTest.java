@@ -2321,6 +2321,17 @@ class HireToolTest {
         };
     }
 
+    @Test
+    @DisplayName("28h z85: the STEP lines a hired brain writes while it works are in its hire's answer, whole though streamed in pieces")
+    void aHiresAnswerCarriesTheLinesItWroteForItsLead() throws Exception {
+        com.fasterxml.jackson.databind.node.ObjectNode args = (com.fasterxml.jackson.databind.node.ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+        args.put("brief", "SAYSTEPS");
+
+        Map<String, Object> hired = dataOf(hireOnABrainThatTakesTurns(host).execute(args));
+
+        assertEquals(List.of("I will look at the class", "looked"), hired.get("progressLines"), String.valueOf(hired));
+    }
+
     /** A hire tool whose brain is the stand-in ACP agent, which takes further turns: the only kind a seat that hires is run on (28h design step 9). */
     private HireTool hireOnABrainThatTakesTurns(HostProcesses processes) throws Exception {
         return toolWithBrainsSetting(processes, JSON.writeValueAsString(Map.of("claude-code", theStandInAcpProgram())));

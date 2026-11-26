@@ -981,6 +981,8 @@ public class HireTool extends NeutralTool {
         data.put("hirer", ran.hire.getHirer());
         data.put("hired", ran.hire.getHired());
         data.put("name", ran.hire.getRunning().name());
+        // 28h z85: the lines it wrote for its lead while it worked; an empty list is a hire that wrote none, not even a kick-off.
+        data.put("progressLines", ran.hire.getRunning().progressLines());
         String corrects = getStringParam(ran.call.getArguments(), "fixes");
         if (corrects != null && !corrects.isBlank()) {
             data.put("fixes", corrects.strip());

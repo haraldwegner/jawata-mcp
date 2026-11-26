@@ -258,7 +258,11 @@ public final class HiredBrain {
                 // It is the answer only when nothing else was said, so a run that produced no turn
                 // text still reports the one thing it did say, an error message included.
                 if (!(read.terminal() && !said.isEmpty())) {
-                    read.text().ifPresent(said::add);
+                    read.text().ifPresent(text -> {
+                        said.add(text);
+                        // 28h z85: the lines it writes for its lead are read from what it says, as over ACP.
+                        HireRegistry.shared().noteText(text + "\n");
+                    });
                 }
                 toolSteps += read.toolSteps();
                 toolNames.addAll(read.toolNames());
