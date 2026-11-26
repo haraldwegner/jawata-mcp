@@ -3040,6 +3040,32 @@ class HireToolTest {
             () -> assertTrue(String.valueOf(refused.getError()).contains("nonsense"), String.valueOf(refused.getError())));
     }
 
+    @Test
+    @DisplayName("z132: no hire ends because of a number: a seat's ttl_secs, cost_budget_usd and max_tool_steps limit nothing, and the figures are still counted")
+    void noHireEndsBecauseOfANumber() throws Exception {
+        Path file = Files.createTempFile(dir, "brain-", ".sh");
+        Files.writeString(file, """
+            #!/bin/sh
+            echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use"},{"type":"tool_use"},{"type":"tool_use"}]}}'
+            sleep 3
+            echo '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"finished my work"}]}}'
+            echo '{"type":"result","result":"done","total_cost_usd":5.0}'
+            """);
+        Files.setPosixFilePermissions(file, PosixFilePermissions.fromString("rwxr-xr-x"));
+        String tight = CATALOGUER_SEAT.replace("ttl_secs: 900", "ttl_secs: 1")
+            .replace("cost_budget_usd: 2.0", "cost_budget_usd: 0.01").replace("max_tool_steps: 80", "max_tool_steps: 1");
+        StandsIn started = new StandsIn(host, HostCommand.of(file.toString()));
+
+        Map<String, Object> answer = dataOf(toolWithSettings(started, Map.of()).execute(hireArgs(seatFile(tight))));
+
+        assertAll(
+            () -> assertEquals(false, answer.get("timedOut"), "the hire was ended by the clock: " + answer),
+            () -> assertEquals(null, answer.get("stoppedBy"), "the hire was stopped for a number: " + answer),
+            () -> assertTrue(String.valueOf(answer.get("answer")).contains("finished my work"), "the hire did not run to its end: " + answer),
+            () -> assertEquals(5.0, ((Number) answer.get("costUsd")).doubleValue(), 1e-9, "its cost is no longer counted: " + answer),
+            () -> assertFalse(started.asked().contains("--max-turns"), "the brain was given a turn limit: " + started.asked()));
+    }
+
     /** A hire tool that runs the hire to its end, whose host settings are exactly these, by key. */
     private HireTool toolWithSettings(HostProcesses processes, Map<String, String> settings) {
         return new Finishing(processes, artifacts, plans, () -> events, () -> aRegistryWithACleanGate(),

@@ -81,8 +81,7 @@ public final class ScriptDialect implements BrainDialect {
     @Override
     public ToolAttachment toolAttachment() {
         return ToolAttachment.cannotBeTold(
-            "the script's own argv, fixed when it was configured, plus the hire's wall-clock,"
-                + " cost and step ceilings");
+            "the script's own argv, fixed when it was configured");
     }
 
     @Override

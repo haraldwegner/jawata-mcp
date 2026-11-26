@@ -1,6 +1,5 @@
 package org.jawata.mcp.execution;
 
-import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -33,20 +32,11 @@ import org.jawata.mcp.access.LookupDriver;
  * fill a brain in. An UNKNOWN brain is REFUSED rather than replaced: a seat asking for a brain this
  * product has no dialect for must not quietly be hired as a different one.</p>
  *
- * <h2>A DECLARED COST BUDGET IS NOT NECESSARILY AN ENFORCEABLE ONE, and this says which</h2>
+ * <h2>A hire has no limit of time, cost or number of tool uses (28h z132)</h2>
  *
- * <p>Measured by running all four brains: <b>only Claude Code publishes a dollar cost.</b> cursor
- * and codex publish token counts; copilot publishes {@code usage.premiumRequests}, a fractional
- * count of subscription requests. So a seat declaring {@code cost_budget_usd: 2.0} and
- * {@code brain: cursor} has written down a bound that can never fire — the ceiling is carried
- * faithfully into {@link HiredBrain.Ceilings} and nothing will ever compare against it, because
- * nothing reports a cost to compare.</p>
- *
- * <p>{@link #budgetReport()} is what keeps that from being silent. It is not a refusal: the seat's
- * declaration is legitimate and may become enforceable the day a vendor publishes a cost, and
- * refusing the hire would make this product's reading of a vendor's output into a veto over a
- * human's written intent. It is a REPORT, for the same reason {@link ToolAttachment} reports a brain
- * that cannot be told which tools rather than dropping it from the count.</p>
+ * <p>A seat file's {@code ttl_secs}, {@code cost_budget_usd} and {@code max_tool_steps} lines limit nothing: every hire runs under
+ * {@link HiredBrain.Ceilings#none()}. What a hire spends is counted and reported to the seat that hired it, which controls it; a hire
+ * ends when its brain does, when it is stopped, or when it shows no sign of life.</p>
  *
  * @param seat     the seat's name, which is what a journal row and a proposal are attributed to
  * @param brain    which CLI to spawn
@@ -134,9 +124,6 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             return Optional.empty();
         }
     }
-
-    /** How long a seat may run when it declares no {@code ttl_secs}. */
-    private static final Duration DEFAULT_WALL_CLOCK = Duration.ofMinutes(10);
 
     public SeatHire {
         if (seat == null || seat.isBlank()) {
@@ -240,12 +227,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             brain,
             Frontmatter.emptyToNull(front.get("model")),
             Frontmatter.list(front.get("tools")),
-            new HiredBrain.Ceilings(
-                Frontmatter.seconds(front.get("ttl_secs")).orElse(DEFAULT_WALL_CLOCK),
-                Frontmatter.integer(front.get("max_tool_steps")).orElse(0),
-                // null, not 0.0 — an undeclared budget is NO ceiling, and zero would be a ceiling
-                // of nothing that fired on the first reported cent.
-                Frontmatter.decimal(front.get("cost_budget_usd")).orElse(null)),
+            // 28h z132: a hire has no limit of time, cost or calls, whatever its seat file still says. What it spends is counted and reported
+            // to the lead, who controls it.
+            HiredBrain.Ceilings.none(),
             Frontmatter.body(markdown),
             Frontmatter.list(front.get("answer_gates")),
             Frontmatter.readSwitch("enabled", front.get("enabled"), true),
@@ -376,7 +360,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         }
         String flag = launchModel != null && !launchModel.isBlank() ? launchModel : model;
         return switch (brain) {
-            case CLAUDE_CODE -> new ClaudeCodeDialect("claude", maxTurns(), flag, !(changesCode || writesStore), self,
+            case CLAUDE_CODE -> new ClaudeCodeDialect("claude", 0, flag, !(changesCode || writesStore), self,
                 hiddenTools, readsFiles ? ClaudeCodeDialect.READ_ONLY_BUILT_INS : List.of());
             case CURSOR -> new CursorDialect("cursor-agent", !(changesCode || writesStore), flag);
             // Neither of these takes a model from this product: copilot ROUTES its own (its
@@ -387,49 +371,6 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             case ANTIGRAVITY -> new AntigravityDialect("agy", flag);
             case SCRIPT -> new ScriptDialect(script, List.of());
         };
-    }
-
-    /**
-     * How many turns the CLI may take. The default is twelve, which is right for a seat that calls
-     * a few jawata tools and wrong for one that reads: measured 2026-10-18, the first real UX hire
-     * with the read-only built-ins made 24 reads in twelve turns and was cut off by the CLI (exit 1)
-     * before it wrote its census. A seat that reads files is given as many turns as the step
-     * ceiling it declared, so the ceiling the engine enforces is the bound and the CLI's own turn
-     * count is not a second, tighter, undeclared one. Every other seat keeps the default.
-     */
-    int maxTurns() {
-        int steps = ceilings.maxToolSteps();
-        return readsFiles && steps > ClaudeCodeDialect.DEFAULT_MAX_TURNS
-            ? steps : ClaudeCodeDialect.DEFAULT_MAX_TURNS;
-    }
-
-    /**
-     * What this seat's declared cost budget actually BUYS on the brain it chose — see the type
-     * javadoc. Absent when the seat declared no budget, because there is then nothing to report.
-     */
-    public Optional<String> budgetReport() {
-        Double budget = ceilings.maxCostUsd();
-        if (budget == null) {
-            return Optional.empty();
-        }
-        if (brain == null) {
-            return Optional.of("cost budget $" + budget + " is not applied until a brain is stored for this seat");
-        }
-        if (brain == Brain.SCRIPT) {
-            // A script publishes a dollar cost only if it prints one — ScriptDialect reads a
-            // `COST-USD: <n>` line — so the budget's force is the script's to give, not ours.
-            return Optional.of("cost budget $" + budget + " fires only on the COST-USD: lines the"
-                + " script prints; one that prints none is still bounded by its wall clock and step"
-                + " ceiling");
-        }
-        boolean publishesDollars = brain == Brain.CLAUDE_CODE;
-        return Optional.of(publishesDollars
-            ? "cost budget $" + budget + " is ENFORCEABLE: " + brain + " reports a dollar cost,"
-                + " but only when the run ends, so the ceiling STOPS a run that has passed it and"
-                + " CANNOT PREVENT THE SPEND — a single-turn hire measured at $2.26 against a"
-                + " $0.25 ceiling was stopped correctly and still cost $2.26"
-            : "cost budget $" + budget + " CANNOT FIRE on " + brain + ", which publishes no dollar"
-                + " cost — the run is still bounded by its wall clock and step ceiling");
     }
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance) {

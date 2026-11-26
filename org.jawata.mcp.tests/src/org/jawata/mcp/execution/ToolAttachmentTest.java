@@ -118,13 +118,12 @@ class ToolAttachmentTest {
             () -> assertEquals(ToolAttachment.Reach.PER_RUN, claude.reach()),
             () -> assertTrue(claude.mechanism().contains("--allowedTools"),
                 "the flag is the verifiable part of the claim: " + claude.mechanism()),
-            // A script's argv was fixed when somebody configured it, so the hirer cannot name its
-            // tools — and the hire's own ceilings still bound it, which is what it must say.
+            // A script's argv was fixed when somebody configured it, so the hirer cannot name its tools. Nothing else bounds it: a hire
+            // has no limit (28h z132), and the report must not claim one.
             () -> assertEquals(ToolAttachment.Reach.NONE, script.reach()),
-            () -> assertFalse(script.containmentInstead().isBlank()),
-            () -> assertTrue(script.containmentInstead().contains("ceiling"),
-                "a script IS bounded, by the hire rather than by a flag: "
-                    + script.containmentInstead()));
+            () -> assertTrue(script.containmentInstead().contains("argv"), script.containmentInstead()),
+            () -> assertFalse(script.containmentInstead().contains("ceiling"),
+                "a hire has no ceiling to name: " + script.containmentInstead()));
     }
 
     @Test

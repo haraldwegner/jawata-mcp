@@ -173,10 +173,6 @@ public final class HiredRun {
      * possible to run one seat's brain under another seat's budget. A {@link SeatHire} cannot be
      * mismatched against itself.</p>
      *
-     * <p>A seat whose declared cost budget cannot fire on the brain it chose is not refused here;
-     * {@link SeatHire#budgetReport()} is where that is said, because the seat's written intent is
-     * legitimate and this product's reading of a vendor's output must not become a veto over it.</p>
-     *
      * <p>The brain is asked {@link SeatHire#prompt(String)} — the seat's own stance, then the brief —
      * and the record's "The brief" section carries exactly that, so a reader sees what the brain was
      * actually given rather than the half of it the hirer wrote.</p>

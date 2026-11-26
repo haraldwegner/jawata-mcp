@@ -69,7 +69,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * <h2>The hired seat's own file IS the hire</h2>
  *
  * <p>{@code seatFile} is required and nothing is discovered. The brain, the model, the tools the
- * brain may attach and every ceiling come from that file's frontmatter through
+ * brain may attach come from that file's frontmatter through
  * {@link SeatHire#read}, so changing which brain a seat uses is an edit to a settings file and
  * never a product edit — which is C16's own clause, met by construction rather than by assertion.
  * A resident guessing where a client keeps its seat files would be guessing at a layout that
@@ -78,7 +78,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * <h2>What this call is NOT</h2>
  *
  * <p>It does NOT wait for the hire (Sprint 28h, Stage 24, D55). The hire runs on the engine's own
- * thread, bounded by the hired seat's own wall-clock ceiling, and the call answers as soon as the
+ * thread, under no limit of time or cost (28h z132), and the call answers as soon as the
  * plan is open with the hire's id and name and no result. The result reaches the seat that hired
  * as a new turn, so a caller whose own request times out after a minute no longer makes a long
  * hire fail, and the record still lands, because the journal write is the hire's, not the
@@ -256,8 +256,8 @@ public class HireTool extends NeutralTool {
             answers as soon as the hire's plan is open with {hireId, name, state: running, hirer,
             hired}. The hire's result is never this call's answer: it comes back LATER, AS A NEW
             TURN of the seat that hired, framed as a report. Start the hires that can run beside
-            each other, then end your turn. A hire is bounded by the HIRED seat's wall-clock
-            ceiling, a caller's own timeout does not end it, and its record lands either way.
+            each other, then end your turn. A hire has no limit of time, cost or number of calls,
+            a caller's own timeout does not end it, and its record lands either way.
 
             `claims` names the packages the hire works on. A claim that overlaps a running hire's
             is refused, naming the holder.
@@ -278,7 +278,7 @@ public class HireTool extends NeutralTool {
             "description", "The seat being hired. Named on the record beside the hirer."));
         properties.put("seatFile", Map.of("type", "string",
             "description", "Path to the HIRED seat's markdown. Its frontmatter is the hire — the"
-                + " brain, the model, the attachable tools and the ceilings. Required and never"
+                + " brain, the model and the attachable tools. Required and never"
                 + " discovered: where a client keeps its seat files is not the resident's to"
                 + " guess, and the caller executing a seat already knows."));
         properties.put("brief", Map.of("type", "string",
@@ -1148,7 +1148,6 @@ public class HireTool extends NeutralTool {
         data.put("writeContainmentWitnessed",
             HiredRun.writeWitness(containment, proposal.outcome().toolsOffered()));
         data.put("toolsSettableByTheHirer", dialect.toolAttachment().settableByTheHirer());
-        seat.budgetReport().ifPresent(report -> data.put("budget", report));
         // S12 (D11): a hire that did not pass its gates goes up one rung where the tree has one (a developer to the senior developer).
         if (!proposal.complete()) {
             deciding.escalateTo(hired).ifPresent(next -> data.put("escalation", escalate(call.getArguments(), next, proposal.plan().value())));

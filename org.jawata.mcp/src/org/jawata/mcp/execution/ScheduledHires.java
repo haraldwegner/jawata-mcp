@@ -58,7 +58,7 @@ public final class ScheduledHires implements SeatScheduler.Firing {
     static final String GATE_TOOL = "compile_workspace";
 
     /** The brief a due seat is asked: its own rules are sent ahead of it, so the brief only says that this is the scheduled run. */
-    static final String BRIEF = "This is your scheduled run. Do your standing duty as your rules describe it, within your ceilings,"
+    static final String BRIEF = "This is your scheduled run. Do your standing duty as your rules describe it,"
         + " and answer with what you did and what you found.";
 
     /**

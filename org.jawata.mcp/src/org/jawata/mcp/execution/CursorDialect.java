@@ -175,7 +175,7 @@ public final class CursorDialect implements BrainDialect {
                 + " The sandbox, measured alone with plan mode omitted, stopped nothing at all: 10"
                 + " runs, 10 writes. Treat a cursor hire as UNCONTAINED for writes"
             : "--mode plan|ask (NOT passed by this hire, which therefore has write and shell"
-                + " access), --sandbox, and the hire's own wall-clock, cost and step ceilings");
+                + " access) and --sandbox");
     }
 
     @Override

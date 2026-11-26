@@ -75,6 +75,11 @@ public final class HiredBrain {
      */
     public record Ceilings(Duration wallClock, int maxToolSteps, Double maxCostUsd) {
 
+        /** No ceiling at all: what every hire runs under (28h z132, his ruling: no limits on hires). */
+        public static Ceilings none() {
+            return new Ceilings(null, 0, null);
+        }
+
         public static Ceilings of(Duration wallClock) {
             return new Ceilings(wallClock, 0, null);
         }
@@ -216,7 +221,10 @@ public final class HiredBrain {
             }
         }, "jawata-hire-watchdog");
         watchdog.setDaemon(true);
-        watchdog.start();
+        // A run with no wall clock (a hire, 28h z132) has no watchdog: it ends when the brain does, or when it is stopped.
+        if (ceilings.wallClock() != null) {
+            watchdog.start();
+        }
 
         List<String> said = new ArrayList<>();
         OptionalDouble cost = OptionalDouble.empty();

@@ -319,7 +319,8 @@ public final class AcpBrainSession {
                 // waits only while the lead's brain lives: a brain that died (an exit 137) is never prompted again, so waiting on would leave the
                 // lead running with nobody to read the reports (28h-C27-15). The wait is cut in slices of a second, after each of which it asks
                 // again whether the brain lives, so a brain that dies with a long hire out ends the lead within a second, not after its ceiling.
-                List<HireRegistry.Event> reports = inbox.awaitWhileOut(Math.min(ceilings.wallClock().toMillis(), DEATH_CHECK_MILLIS),
+                List<HireRegistry.Event> reports = inbox.awaitWhileOut(
+                    ceilings.wallClock() == null ? DEATH_CHECK_MILLIS : Math.min(ceilings.wallClock().toMillis(), DEATH_CHECK_MILLIS),
                     () -> !brain.lost() && !HireRegistry.shared().runningNamesFor(leadId).isEmpty());
                 if (reports.isEmpty()) {
                     break;
@@ -485,6 +486,9 @@ public final class AcpBrainSession {
         }
 
         private void arm(HiredBrain.Ceilings ceilings) {
+            if (ceilings.wallClock() == null) {
+                return; // a hire has no wall clock (28h z132): it ends when the brain does, or when it is stopped
+            }
             watchdog = new Thread(() -> {
                 try {
                     if (!child.waitFor(ceilings.wallClock().toMillis(), TimeUnit.MILLISECONDS)) {

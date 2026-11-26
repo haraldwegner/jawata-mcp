@@ -2894,7 +2894,7 @@
      "type": "string"
     },
     "seatFile": {
-     "description": "Path to the HIRED seat's markdown. Its frontmatter is the hire \u2014 the brain, the model, the attachable tools and the ceilings. Required and never discovered: where a client keeps its seat files is not the resident's to guess, and the caller executing a seat already knows.",
+     "description": "Path to the HIRED seat's markdown. Its frontmatter is the hire \u2014 the brain, the model and the attachable tools. Required and never discovered: where a client keeps its seat files is not the resident's to guess, and the caller executing a seat already knows.",
      "type": "string"
     },
     "steps": {

@@ -270,18 +270,11 @@ class HiredRunProposesTest {
             () -> assertEquals("claude", argv.get(0), argv.toString()),
             () -> assertTrue(argv.contains("claude-sonnet-5"),
                 "and the model it asked that brain for: " + argv),
-            // The seat's ceilings travelled too, and BOTH are measured against what came back:
-            // three tool_use blocks against the seat's ceiling of 25, and $0.11 against its
-            // budget of $1.50. Neither fired, which is what makes the run a clean one rather
-            // than a bound that was never reached.
+            // 28h z132: the calls and the cost are counted from what came back, and no limit of the seat file travels to the brain.
             () -> assertEquals(3, proposal.outcome().toolSteps()),
             () -> assertEquals(0.11, proposal.outcome().costUsd().orElseThrow(), 1e-9),
-            () -> assertTrue(proposal.outcome().stoppedBy().isEmpty(),
-                "neither of the seat's two ceilings fired"),
-            // And this seat's budget CAN fire, because it chose the one brain that reports
-            // dollars — the other half of the pair the sibling case pins.
-            () -> assertTrue(seat.budgetReport().orElseThrow().contains("ENFORCEABLE"),
-                seat.budgetReport().orElseThrow()),
+            () -> assertTrue(proposal.outcome().stoppedBy().isEmpty(), "nothing stopped the run"),
+            () -> assertFalse(argv.contains("--max-turns"), argv.toString()),
             // And the record a human reads names the attachment, which is the clause the seat
             // form inherits from step 1 rather than re-stating.
             () -> assertTrue(Files.readString(proposal.record()).contains("--allowedTools"),
@@ -400,49 +393,6 @@ class HiredRunProposesTest {
             () -> assertFalse(argv.contains("--tools"), argv.toString()),
             () -> assertEquals("inspect", argv.get(argv.indexOf("--allowedTools") + 1),
                 argv.toString()));
-    }
-
-    @Test
-    @DisplayName("...and a seat whose budget cannot fire on its brain says so rather than going quiet")
-    void aSeatsUnenforceableBudgetIsReported() {
-        // Measured: only Claude Code publishes a dollar cost. A seat declaring a budget for one of
-        // the other three has written down a bound nothing can compare against — and the hire is
-        // still bounded, by its wall clock and steps, which is what the report must not obscure.
-        SeatHire onCursor = SeatHire.read("""
-            ---
-            name: watcher
-            brain: cursor
-            cost_budget_usd: 1.5
-            ttl_secs: 30
-            max_tool_steps: 10
-            ---
-            """);
-        SeatHire onClaude = SeatHire.read("""
-            ---
-            name: watcher
-            brain: claude-code
-            cost_budget_usd: 1.5
-            ttl_secs: 30
-            max_tool_steps: 10
-            ---
-            """);
-
-        assertAll(
-            () -> assertTrue(onCursor.budgetReport().orElseThrow().contains("CANNOT FIRE"),
-                onCursor.budgetReport().orElseThrow()),
-            () -> assertTrue(onClaude.budgetReport().orElseThrow().contains("ENFORCEABLE"),
-                onClaude.budgetReport().orElseThrow()),
-            // S16-16: ENFORCEABLE is true of when the run STOPS, not of what it SPENDS. Claude
-            // reports its whole cost in one terminal event, so a single-turn hire measured at
-            // $2.26 against a $0.25 ceiling was stopped correctly and could not be prevented. The
-            // report must say so, or "ENFORCEABLE" reads as a cap on spend.
-            () -> assertTrue(onClaude.budgetReport().orElseThrow()
-                    .contains("CANNOT PREVENT THE SPEND"),
-                "the report says what the ceiling cannot do: "
-                    + onClaude.budgetReport().orElseThrow()),
-            // The ceiling is carried either way: this product does not edit a human's written
-            // intent because a vendor publishes no cost.
-            () -> assertEquals(1.5, onCursor.ceilings().maxCostUsd(), 1e-9));
     }
 
     @Test

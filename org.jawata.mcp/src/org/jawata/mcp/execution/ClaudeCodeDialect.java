@@ -143,7 +143,8 @@ public final class ClaudeCodeDialect implements BrainDialect {
         }
         this.builtIns = builtIns == null ? List.of() : List.copyOf(builtIns);
         this.binary = binary == null || binary.isBlank() ? "claude" : binary;
-        this.maxTurns = maxTurns > 0 ? maxTurns : DEFAULT_MAX_TURNS;
+        // Zero or less is no turn limit, which is what a hire is given (28h z132).
+        this.maxTurns = maxTurns;
         this.model = model;
         this.readOnly = readOnly;
         this.self = self;
@@ -198,8 +199,11 @@ public final class ClaudeCodeDialect implements BrainDialect {
             // forbidding every tool it cannot tell is read-only, and a hired test manager, on Haiku 5.5 and on Sonnet 5.5, answered
             // "no call made: plan mode is active" to a brief that told it to call run_tests, which was offered and in the allowlist.
             "--permission-mode", readOnly && self == null ? "plan" : "manual",
-            "--verbose",
-            "--max-turns", Integer.toString(maxTurns)));
+            "--verbose"));
+        if (maxTurns > 0) {
+            argv.add("--max-turns");
+            argv.add(Integer.toString(maxTurns));
+        }
         if (model != null && !model.isBlank()) {
             argv.add("--model");
             argv.add(model);
@@ -282,7 +286,7 @@ public final class ClaudeCodeDialect implements BrainDialect {
         if (readOnly) {
             return WriteContainment.instruction("--permission-mode plan",
                 "measured, Write was advertised, invoked and succeeded, and no permission denial"
-                    + " was ever recorded; the run is bounded by its ceilings only");
+                    + " was ever recorded; nothing bounds a write in this run");
         }
         return WriteContainment.none("--permission-mode manual, by explicit request: writes are"
             + " not blocked for this hire");

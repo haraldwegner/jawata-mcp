@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.time.Duration;
 import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
@@ -108,17 +107,15 @@ class SeatHireTest {
         """;
 
     @Test
-    @DisplayName("a shipped seat's declared bounds reach the hire instead of being read by nothing")
-    void theSeatsOwnLimitsBecomeTheHiresCeilings() {
+    @DisplayName("28h z132: the limit lines a seat file still carries limit nothing, and the rest of the seat is read")
+    void aSeatsLimitLinesLimitNothing() {
         SeatHire pm = SeatHire.read(PM);
 
         assertAll(
             () -> assertEquals("pm", pm.seat()),
             () -> assertEquals("claude-sonnet-5", pm.model()),
-            // The three limits the seat wrote down and that nothing read before this existed.
-            () -> assertEquals(Duration.ofSeconds(900), pm.ceilings().wallClock()),
-            () -> assertEquals(60, pm.ceilings().maxToolSteps()),
-            () -> assertEquals(2.0, pm.ceilings().maxCostUsd(), 1e-9),
+            // The fixture still declares 900 s, 60 steps and $2: none of them is a limit on the hire.
+            () -> assertEquals(HiredBrain.Ceilings.none(), pm.ceilings()),
             // And the tool list, in the seat's own order, which is what the dialect attaches.
             () -> assertEquals(List.of("compile_workspace", "get_diagnostics", "search_symbols",
                 "find_references", "inspect", "analyze", "find_quality_issue", "experience"),
@@ -169,12 +166,11 @@ class SeatHireTest {
         // --allowedTools and ask for a tool whose name is nothing.
         assertAll(
             () -> assertEquals(List.of(), auditor.tools()),
-            () -> assertEquals("spec-auditor", auditor.seat()),
-            () -> assertEquals(30, auditor.ceilings().maxToolSteps()));
+            () -> assertEquals("spec-auditor", auditor.seat()));
     }
 
     @Test
-    @DisplayName("all four shipped seats read, and every one is bounded")
+    @DisplayName("all four shipped seats read, and none of them is limited")
     void everyShippedSeatReads() {
         List<SeatHire> seats = List.of(SeatHire.read(PM), SeatHire.read(SPEC_AUDITOR),
             SeatHire.read(ARCHITECT), SeatHire.read(TEST_MANAGER));
@@ -182,16 +178,16 @@ class SeatHireTest {
         assertAll(
             () -> assertEquals(List.of("pm", "spec-auditor", "architect", "test-manager"),
                 seats.stream().map(SeatHire::seat).toList()),
-            // NONE of them may come back unbounded, which is what the whole hire path is for.
+            // 28h z132: no seat's file limits its hire.
             () -> assertTrue(seats.stream().allMatch(s ->
-                !s.ceilings().wallClock().isZero() && s.ceilings().maxToolSteps() > 0),
-                "every seat carries a wall clock and a step ceiling"),
+                HiredBrain.Ceilings.none().equals(s.ceilings())),
+                "no seat carries a limit"),
             // Old assertion, withdrawn: allMatch brain == CLAUDE_CODE, "none of them declares a brain, and claude-code is what they all mean".
             // A missing line is no brain yet. These four fixtures name none, so none is Claude.
             () -> assertTrue(seats.stream().allMatch(s -> s.brain() == null),
                 "none of them declares a brain, and a missing line is not filled in as claude-code"),
-            // The architect's quoted cron sits in the same frontmatter and must not disturb it.
-            () -> assertEquals(80, seats.get(2).ceilings().maxToolSteps()));
+            // The architect's quoted cron sits in the same frontmatter and must not disturb the lines below it.
+            () -> assertFalse(seats.get(2).tools().isEmpty()));
     }
 
     @Test
@@ -296,13 +292,6 @@ class SeatHireTest {
             () -> assertEquals(List.of("/opt/brains/answer.sh", "the brief"),
                 seat.dialect(null, List.of()).command("the brief", List.of()),
                 "the declared executable is what runs, with the prompt as its last argument"));
-
-        // A script reports a cost only by printing COST-USD: lines, so its budget report must
-        // say whose the force is — not "cannot fire", which is the answer for cursor and codex.
-        SeatHire budgeted = SeatHire.read(
-            "---\nname: a\nbrain: script\nscript: /opt/x.sh\ncost_budget_usd: 1.5\n---\n");
-        assertTrue(budgeted.budgetReport().orElseThrow().contains("COST-USD"),
-            budgeted.budgetReport().orElseThrow());
     }
 
     @Test
@@ -320,63 +309,6 @@ class SeatHireTest {
                 "it says which line is missing: " + noExecutable.getMessage()),
             () -> assertTrue(ignored.getMessage().contains("claude-code"),
                 "and names the brain that would ignore it: " + ignored.getMessage()));
-    }
-
-    @Test
-    @DisplayName("a declared cost budget says whether it can actually fire on the chosen brain")
-    void aBudgetReportsWhetherTheBrainCanEnforceIt() {
-        // Measured by running all four: only Claude Code publishes a dollar cost. So the same
-        // written budget is a real bound on one brain and a dead letter on the other three — and
-        // the seat's declaration is legitimate either way, which is why this REPORTS rather than
-        // refusing.
-        String budgeted = """
-            ---
-            name: s
-            brain: %s
-            cost_budget_usd: 2.0
-            ---
-            """;
-
-        String claude = SeatHire.read(budgeted.formatted("claude")).budgetReport().orElseThrow();
-        String cursor = SeatHire.read(budgeted.formatted("cursor")).budgetReport().orElseThrow();
-
-        assertAll(
-            () -> assertTrue(claude.contains("ENFORCEABLE"), claude),
-            () -> assertTrue(cursor.contains("CANNOT FIRE"), cursor),
-            // The run is NOT unbounded on the three that publish no cost, and the report says so
-            // rather than leaving a reader to conclude the hire is uncontrolled.
-            () -> assertTrue(cursor.contains("wall clock"), cursor),
-            // A seat that declared NO budget has nothing to report, which is a different state
-            // from a budget that cannot fire — and conflating them would invent a warning.
-            () -> assertTrue(SeatHire.read("---\nname: s\nbrain: cursor\n---\n")
-                .budgetReport().isEmpty(), "no budget declared, nothing to say"));
-    }
-
-    @Test
-    @DisplayName("a malformed limit declares NO ceiling rather than a ceiling of zero")
-    void anUnreadableNumberIsAbsentNotZero() {
-        SeatHire broken = SeatHire.read("""
-            ---
-            name: s
-            ttl_secs: soon
-            max_tool_steps: lots
-            cost_budget_usd: cheap
-            ---
-            """);
-
-        assertAll(
-            // Zero would be a ceiling of nothing, firing on the first tool call and the first
-            // reported cent — a bound nobody wrote, applied as though they had.
-            () -> assertEquals(0, broken.ceilings().maxToolSteps(),
-                "which HiredBrain reads as 'no step ceiling', per its own contract"),
-            () -> assertNull(broken.ceilings().maxCostUsd(),
-                "and no cost ceiling at all, rather than $0.00"),
-            () -> assertTrue(broken.budgetReport().isEmpty(),
-                "so there is no budget to report on"),
-            // The wall clock is the one bound that MUST exist, because a run without one never
-            // ends. A default is right here and absent is not.
-            () -> assertEquals(Duration.ofMinutes(10), broken.ceilings().wallClock(),
-                "a hire with no wall clock is an unattended run nobody can stop"));
     }
 
     @Test
@@ -619,25 +551,19 @@ class SeatHireTest {
                             .command("b", List.of()).indexOf("--tools") + 1)));
     }
 
-    /** The value after {@code --max-turns} in the argv a claude seat's hire would start with. */
-    private static String maxTurnsOf(String seatMarkdown) {
-        List<String> argv = SeatHire.read(seatMarkdown).dialect(null, List.of()).command("b", List.of());
-        return argv.get(argv.indexOf("--max-turns") + 1);
+    /** The argv a claude seat's hire would start with. */
+    private static List<String> argvOf(String seatMarkdown) {
+        return SeatHire.read(seatMarkdown).dialect(null, List.of()).command("b", List.of());
     }
 
     @Test
-    @DisplayName("S10-12: a seat that reads files is given as many turns as its declared step ceiling (the 12-turn default cut the first real UX hire off before its census); every other seat keeps the default")
-    void aSeatThatReadsFilesIsGivenTurnsToMatchItsStepCeiling() {
-        String reading = "---\nname: ux\nbrain: claude-code\nreads_files: true\nmax_tool_steps: 60\n---\n";
+    @DisplayName("28h z132: no hired claude seat is started with a turn limit, whether it reads files or not and whatever its file says")
+    void noClaudeSeatIsGivenATurnLimit() {
         assertAll(
-            () -> assertEquals("60", maxTurnsOf(reading),
-                "the engine's own ceiling is the bound, not a second tighter undeclared one"),
-            () -> assertEquals("12", maxTurnsOf("---\nname: ux\nbrain: claude-code\nreads_files: true\nmax_tool_steps: 5\n---\n"),
-                "a ceiling below the default never lowers it"),
-            () -> assertEquals("12", maxTurnsOf("---\nname: ux\nbrain: claude-code\nreads_files: true\n---\n"),
-                "no declared ceiling, no change"),
-            () -> assertEquals("12", maxTurnsOf("---\nname: pm\nbrain: claude-code\nmax_tool_steps: 60\n---\n"),
-                "a seat that does not read keeps the default however many steps it may take"));
+            () -> assertFalse(argvOf("---\nname: ux\nbrain: claude-code\nreads_files: true\nmax_tool_steps: 60\n---\n")
+                .contains("--max-turns")),
+            () -> assertFalse(argvOf("---\nname: ux\nbrain: claude-code\nreads_files: true\n---\n").contains("--max-turns")),
+            () -> assertFalse(argvOf("---\nname: pm\nbrain: claude-code\nmax_tool_steps: 5\n---\n").contains("--max-turns")));
     }
 
     @Test
