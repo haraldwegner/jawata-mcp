@@ -994,11 +994,6 @@ public final class AcpServer {
                     forwarded.put("status", "failed");
                 }
             });
-            if (seen.isEmpty() && hires.takeRefused(call.path("toolCallId").asText(""))) {
-                // 28h-C27-9: the engine refused this hire call, so no hire exists; saying the call failed, with no hire card in it, is how the chat
-                // takes back the card it drew from the call's input.
-                forwarded.put("status", "failed");
-            }
             update(session.id(), forwarded);
             // D57 (l): a hire this chat's own brain started belongs to this chat, whatever caller id the engine saw its call under; a hire that
             // already ended before the chat learned it is shown and reported now.

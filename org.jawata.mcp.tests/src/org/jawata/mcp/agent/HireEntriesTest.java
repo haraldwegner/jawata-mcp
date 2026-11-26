@@ -79,23 +79,19 @@ class HireEntriesTest {
     }
 
     @Test
-    @DisplayName("28h D57 (i), 28h-C27-9: a hire call the engine refused (no plan opened) leaves no card at all and is reported as refused, so the chat takes back the card it drew from the call's input; a running hire's card stays")
+    @DisplayName("28h z42: a hire call the engine refused before any plan opened ends as a refused card that says why, so it is no running card and is still counted as an attempt; a running hire's card stays")
     void aRefusedHireCallLeavesNoWorkingCard() {
         watch.observe(withInput(hireCall("tool_call", "r1", "pending"), "main", "pm", "plan it"));
         java.util.Optional<HireEntry> refused = watch.observe(answered(hireCall("tool_call_update", "r1", "completed"),
             "{\"success\":false,\"error\":{\"code\":\"ACCESS_DENIED\",\"message\":\"the working directory is outside the workspace\"}}"));
-        boolean toldRefused = watch.takeRefused("r1");
-        boolean toldTwice = watch.takeRefused("r1");
         watch.observe(withInput(hireCall("tool_call", "r2", "pending"), "main", "pm", "plan it"));
         HireEntry running = watch.observe(answered(hireCall("tool_call_update", "r2", "completed"),
             "{\"success\":true,\"data\":{\"hireId\":\"plan-1\",\"name\":\"Rafael\",\"state\":\"running\",\"hirer\":\"main\",\"hired\":\"pm\"}}")).orElseThrow();
 
         org.junit.jupiter.api.Assertions.assertAll(
-            () -> assertTrue(refused.isEmpty(), "a refused hire call named a seat and was still shown as a card: " + refused),
-            () -> assertTrue(toldRefused, "the refusal was not reported, so the chat keeps the card it drew from the call's input"),
-            () -> assertTrue(!toldTwice, "a refusal is reported once"),
-            () -> assertTrue(watch.entry("r1").isEmpty(), "a refused call's card is still listed"),
-            () -> assertTrue(!watch.takeRefused("r2"), "THE CONTROL: a hire that opened its plan was reported as refused"),
+            () -> assertEquals(Optional.of(HireEntry.REFUSED), refused.map(HireEntry::state), "a refused hire call is not counted: " + refused),
+            () -> assertTrue(refused.flatMap(HireEntry::refusal).orElse("").contains("the working directory is outside the workspace"),
+                "the card does not say why: " + refused.flatMap(HireEntry::refusal)),
             () -> assertEquals(HireEntry.RUNNING, running.state(), "THE CONTROL: a hire that opened its plan runs until the engine says it ended"));
     }
 
@@ -504,8 +500,8 @@ class HireEntriesTest {
     }
 
     @Test
-    @DisplayName("28h-C27-9: on the running server a hire call the engine refused reaches the host as a failed call with no hire in it, so the chat takes back the card it drew from the call's input")
-    void theServerSaysARefusedHireCallFailedAndStampsNoCard() {
+    @DisplayName("28h z42: on the running server a hire call the engine refused before any plan reaches the host as a completed call with a refused card, so the card stops running and is counted")
+    void theServerStampsARefusedCardOnACallRefusedBeforeAnyPlan() {
         List<JsonNode> said = new ArrayList<>();
         AgentBrain brain = new AgentBrain() {
             @Override
@@ -533,8 +529,9 @@ class HireEntriesTest {
         JsonNode last = said.stream().map(m -> m.path("params").path("update"))
             .filter(u -> "n1".equals(u.path("toolCallId").asText()) && "tool_call_update".equals(u.path("sessionUpdate").asText()))
             .reduce((first, second) -> second).orElseThrow();
-        assertEquals("failed", last.path("status").asText(), "the refused call was forwarded as it came: " + last);
-        assertFalse(last.path("_meta").has("jawata/hire"), "the refused call was stamped with a hire card: " + last);
+        assertEquals("completed", last.path("status").asText(), "a refusal is not a failed brain: " + last);
+        assertEquals("refused", last.path("_meta").path("jawata/hire").path("state").asText(), "the call is not forwarded as a refused hire: " + last);
+        assertTrue(last.path("_meta").path("jawata/hire").path("refusal").asText().contains("a hire with no gates proves nothing was checked"), last.toString());
     }
 
     @Test
