@@ -50,7 +50,9 @@ public final class HireWaitTool implements Tool {
             as a new turn only where jawata itself is that seat (the jawata chat). A client that calls this server's tools is its own principal, so it
             asks here. Answers {state, hireId}: running (with idleSeconds, how long it has shown no sign of life, and stalled, true once that passes
             the ceiling, 300 seconds unless the host's setting jawata.hire.stallSeconds says another, so a hire that has gone quiet is told to you and not waited for;
-            a lead with a hire running under it is never stalled, and waitingFor names those hires), finished (with report, the hire's short report:
+            a lead with a hire running under it is never stalled, and waitingFor names those hires; soFar: toolSteps, seconds, costUsd and
+            contextTokens as its brain last reported them, "no figure" where it sent none, and below, the total of what has ended under it),
+            finished (with report, the hire's short report:
             state, checks, number of files changed, money, time and tokens ("no figure" where the brain published none), report, the summary it
             wrote, and record, the file that holds its whole answer and changes; and newToYou, false when the report was already handed over, by
             this tool or to the chat), or unknown (no hire has that id on this engine).
@@ -115,6 +117,9 @@ public final class HireWaitTool implements Tool {
             if (!waitingFor.isEmpty()) {
                 data.put("waitingFor", waitingFor);
             }
+            // 28h z136: the money and time are seen while the hire still runs, so its hirer can decide to stop it.
+            hires.soFarOfPlan(hireId).ifPresent(running -> data.put("soFar",
+                org.jawata.mcp.execution.HireReport.soFar(running, hires.usedUnder(hireId))));
         } else if (report.isPresent()) {
             data.put("state", "finished");
             // 28h z52: the caller is told the short report; the whole answer and the changes are in the record it names.

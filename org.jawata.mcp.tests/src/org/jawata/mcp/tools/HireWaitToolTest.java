@@ -60,6 +60,52 @@ class HireWaitToolTest {
     }
 
     @Test
+    @DisplayName("28h z136: a running hire is answered with what it has used so far and what has ended under it; a figure its brain has not sent reads 'no figure', never zero")
+    void aRunningHireSaysWhatItHasUsedSoFar() throws Exception {
+        CountDownLatch end = new CountDownLatch(1);
+        CountDownLatch used = new CountDownLatch(1);
+        Thread spending = new Thread(() -> {
+            try (HireRegistry.Registration hire = hires.begin("chief-engineer", "z136 spending", "")) {
+                hires.planOpened("plan-z136-spending");
+                hires.noteToolCall("files");
+                hires.noteToolCall("inspect");
+                hires.noteUsage(java.util.OptionalLong.of(500), java.util.OptionalDouble.of(1.25));
+                used.countDown();
+                end.await();
+            } catch (InterruptedException ended) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        spending.setDaemon(true);
+        spending.start();
+        Thread silent = holdRunning("plan-z136-silent", end);
+        try {
+            assertTrue(used.await(5, TimeUnit.SECONDS), "the hire did not report its usage");
+            try (HireRegistry.Registration worker = hires.begin("developer", "z136 worker", "plan-z136-spending")) {
+                hires.planOpened("plan-z136-worker");
+            }
+            hires.record("developer", "z136 worker", JSON.createObjectNode().put("plan", "plan-z136-worker").put("costUsd", 0.5));
+
+            Map<?, ?> soFar = (Map<?, ?>) dataOf(ask("plan-z136-spending", 0)).get("soFar");
+            Map<?, ?> none = (Map<?, ?>) dataOf(ask("plan-z136-silent", 0)).get("soFar");
+
+            assertAll(
+                () -> assertEquals(2, soFar.get("toolSteps"), String.valueOf(soFar)),
+                () -> assertEquals(1.25, soFar.get("costUsd"), String.valueOf(soFar)),
+                () -> assertEquals(500L, soFar.get("contextTokens"), String.valueOf(soFar)),
+                () -> assertTrue(soFar.get("seconds") instanceof Long, String.valueOf(soFar)),
+                () -> assertEquals(0.5, ((Map<?, ?>) soFar.get("below")).get("costUsd"), String.valueOf(soFar)),
+                () -> assertEquals("no figure", none.get("costUsd"), String.valueOf(none)),
+                () -> assertEquals("no figure", none.get("contextTokens"), String.valueOf(none)),
+                () -> assertTrue(!none.containsKey("below"), "CONTROL: nothing ended under it: " + none));
+        } finally {
+            end.countDown();
+            spending.join(5_000);
+            silent.join(5_000);
+        }
+    }
+
+    @Test
     @DisplayName("28h z30: a running hire is answered as still running after the wait, and the wait is real; an id no hire has is answered unknown")
     void aRunningHireIsStillRunning() throws Exception {
         CountDownLatch end = new CountDownLatch(1);

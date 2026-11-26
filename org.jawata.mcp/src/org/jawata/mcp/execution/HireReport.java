@@ -115,6 +115,21 @@ public final class HireReport {
         return told;
     }
 
+    /**
+     * What a running hire has used so far (28h z136): its tool steps, seconds, money and context as its brain last reported them, and the one
+     * total of what has ended under it; a figure the brain has not sent says so and is never zero.
+     */
+    public static java.util.Map<String, Object> soFar(HireRegistry.SoFar running, java.util.Optional<HireTotals> below) {
+        java.util.Map<String, Object> figures = new java.util.LinkedHashMap<>();
+        HireRegistry.Progress seen = running.progress();
+        figures.put("toolSteps", seen.toolSteps());
+        figures.put("seconds", running.seconds());
+        figures.put("costUsd", seen.costUsd().isPresent() ? seen.costUsd().getAsDouble() : NO_FIGURE);
+        figures.put("contextTokens", seen.contextTokens().isPresent() ? seen.contextTokens().getAsLong() : NO_FIGURE);
+        below.ifPresent(used -> figures.put("below", used.asMap()));
+        return figures;
+    }
+
     /** Keeps a figure the brain published; says there is none where it published none. */
     private static void figure(ObjectNode told, String key, JsonNode value) {
         if (value.isNumber()) {

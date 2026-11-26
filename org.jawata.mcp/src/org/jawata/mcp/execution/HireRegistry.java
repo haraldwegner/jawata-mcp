@@ -56,6 +56,8 @@ public final class HireRegistry {
         /** The sign-of-life time at which the subscribers were told this hire had gone quiet, so one stretch of quiet is told once; 0 until told. */
         volatile long quietToldAtMs;
         final Thread thread;
+        /** When this hire was registered, in milliseconds. */
+        final long startedAtMs = System.currentTimeMillis();
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
         /** Whether the brain is compacting its own context right now, as its stream last said. */
@@ -289,6 +291,20 @@ public final class HireRegistry {
         for (Running hire : running) {
             if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
                 return Optional.of(hire.progress);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** What a running hire has reported so far and for how many seconds it has run (28h z136). */
+    public record SoFar(Progress progress, long seconds) {
+    }
+
+    /** What the running hire of this plan has used so far; none when no such hire is running. */
+    public Optional<SoFar> soFarOfPlan(String planId) {
+        for (Running hire : running) {
+            if (hire.planId.equals(planId)) {
+                return Optional.of(new SoFar(hire.progress, (System.currentTimeMillis() - hire.startedAtMs) / 1000));
             }
         }
         return Optional.empty();
