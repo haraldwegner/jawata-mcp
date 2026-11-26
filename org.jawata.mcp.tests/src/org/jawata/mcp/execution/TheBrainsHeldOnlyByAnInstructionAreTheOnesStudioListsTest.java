@@ -22,28 +22,32 @@ import org.junit.jupiter.api.Test;
  */
 class TheBrainsHeldOnlyByAnInstructionAreTheOnesStudioListsTest {
 
-    /** The brains studio can offer a seat, by the name a seat file gives them. */
-    private static final List<String> STUDIO_HIRABLE = List.of("claude-code", "codex", "cursor", "copilot");
-
     private static final SelfEndpoint SELF = new SelfEndpoint("http://127.0.0.1:1/mcp", "t");
 
     @Test
-    @DisplayName("exactly the brains studio lists as held only by an instruction are the ones that are not contained")
+    @DisplayName("exactly the brains studio lists as held only by an instruction are the ones that are not contained, over every brain the engine has")
     void theEnginesAnswerMatchesStudiosList() {
         TreeSet<String> notContained = new TreeSet<>();
-        for (String brain : STUDIO_HIRABLE) {
-            SeatHire seat = SeatHire.read("---\nname: probe\nbrain: " + brain + "\n---\n");
+        for (SeatHire.Brain brain : SeatHire.Brain.values()) {
+            if (brain == SeatHire.Brain.SCRIPT) {
+                continue;
+            }
+            SeatHire seat = SeatHire.read("---\nname: probe\nbrain: " + brain.label() + "\n---\n");
             // As a resident serving HTTP hires: claude is given the endpoint, which is what makes
             // its answer a mechanism.
             if (!seat.dialect(SELF, List.of()).writeContainment().isContained()) {
-                notContained.add(brain);
+                notContained.add(brain.label());
             }
         }
+        // what the engine's own status answer tells a settings screen, which must be the same fact
+        TreeSet<String> toldHeld = new BrainRoster("").statuses().stream().filter(BrainRoster.Status::writesHeldByInstruction)
+            .map(BrainRoster.Status::id).collect(java.util.stream.Collectors.toCollection(TreeSet::new));
 
-        assertEquals(new TreeSet<>(List.of("cursor")), notContained,
+        assertEquals(new TreeSet<>(List.of("antigravity", "cursor")), notContained,
             "jawata-studio keeps this list as brains::HELD_BY_AN_INSTRUCTION in"
                 + " src-tauri/src/brains.rs (and a test there pins it to the same value). If this"
                 + " answer changed on purpose, change that list, its test, and what the Seats view"
                 + " says beside the choice");
+        assertEquals(notContained, toldHeld, "the engine's status answer says something else than what its dialects do");
     }
 }
