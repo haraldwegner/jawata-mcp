@@ -18,7 +18,7 @@ apply_cleanup	live	v1.0.0	next
 apply_null_annotations	live	v1.0.0	next
 apply_quick_fix	retired	v1.0.0	v1.1.0
 apply_refactoring	retired	v1.0.0	v1.1.0
-brains	live	next	next
+brains	live	v4.6.7	next
 change_method_signature	live	v1.0.0	next
 compile_workspace	live	v1.0.0	next
 convert_anonymous_to_lambda	retired	v1.0.0	v4.0.3
@@ -34,7 +34,7 @@ extract_interface	retired	v1.0.0	v1.0.0
 extract_method	retired	v1.0.0	v1.0.0
 extract_variable	retired	v1.0.0	v1.0.0
 field	live	v3.11.0	next
-files	live	next	next
+files	live	v4.6.7	next
 find_duplicate_code	live	v1.0.0	next
 find_field_writes	live	v1.0.0	next
 find_implementations	retired	v1.0.0	v1.1.0
@@ -77,12 +77,12 @@ get_type_at_position	retired	v1.0.0	v1.0.0
 get_type_hierarchy	retired	v1.0.0	v1.1.0
 get_type_members	retired	v1.0.0	v1.1.0
 get_type_usage_summary	retired	v1.0.0	v1.1.0
-git	live	next	next
+git	live	v4.6.7	next
 go_to_definition	live	v1.0.0	next
 health_check	live	v1.0.0	next
 hierarchy	live	v4.1.0	next
 hire	live	v4.4.0	next
-hire_wait	live	next	next
+hire_wait	live	v4.6.11	next
 inline	live	v1.1.0	next
 inline_method	retired	v1.0.0	v1.0.0
 inline_variable	retired	v1.0.0	v1.0.0
@@ -90,7 +90,7 @@ inspect	live	v1.1.1	next
 inspect_refactoring	retired	v1.0.0	v1.1.0
 list_projects	retired	v1.0.0	v1.1.0
 load_project	live	v1.0.0	next
-lookup	live	next	next
+lookup	live	v4.6.7	next
 move	live	v1.1.0	next
 move_class	retired	v1.0.0	v1.0.0
 move_in_hierarchy	retired	v1.1.0	v4.0.3
@@ -99,8 +99,8 @@ move_package	retired	v1.0.0	v1.0.0
 optimize_imports_workspace	retired	v1.0.0	v4.0.3
 organize_imports	live	v1.0.0	next
 override_methods	retired	v1.0.0	v1.0.0
-plan_board	live	next	next
-plan_steps	live	next	next
+plan_board	live	v4.5.0	next
+plan_steps	live	v4.5.0	next
 profile	live	v2.13.0	next
 project	live	v1.1.1	next
 pull_up	retired	v1.0.0	v1.0.0

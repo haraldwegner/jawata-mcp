@@ -8,7 +8,8 @@ replacement was written from memory and was incomplete: 35 published names answe
 and the first four patches each fixed one copy of the surface where a failure happened to expose it.
 
 WHAT IT READS. For each release tag, and for the working tree, the tools that release REGISTERED: every
-`new XyzTool(` in the registration sources (the application class, `ShippedTools`, `RefactoringDoors`),
+`new XyzTool(` or `XyzTool.with...(` in the registration sources (the application class, `ShippedTools`, `RefactoringDoors`,
+`JavaProvider`),
 mapped to the literal that tool's `getName()` returns. A tool that is built but never registered is not
 published. The result agrees with each release's own README claim wherever that README was kept current
 (85 tools at v1.0.0, 40 at v1.4.0, 43 at v2.7.0, 42 at v4.1.0, 44 at v4.4.7).
@@ -34,7 +35,9 @@ OUT = ROOT / "build" / "published-tool-names.txt"
 
 NAME = re.compile(r'public\s+String\s+getName\s*\(\s*\)\s*\{\s*return\s+"([a-z][a-z0-9_]*)"\s*;', re.S)
 NEW = re.compile(r'new\s+(?:[\w.]*\.)?(\w+Tool)\s*\(')
-REGISTRATION_FILES = ("JawataApplication.java", "ShippedTools.java", "RefactoringDoors.java")
+# A tool built through a named factory, such as ExperienceTool.withAnchors(...): without this the store's tool read as retired.
+FACTORY = re.compile(r'\b(\w+Tool)\.with\w*\s*\(')
+REGISTRATION_FILES = ("JawataApplication.java", "ShippedTools.java", "RefactoringDoors.java", "JavaProvider.java")
 
 
 def git(*args):
@@ -66,6 +69,7 @@ def registered_at(ref):
         base = p.rsplit("/", 1)[-1]
         if base in REGISTRATION_FILES or base.endswith("Application.java"):
             classes.update(NEW.findall(read(p)))
+            classes.update(FACTORY.findall(read(p)))
     return {by_class[c] for c in classes if c in by_class}
 
 
