@@ -153,6 +153,22 @@ class AddMethodToolTest {
     }
 
     @Test
+    @DisplayName("28h z157: a record is a target like a class and gets a stub")
+    void aRecordGetsAStub() throws Exception {
+        Path record = classFile.resolveSibling("Point.java");
+        Files.writeString(record, "package com.example;\n\npublic record Point(int x, int y) {\n}\n");
+        service.getJavaProject().getProject().refreshLocal(org.eclipse.core.resources.IResource.DEPTH_INFINITE, null);
+        ObjectNode arguments = request(record, 2, 14, "length");
+        arguments.put("returnType", "int");
+
+        data(generate.execute(arguments));
+
+        String written = Files.readString(record);
+        assertTrue(written.contains("public int length()") && written.contains("throw new UnsupportedOperationException("),
+            "the stub is not in the record:\n" + written);
+    }
+
+    @Test
     @DisplayName("a method that is already there is refused and the file is left as it was")
     void anExistingMethodIsRefused() throws Exception {
         String original = Files.readString(classFile);

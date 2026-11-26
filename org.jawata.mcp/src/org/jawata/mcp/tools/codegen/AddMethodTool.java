@@ -140,14 +140,16 @@ public class AddMethodTool extends AbstractTool
             parser.setResolveBindings(true);
             CompilationUnit astRoot = (CompilationUnit) parser.createAST(new NullProgressMonitor());
             AbstractTypeDeclaration target = org.jawata.mcp.tools.shared.TypeLookup.declaration(astRoot, type);
-            if (!(target instanceof TypeDeclaration typeDecl)) {
-                return ToolResponse.invalidParameter("filePath/line/column", "Target is not a class or an interface.");
+            // 28h z157: a record or an enum takes methods as a class does; only an annotation type declares none with a body.
+            if (target == null || target instanceof org.eclipse.jdt.core.dom.AnnotationTypeDeclaration) {
+                return ToolResponse.invalidParameter("filePath/line/column", "Target is not a class, an interface, a record or an enum.");
             }
+            boolean onInterface = target instanceof TypeDeclaration declared && declared.isInterface();
 
             AST ast = astRoot.getAST();
             MethodDeclaration method = ast.newMethodDeclaration();
             method.setName(ast.newSimpleName(methodName));
-            ToolResponse unreadable = describeSignature(ast, method, arguments, typeDecl.isInterface() ? null : visibility);
+            ToolResponse unreadable = describeSignature(ast, method, arguments, onInterface ? null : visibility);
             if (unreadable != null) {
                 return unreadable;
             }
@@ -155,16 +157,16 @@ public class AddMethodTool extends AbstractTool
                 return ToolResponse.invalidParameter("methodName", type.getElementName() + " already declares " + methodName
                     + " with " + method.parameters().size() + " parameter(s).");
             }
-            boolean asDefault = typeDecl.isInterface() && abstractWouldBreakImplementors(type);
+            boolean asDefault = onInterface && abstractWouldBreakImplementors(type);
             if (asDefault) {
                 method.modifiers().add(ast.newModifier(Modifier.ModifierKeyword.DEFAULT_KEYWORD));
             }
-            if (!typeDecl.isInterface() || asDefault) {
+            if (!onInterface || asDefault) {
                 method.setBody(throwingBody(ast));
             }
 
             ASTRewrite rewrite = ASTRewrite.create(ast);
-            ListRewrite body = rewrite.getListRewrite(typeDecl, TypeDeclaration.BODY_DECLARATIONS_PROPERTY);
+            ListRewrite body = rewrite.getListRewrite(target, target.getBodyDeclarationsProperty());
             body.insertLast(method, null);
 
             Document doc = new Document(cu.getSource());
