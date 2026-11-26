@@ -55,7 +55,7 @@ public final class AcpBrainSession {
 
     /** The usual ways a brain says its user is not logged in: they decide whether the person is told how to connect it. */
     private static final java.util.regex.Pattern LOGIN_WORDS = java.util.regex.Pattern.compile(
-        "authenticat|unauthorized|\\blog[ -]?in\\b|\\blogged[ -](in|out)\\b|\\bsign(ed)?[ -]in\\b|credential|api[ _-]?key",
+        "authenticat|unauthorized|\\blog(ged|ging)?[ -]?(in|into|out)\\b|\\bsign(ed|ing)?[ -]?(in|into)\\b|credential|api[ _-]?key|token (has )?expired",
         java.util.regex.Pattern.CASE_INSENSITIVE);
 
     /** Whether what a brain said when it refused means its user must log in first. */

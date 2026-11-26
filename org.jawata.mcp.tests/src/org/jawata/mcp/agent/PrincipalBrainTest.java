@@ -405,6 +405,10 @@ class PrincipalBrainTest {
         }
         assertTrue(PrincipalBrain.noSession(Optional.of("Claude Code"), "Please run /login first").contains("press Connect"), "another wording");
         assertTrue(PrincipalBrain.noSession(Optional.of("Codex"), "you are not logged in").contains("press Connect"), "another wording");
+        for (String said : List.of("token expired, try logging in again", "please log into your account", "sign into continue", "your session token has expired")) {
+            assertTrue(PrincipalBrain.noSession(Optional.of("Codex"), said).contains("press Connect"), said);
+        }
+        assertFalse(PrincipalBrain.noSession(Optional.of("Codex"), "the logging input could not be read").contains("press Connect"), "CONTROL: not a login");
     }
 
     @Test
