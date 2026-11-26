@@ -14,8 +14,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 /**
  * The engine's one answer about the agent programs a seat can run on (Sprint 28h, D57 (c) and the architect's watch of C26), for a host that is
  * not the engine's own process: the studio asks it instead of checking and testing each program itself, so a rule about a brain (which models
- * it offers, how its command line names one) is kept in the engine alone. Three questions: the models each chat brain's own session offers, which
- * programs this machine has and whether they are logged in, and a one-word test run through a brain and model before a seat keeps the choice.
+ * it offers, how its command line names one) is kept in the engine alone. Five actions: the models each chat brain's own session offers, which
+ * programs this machine has and whether they are logged in, a one-word test run through a brain and model before a seat keeps the choice, the
+ * stored brain and model of every seat, and the storing of one seat's choice.
  */
 public final class BrainsTool implements Tool {
 
