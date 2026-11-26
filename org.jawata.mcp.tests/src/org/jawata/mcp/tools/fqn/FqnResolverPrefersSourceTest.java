@@ -1,6 +1,7 @@
 package org.jawata.mcp.tools.fqn;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -41,6 +42,19 @@ class FqnResolverPrefersSourceTest {
             () -> assertSame(source, FqnResolver.preferringSource(List.of(source, otherSource)).orElseThrow(), "of two sources the first is kept"),
             () -> assertSame(stub, FqnResolver.preferringSource(List.of(stub)).orElseThrow(), "a type only a jar holds is still found"),
             () -> assertTrue(FqnResolver.preferringSource(List.of()).isEmpty(), "a name nobody holds was found"));
+    }
+
+    @Test
+    @DisplayName("28h z134: a written parameter matches a generic parameter by its raw type, and a written list is cut only between parameters")
+    void aGenericParameterMatchesByItsRawType() {
+        assertAll(
+            () -> assertTrue(FqnResolver.paramMatches("QList<QGatedStep;>;", "java.util.List"), "java.util.List did not match List<GatedStep>"),
+            () -> assertTrue(FqnResolver.paramMatches("QList<QGatedStep;>;", "List"), "List did not match List<GatedStep>"),
+            () -> assertTrue(FqnResolver.paramMatches("QList<QString;>;", "java.util.List<java.lang.String>"), "the written type arguments did not match"),
+            () -> assertTrue(FqnResolver.paramMatches("[QString;", "java.lang.String..."), "a varargs parameter did not match"),
+            () -> assertTrue(!FqnResolver.paramMatches("QList<QString;>;", "java.util.Set"), "CONTROL: another type matched"),
+            () -> assertArrayEquals(new String[] {"java.util.Map<String,Integer>", "int"},
+                FqnResolver.parameterTypes("java.util.Map<String,Integer>, int"), "a comma inside type arguments cut a parameter in two"));
     }
 
     private static org.eclipse.jdt.core.IJavaProject holding(IType held) {

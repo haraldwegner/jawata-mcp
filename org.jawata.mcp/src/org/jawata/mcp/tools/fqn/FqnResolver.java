@@ -151,9 +151,7 @@ public final class FqnResolver {
                 return List.of();
             }
             String paramList = memberPart.substring(parenIdx + 1, closeIdx).trim();
-            String[] paramFqns = paramList.isEmpty()
-                ? new String[0]
-                : paramList.split("\\s*,\\s*");
+            String[] paramFqns = parameterTypes(paramList);
             return resolveMethod(type, methodName, paramFqns)
                 .<IJavaElement>map(m -> m)
                 .map(List::of)
@@ -162,6 +160,29 @@ public final class FqnResolver {
 
         // Member name alone — EVERY method overload of that name, else the field.
         return resolveMembersByName(type, memberPart);
+    }
+
+    /** The written parameter list cut into its parameters: at a comma outside type arguments only (28h z134). */
+    static String[] parameterTypes(String paramList) {
+        if (paramList.isEmpty()) {
+            return new String[0];
+        }
+        List<String> types = new ArrayList<>();
+        int depth = 0;
+        int from = 0;
+        for (int i = 0; i < paramList.length(); i++) {
+            char c = paramList.charAt(i);
+            if (c == '<') {
+                depth++;
+            } else if (c == '>') {
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                types.add(paramList.substring(from, i).strip());
+                from = i + 1;
+            }
+        }
+        types.add(paramList.substring(from).strip());
+        return types.toArray(String[]::new);
     }
 
     /**
@@ -338,14 +359,31 @@ public final class FqnResolver {
      *
      * <p>We accept both forms: a match on the full source-form rendering
      * wins outright; failing that, simple-name comparison handles the
-     * common case of an FQN supplied for an unresolved JDT signature.</p>
+     * common case of an FQN supplied for an unresolved JDT signature.
+     * Type arguments are left out of both sides and {@code ...} reads as
+     * {@code []} (28h z134): two overloads cannot differ in type arguments alone.</p>
      */
-    private static boolean paramMatches(String jdtSig, String expected) {
-        String rendered = Signature.toString(jdtSig);
-        if (rendered.equals(expected)) return true;
-        String renderedSimple = simpleName(rendered);
-        String expectedSimple = simpleName(expected);
-        return renderedSimple.equals(expectedSimple);
+    static boolean paramMatches(String jdtSig, String expected) {
+        String rendered = erased(Signature.toString(jdtSig));
+        String wanted = erased(expected);
+        return rendered.equals(wanted) || simpleName(rendered).equals(simpleName(wanted));
+    }
+
+    /** A source-form type without its type arguments, with a varargs parameter written as the array it is. */
+    private static String erased(String type) {
+        StringBuilder raw = new StringBuilder(type.length());
+        int depth = 0;
+        for (int i = 0; i < type.length(); i++) {
+            char c = type.charAt(i);
+            if (c == '<') {
+                depth++;
+            } else if (c == '>') {
+                depth--;
+            } else if (depth == 0 && !Character.isWhitespace(c)) {
+                raw.append(c);
+            }
+        }
+        return raw.toString().replace("...", "[]");
     }
 
     private static String simpleName(String typeName) {
