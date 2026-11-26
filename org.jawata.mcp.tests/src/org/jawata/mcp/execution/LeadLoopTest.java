@@ -442,6 +442,20 @@ class LeadLoopTest {
     }
 
     @Test
+    @DisplayName("28h z142: a lead's tokens are the sum of what each of its turns reports")
+    void aLeadsTokensAreAddedOverItsTurns() throws Exception {
+        Files.writeString(dir.resolve("usage"),
+            "{\"inputTokens\":2,\"outputTokens\":4,\"cachedReadTokens\":10,\"cachedWriteTokens\":30,\"totalTokens\":46}");
+        String lead = "z142-lead";
+        HireRegistry.Inbox inbox = HireRegistry.shared().inboxFor(lead);
+        aHireIsOut(lead, "z142-child", "REPORT: done", 300, null);
+
+        HiredBrain.Outcome two = runAsLead("hello", HiredBrain.Ceilings.of(Duration.ofSeconds(60)), lead, inbox);
+
+        assertEquals(java.util.Optional.of("84/8"), two.tokens().map(t -> t.input() + "/" + t.output()), "two turns of 42 in and 4 out: " + two);
+    }
+
+    @Test
     @DisplayName("T9: a lead's tool-step ceiling is counted across its turns, so a lead that keeps going stops; with no ceiling the same two turns end clean")
     void aLeadOverSeveralTurnsStopsAtItsToolStepCeiling() throws Exception {
         // THE CONTROL: no ceiling, the same two turns of five tool calls each end clean.

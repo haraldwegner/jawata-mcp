@@ -325,6 +325,21 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h z142: a hire over ACP keeps the tokens its prompt answer reports, cached input counted as input; a brain that reports none has none")
+    void aHiresTokensAreReadFromItsPromptAnswer() throws Exception {
+        HiredBrain.Outcome silent = hire("RECALL");
+        Files.writeString(dir.resolve("usage"),
+            "{\"inputTokens\":2,\"outputTokens\":4,\"cachedReadTokens\":10,\"cachedWriteTokens\":30,\"totalTokens\":46}");
+        HiredBrain.Outcome reported = hire("RECALL");
+
+        org.junit.jupiter.api.Assertions.assertAll(
+            () -> assertTrue(silent.tokens().isEmpty(), "CONTROL: a brain that reported no tokens has some: " + silent.tokens()),
+            () -> assertEquals(Optional.of(42L), reported.tokens().map(TokenUsage::input), "the input: " + reported.tokens()),
+            () -> assertEquals(Optional.of(40L), reported.tokens().map(TokenUsage::cached), "the cached part: " + reported.tokens()),
+            () -> assertEquals(Optional.of(4L), reported.tokens().map(TokenUsage::output), "the output: " + reported.tokens()));
+    }
+
+    @Test
     @DisplayName("a cost ceiling stops the run on the cost the brain reported")
     void aCostCeilingBoundsTheRun() throws Exception {
         HiredBrain.Outcome outcome = hire("SPEND", List.of(), Optional.empty(),

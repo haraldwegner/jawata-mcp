@@ -317,6 +317,8 @@ public final class AcpBrainSession {
             List<String> names = new ArrayList<>(last.toolNames());
             List<ToolCall> calls = new ArrayList<>(last.toolCalls());
             long toolMillis = last.toolMillis();
+            // 28h z142: summed over the turns, and absent once any turn reports none, since a partial sum would read as a cheaper run.
+            Optional<TokenUsage> spentTokens = last.tokens();
             int passedWhenLastTold = -1;
             while (last.stoppedBy().isEmpty() && !conversation.lost()) {
                 List<HireRegistry.Event> reports = List.of();
@@ -359,6 +361,9 @@ public final class AcpBrainSession {
                 names.addAll(last.toolNames());
                 calls.addAll(last.toolCalls());
                 toolMillis += last.toolMillis();
+                Optional<TokenUsage> turnTokens = last.tokens();
+                spentTokens = spentTokens.isPresent() && turnTokens.isPresent()
+                    ? Optional.of(spentTokens.get().plus(turnTokens.get())) : Optional.empty();
             }
             Optional<String> stoppedBy = last.stoppedBy();
             java.util.OptionalInt exit = last.exitCode();
@@ -380,7 +385,7 @@ public final class AcpBrainSession {
                 stoppedBy = Optional.of(stoppedBy.get() + "; its hires still running, now yours: " + String.join(", ", stillRunning));
             }
             return new HiredBrain.Outcome(last.text(), last.costUsd(), steps, last.unreadableLines(), last.sawTerminalCost(), last.timedOut(),
-                exit, last.stderrTail(), stoppedBy, List.copyOf(names), Optional.empty(), Optional.empty(), List.copyOf(calls),
+                exit, last.stderrTail(), stoppedBy, List.copyOf(names), Optional.empty(), spentTokens, List.copyOf(calls),
                 last.brainSessionId(), toolMillis);
         } finally {
             try {
@@ -429,6 +434,8 @@ public final class AcpBrainSession {
         private OptionalDouble cost = OptionalDouble.empty();
         private String stoppedBy;
         private boolean answered;
+        /** What the turn's prompt answer reported spending, when it did (28h z142). */
+        private Optional<TokenUsage> tokens = Optional.empty();
         /** Whether the brain keeps its own editors and shell for this conversation (28h D57 (j)). */
         private final OwnTools ownTools;
 
@@ -803,6 +810,7 @@ public final class AcpBrainSession {
             stoppedBy = null;
             answered = false;
             endedUnanswered = false;
+            tokens = Optional.empty();
             if (sessionId == null) {
                 return;
             }
@@ -832,6 +840,11 @@ public final class AcpBrainSession {
         }
 
         private void read(JsonNode stop) {
+            // 28h z142: the prompt answer carries the turn's own usage; cached input is outside inputTokens, as the recorded Claude sessions show.
+            // A brain that died or was stopped answered no prompt, so it reported nothing.
+            tokens = TokenUsage.read(stop == null ? null : stop.path("usage"), "inputTokens", false, new String[] {"cachedReadTokens", "cachedWriteTokens"},
+                "outputTokens", null, "acp: inputTokens counted without the cached parts, which are added; read from Claude's adapter, other "
+                    + "adapters' figures not checked");
             Map<String, Integer> callAt = new HashMap<>();
             java.util.Set<Integer> edits = new java.util.HashSet<>();
             for (JsonNode update : wire.events) {
@@ -961,7 +974,7 @@ public final class AcpBrainSession {
                 exit = OptionalInt.of(0);
             }
             return new HiredBrain.Outcome(said.toString(), cost, toolNames.size(), wire.unreadable, cost.isPresent(), reaped, exit,
-                stderrTail.toString(), Optional.ofNullable(stoppedBy), List.copyOf(toolNames), Optional.empty(), Optional.empty(),
+                stderrTail.toString(), Optional.ofNullable(stoppedBy), List.copyOf(toolNames), Optional.empty(), tokens,
                 List.copyOf(toolCalls), Optional.ofNullable(sessionId), wire.toolMillis);
         }
 

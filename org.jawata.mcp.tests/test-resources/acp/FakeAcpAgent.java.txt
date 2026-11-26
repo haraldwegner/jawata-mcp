@@ -463,7 +463,9 @@ public class FakeAcpAgent {
         } else if (text.startsWith("DIE")) {
             System.exit(3);
         }
-        reply(id, "{\"stopReason\":\"end_turn\"}");
+        // With a file "usage" in the state folder, each ordinary turn's answer carries it, as Claude's adapter answers a prompt (28h z142).
+        Path usage = state.resolve("usage");
+        reply(id, Files.exists(usage) ? "{\"stopReason\":\"end_turn\",\"usage\":" + Files.readString(usage).strip() + "}" : "{\"stopReason\":\"end_turn\"}");
     }
 
     /** Five tool calls, each with a usage update that raises the cost. */
