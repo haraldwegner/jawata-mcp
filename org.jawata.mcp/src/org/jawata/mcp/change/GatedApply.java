@@ -130,6 +130,37 @@ public final class GatedApply {
         }
     }
 
+    /**
+     * 28h z155: the errors of the files the change created, read from a build of the projects that hold them. Parsing a new file alone
+     * cannot resolve every sibling (a second type declared in another file is not found), so the quick check counts only its syntax; the
+     * build resolves what the compiler resolves. Only errors in the created files count. A build that cannot run leaves the quick check's
+     * answer as it was, and says so in the log: a refactoring is not refused because the host could not build.
+     */
+    private static List<String> createdFileErrors(org.jawata.mcp.change.ChangeContext context, Map<String, Set<String>> before,
+            List<String> modified) {
+        List<String> created = context.verdict().problemsIn(modified).keySet().stream().filter(file -> !before.containsKey(file)).toList();
+        List<String> errors = new java.util.ArrayList<>();
+        if (created.isEmpty()) {
+            return errors;
+        }
+        try {
+            var rebuild = context.verdict().rebuildAfter(created);
+            for (String project : rebuild.scope().projects()) {
+                context.reconciler().rebuild(org.jawata.spi.host.BuildScope.of(project), rebuild.kind(),
+                    new org.eclipse.core.runtime.NullProgressMonitor());
+            }
+            for (String file : created) {
+                context.verdict().diagnosticsIn(file).stream()
+                    .filter(diagnostic -> diagnostic.severity() == org.jawata.spi.lang.Diagnostic.Severity.ERROR)
+                    .forEach(diagnostic -> errors.add(file + ": " + diagnostic.message()));
+            }
+        } catch (org.eclipse.core.runtime.CoreException | RuntimeException notBuilt) {
+            org.slf4j.LoggerFactory.getLogger(GatedApply.class).warn("The files the change created could not be built to check them: {}",
+                notBuilt.toString());
+        }
+        return errors;
+    }
+
     private static Result judge(org.jawata.mcp.change.ChangeContext context, Mode mode, Map<String, Set<String>> before,
             ChangeEngine.ApplyOutcome outcome) {
         // SETTLE THE MODEL FIRST — jawata-mcp#69. A change that CREATES a file leaves the
@@ -140,6 +171,9 @@ public final class GatedApply {
         context.verdict().settle(outcome.modifiedFilePaths());
         List<String> introduced = CompileVerify.introducedErrors(before,
             CompileVerify.errorMessagesByFile(context.verdict(), outcome.modifiedFilePaths()));
+        if (introduced.isEmpty()) {
+            introduced = createdFileErrors(context, before, outcome.modifiedFilePaths());
+        }
         boolean anySyntax = introduced.stream()
             .anyMatch(m -> m.contains(CompileVerify.SYNTAX_PREFIX));
         if (introduced.isEmpty() || (mode == Mode.REPORT && !anySyntax)) {

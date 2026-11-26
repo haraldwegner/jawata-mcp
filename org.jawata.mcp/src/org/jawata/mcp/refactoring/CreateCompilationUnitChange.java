@@ -25,7 +25,7 @@ import java.nio.charset.StandardCharsets;
  * this). {@link ChangeEngine#previewDiff} shows no text for a create (it is not a
  * {@code TextChange}); the new file still surfaces in the modified-file list.</p>
  */
-public final class CreateCompilationUnitChange extends Change {
+public final class CreateCompilationUnitChange extends Change implements org.jawata.mcp.change.CreatesFile {
 
     private final IFile file;
     private final String content;
@@ -33,6 +33,16 @@ public final class CreateCompilationUnitChange extends Change {
     public CreateCompilationUnitChange(IFile file, String content) {
         this.file = file;
         this.content = content;
+    }
+
+    @Override
+    public IFile createdFile() {
+        return file;
+    }
+
+    @Override
+    public String createdContent() {
+        return content;
     }
 
     @Override

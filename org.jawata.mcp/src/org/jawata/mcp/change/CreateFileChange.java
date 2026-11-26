@@ -16,7 +16,17 @@ import java.nio.charset.StandardCharsets;
  * fills the gap for tools that produce new compilation units
  * (extract_interface). Undo is a {@link DeleteResourceChange}.
  */
-public final class CreateFileChange extends Change {
+public final class CreateFileChange extends Change implements CreatesFile {
+
+    @Override
+    public IFile createdFile() {
+        return file;
+    }
+
+    @Override
+    public String createdContent() {
+        return contents;
+    }
 
     private final IFile file;
     private final String contents;

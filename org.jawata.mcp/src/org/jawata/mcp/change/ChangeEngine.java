@@ -84,6 +84,10 @@ public final class ChangeEngine {
                 log.debug("Preview failed for '{}': {}", change.getName(), e.getMessage());
             }
         }
+        // 28h z155: a file the change creates is shown as a diff from nothing; a preview without it hid what would be written.
+        if (change instanceof CreatesFile creates) {
+            sink.add(new DiffRenderer.FileDiff(formatPath(creates.createdFile(), paths), "", creates.createdContent()));
+        }
         if (change instanceof CompositeChange composite) {
             for (Change child : composite.getChildren()) {
                 collectTextDiffs(child, paths, sink);

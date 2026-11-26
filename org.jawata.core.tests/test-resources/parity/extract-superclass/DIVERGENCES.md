@@ -36,3 +36,9 @@ default is gated by its own capability tests, not by the conservative golden:
 The engine requires `MembersOrderPreferenceCacheCommon().install()` (member
 insertion reads the ordering cache); added to `HeadlessJdtConfig` — in the IDE,
 jdt.ui installs it on activation.
+
+## 2026-11-27, 28h z155: the staged preview shows the file the change creates
+
+`greeter-identical.golden` gained the hunk for the new `Greeter.java` (a diff from nothing). The change itself is the same: the
+preview used to leave out a file it would create, because there was no old text to compare. None of the three classes above: it is
+this project's own preview that changed, deliberately.
