@@ -85,7 +85,7 @@ public final class PrincipalBrain implements AgentBrain {
     /** A model the person picked while a turn ran, for the brain to move to before the next prompt; the row names it meanwhile. */
     private volatile Optional<String> pendingModel = Optional.empty();
     /** Set when the person has chosen another brain: the process goes at the next prompt, so the prompt running now is not cut off. */
-    private boolean brainChanged;
+    private volatile boolean brainChanged;
     /**
      * The model to move the brain's session to once it is open: what the principal's setting names beside its command line, or what the person
      * chose on the row. A model the brain does not offer is left alone, and the session stays on the brain's own default.
@@ -395,11 +395,13 @@ public final class PrincipalBrain implements AgentBrain {
                 brainChanged = false;
             }
             if (conversation == null || !conversation.alive()) {
-                conversation = AcpBrainSession.Conversation.start(host, program.get(), siteWithAutonomyFile(), self == null ? null : self.forSession(sessionKey),
-                    hirer.allowlist("main", engineTools), resume, ceilings, AcpBrainSession.OwnTools.WITHHELD);
+                AcpBrainSession.Conversation started = AcpBrainSession.Conversation.start(host, program.get(), siteWithAutonomyFile(),
+                    self == null ? null : self.forSession(sessionKey), hirer.allowlist("main", engineTools), resume, ceilings, AcpBrainSession.OwnTools.WITHHELD);
                 // 28h D57 (j): the principal changes no code, so its brain's own editors and shell are withheld, for any brain.
                 // The model the person or the studio chose, applied through the brain's own model option once its session is open (D54 (a)).
-                preferredModel.ifPresent(conversation::selectModel);
+                preferredModel.ifPresent(started::selectModel);
+                // Published only now: the model lookups read this field without the lock (28h z48), and must never see a session half set up.
+                conversation = started;
             }
             return conversation;
         }
@@ -444,15 +446,15 @@ public final class PrincipalBrain implements AgentBrain {
      */
     @Override
     public Optional<String> currentModel() {
+        // No lock in the three lookups: the menu build calls them on the connection's one worker thread, and the lock is held for as long as
+        // the brain takes to start, so every message behind it waited out the start (28h z48).
         Optional<String> pending = pendingModel;
-        synchronized (starting) {
-            if (pending.isPresent()) {
-                // the pick the person made during a turn: the row names it, and the brain moves to it before the next prompt
-                return liveConversation().flatMap(open -> open.models().stream().filter(model -> model.value().equals(pending.get())).findFirst())
-                    .map(AcpBrainSession.Model::name);
-            }
-            return liveConversation().flatMap(AcpBrainSession.Conversation::currentModel).map(AcpBrainSession.Model::name);
+        if (pending.isPresent()) {
+            // the pick the person made during a turn: the row names it, and the brain moves to it before the next prompt
+            return liveConversation().flatMap(open -> open.models().stream().filter(model -> model.value().equals(pending.get())).findFirst())
+                .map(AcpBrainSession.Model::name);
         }
+        return liveConversation().flatMap(AcpBrainSession.Conversation::currentModel).map(AcpBrainSession.Model::name);
     }
 
     @Override
@@ -461,16 +463,12 @@ public final class PrincipalBrain implements AgentBrain {
         if (pending.isPresent()) {
             return pending;
         }
-        synchronized (starting) {
-            return liveConversation().flatMap(AcpBrainSession.Conversation::currentModel).map(AcpBrainSession.Model::value);
-        }
+        return liveConversation().flatMap(AcpBrainSession.Conversation::currentModel).map(AcpBrainSession.Model::value);
     }
 
     @Override
     public List<AcpBrainSession.Model> models() {
-        synchronized (starting) {
-            return liveConversation().map(AcpBrainSession.Conversation::models).orElse(List.of());
-        }
+        return liveConversation().map(AcpBrainSession.Conversation::models).orElse(List.of());
     }
 
     /**
@@ -508,7 +506,8 @@ public final class PrincipalBrain implements AgentBrain {
      * "claude-code · claude-opus-5-5" over Cursor's model list while Claude answered on Fable).
      */
     private Optional<AcpBrainSession.Conversation> liveConversation() {
-        return conversation != null && conversation.alive() && !brainChanged ? Optional.of(conversation) : Optional.empty();
+        AcpBrainSession.Conversation open = conversation; // read once: another thread may replace it
+        return open != null && open.alive() && !brainChanged ? Optional.of(open) : Optional.empty();
     }
 
     @Override

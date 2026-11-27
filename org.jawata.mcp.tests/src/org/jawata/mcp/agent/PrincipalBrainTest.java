@@ -635,6 +635,28 @@ class PrincipalBrainTest {
         assertEquals(List.of(), brain.records());
     }
 
+    @Test
+    @DisplayName("28h z48: while the brain is still starting, the model lookups the menu build makes answer at once instead of waiting for the start")
+    void theModelLookupsDoNotWaitForAStartingBrain() throws Exception {
+        Map<String, String> environment = new java.util.LinkedHashMap<>(fakeWithModels().environment());
+        environment.put("FAKE_ACP_SLOW_NEW", "6000");
+        PrincipalBrain brain = brain(Optional.of(new AcpBrainSession.Program(fake.command(), environment)));
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(1);
+        brain.warm(ready::countDown);
+        try {
+            assertFalse(ready.await(2, java.util.concurrent.TimeUnit.SECONDS), "CONTROL: the brain was up already, so the lookups had nothing to wait for");
+            java.util.concurrent.CompletableFuture<List<Object>> lookups = java.util.concurrent.CompletableFuture.supplyAsync(
+                () -> List.of(brain.models(), brain.currentModel(), brain.currentModelValue()));
+
+            assertEquals(List.of(List.of(), Optional.empty(), Optional.empty()), lookups.get(2, java.util.concurrent.TimeUnit.SECONDS),
+                "a starting brain has confirmed no model");
+            assertTrue(ready.await(30, java.util.concurrent.TimeUnit.SECONDS), "the brain did not come up");
+            assertEquals(Optional.of("a"), brain.currentModelValue(), "once it is up its model is named");
+        } finally {
+            brain.close();
+        }
+    }
+
     /** The stand-in agent, offering two models and on the first (D54 (a)). */
     private AcpBrainSession.Program fakeWithModels() {
         Map<String, String> environment = new java.util.LinkedHashMap<>(fake.environment());

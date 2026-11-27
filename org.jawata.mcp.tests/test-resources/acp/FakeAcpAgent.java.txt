@@ -94,6 +94,14 @@ public class FakeAcpAgent {
                     reply(id, "{}");
                 }
                 case "session/new" -> {
+                    // With FAKE_ACP_SLOW_NEW set to milliseconds, opening a session takes that long, as a brain that starts slowly (28h z48).
+                    if (System.getenv("FAKE_ACP_SLOW_NEW") != null) {
+                        try {
+                            Thread.sleep(Long.parseLong(System.getenv("FAKE_ACP_SLOW_NEW")));
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                        }
+                    }
                     if (loginRequired && !authenticated) {
                         send("{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":-32000,\"message\":\"Authentication required\"}}");
                         continue;
