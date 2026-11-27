@@ -557,6 +557,17 @@ class SeatHireTest {
     }
 
     @Test
+    @DisplayName("28h z96: a claude seat's effort line is passed to the command; a seat without one passes none")
+    void aSeatsEffortReachesTheClaudeCommand() {
+        List<String> low = argvOf("---\nname: tester\nbrain: claude-code\neffort: low\n---\n");
+        List<String> none = argvOf("---\nname: tester\nbrain: claude-code\n---\n");
+
+        assertAll(
+            () -> assertEquals("low", low.contains("--effort") ? low.get(low.indexOf("--effort") + 1) : null, "the command: " + low),
+            () -> assertFalse(none.contains("--effort"), "CONTROL: a seat with no effort line passes one: " + none));
+    }
+
+    @Test
     @DisplayName("28h z132: no hired claude seat is started with a turn limit, whether it reads files or not and whatever its file says")
     void noClaudeSeatIsGivenATurnLimit() {
         assertAll(

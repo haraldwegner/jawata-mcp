@@ -54,6 +54,9 @@ public final class ClaudeCodeDialect implements BrainDialect {
     private final String model;
     private final boolean readOnly;
 
+    /** The reasoning effort the command passes, or null for the CLI's own default; set once, by {@link #withEffort}, before the command. */
+    private String effort;
+
     /** The resident's tools taken away from the brain; see the constructor. */
     private final List<String> hiddenTools;
 
@@ -207,6 +210,10 @@ public final class ClaudeCodeDialect implements BrainDialect {
         if (model != null && !model.isBlank()) {
             argv.add("--model");
             argv.add(model);
+        }
+        if (effort != null) {
+            argv.add("--effort");
+            argv.add(effort);
         }
         if (self != null) {
             // THE HIRING RESIDENT, AND NOTHING ELSE. Without these the brain loaded the user's
@@ -412,6 +419,14 @@ public final class ClaudeCodeDialect implements BrainDialect {
     private static OptionalDouble costOf(JsonNode resultEvent) {
         JsonNode cost = resultEvent.path("total_cost_usd");
         return cost.isNumber() ? OptionalDouble.of(cost.asDouble()) : OptionalDouble.empty();
+    }
+
+    /** The same brain started with this reasoning effort (the CLI's {@code --effort}), or this one unchanged when none is given (28h z96). */
+    ClaudeCodeDialect withEffort(String level) {
+        if (level != null && !level.isBlank()) {
+            effort = level;
+        }
+        return this;
     }
 
 }

@@ -267,13 +267,15 @@ public final class AcpBrainSession {
      * @param onThinking   called with each {@code agent_thought_chunk} (thinking) and {@code plan} (a plan update) the brain streams, the
      *                     moment it is read, so a host sees them as they happen; null when nobody is listening
      * @param model        the model the seat names, by the value or the name its session offers; null or blank for the brain's own default
+     * @param effort       the seat's reasoning effort, set on the session where the brain takes it; null for the brain's own default
      * @throws IOException when the brain cannot be started, or offers models and none is the one named
      */
     public static HiredBrain.Outcome run(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
-            List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate, Consumer<JsonNode> onThinking, String model) throws IOException, InterruptedException {
+            List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate, Consumer<JsonNode> onThinking, String model, String effort) throws IOException, InterruptedException {
         Conversation conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings, OwnTools.KEPT);
         try {
             conversation.onModel(model);
+            conversation.onEffort(effort);
             conversation.turn(prompt, List.of(), ceilings, onText, onToolUpdate, onThinking);
         } finally {
             conversation.end();
@@ -292,10 +294,11 @@ public final class AcpBrainSession {
      * @param leadId the id this lead's hires are issued under, to say which of them are still out
      * @param model  the model the seat names, as {@link #run} takes it
      * @param openChecks what the lead's declared checks leave open, asked with its latest answer once nothing is out; empty when nothing is
+     * @param effort the seat's reasoning effort, as {@link #run} takes it
      */
     public static HiredBrain.Outcome runAsLead(HostProcesses host, Program program, HireSite base, String prompt, SelfEndpoint mcp,
             List<String> allowedTools, Optional<String> resume, HiredBrain.Ceilings ceilings, Consumer<String> onText, Consumer<JsonNode> onToolUpdate,
-            Consumer<JsonNode> onThinking, HireRegistry.Inbox inbox, String leadId, String model, Function<String, Optional<OpenCheck>> openChecks) throws IOException, InterruptedException {
+            Consumer<JsonNode> onThinking, HireRegistry.Inbox inbox, String leadId, String model, Function<String, Optional<OpenCheck>> openChecks, String effort) throws IOException, InterruptedException {
         // A lead plans and hires and changes no code (28h D57 (l)): its brain's own editors and shell are withheld, as the principal's are.
         // Opened inside the try, so a brain that cannot be started still closes the inbox (the C27 audit).
         Conversation conversation = null;
@@ -303,6 +306,7 @@ public final class AcpBrainSession {
             conversation = Conversation.open(host, program, base, mcp, allowedTools, resume, ceilings, OwnTools.WITHHELD);
             Conversation brain = conversation;
             conversation.onModel(model);
+            conversation.onEffort(effort);
             // A hire this lead's brain starts is the lead's whatever caller id the engine saw its call under: the call's answer names the plan,
             // and the inbox counts the hires issued under the lead's own id (28h Stage 27, finding 28h-C27-1).
             Consumer<JsonNode> toolUpdates = update -> {
@@ -1003,6 +1007,22 @@ public final class AcpBrainSession {
                 throw new IOException("The brain could not be moved to the model " + model + "; its session offers "
                     + models().stream().map(Model::name).toList() + ".");
             }
+        }
+
+        /**
+         * Sets the session's reasoning effort through the brain's own effort option (28h z96). A brain that has none, or does not take this
+         * level, answers an error and keeps its own; the effort is a setting, never a reason to refuse the hire.
+         */
+        void onEffort(String effort) throws IOException {
+            if (effort == null || effort.isBlank() || sessionId == null) {
+                return;
+            }
+            String id = sessionId;
+            wire.call(promptId++, "session/set_config_option", params -> {
+                params.put("sessionId", id);
+                params.put("configId", "effort");
+                params.put("value", effort);
+            });
         }
     }
 

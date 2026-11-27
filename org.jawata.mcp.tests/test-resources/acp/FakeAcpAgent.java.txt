@@ -120,7 +120,11 @@ public class FakeAcpAgent {
                 case "session/set_config_option" -> {
                     String wanted = field(line, "value");
                     boolean offered = "model".equals(field(line, "configId")) && java.util.Arrays.stream(offeredModels).anyMatch(m -> m.split("=")[0].equals(wanted));
-                    if (offered) {
+                    if ("effort".equals(field(line, "configId"))) {
+                        // the effort a client sets is kept in the state folder, so a test can see it arrived (28h z96)
+                        Files.writeString(state.resolve("effort-set"), wanted);
+                        reply(id, "{\"configOptions\":[]}");
+                    } else if (offered) {
                         modelNow = wanted;
                         reply(id, "{\"configOptions\":[" + modelOption() + "]}");
                     } else {

@@ -58,7 +58,7 @@ class AcpBrainSessionTest {
 
     private HiredBrain.Outcome hire(String prompt, List<String> allowed, Optional<String> resume, HiredBrain.Ceilings ceilings,
             SelfEndpoint mcp) throws Exception {
-        return AcpBrainSession.run(host, agent, HireSite.in(dir), prompt, mcp, allowed, resume, ceilings, null, null, update -> { }, null);
+        return AcpBrainSession.run(host, agent, HireSite.in(dir), prompt, mcp, allowed, resume, ceilings, null, null, update -> { }, null, null);
     }
 
     private HiredBrain.Outcome hire(String prompt) throws Exception {
@@ -340,6 +340,20 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h z96: a hire over ACP sets the session's effort option to the seat's effort; without one it sets none")
+    void aSeatsEffortReachesTheAcpSession() throws Exception {
+        AcpBrainSession.run(host, agent, HireSite.in(dir), "RECALL", null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(Duration.ofSeconds(60)),
+            null, null, update -> { }, null, null);
+        boolean setWithout = Files.exists(dir.resolve("effort-set"));
+        AcpBrainSession.run(host, agent, HireSite.in(dir), "RECALL", null, List.of(), Optional.empty(), HiredBrain.Ceilings.of(Duration.ofSeconds(60)),
+            null, null, update -> { }, null, "low");
+
+        assertFalse(setWithout, "CONTROL: a seat with no effort set one");
+        assertTrue(Files.exists(dir.resolve("effort-set")), "the effort did not reach the session");
+        assertEquals("low", Files.readString(dir.resolve("effort-set")));
+    }
+
+    @Test
     @DisplayName("a cost ceiling stops the run on the cost the brain reported")
     void aCostCeilingBoundsTheRun() throws Exception {
         HiredBrain.Outcome outcome = hire("SPEND", List.of(), Optional.empty(),
@@ -358,7 +372,7 @@ class AcpBrainSessionTest {
                 HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null, update -> {
                     HireRegistry.Progress now = HireRegistry.shared().progress("developer", "SPEND").orElseThrow();
                     seen.add(now.toolSteps() + " calls, context " + now.contextTokens() + ", cost " + now.costUsd());
-                }, update -> { }, null);
+                }, update -> { }, null, null);
 
             assertEquals(List.of(
                 "1 calls, context OptionalLong.empty, cost OptionalDouble.empty",
@@ -393,7 +407,7 @@ class AcpBrainSessionTest {
         HiredBrain.Outcome outcome = AcpBrainSession.run(host, agent, HireSite.in(dir), "THINK", null, List.of(), Optional.empty(),
             HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null, null,
             update -> seen.add(update.path("sessionUpdate").asText() + ":"
-                + update.path("content").path("text").asText(update.path("entries").size() + " entries")), null);
+                + update.path("content").path("text").asText(update.path("entries").size() + " entries")), null, null);
 
         assertEquals(List.of("agent_thought_chunk:Checking divisibility ", "plan:2 entries", "agent_thought_chunk:by 7 and 13."), seen);
         assertEquals("thought", outcome.text(), "the thinking was taken for the answer");
@@ -517,11 +531,11 @@ class AcpBrainSessionTest {
         HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(Duration.ofSeconds(60));
 
         HiredBrain.Outcome onHaiku = AcpBrainSession.run(host, withModels, HireSite.in(dir), "WHICHMODEL", null, List.of(), Optional.empty(), ceilings,
-            null, null, update -> { }, "Haiku 5.5");
+            null, null, update -> { }, "Haiku 5.5", null);
         assertEquals("haiku", onHaiku.text().strip(), "the session was moved to the value the brain offers Haiku 5.5 under");
 
         IOException refused = org.junit.jupiter.api.Assertions.assertThrows(IOException.class, () -> AcpBrainSession.run(host, withModels,
-            HireSite.in(dir), "WHICHMODEL", null, List.of(), Optional.empty(), ceilings, null, null, update -> { }, "Sonnet 9"));
+            HireSite.in(dir), "WHICHMODEL", null, List.of(), Optional.empty(), ceilings, null, null, update -> { }, "Sonnet 9", null));
         assertTrue(refused.getMessage().contains("Sonnet 9") && refused.getMessage().contains("Haiku 5.5"),
             "the refusal names the model asked for and the ones offered: " + refused.getMessage());
     }

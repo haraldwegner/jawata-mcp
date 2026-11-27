@@ -69,7 +69,7 @@ import org.jawata.mcp.access.LookupDriver;
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
                        HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script,
-                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command, String launchModel) {
+                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command, String launchModel, String effort) {
 
     /**
      * The brains this product has a dialect for, each with the facts of its program (28h step 13): what a person calls it, how it is started
@@ -306,7 +306,18 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             // The slash command a person types for this seat (architect is /refactor), written once in the seat's own file so that the
             // studio's command table and the Agent Control panel read the same word. A seat with no command of its own leaves it out.
             Frontmatter.emptyToNull(front.get("command")),
-            null);
+            null,
+            // 28h z96: how hard the seat's brain reasons, passed to a brain that takes it.
+            effortOf(front.get("effort")));
+    }
+
+    /** The seat's effort line as the brains name it, or null for none; a word no brain takes is refused rather than ignored. */
+    private static String effortOf(String written) {
+        String effort = Frontmatter.emptyToNull(written);
+        if (effort != null && !List.of("low", "medium", "high", "xhigh", "max").contains(effort)) {
+            throw new IllegalArgumentException("seat declares effort '" + effort + "'; it is one of low, medium, high, xhigh, max");
+        }
+        return effort;
     }
 
     /**
@@ -402,7 +413,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         // to write accepts_uncontained_writes into the seat file when a person chose such a brain, and a seat file is no longer where the brain
         // is chosen. Without this, a person who chose Cursor for a seat was refused at the hire, by a rule they had just answered.
         return new SeatHire(seat, picked, shown, tools, ceilings, stance, answerGates, enabled, script, true,
-            changesCode, readsFiles, activities, writesStore, command, launched);
+            changesCode, readsFiles, activities, writesStore, command, launched, effort);
     }
 
     /**
@@ -420,7 +431,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         String flag = launchModel != null && !launchModel.isBlank() ? launchModel : model;
         return switch (brain) {
             case CLAUDE_CODE -> new ClaudeCodeDialect("claude", 0, flag, !(changesCode || writesStore), self,
-                hiddenTools, readsFiles ? ClaudeCodeDialect.READ_ONLY_BUILT_INS : List.of());
+                hiddenTools, readsFiles ? ClaudeCodeDialect.READ_ONLY_BUILT_INS : List.of()).withEffort(effort);
             case CURSOR -> new CursorDialect("cursor-agent", !(changesCode || writesStore), flag);
             // Neither of these takes a model from this product: copilot ROUTES its own (its
             // auto_mode_resolved event reports which it chose and why), and codex's is set in its
@@ -462,5 +473,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore) {
         this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, activities, writesStore, null, null);
+    }
+
+    public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command, String launchModel) {
+        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, activities, writesStore, command, launchModel, null);
     }
 }

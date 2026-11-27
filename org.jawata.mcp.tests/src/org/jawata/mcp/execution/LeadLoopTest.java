@@ -99,7 +99,7 @@ class LeadLoopTest {
 
     private HiredBrain.Outcome runAsLead(String prompt, HiredBrain.Ceilings ceilings, String leadId, HireRegistry.Inbox inbox) throws Exception {
         return AcpBrainSession.runAsLead(host, agent, HireSite.in(dir), prompt, null, List.of(), Optional.empty(), ceilings, null, null, update -> { },
-            inbox, leadId, null, text -> java.util.Optional.empty());
+            inbox, leadId, null, text -> java.util.Optional.empty(), null);
     }
 
     @Test
@@ -124,7 +124,7 @@ class LeadLoopTest {
     private HiredBrain.Outcome runWithChecks(String leadId, java.util.function.Function<String, Optional<AcpBrainSession.OpenCheck>> open)
             throws Exception {
         return AcpBrainSession.runAsLead(host, agent, HireSite.in(dir), "REMEMBER:bluebird", null, List.of(), Optional.empty(),
-            HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null, null, update -> { }, HireRegistry.shared().inboxFor(leadId), leadId, null, open);
+            HiredBrain.Ceilings.of(Duration.ofSeconds(60)), null, null, update -> { }, HireRegistry.shared().inboxFor(leadId), leadId, null, open, null);
     }
 
     @Test
@@ -181,7 +181,7 @@ class LeadLoopTest {
                     if (text.contains("noted")) {
                         answered.countDown();
                     }
-                }, null, update -> { }, watching, lead, null, text -> java.util.Optional.empty());
+                }, null, update -> { }, watching, lead, null, text -> java.util.Optional.empty(), null);
             long seconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - began);
             // the hire ends while the lead is still registered, whether the lead saw its brain die while waiting or before it waited
             children.get(children.size() - 1).join(10_000);

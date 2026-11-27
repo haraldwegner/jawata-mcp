@@ -89,6 +89,16 @@ class HiredRunLiveGatesTest {
     }
 
     @Test
+    @DisplayName("28h z96: a hire over ACP passes its seat's effort line to the brain's session")
+    void aHirePassesItsSeatsEffortToTheSession() throws Exception {
+        run.issue(SeatHire.read(SEAT.replace("ttl_secs: 60", "effort: low")), HireSite.in(dir), "EDITS:1",
+            List.of(step(0, "compile_workspace")), gates(0), List.of(), Optional.of(agent));
+
+        assertTrue(Files.exists(dir.resolve("effort-set")), "the seat's effort did not reach the session");
+        assertEquals("low", Files.readString(dir.resolve("effort-set")));
+    }
+
+    @Test
     @DisplayName("S12 D18: each step's gate runs while the brain is still working, the plan moves at that moment, and the proposal lists both steps in order")
     void aStepsGateRunsWhileTheBrainWorks() throws Exception {
         HiredRun.Proposal proposal = hire("EDITS:2", gates(0));

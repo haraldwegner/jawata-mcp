@@ -235,7 +235,7 @@ public final class HiredRun {
             ExperienceRetrieval.AreaMap ground = area == null || !seat.changesCode() ? null : groundFor(brief);
             // 28h z52: every hired brain is asked for the summary its lead will be told; the rest of its answer stays in the record.
             return conduct(asThisHire, base, seat.prompt(brief, binding, ground == null ? "" : ground.text()) + HireReport.ASK, seat.tools(),
-                seat.ceilings(), gates, planned, plan, seat.model(), acp, ground == null ? List.of() : ground.shown());
+                seat.ceilings(), gates, planned, plan, seat.model(), acp, ground == null ? List.of() : ground.shown(), seat.effort());
         } finally {
             plans.close(plan);
         }
@@ -315,7 +315,7 @@ public final class HiredRun {
         // a brain edits through its OWN tools: no gate reports those writes, no tap sees them, and
         // the brain's answer is prose. The directory before and after is the only witness.
         try {
-            return conduct(dialect, base, brief, tools, ceilings, declaredGates, planned, plan, null, java.util.Optional.empty(), List.of());
+            return conduct(dialect, base, brief, tools, ceilings, declaredGates, planned, plan, null, java.util.Optional.empty(), List.of(), null);
         } finally {
             // THE HIRE HAS ENDED, WHATEVER HOW: its plan ends with it. A plan left open after its hire finished (a gate refused, the brain
             // could not start) would be reported pending at every turn end of every session for as long as the ledger remembered it.
@@ -512,7 +512,7 @@ public final class HiredRun {
 
     private Proposal conduct(BrainDialect dialect, HireSite base, String brief, List<String> tools,
             HiredBrain.Ceilings ceilings, GateRunner declaredGates, List<GatedStep> planned, PlanId plan, String model, Optional<Program> acp,
-            List<String> shownGround)
+            List<String> shownGround, String effort)
             throws IOException, InterruptedException {
         TreeAttribution census = base.workingDirectory() == null
             ? null
@@ -529,9 +529,9 @@ public final class HiredRun {
             : lead
                 ? AcpBrainSession.runAsLead(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
                     resume, ceilings, null, live, update -> { }, HireRegistry.shared().inboxFor(plan.value()), plan.value(), model,
-                    answer -> openCheck(plan, declaredGates, planned, answer))
+                    answer -> openCheck(plan, declaredGates, planned, answer), effort)
                 : AcpBrainSession.run(host, acp.get(), base, brief, self == null ? null : self.forSession(plan.value()), tools,
-                    resume, ceilings, null, live, update -> { }, model);
+                    resume, ceilings, null, live, update -> { }, model, effort);
 
         final long brainRanMs = System.currentTimeMillis() - brainStartedMs;
 
