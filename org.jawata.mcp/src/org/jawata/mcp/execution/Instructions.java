@@ -369,7 +369,35 @@ public final class Instructions {
     private static boolean asWritten(Instruction instruction, ToolCall call) {
         return instruction.arguments() != null && instruction.tool().equals(call.bareName())
             && (equalArguments(instruction.arguments(), withoutGuardBracket(instruction, withoutSpelledOutDefaults(instruction, call.arguments())))
-                || sameEditAsItsDiff(instruction, call.arguments()));
+                || sameEditAsItsDiff(instruction, call.arguments())
+                || sameEditWithOtherContext(instruction, call.arguments()));
+    }
+
+    /**
+     * 28h z24: whether an {@code Edit} call and the instruction change the file the same way with different surrounding text: one of the two
+     * old texts holds the other exactly once, and making the narrower replacement inside the wider text gives the wider edit's new text.
+     */
+    private static boolean sameEditWithOtherContext(Instruction instruction, JsonNode made) {
+        if (!"Edit".equals(instruction.tool()) || made == null || !made.hasNonNull("old_string") || !made.hasNonNull("new_string")) {
+            return false;
+        }
+        JsonNode written = instruction.arguments();
+        if (written.path("replace_all").asBoolean(false) || made.path("replace_all").asBoolean(false)
+                || !written.path("file_path").asText("").equals(made.path("file_path").asText())) {
+            return false;
+        }
+        String writtenOld = written.path("old_string").asText("");
+        String writtenNew = written.path("new_string").asText("");
+        String madeOld = made.path("old_string").asText("");
+        String madeNew = made.path("new_string").asText("");
+        return replacedWithin(writtenOld, writtenNew, madeOld, madeNew) || replacedWithin(madeOld, madeNew, writtenOld, writtenNew);
+    }
+
+    /** Whether the narrower replacement, made once inside the wider old text, gives the wider new text. */
+    private static boolean replacedWithin(String widerOld, String widerNew, String narrowOld, String narrowNew) {
+        int at = narrowOld.isEmpty() ? -1 : widerOld.indexOf(narrowOld);
+        return at >= 0 && widerOld.indexOf(narrowOld, at + 1) < 0
+            && widerNew.equals(widerOld.substring(0, at) + narrowNew + widerOld.substring(at + narrowOld.length()));
     }
 
     /**

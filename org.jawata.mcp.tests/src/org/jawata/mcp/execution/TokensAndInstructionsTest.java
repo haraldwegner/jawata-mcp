@@ -279,6 +279,25 @@ class TokensAndInstructionsTest {
             () -> assertEquals(0, otherText.ranAsWritten(), "other new text ran as written"));
     }
 
+    @Test
+    @DisplayName("28h z24: an Edit with more or less surrounding text that changes the file the same way ran as written; another change did not")
+    void anEditWithOtherContextAndTheSameResultRanAsWritten() throws Exception {
+        List<Instructions.Instruction> issued = List.of(new Instructions.Instruction(1, "Edit",
+            MAPPER.readTree(editOf("/p/engine.properties", "engine.version=4.6.1", "engine.version=4.6.10"))));
+
+        Instructions.Score wider = Instructions.score(issued, List.of(call("Edit",
+            editOf("/p/engine.properties", "name=x\\nengine.version=4.6.1\\n", "name=x\\nengine.version=4.6.10\\n"))), ENGINE);
+        Instructions.Score narrower = Instructions.score(issued, List.of(call("Edit",
+            editOf("/p/engine.properties", "4.6.1", "4.6.10"))), ENGINE);
+        Instructions.Score other = Instructions.score(issued, List.of(call("Edit",
+            editOf("/p/engine.properties", "name=x\\nengine.version=4.6.1", "name=y\\nengine.version=4.6.10"))), ENGINE);
+
+        assertAll(
+            () -> assertEquals(1, wider.ranAsWritten(), "more context: " + wider.notAsWritten()),
+            () -> assertEquals(1, narrower.ranAsWritten(), "less context: " + narrower.notAsWritten()),
+            () -> assertEquals(0, other.ranAsWritten(), "CONTROL: an edit that also changed something else ran as written"));
+    }
+
     private static String editOf(String file, String before, String after) {
         return "{\"file_path\":\"" + file + "\",\"old_string\":\"" + before + "\",\"new_string\":\"" + after + "\"}";
     }
