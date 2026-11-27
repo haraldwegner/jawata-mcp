@@ -26,10 +26,12 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * @param brainSessionId the brain's own session id for this hire, from the hire's answer; absent while it runs and for a brain that has none
  * @param verdict      the person's answer to the hire's proposal, {@value #ACCEPTED} or {@value #REJECTED}; absent until the person has answered
  * @param refusal      why the engine refused the hire before any brain started; absent for every other hire
+ * @param step         the latest line the running hire wrote about what it is doing, the one that starts STEP: without that mark; absent
+ *                     before it wrote one and once it has ended
  */
 public record HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs,
         long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId,
-        Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles, java.util.Optional<com.fasterxml.jackson.databind.JsonNode> toolUse, Optional<String> refusal) {
+        Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles, java.util.Optional<com.fasterxml.jackson.databind.JsonNode> toolUse, Optional<String> refusal, java.util.Optional<String> step) {
 
     /** An entry the engine did not refuse: the twenty components every hire has, and no refusal. */
     public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs, long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId, Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles, java.util.Optional<com.fasterxml.jackson.databind.JsonNode> toolUse) {
@@ -129,6 +131,7 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
         changedFiles.ifPresent(n -> meta.put("changedFileCount", n));
         toolUse.ifPresent(u -> meta.set("toolUse", u));
         refusal.ifPresent(r -> meta.put("refusal", r));
+        step.ifPresent(s -> meta.put("step", s));
         return meta;
     }
 
@@ -158,5 +161,9 @@ public record HireEntry(String planId, String seat, Optional<String> brain, Opti
 
     public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs, long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId, Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles) {
         this(planId, seat, brain, model, state, elapsedMs, tokens, costUsd, task, parentPlanId, brainSessionId, verdict, level, toolSteps, contextTokens, seatCommand, enginePlan, name, changedFiles, java.util.Optional.empty());
+    }
+
+    public HireEntry(String planId, String seat, Optional<String> brain, Optional<String> model, String state, long elapsedMs, long tokens, OptionalDouble costUsd, String task, Optional<String> parentPlanId, Optional<String> brainSessionId, Optional<String> verdict, int level, int toolSteps, java.util.OptionalLong contextTokens, Optional<String> seatCommand, Optional<String> enginePlan, Optional<String> name, java.util.OptionalInt changedFiles, java.util.Optional<com.fasterxml.jackson.databind.JsonNode> toolUse, Optional<String> refusal) {
+        this(planId, seat, brain, model, state, elapsedMs, tokens, costUsd, task, parentPlanId, brainSessionId, verdict, level, toolSteps, contextTokens, seatCommand, enginePlan, name, changedFiles, toolUse, refusal, java.util.Optional.empty());
     }
 }

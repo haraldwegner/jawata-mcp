@@ -527,9 +527,14 @@ final class HireWatch {
         HireRegistry.shared().leadPlanOf(hire.seat, hire.task).ifPresent(leadPlan -> hires.values().stream()
             .filter(other -> other != hire && leadPlan.equals(HireRegistry.shared().planOf(other.seat, other.task).orElse(other.enginePlan)))
             .findFirst().ifPresent(lead -> hire.parent = Optional.of(lead.id)));
+        // 28h z85: what the running hire says it is doing, the latest of its STEP: lines; an ended hire's card says how it ended instead.
+        Optional<String> step = HireEntry.RUNNING.equals(hire.state)
+            ? HireRegistry.shared().planOf(hire.seat, hire.task).flatMap(HireRegistry.shared()::soFarOfPlan)
+                .map(HireRegistry.SoFar::progressLines).filter(lines -> !lines.isEmpty()).map(lines -> lines.get(lines.size() - 1))
+            : Optional.empty();
         return new HireEntry(hire.id, hire.seat, hire.brain, hire.model, state, end - hire.startedMs, hire.tokens, cost,
             hire.task, hire.parent, hire.brainSessionId, hire.verdict, levelOf(hire), steps, context, hire.seatCommand,
-            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan), hire.name, hire.changedCount, hire.toolUse, hire.refusal);
+            hire.enginePlan.isBlank() ? Optional.empty() : Optional.of(hire.enginePlan), hire.name, hire.changedCount, hire.toolUse, hire.refusal, step);
     }
 
     /** How many hires the agent saw above this one, so a root is level 0, the chief engineer it hires 1, and the developer under that 2. */

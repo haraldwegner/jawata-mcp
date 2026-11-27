@@ -347,6 +347,23 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("28h z85: a running hire's card carries the latest line it wrote about what it is doing, and an ended one carries none")
+    void aRunningHiresCardCarriesItsLatestStepLine() {
+        watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "developer", "z85 card"));
+
+        try (org.jawata.mcp.execution.HireRegistry.Registration running =
+                 org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "z85 card", "")) {
+            org.jawata.mcp.execution.HireRegistry.shared().planOpened("plan-z85-card");
+            org.jawata.mcp.execution.HireRegistry.shared().noteText("STEP: reading the class\nthen more\nSTEP: renaming it\n");
+
+            assertEquals("renaming it", watch.entry("t1").orElseThrow().toMeta().path("step").asText(), "the card does not say what the agent is doing");
+        }
+        HireEntry done = watch.observe(answered(hireCall("tool_call_update", "t1", "completed"), "{\"data\":{\"cleanExit\":true}}")).orElseThrow();
+
+        assertFalse(done.toMeta().has("step"), "an ended hire still says what it is doing");
+    }
+
+    @Test
     @DisplayName("Stage 27 (o): an ended hire's card carries how its run used jawata, as the answer reported it, and none when the answer reported none")
     void anEndedHiresCardCarriesHowItUsedJawata() {
         watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "developer", "build the stage"));
