@@ -162,7 +162,7 @@ class HireReportTest {
         endedUnder(hires, "z136-sum-lead", "z136-sum-b", "{\"plan\":\"z136-sum-b\",\"costUsd\":\"NOT PUBLISHED BY THIS BRAIN\","
             + "\"below\":{\"hires\":1,\"costUsd\":0.5,\"withoutCost\":0,\"elapsedMs\":2000,\"tokens\":200,\"withoutTokens\":0}}");
 
-        HireTotals total = hires.usedUnder("z136-sum-lead").orElse(HireTotals.NONE);
+        HireTotals total = hires.usedUnder("z136-sum-lead").orElseThrow();
 
         assertAll(
             () -> assertTrue(total.hires() == 3, "hires: " + total),

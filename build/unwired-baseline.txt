@@ -103,7 +103,6 @@ org.jawata.mcp.knowledge.QualityLedger#SURFACE_SEAT
 org.jawata.mcp.knowledge.SymbolFact.Builder#addEvidence(Object)
 org.jawata.mcp.knowledge.ToolExperienceStore#count()
 org.jawata.mcp.knowledge.ToolExperienceStore#failedWrites()
-org.jawata.mcp.learn.PlanLedger#planCount()
 org.jawata.mcp.learn.PlanLedger#steps(PlanId)
 org.jawata.mcp.learn.PrecedentSteer#compose(String,List<ToolExperience>)
 org.jawata.mcp.learn.ServerChecks#dial()

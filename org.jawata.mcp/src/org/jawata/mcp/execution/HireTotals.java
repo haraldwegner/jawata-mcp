@@ -11,8 +11,6 @@ import com.fasterxml.jackson.databind.JsonNode;
  */
 public record HireTotals(int hires, double costUsd, int withoutCost, long elapsedMs, long tokens, int withoutTokens) {
 
-    public static final HireTotals NONE = new HireTotals(0, 0, 0, 0, 0, 0);
-
     /** The two totals added up. */
     public HireTotals plus(HireTotals other) {
         return new HireTotals(hires + other.hires, costUsd + other.costUsd, withoutCost + other.withoutCost, elapsedMs + other.elapsedMs,
