@@ -703,6 +703,17 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h z129 (c): a running hire's call line names the file, which Claude's adapter sends only after it has opened the call")
+    void aRunningCallLineNamesTheFileSentLater() throws Exception {
+        try (HireRegistry.Registration running = HireRegistry.shared().begin("developer", "CLAUDEREAD:/w/src/A.java", "")) {
+            hire("CLAUDEREAD:/w/src/A.java");
+
+            assertEquals(List.of("Read File /w/src/A.java"),
+                HireRegistry.shared().progress("developer", "CLAUDEREAD:/w/src/A.java").orElseThrow().calls(), "the card cannot say which file was read");
+        }
+    }
+
+    @Test
     @DisplayName("a shown model the catalogue holds is the value the command line is given")
     void aShownModelBecomesTheProgramsValue() throws Exception {
         // The stand-in's command names this test's own folder, so what its session records is no other test's.

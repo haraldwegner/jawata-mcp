@@ -72,7 +72,7 @@ final class HireWatch {
         /** Tool calls the hire made, as its answer counted them (D10). */
         int toolSteps;
         /** The names of the tool calls the hire made, in order, as its answer listed them (28h D57 (i)). */
-        List<String> toolsCalled = List.of();
+        List<String> callLines = List.of();
         /** Code changes the hire's brain made by hand, outside any engine tool, as its answer counted them (D10). */
         int editsByHand;
         /** Whether an issuer gave the hire instructions that name tools, so an edit it made by hand was made where a tool was named (D10). */
@@ -258,7 +258,7 @@ final class HireWatch {
         List<Said> turns = new java.util.ArrayList<>();
         turns.add(new Said(hire.hirer.isEmpty() ? MAIN : hire.hirer, hire.task, "user"));
         // A finished hire's answer lists its calls; a hire still running has them in the registry, by the titles its brain streamed.
-        List<String> calls = !hire.toolsCalled.isEmpty() ? hire.toolsCalled
+        List<String> calls = !hire.callLines.isEmpty() ? hire.callLines
             : HireRegistry.shared().progress(hire.seat, hire.task).map(HireRegistry.Progress::calls).orElse(List.of());
         calls.forEach(call -> turns.add(new Said(hire.seat, call, "tool")));
         if (!hire.answer.isEmpty()) {
@@ -429,8 +429,9 @@ final class HireWatch {
         hire.changesOmitted = List.copyOf(omitted);
         hire.toolSteps = answer.path("toolSteps").asInt(0);
         List<String> called = new java.util.ArrayList<>();
-        answer.path("toolsCalled").forEach(name -> called.add(name.asText()));
-        hire.toolsCalled = List.copyOf(called);
+        // 28h z129: each call's line names what it looked at; a record written before lines were kept names the tools alone.
+        answer.path(answer.has("callLines") ? "callLines" : "toolsCalled").forEach(name -> called.add(name.asText()));
+        hire.callLines = List.copyOf(called);
         hire.editsByHand = answer.path("codeChangesByHand").asInt(0);
         hire.instructed = answer.path("instructionScore").path("instructionsIssued").asInt(0) > 0;
         JsonNode tokens = answer.path("tokens");

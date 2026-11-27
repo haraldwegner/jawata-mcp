@@ -537,6 +537,20 @@ class HireToolTest {
     }
 
     @Test
+    @DisplayName("28h z129 (c): a hire's answer lists each call with the file or pattern its input named")
+    void theAnswerNamesWhatEachCallLookedAt() throws Exception {
+        // The text spliced in after a name gives that call an input, as the stream of a CLI brain carries it.
+        HireTool hire = toolWith(new StandsIn(host,
+                aBrainCalling("Read\",\"input\":{\"file_path\":\"/w/src/A.java\"},\"also\":\"",
+                    "Grep\",\"input\":{\"pattern\":\"roundUp\",\"path\":\"/w/src\"},\"also\":\"", "compile_workspace")),
+            events, aRegistryWithAChangingOperation());
+
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertEquals(List.of("Read /w/src/A.java", "Grep roundUp /w/src", "compile_workspace"), data.get("callLines"), data.toString());
+    }
+
+    @Test
     @DisplayName("a brain whose CLI offered no built-in tools but which NAMED Write and Bash made attempts, not calls, and the zero is complete")
     void anAttemptAtAnUnofferedToolIsReportedAsAnAttemptNotACall() throws Exception {
         // MEASURED 2026-10-13: --tools "" gave init tools [] and the PM still named Write; the CLI

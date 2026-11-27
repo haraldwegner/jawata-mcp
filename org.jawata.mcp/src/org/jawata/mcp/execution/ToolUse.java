@@ -69,7 +69,8 @@ public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava>
             } else if (RunEffects.isCliShell(bare) && JAVA_FILE.matcher(commandOf(call.arguments())).find()) {
                 shell.add(shellOnJava(commandOf(call.arguments())));
             } else if (RunEffects.isCliFileReader(bare) && readsJava(bare, call.arguments())) {
-                shell.add(shellOnJava(bare + " " + targetOf(call.arguments())));
+                shell.add(shellOnJava(java.util.stream.Stream.of(bare, call.target(), call.arguments().path("type").asText(""))
+                    .filter(part -> !part.isEmpty()).collect(java.util.stream.Collectors.joining(" "))));
             } else {
                 other++;
             }
@@ -135,13 +136,6 @@ public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava>
             .anyMatch(key -> JAVA_FILE.matcher(arguments.path(key).asText("")).find());
         return named || "java".equals(arguments.path("type").asText(""))
             || "glob".equalsIgnoreCase(tool) && JAVA_FILE.matcher(arguments.path("pattern").asText("")).find();
-    }
-
-    /** What a native read or search looked at, in the order a person reads it: what was searched for, then where. */
-    private static String targetOf(JsonNode arguments) {
-        return java.util.stream.Stream.of("pattern", "file_path", "filePath", "path", "glob", "include", "type")
-            .map(key -> arguments.path(key).asText("")).filter(value -> !value.isEmpty())
-            .collect(java.util.stream.Collectors.joining(" "));
     }
 
     /** The shell command a call carried: the {@code command} or {@code cmd} argument, a list joined by spaces. */

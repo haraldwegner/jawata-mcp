@@ -1136,6 +1136,8 @@ public class HireTool extends NeutralTool {
             bare -> engine.getTool(bare).map(Tool::changesCode), ran.hire.getProposal().outcome().toolsOffered());
         List<String> incomplete = incompleteReasons(effects, ran.hire.getProposal().outcome(), ran.dialect);
         data.put("toolsCalled", ran.hire.getProposal().outcome().toolNames());
+        // The card's line for each call, with what it looked at (28h z129). The lead is not sent it: it is not among the keys a report sends up.
+        data.put("callLines", org.jawata.mcp.execution.ToolCall.lines(ran.hire.getProposal().outcome().toolNames(), ran.hire.getProposal().outcome().toolCalls()));
         // WHAT A FULL TEST RUN WAS ARGUED FOR (28h Stage 27, z27): the reasons this hire gave for the full runs it ordered stay on its record for
         // the pm that reads it; absent when it ordered none.
         List<String> fullRunReasons = HireRegistry.shared().fullRunReasonsOf(ran.hire.getProposal().plan().value());

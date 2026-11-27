@@ -382,6 +382,19 @@ class HireEntriesTest {
     }
 
     @Test
+    @DisplayName("28h z129 (c): a finished hire's transcript shows each call with the file or pattern it looked at")
+    void aFinishedHiresCallsNameWhatTheyLookedAt() {
+        watch.observe(withInput(hireCall("tool_call", "z129", "pending"), "main", "developer", "read it"));
+        watch.observe(answered(hireCall("tool_call_update", "z129", "completed"),
+            "{\"data\":{\"cleanExit\":true,\"toolsCalled\":[\"Read\"],\"callLines\":[\"Read /w/src/A.java\"],\"answer\":\"done\"}}"));
+
+        List<HireWatch.Said> turns = watch.transcript("z129").orElseThrow();
+
+        assertEquals(List.of("Read /w/src/A.java"),
+            turns.stream().filter(turn -> "tool".equals(turn.role())).map(HireWatch.Said::text).toList(), turns.toString());
+    }
+
+    @Test
     @DisplayName("z90: a hire that answered nothing and passed none of its checks is shown as failed, as its report says, not as done")
     void aCardAgreesWithTheReportThatANothingRunFailed() {
         watch.observe(withInput(hireCall("tool_call", "z90", "pending"), "main", "developer", "build"));

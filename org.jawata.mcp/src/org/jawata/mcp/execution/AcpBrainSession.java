@@ -1358,7 +1358,10 @@ public final class AcpBrainSession {
                 // 28h z85: its text as it arrives, so the lines it writes for its lead can be read while it runs.
                 HireRegistry.shared().noteText(update.path("content").path("text").asText(""));
             } else if ("tool_call".equals(kind)) {
-                HireRegistry.shared().noteToolCall(update.path("title").asText(""));
+                HireRegistry.shared().noteToolCall(update.path("toolCallId").asText(""), update.path("title").asText(""), update.path("rawInput"));
+            } else if ("tool_call_update".equals(kind) && update.path("rawInput").isObject() && !update.path("rawInput").isEmpty()) {
+                // 28h z129: Claude's adapter sends a call's input after opening it, so the call's line is written again with it.
+                HireRegistry.shared().noteCallInput(update.path("toolCallId").asText(""), update.path("rawInput"));
             } else if ("usage_update".equals(kind)) {
                 JsonNode used = update.path("used");
                 JsonNode amount = update.path("cost").path("amount");

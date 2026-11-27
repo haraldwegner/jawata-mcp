@@ -252,7 +252,7 @@ public final class HiredBrain {
                 }
                 // 28h z102: a line the brain prints is a sign of life, and each call it names is counted, as over ACP.
                 HireRegistry.shared().noteUsage(java.util.OptionalLong.empty(), read.costUsd());
-                read.toolNames().forEach(HireRegistry.shared()::noteToolCall);
+                ToolCall.lines(read.toolNames(), read.toolCalls()).forEach(HireRegistry.shared()::noteToolCall);
                 // S16-18: a brain's CLOSING line restates the answer its earlier lines already gave —
                 // a one-turn reply is in both, and collecting both made "READY" read "READY\nREADY".
                 // It is the answer only when nothing else was said, so a run that produced no turn

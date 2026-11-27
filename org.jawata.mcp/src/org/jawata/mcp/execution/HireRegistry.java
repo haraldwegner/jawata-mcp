@@ -60,6 +60,8 @@ public final class HireRegistry {
         final long startedAtMs = System.currentTimeMillis();
         final List<Runnable> onStop = new CopyOnWriteArrayList<>();
         volatile Progress progress = new Progress(0, OptionalLong.empty(), OptionalDouble.empty());
+        /** Where each call named by an id stands among the progress calls, and its title, so its line is written again once its input arrives; the hire's thread only. */
+        final java.util.Map<String, java.util.Map.Entry<Integer, String>> lines = new java.util.HashMap<>();
         /** Whether the brain is compacting its own context right now, as its stream last said. */
         volatile boolean compacting;
         /**
@@ -1225,5 +1227,36 @@ public final class HireRegistry {
                 hire.lastActivityMs = System.currentTimeMillis();
             }
         }
+    }
+
+    /** Writes again the line of a call the hire on the current thread already made, from the input its brain has now sent; it counts no call (28h z129). */
+    public void noteCallInput(String id, com.fasterxml.jackson.databind.JsonNode input) {
+        for (Running hire : running) {
+            java.util.Map.Entry<Integer, String> line = hire.thread == Thread.currentThread() ? hire.lines.get(id) : null;
+            if (line != null) {
+                Progress seen = hire.progress;
+                List<String> calls = new java.util.ArrayList<>(seen.calls());
+                calls.set(line.getKey(), new ToolCall(line.getValue(), input).line(line.getValue()));
+                hire.progress = new Progress(seen.toolSteps(), seen.contextTokens(), seen.costUsd(), List.copyOf(calls));
+            }
+        }
+    }
+
+    /**
+     * As {@link #noteToolCall(String)}, with the call's id and input: the kept line names what the input looked at, and
+     * {@link #noteCallInput} writes it again when the input arrives after the call was opened (28h z129).
+     *
+     * @param id    the call's id as the brain streamed it
+     * @param title the call's title as the brain streamed it; a blank one is counted and not kept
+     * @param input the call's input as far as the brain has sent it
+     */
+    public void noteToolCall(String id, String title, com.fasterxml.jackson.databind.JsonNode input) {
+        boolean kept = title != null && !title.isBlank();
+        for (Running hire : running) {
+            if (hire.thread == Thread.currentThread() && kept) {
+                hire.lines.put(id, java.util.Map.entry(hire.progress.calls().size(), title));
+            }
+        }
+        noteToolCall(kept ? new ToolCall(title, input).line(title) : title);
     }
 }
