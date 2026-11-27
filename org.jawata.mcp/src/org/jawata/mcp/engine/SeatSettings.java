@@ -282,6 +282,20 @@ public interface SeatSettings {
         return List.of();
     }
 
+    /**
+     * Times one prompt through a brain's own program, run after run, with no tools, so a lead can learn how fast a model answers without a
+     * shell.
+     *
+     * @param brain       the brain's id
+     * @param model       the model as a Brain list shows it; null for the brain's own default
+     * @param prompt      the prompt every run is given
+     * @param repeat      how many runs, 1 to 20
+     * @param keepRunning true to start the program once and time each run from its prompt, each run then carrying the earlier ones; false to
+     *                    start a program per run and count its start
+     * @return one row per run, in order: run, seconds, secondsToFirstText, answer, outputTokens, thinkingTokens and costUsd, a figure the
+     *         brain did not publish being null, and error when the run did not answer
+     * @throws IllegalArgumentException when the brain or the model is not known, or repeat is out of range
+     */
     java.util.List<java.util.Map<String, Object>> timedProbe(String brain, String model, String prompt, int repeat,
             boolean keepRunning);
 }
