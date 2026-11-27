@@ -1,4 +1,4 @@
-package org.jawata.mcp.agent;
+package org.jawata.mcp.execution;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -11,7 +11,6 @@ import java.util.logging.Logger;
 import org.jawata.core.host.HostCommand;
 import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
-import org.jawata.mcp.execution.TreeAttribution;
 
 /**
  * What the person's "reject" does to a hire's proposal (Sprint 28h S21, open point 8 of S17): the files the hire changed are put back as they were when
@@ -32,7 +31,7 @@ public final class TakeBack {
     private static final Logger log = Logger.getLogger(TakeBack.class.getName());
 
     /** What was put back, and what was kept with the reason for each. */
-    record Result(List<String> putBack, List<String> kept) {
+    public record Result(List<String> putBack, List<String> kept) {
 
         /** One plain sentence for the person, shown on the hire's card. */
         String sentence() {
@@ -53,7 +52,8 @@ public final class TakeBack {
      *
      * @param host      runs git; the process boundary of the engine
      * @param directory the folder the hire ran in; empty or not a folder keeps every file
-     * @param proposal  the hire's proposal: its changes and the names of the files too large to carry
+     * @param changes   the files the hire changed, as the hire's answer lists them
+     * @param omitted   the names of the files too large to carry
      */
     public static Result of(HostProcesses host, String directory, java.util.List<TreeAttribution.FileChange> changes, List<String> omitted) {
         List<String> putBack = new ArrayList<>();
