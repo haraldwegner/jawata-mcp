@@ -214,6 +214,36 @@ class HireReportTest {
     }
 
     @Test
+    @DisplayName("28h Stage 28 (h): a report names the files the hire changed, with their count, and never the changed text")
+    void aReportNamesTheFilesTheHireChanged() throws Exception {
+        String report = reportOf("""
+            {"cleanExit":true,"answer":"REPORT: done","changedFileCount":2,
+             "changedFiles":["org.jawata.mcp/src/A.java","org.jawata.mcp/src/B.java"],
+             "changes":[{"path":"org.jawata.mcp/src/A.java","oldText":"SECRET OLD","newText":"int sum;"}]}
+            """);
+
+        assertAll(
+            () -> assertTrue(report.contains("Files changed: 2 (org.jawata.mcp/src/A.java, org.jawata.mcp/src/B.java)"), report),
+            () -> assertFalse(report.contains("SECRET OLD"), "the changed text went up: " + report));
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): a hire whose list of changed files is empty gets no 'Files changed' line")
+    void aHireWithAnEmptyListOfChangedFilesGetsNoFilesLine() throws Exception {
+        String report = reportOf("{\"cleanExit\":true,\"answer\":\"REPORT: done\",\"changedFiles\":[],\"changedFileCount\":0}");
+
+        assertFalse(report.contains("Files changed: "), report);
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): a hire with a changed-file count of zero and no list gets no 'Files changed' line")
+    void aHireWithAZeroCountAndNoListGetsNoFilesLine() throws Exception {
+        String report = reportOf("{\"cleanExit\":true,\"answer\":\"REPORT: done\",\"changedFileCount\":0}");
+
+        assertFalse(report.contains("Files changed: "), report);
+    }
+
+    @Test
     @DisplayName("28h z85: a report carries the progress lines the hire wrote for its lead, and says when it wrote none")
     void aReportCarriesTheHiresProgressLines() throws Exception {
         String told = reportOf("{\"answer\":\"REPORT: done\",\"progressLines\":[\"I will rename it\",\"renamed, compiling\"]}");

@@ -33,7 +33,7 @@ public final class HireReport {
 
     /** The keys of a hire's answer a lead is told as they are (28h z52); every other key stays with the record. */
     private static final List<String> SENT_UP = List.of("hirer", "hired", "name", "fixes", "plan", "brain", "complete", "cleanExit",
-        "stoppedBy", "timedOut", "exitCode", "stepsPassed", "stepsDeclared", "gates", "changedFileCount", "verdict", "fullRunReasons",
+        "stoppedBy", "timedOut", "exitCode", "stepsPassed", "stepsDeclared", "gates", "changedFileCount", "changedFiles", "verdict", "fullRunReasons",
         "instructionScore", "ownWrites", "ownCodePutBack", "attempt", "escalatesTo", "record", "error", "below", "orphanOf", "progressLines",
         "replacement");
 
@@ -111,7 +111,7 @@ public final class HireReport {
 
     /**
      * What a lead is told about one hire, from the hire's answer (28h z52, z136): its state and why it ended, its checks, how many files it
-     * changed, its money, time and tokens, the summary it wrote itself, and the path of the record that holds everything else.
+     * changed and which (the paths, never the changed text), its money, time and tokens, the summary it wrote itself, and the path of the record that holds everything else.
      */
     public static ObjectNode shortOf(JsonNode answer) {
         ObjectNode told = JsonNodeFactory.instance.objectNode();
@@ -173,10 +173,27 @@ public final class HireReport {
         return section.isEmpty() ? "no REPORT section was written; the whole answer is in the record" : section;
     }
 
-    /** The files, money, time and tokens lines of a hire's report. */
+    /**
+     * The files, money, time and tokens lines of a hire's report. The files line (28h Stage 28 (h)) is the count and the paths when the answer
+     * lists the changed files, the count alone when it only counts them, and "not measured" when it has neither; a hire that changed no
+     * file gets no files line.
+     */
     private static void appendFigures(StringBuilder text, JsonNode told) {
+        JsonNode paths = told.path("changedFiles");
         JsonNode files = told.path("changedFileCount");
-        text.append("Files changed: ").append(files.isNumber() ? files.asText() : "not measured").append("\n");
+        if (paths.isArray()) {
+            if (!paths.isEmpty()) {
+                java.util.StringJoiner names = new java.util.StringJoiner(", ");
+                paths.forEach(path -> names.add(path.asText()));
+                text.append("Files changed: ").append(paths.size()).append(" (").append(names).append(")\n");
+            }
+        } else if (files.isNumber()) {
+            if (files.asLong() != 0) {
+                text.append("Files changed: ").append(files.asText()).append("\n");
+            }
+        } else {
+            text.append("Files changed: not measured\n");
+        }
         JsonNode cost = told.path("costUsd");
         text.append("Money: ").append(cost.isNumber() ? cost.asText() + " USD" : NO_FIGURE).append("\n");
         JsonNode millis = told.path("elapsedMs");
