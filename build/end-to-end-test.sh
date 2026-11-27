@@ -412,12 +412,12 @@ printf -- '---\nname: e2e-ground-code\nbrain: claude-code\nchanges_code: true\na
 printf -- '---\nname: e2e-ground-read\nbrain: claude-code\naccepts_uncontained_writes: true\nttl_secs: 30\n---\n\nYou are the e2e reading seat.\n' > "$WS/e2e-ground-read.md"
 GROUND_BRIEF="Change how the quokka ground carrier hands the settlement ledger its window."
 rm -f "$WS/ground-argv"
-G_CODE="$(call hire "{\"hirer\":\"e2e\",\"seat\":\"e2e-ground-code\",\"seatFile\":\"$WS/e2e-ground-code.md\",\"brief\":\"$GROUND_BRIEF\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}")"
+G_CODE="$(call hire "{\"hirer\":\"main\",\"seat\":\"e2e-ground-code\",\"seatFile\":\"$WS/e2e-ground-code.md\",\"brief\":\"$GROUND_BRIEF\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}")"
 # A hire answers at once and runs on the engine's own thread (Stage 24), so the brain's command line is waited for, not assumed.
 for _ in $(seq 1 60); do [ -s "$WS/ground-argv" ] && break; sleep 1; done
 G_CODE_ARGV="$(cat "$WS/ground-argv" 2>/dev/null)"
 rm -f "$WS/ground-argv"
-G_READ="$(call hire "{\"hirer\":\"e2e\",\"seat\":\"e2e-ground-read\",\"seatFile\":\"$WS/e2e-ground-read.md\",\"brief\":\"$GROUND_BRIEF\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}")"
+G_READ="$(call hire "{\"hirer\":\"main\",\"seat\":\"e2e-ground-read\",\"seatFile\":\"$WS/e2e-ground-read.md\",\"brief\":\"$GROUND_BRIEF\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}")"
 for _ in $(seq 1 60); do [ -s "$WS/ground-argv" ] && break; sleep 1; done
 G_READ_ARGV="$(cat "$WS/ground-argv" 2>/dev/null)"
 case "$G_CODE_ARGV" in
@@ -459,7 +459,7 @@ call_as() {   # call_as <session> <tool> <json-args> -> the tool's answer, UNESC
         | sed 's/\\"/"/g'
 }
 printf -- '---\nname: e2e-allow\nbrain: cursor\naccepts_uncontained_writes: true\ntools: [experience]\nttl_secs: 600\n---\n\nYou are the e2e allowlist seat.\n' > "$WS/e2e-allow.md"
-( call_as "e2e-allow-issuer" hire "{\"hirer\":\"e2e\",\"seat\":\"e2e-allow\",\"seatFile\":\"$WS/e2e-allow.md\",\"brief\":\"HIREHANG\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}" > "$WS/allow-hire-answer" 2>&1 ) &
+( call_as "e2e-allow-issuer" hire "{\"hirer\":\"main\",\"seat\":\"e2e-allow\",\"seatFile\":\"$WS/e2e-allow.md\",\"brief\":\"HIREHANG\",\"steps\":[{\"tool\":\"health_check\",\"arguments\":{}}],\"workingDirectory\":\"$WS\"}" > "$WS/allow-hire-answer" 2>&1 ) &
 ALLOW_HIRE_PID=$!
 ALLOW_PLAN=""
 for _ in $(seq 1 40); do
