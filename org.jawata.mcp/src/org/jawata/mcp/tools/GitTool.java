@@ -17,7 +17,9 @@ import org.jawata.core.host.HostProcessOutcome;
 import org.jawata.core.host.HostProcesses;
 import org.jawata.mcp.execution.HireRegistry;
 import org.jawata.mcp.execution.PersonsWords;
+import org.jawata.mcp.execution.TakeBack;
 import org.jawata.mcp.execution.ToolGateRunner;
+import org.jawata.mcp.execution.TreeAttribution;
 import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.PlanLedger;
 import org.jawata.mcp.models.CallerIdentity;
@@ -29,7 +31,8 @@ import com.fasterxml.jackson.databind.JsonNode;
  * Committing a finished step and releasing (Sprint 28h, D57 (j)). His words: <i>"Commit, push or tag code changes -> Who does this? I do not
  * want to use gh by myself?"</i> The pm commits each step through this tool, only after the step's checks passed and only the files the step's
  * hire produced; main releases through it, only on his release word: the branch is pushed, the tag made and pushed, and the release published.
- * Both refuse an AI agent as author or co-author, because an attribution that reaches the remote cannot be taken back.
+ * Both refuse an AI agent as author or co-author, because an attribution that reaches the remote cannot be taken back. A third action, discard,
+ * puts back single files a hire changed, for the caller that issued the hire.
  */
 public final class GitTool implements Tool {
 
@@ -67,7 +70,10 @@ public final class GitTool implements Tool {
 
             USAGE: git(action="commit",  folder="/abs/repo", planId="<the hire's plan id>", message="...")
                    git(action="release", folder="/abs/repo", tag="v1.2.3", notes="..." [, publish=true])
+                   git(action="discard", folder="/abs/repo-or-hire-folder", planId="<the hire's plan id>", files=["path", ...])
 
+            discard: puts back single files the plan changed, only for the caller that issued that hire (or one above it), only a file that
+            held nothing but HEAD before the hire and still holds what the hire left. Answers thrownAway and kept (each kept file with its reason).
             commit: only when every check of that hire's plan passed, and only the files the hire reported changed that it is also recorded
             as writing (its jawata calls and its brain's editor, or those of a hire under it); any other change stays uncommitted, one
             another hire wrote listed under leftOut and one nobody claims (a shell's writes) under unclaimed. One that another hire still
@@ -106,7 +112,8 @@ public final class GitTool implements Tool {
             return switch (arguments.path("action").asText("")) {
                 case "commit" -> commit(Path.of(folder), arguments);
                 case "release" -> release(Path.of(folder), arguments);
-                default -> ToolResponse.invalidParameter("action", "action must be commit or release");
+                case "discard" -> discard(Path.of(folder), arguments);
+                default -> ToolResponse.invalidParameter("action", "action must be commit, release or discard");
             };
         } catch (IOException e) {
             return ToolResponse.error("GIT_FAILED", e.getMessage(), "Nothing after the failing git command was run.");
@@ -114,6 +121,47 @@ public final class GitTool implements Tool {
             Thread.currentThread().interrupt();
             return ToolResponse.error("INTERRUPTED", "the git command was interrupted", null);
         }
+    }
+
+    /** Puts back single files a hire changed (28h Stage 28 (h)): only for the caller that issued the hire, and only what the plan's answer names. */
+    private ToolResponse discard(Path folder, JsonNode arguments) {
+        List<String> named = new ArrayList<>();
+        arguments.path("files").forEach(file -> named.add(file.asText()));
+        if (!arguments.path("files").isArray() || named.isEmpty()) {
+            return ToolResponse.invalidParameter("files", "a discard needs the names of the files to put back, at least one");
+        }
+        String planId = arguments.path("planId").asText("");
+        if (planId.isBlank()) {
+            return ToolResponse.invalidParameter("planId", "a discard needs the plan id of the hire whose files are put back");
+        }
+        Optional<String> caller = CallerIdentity.serving().map(CallerIdentity::id);
+        if (caller.isEmpty() || !HireRegistry.shared().mayBeStoppedBy(planId, caller.get())) {
+            return ToolResponse.error("NOT_YOUR_HIRE", "plan " + planId + " was not issued by this caller or one below it, so its files are not put back",
+                "Nothing was thrown away.");
+        }
+        Optional<JsonNode> answer = HireRegistry.shared().answerOfPlan(planId);
+        if (answer.isEmpty() || !answer.get().path("changes").isArray()) {
+            return ToolResponse.error("CHANGES_UNKNOWN", "the changes plan " + planId + " made are not known to this engine, so nothing is put back",
+                "Nothing was thrown away.");
+        }
+        List<TreeAttribution.FileChange> changes = new ArrayList<>();
+        answer.get().path("changes").forEach(file -> changes.add(new TreeAttribution.FileChange(file.path("path").asText(),
+            file.hasNonNull("oldText") ? file.get("oldText").asText() : null, file.hasNonNull("newText") ? file.get("newText").asText() : null,
+            file.path("cleanBefore").asBoolean(false))));
+        List<String> omitted = new ArrayList<>();
+        answer.get().path("changesOmitted").forEach(name -> omitted.add(name.asText()));
+        List<String> strangers = named.stream()
+            .filter(file -> changes.stream().noneMatch(change -> change.path().equals(file)) && !omitted.contains(file)).toList();
+        if (!strangers.isEmpty()) {
+            return ToolResponse.error("FILE_NOT_CHANGED_BY_PLAN", "plan " + planId + " did not change " + String.join(", ", strangers) + ", so nothing is put back",
+                "Nothing was thrown away.");
+        }
+        TakeBack.Result result = TakeBack.of(HostProcesses.system(), folder.toString(),
+            changes.stream().filter(change -> named.contains(change.path())).toList(), omitted.stream().filter(named::contains).toList());
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("thrownAway", result.putBack());
+        data.put("kept", result.kept());
+        return ToolResponse.success(data);
     }
 
     private ToolResponse commit(Path folder, JsonNode arguments) throws IOException, InterruptedException {
