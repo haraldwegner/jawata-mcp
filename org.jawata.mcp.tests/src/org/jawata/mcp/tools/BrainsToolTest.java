@@ -117,6 +117,37 @@ class BrainsToolTest {
         assertFalse(tool.execute(JSON.createObjectNode().put("action", "probe")).isSuccess(), "a test run with no brain is refused");
     }
 
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> runs(ToolResponse answer) {
+        assertTrue(answer.isSuccess(), () -> String.valueOf(answer.getError()));
+        return (List<Map<String, Object>>) ((Map<String, Object>) answer.getData()).get("runs");
+    }
+
+    @Test
+    @DisplayName("28h z93: a timed probe runs the prompt as often as asked and reports each run's first text, answer and tokens; kept running, only the first start is paid")
+    void aTimedProbeReportsEveryRun(@TempDir Path seats, @TempDir Path agent) throws IOException {
+        ObjectNode registry = (ObjectNode) JSON.readTree(fakeAgent(agent, "default=Default,haiku=Haiku"));
+        ((ObjectNode) registry.path("fake").path("env")).put("FAKE_ACP_SLOW_NEW", "600");
+        stored.put("jawata.agent.hireBrains", registry.toString());
+        Files.writeString(agent.resolve("usage"), "{\"inputTokens\":3,\"outputTokens\":7}");
+        ObjectNode asked = JSON.createObjectNode().put("action", "probe").put("brain", "fake").put("model", "Haiku").put("prompt", "REMEMBER:z93").put("repeat", 2);
+
+        List<Map<String, Object>> cold = runs(tool(seats).execute(asked.deepCopy()));
+        List<Map<String, Object>> warm = runs(tool(seats).execute(asked.deepCopy().put("keepRunning", true).put("repeat", 3)));
+
+        assertEquals(2, cold.size(), cold::toString);
+        assertEquals(3, warm.size(), warm::toString);
+        for (Map<String, Object> row : cold) {
+            assertTrue((Double) row.get("seconds") >= 0.6, "a run of its own program did not count the start: " + row);
+        }
+        for (Map<String, Object> row : warm) {
+            assertTrue((Double) row.get("seconds") < 0.6, "a kept-running program was started again, or its start was counted: " + row);
+            assertTrue((Double) row.get("secondsToFirstText") <= (Double) row.get("seconds"), row::toString);
+            assertEquals(7L, row.get("outputTokens"), row::toString);
+            assertFalse(((String) row.get("answer")).isBlank(), row::toString);
+        }
+    }
+
     @Test
     @DisplayName("28h D57 (c): with no brain named, every ready chat brain is asked, which is the discovery a deploy runs")
     void everyReadyBrainsModels(@TempDir Path seats, @TempDir Path agent) throws IOException {

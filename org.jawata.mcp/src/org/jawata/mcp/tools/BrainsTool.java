@@ -63,6 +63,9 @@ public final class BrainsTool implements Tool {
         properties.put("brain", Map.of("type", "string", "description", "The brain's id (e.g. claude-code, cursor). models: omit for every ready chat brain; probe and set: required."));
         properties.put("model", Map.of("type", "string", "description", "probe and set: the model, as a Brain list shows it; omit for the brain's own default."));
         properties.put("seat", Map.of("type", "string", "description", "set: the seat whose stored choice is replaced."));
+        properties.put("prompt", Map.of("type", "string", "description", "probe: a prompt to time; with it, repeat or keepRunning, the probe times runs."));
+        properties.put("repeat", Map.of("type", "integer", "description", "probe: how many timed runs, 1 to 20 (default 1)."));
+        properties.put("keepRunning", Map.of("type", "boolean", "description", "probe: start the program once and time each run from its prompt."));
         return Map.of("type", "object", "properties", properties);
     }
 
@@ -74,7 +77,9 @@ public final class BrainsTool implements Tool {
         return switch (action) {
             case "models" -> models(door, brain);
             case "status" -> status(door);
-            case "probe" -> probe(door, brain, arguments.path("model").asText(""));
+            // A probe that names a prompt, a repeat count or keep-running is timed run by run (28h z93); without them it is the screen's one-word check.
+            case "probe" -> arguments.hasNonNull("prompt") || arguments.hasNonNull("repeat") || arguments.path("keepRunning").asBoolean(false)
+                ? timedProbe(door, brain, arguments) : probe(door, brain, arguments.path("model").asText(""));
             case "choices" -> choices(door);
             case "set" -> set(door, arguments.path("seat").asText(""), brain, arguments.path("model").asText(""));
             default -> ToolResponse.invalidParameter("action", "action must be models, status, probe, choices or set, not '" + action + "'");
@@ -191,5 +196,24 @@ public final class BrainsTool implements Tool {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("brains", rows);
         return ToolResponse.success(data);
+    }
+
+    /** The timed runs a lead asks for (28h z93): the prompt as often as asked, kept running or not, with each run's figures. */
+    private static ToolResponse timedProbe(SeatSettings door, String brain, JsonNode arguments) {
+        if (brain.isBlank()) {
+            return ToolResponse.invalidParameter("brain", "a timed run needs the brain to run it through");
+        }
+        String model = arguments.path("model").asText("");
+        boolean keepRunning = arguments.path("keepRunning").asBoolean(false);
+        try {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("brain", brain);
+            data.put("keepRunning", keepRunning);
+            data.put("runs", door.timedProbe(brain, model.isBlank() ? null : model, arguments.path("prompt").asText("Answer with the one word: ready"),
+                arguments.path("repeat").asInt(1), keepRunning));
+            return ToolResponse.success(data);
+        } catch (IllegalArgumentException | java.io.UncheckedIOException refused) {
+            return ToolResponse.invalidParameter("brain", refused.getMessage());
+        }
     }
 }

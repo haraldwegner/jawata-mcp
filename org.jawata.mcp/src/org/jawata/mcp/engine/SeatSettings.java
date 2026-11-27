@@ -281,4 +281,7 @@ public interface SeatSettings {
     default List<Map<String, String>> storedSeatChoices() {
         return List.of();
     }
+
+    java.util.List<java.util.Map<String, Object>> timedProbe(String brain, String model, String prompt, int repeat,
+            boolean keepRunning);
 }
