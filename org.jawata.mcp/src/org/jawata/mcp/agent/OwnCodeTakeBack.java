@@ -31,8 +31,7 @@ public final class OwnCodeTakeBack {
         if (code.isEmpty()) {
             return "";
         }
-        TakeBack.Result result = TakeBack.of(host, folder, new HireWatch.Proposal(code.stream().map(TreeAttribution.FileChange::path).toList(), code,
-            List.of(), folder));
+        TakeBack.Result result = TakeBack.of(host, folder, code, List.of());
         StringBuilder said = new StringBuilder("[jawata] You wrote code, and you edit none. ");
         said.append(result.putBack().isEmpty() ? "Nothing could be put back." : "Put back: " + String.join(", ", result.putBack()) + ".");
         if (!result.kept().isEmpty()) {

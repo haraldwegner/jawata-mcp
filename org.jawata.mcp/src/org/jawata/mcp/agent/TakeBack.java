@@ -27,7 +27,7 @@ import org.jawata.mcp.execution.TreeAttribution;
  * A tracked file is put back by git itself ({@code git checkout HEAD -- path}), so its bytes are exactly those of HEAD, line endings included; a
  * file the hire created is deleted.
  */
-final class TakeBack {
+public final class TakeBack {
 
     private static final Logger log = Logger.getLogger(TakeBack.class.getName());
 
@@ -55,7 +55,7 @@ final class TakeBack {
      * @param directory the folder the hire ran in; empty or not a folder keeps every file
      * @param proposal  the hire's proposal: its changes and the names of the files too large to carry
      */
-    static Result of(HostProcesses host, String directory, HireWatch.Proposal proposal) {
+    public static Result of(HostProcesses host, String directory, java.util.List<TreeAttribution.FileChange> changes, List<String> omitted) {
         List<String> putBack = new ArrayList<>();
         List<String> kept = new ArrayList<>();
         Path ran = null;
@@ -67,7 +67,7 @@ final class TakeBack {
         }
         // git names a changed path from the top folder of the working tree, which is not the folder a hire ran in when that was a subfolder
         Path root = ran == null || !Files.isDirectory(ran) ? ran : TreeAttribution.repositoryRoot(host, ran);
-        for (TreeAttribution.FileChange change : proposal.changes()) {
+        for (TreeAttribution.FileChange change : changes) {
             if (root == null || !Files.isDirectory(root)) {
                 kept.add(change.path() + " (the folder the hire ran in is not known)");
             } else {
@@ -79,7 +79,7 @@ final class TakeBack {
                 }
             }
         }
-        proposal.omitted().forEach(file -> kept.add(file + " (too large to compare, put it back yourself)"));
+        omitted.forEach(file -> kept.add(file + " (too large to compare, put it back yourself)"));
         return new Result(List.copyOf(putBack), List.copyOf(kept));
     }
 
