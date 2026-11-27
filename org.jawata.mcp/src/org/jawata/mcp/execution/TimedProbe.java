@@ -36,12 +36,21 @@ final class TimedProbe {
         }
         List<Map<String, Object>> rows = new ArrayList<>();
         AcpBrainSession.Conversation kept = keepRunning ? open(program, model) : null;
+        // 28h z165: a program reports what its session has cost so far, so a run of a kept program costs the total after it less the total
+        // before it, and none where either figure is missing.
+        Double spentBefore = 0.0;
         try {
             for (int run = 1; run <= repeat; run++) {
                 long started = System.nanoTime();
                 AcpBrainSession.Conversation session = kept != null ? kept : open(program, model);
                 try {
-                    rows.add(timed(session, prompt, run, started));
+                    Map<String, Object> row = timed(session, prompt, run, started);
+                    if (kept != null) {
+                        Double total = (Double) row.get("costUsd");
+                        row.put("costUsd", total == null || spentBefore == null ? null : total - spentBefore);
+                        spentBefore = total;
+                    }
+                    rows.add(row);
                 } finally {
                     if (kept == null) {
                         session.close();

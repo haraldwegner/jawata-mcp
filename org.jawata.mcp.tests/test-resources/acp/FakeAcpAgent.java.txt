@@ -20,6 +20,8 @@ public class FakeAcpAgent {
 
     static final Map<String, String> servers = new HashMap<>();
     static int counter;
+    /** What this process's session has cost so far, when a file "cost" says what a turn costs. */
+    static double totalCost;
     /** With FAKE_ACP_LOGIN set, a session is refused with "Authentication required" until the client has called authenticate. */
     static final boolean loginRequired = System.getenv("FAKE_ACP_LOGIN") != null;
     static boolean authenticated;
@@ -489,6 +491,14 @@ public class FakeAcpAgent {
             Thread.sleep(60_000);
         } else if (text.startsWith("DIE")) {
             System.exit(3);
+        }
+        // With a file "cost" in the state folder, each ordinary turn costs that much more, and the usage update carries the session's total so far,
+        // as Claude's adapter reports cost (28h z165).
+        Path turnCost = state.resolve("cost");
+        if (Files.exists(turnCost)) {
+            totalCost += Double.parseDouble(Files.readString(turnCost).strip());
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"usage_update\",\"used\":100,\"size\":1000,\"cost\":{\"amount\":" + totalCost + ",\"currency\":\"USD\"}}}}");
         }
         // With a file "usage" in the state folder, each ordinary turn's answer carries it, as Claude's adapter answers a prompt (28h z142).
         Path usage = state.resolve("usage");

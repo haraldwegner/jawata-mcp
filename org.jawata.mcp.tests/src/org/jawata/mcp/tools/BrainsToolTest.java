@@ -131,6 +131,8 @@ class BrainsToolTest {
         stored.put("jawata.agent.hireBrains", registry.toString());
         Files.writeString(agent.resolve("usage"), "{\"inputTokens\":3,\"outputTokens\":7}");
         ObjectNode asked = JSON.createObjectNode().put("action", "probe").put("brain", "fake").put("model", "Haiku").put("prompt", "REMEMBER:z93").put("repeat", 2);
+        // 28h z165: each turn costs a quarter, and the program reports what its session has cost so far
+        Files.writeString(agent.resolve("cost"), "0.25");
 
         List<Map<String, Object>> cold = runs(tool(seats).execute(asked.deepCopy()));
         List<Map<String, Object>> warm = runs(tool(seats).execute(asked.deepCopy().put("keepRunning", true).put("repeat", 3)));
@@ -140,6 +142,8 @@ class BrainsToolTest {
         for (Map<String, Object> row : cold) {
             assertTrue((Double) row.get("seconds") >= 0.6, "a run of its own program did not count the start: " + row);
         }
+        assertEquals(List.of(0.25, 0.25), cold.stream().map(row -> row.get("costUsd")).toList(), cold::toString);
+        assertEquals(List.of(0.25, 0.25, 0.25), warm.stream().map(row -> row.get("costUsd")).toList(), "a run was given the session's total so far: " + warm);
         for (Map<String, Object> row : warm) {
             assertTrue((Double) row.get("seconds") < 0.6, "a kept-running program was started again, or its start was counted: " + row);
             assertTrue((Double) row.get("secondsToFirstText") <= (Double) row.get("seconds"), row::toString);
