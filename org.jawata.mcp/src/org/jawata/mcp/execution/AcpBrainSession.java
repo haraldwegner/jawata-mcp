@@ -429,7 +429,7 @@ public final class AcpBrainSession {
         /** The models the brain offered when it opened this session, and the value of the one it is on; empty when it offers none. */
         private List<Model> models = List.of();
         private String modelValue = "";
-        /** Whether the brain answered a new session here, which is where it names its models: a resumed session names none, and says nothing about them. */
+        /** Whether the answer that opened the session says what models the brain offers: a new session's always does, a loaded one's only if it names them. */
         private boolean modelsAnswered;
 
         private StringBuilder said = new StringBuilder();
@@ -506,7 +506,7 @@ public final class AcpBrainSession {
                 conversation.close();
                 throw e;
             }
-            // only a new session's answer names the models; a resumed one would replace what the brain offered with nothing
+            // only an answer that names the models is kept; a resumed one that names none would replace what the brain offered with nothing
             if (conversation.modelsAnswered) {
                 OFFERED.put(program, conversation.models());
             }
@@ -561,6 +561,7 @@ public final class AcpBrainSession {
                 });
                 if (opened != null) {
                     sessionId = earlier;
+                    readModels(opened, false);
                 }
             }
             if (sessionId == null) {
@@ -582,7 +583,7 @@ public final class AcpBrainSession {
                     }
                 }
                 sessionId = created == null ? null : created.path("sessionId").asText(null);
-                readModels(created);
+                readModels(created, true);
                 opened = created;
             }
             // 28h Stage 27 (z2): a brain with its own editors withheld is NOT moved into a read-only mode. Cursor's "ask" mode hides every jawata
@@ -619,18 +620,22 @@ public final class AcpBrainSession {
             OWN_WRITERS.forEach(disallowed::add);
         }
 
-        /** The brain's own model option, from the answer that opened the session: its values, and the one it is on. Nothing when it has none. */
-        private void readModels(JsonNode created) {
-            if (created == null) {
+        /**
+         * The brain's own model option, from the answer that opened the session: its values, and the one it is on. Nothing when it has none.
+         * A new session's answer without the option says the brain offers no model; a loaded one that leaves it out says nothing (28h z82).
+         */
+        private void readModels(JsonNode opened, boolean newSession) {
+            if (opened == null) {
                 return;
             }
-            modelsAnswered = true;
-            for (JsonNode option : created.path("configOptions")) {
+            modelsAnswered = newSession;
+            for (JsonNode option : opened.path("configOptions")) {
                 if ("model".equals(option.path("id").asText()) || "model".equals(option.path("category").asText())) {
                     List<Model> offered = new ArrayList<>();
                     option.path("options").forEach(choice -> offered.add(new Model(choice.path("value").asText(), choice.path("name").asText(choice.path("value").asText()))));
                     models = List.copyOf(offered);
                     modelValue = option.path("currentValue").asText("");
+                    modelsAnswered = true;
                     return;
                 }
             }

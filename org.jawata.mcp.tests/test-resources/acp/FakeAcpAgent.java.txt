@@ -139,7 +139,10 @@ public class FakeAcpAgent {
                     sources.put(session, between(line, "\"settingSources\":"));
                     bypass.put(session, line.contains("\"allowDangerouslySkipPermissions\":false") ? "bypass refused" : "bypass left to the settings");
                     chunk(session, "HISTORY of the earlier session");
-                    reply(id, offeredModes.length == 0 ? "{}" : "{\"modes\":" + modes() + "}");
+                    // With FAKE_ACP_LOAD_NAMES_MODELS set, a loaded session names its model option as a new one does (28h z82); without it, nothing.
+                    boolean names = offeredModels.length > 0 && System.getenv("FAKE_ACP_LOAD_NAMES_MODELS") != null;
+                    reply(id, "{" + String.join(",", java.util.stream.Stream.of(names ? "\"configOptions\":[" + modelOption() + "]" : "",
+                        offeredModes.length == 0 ? "" : "\"modes\":" + modes()).filter(part -> !part.isEmpty()).toList()) + "}");
                 }
                 case "session/prompt" -> prompt(line, id, state);
                 default -> { }

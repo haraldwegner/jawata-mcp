@@ -576,21 +576,29 @@ public final class PrincipalBrain implements AgentBrain {
 
     @Override
     public void prepare(Runnable whenReady) {
+        if (program.isPresent()) {
+            forgetTheLastConversation();
+        }
+        warm(whenReady);
+    }
+
+    /** Starts the conversation beside the caller, the one it already holds included, so a loaded chat is offered the brain's models (28h z82). */
+    @Override
+    public void warm(Runnable whenReady) {
         if (program.isEmpty()) {
             whenReady.run();
-            return;
+        } else {
+            Thread starter = new Thread(() -> {
+                try {
+                    conversation();
+                } catch (IOException | RuntimeException e) {
+                    // the first prompt starts it again and tells the person what went wrong
+                }
+                whenReady.run();
+            }, "jawata-principal-warm");
+            starter.setDaemon(true);
+            starter.start();
         }
-        forgetTheLastConversation();
-        Thread warm = new Thread(() -> {
-            try {
-                conversation();
-            } catch (IOException | RuntimeException e) {
-                // the first prompt starts it again and tells the person what went wrong
-            }
-            whenReady.run();
-        }, "jawata-principal-warm");
-        warm.setDaemon(true);
-        warm.start();
     }
 
     @Override

@@ -118,8 +118,9 @@ class AgentHistoryTest {
         JsonNode loaded = later.call(3, "session/load", load);
 
         assertEquals(first.session, loaded.path("result").path("sessionId").asText());
-        assertEquals(List.of("user_message_chunk:Reply with exactly the one word: pong", "agent_message_chunk:pong", "available_commands_update:"),
-            later.updates(), "the earlier turn is replayed in the order it was said, before the load is answered, and the session's commands follow (D57 (h))");
+        assertEquals(List.of("user_message_chunk:Reply with exactly the one word: pong", "agent_message_chunk:pong", "available_commands_update:",
+            "config_option_update:"), later.updates(),
+            "the earlier turn is replayed in the order it was said, before the load is answered, and the session's commands (D57 (h)) and options (28h z82) follow");
 
         later.session = first.session;
         later.prompt("and once more");
@@ -242,6 +243,33 @@ class AgentHistoryTest {
         List<String> titles = later.said.stream().map(m -> m.path("params").path("update"))
             .filter(u -> "tool_call".equals(u.path("sessionUpdate").asText())).map(u -> u.path("title").asText()).toList();
         assertEquals(List.of("Read a.txt — completed"), titles, "the reloaded session did not replay the call as one line: " + later.said);
+    }
+
+    @Test
+    @DisplayName("28h z82: a chat loaded from history starts the brain ahead and then tells the host the options again, before anything is sent")
+    void aLoadedSessionStartsTheBrainAndTellsTheOptions() {
+        Connection first = new Connection("answered", AgentRecorder.Depth.ALL);
+        first.open();
+        first.prompt("hello");
+
+        java.util.concurrent.atomic.AtomicInteger warmed = new java.util.concurrent.atomic.AtomicInteger();
+        Connection later = new Connection(new AgentBrain() {
+            @Override
+            public void answer(String prompt, java.util.function.Consumer<String> chunks) {
+                chunks.accept("unused");
+            }
+
+            @Override
+            public void warm(Runnable whenReady) {
+                warmed.incrementAndGet();
+                whenReady.run();
+            }
+        }, AgentRecorder.Depth.ALL);
+        later.call(3, "session/load", JSON.createObjectNode().put("sessionId", first.session).put("cwd", "/w"));
+
+        assertEquals(1, warmed.get(), "the load did not start the brain");
+        assertTrue(later.updates().stream().anyMatch(update -> update.startsWith("config_option_update")),
+            "the host was not told the options once the brain was ready: " + later.said);
     }
 
     /** A brain that makes one hire as a real brain streams it: the call with its arguments, then (when {@code finished}) its completion carrying the hire tool's answer. */

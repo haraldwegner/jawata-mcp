@@ -96,6 +96,15 @@ public interface AgentBrain {
         whenReady.run();
     }
 
+    /**
+     * Starts ahead what the next prompt would start, keeping what the answerer already holds, and runs {@code whenReady} once that is done or has
+     * failed: a conversation loaded from history is then offered its brain's models before anything is sent (28h z82). An answerer with no slow
+     * start runs it at once.
+     */
+    default void warm(Runnable whenReady) {
+        whenReady.run();
+    }
+
     /** The person stopped the turn: an answerer that is reading a brain's answer tells that brain, and its turn ends with the brain's reply (D53 (f)). */
     default void cancel() {
     }

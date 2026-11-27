@@ -557,6 +557,24 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h z82: a session resumed by session/load reads the brain's models and the one it is on, as a new one does")
+    void aResumedSessionReadsTheModels() throws Exception {
+        AcpBrainSession.Program withModels = new AcpBrainSession.Program(agent.command(),
+            Map.of("FAKE_ACP_STATE", dir.toString(), "FAKE_ACP_MODELS", "default=Default,opus=Opus 5.5", "FAKE_ACP_LOAD_NAMES_MODELS", "1"));
+        HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(Duration.ofSeconds(60));
+        try (AcpBrainSession.Conversation chat = AcpBrainSession.Conversation.start(host, withModels, HireSite.in(dir), null, List.of(),
+                Optional.of("earlier-session"), ceilings, AcpBrainSession.OwnTools.KEPT)) {
+            List<AcpBrainSession.Model> offered = chat.models();
+            Optional<AcpBrainSession.Model> on = chat.currentModel();
+            assertEquals(Optional.of("earlier-session"), chat.prompt("WHICHMODEL", List.of(), ceilings, piece -> { }, null, null).brainSessionId(),
+                "CONTROL: the session was not the resumed one, so a new one's models would be read instead");
+            assertEquals(List.of(new AcpBrainSession.Model("default", "Default"), new AcpBrainSession.Model("opus", "Opus 5.5")), offered,
+                "the resumed session names no models");
+            assertEquals(Optional.of(new AcpBrainSession.Model("default", "Default")), on, "the resumed session says no model it is on");
+        }
+    }
+
+    @Test
     @DisplayName("z38: a brain asked for \"latest:grok\" is moved to the offered model of that family with the highest version, whatever order the brain lists them in")
     void theLatestOfAFamilyIsTheOneWithTheHighestVersion() throws Exception {
         AcpBrainSession.Model newest = new AcpBrainSession.Model("grok-9.2", "Grok 9.2");

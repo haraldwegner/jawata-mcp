@@ -111,6 +111,8 @@ public final class AcpServer {
             // 28h D57 (h): a chat opened again after a restart or from History holds the commands of its session like a new one, or its / list is empty.
             if (loaded != null && !loaded.side()) {
                 advertiseCommands(loaded.id());
+                // 28h z82: the running brain is started ahead, so its models are offered before anything is sent.
+                brain.warm(() -> update(loaded.id(), configOptionUpdate(loaded)));
                 readModelsInTheBackground(loaded);
             }
             if (loaded != null) {
