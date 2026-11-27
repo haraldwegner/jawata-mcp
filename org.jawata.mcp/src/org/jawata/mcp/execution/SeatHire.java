@@ -77,24 +77,24 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
      * order of the constants is the order those lists show. A seat may name no other.
      */
     public enum Brain {
-        CLAUDE_CODE(new Program("Claude Code", "claude", "claude auth login", Set.of(Can.TAKE_A_MODEL, Can.CHANGE_CODE, Can.READ_FILES),
+        CLAUDE_CODE(new ProgramFacts("Claude Code", "claude", "claude auth login", Set.of(Can.TAKE_A_MODEL, Can.CHANGE_CODE, Can.READ_FILES),
             List.of(new Start("claude-agent-acp", List.of(), "npm install -g @agentclientprotocol/claude-agent-acp"),
                 new Start("claude-code-acp", List.of(), "npm install -g @zed-industries/claude-code-acp")),
             List.of()), "claude-code", "claude"),
-        CODEX(new Program("Codex", "codex", "codex login", Set.of(),
+        CODEX(new ProgramFacts("Codex", "codex", "codex login", Set.of(),
             List.of(new Start("codex-acp", List.of(), "npm install -g @zed-industries/codex-acp")), List.of()), "codex"),
-        CURSOR(new Program("Cursor-Grok", "cursor-agent", "cursor-agent login", Set.of(Can.TAKE_A_MODEL, Can.CHANGE_CODE, Can.WRITE_UNHELD),
+        CURSOR(new ProgramFacts("Cursor-Grok", "cursor-agent", "cursor-agent login", Set.of(Can.TAKE_A_MODEL, Can.CHANGE_CODE, Can.WRITE_UNHELD),
             List.of(), List.of("agent")), "cursor", "cursor-agent"),
-        COPILOT(new Program("Copilot", "copilot", "copilot login", Set.of(),
+        COPILOT(new ProgramFacts("Copilot", "copilot", "copilot login", Set.of(),
             List.of(new Start("copilot", List.of("--acp"), "npm install -g @github/copilot")), List.of()), "copilot"),
         /** Google's Antigravity command-line agent, started over ACP as {@code agy acp}, or in print mode through {@link AntigravityDialect} (28h z54). */
-        ANTIGRAVITY(new Program("Antigravity", "agy", "agy acp --login", Set.of(Can.TAKE_A_MODEL, Can.WRITE_UNHELD),
+        ANTIGRAVITY(new ProgramFacts("Antigravity", "agy", "agy acp --login", Set.of(Can.TAKE_A_MODEL, Can.WRITE_UNHELD),
             List.of(new Start("agy", List.of("acp"), "curl -fsSL https://antigravity.google/cli/install.sh | bash")), List.of()), "antigravity", "agy"),
         /**
          * Any executable, named by the seat's {@code script:} line — {@link ScriptDialect}, the
          * escape hatch for a CLI with no dialect of its own (S16-6). No program of its own, so no facts.
          */
-        SCRIPT(new Program("Script", "", "", Set.of(), List.of(), List.of()), "script");
+        SCRIPT(new ProgramFacts("Script", "", "", Set.of(), List.of(), List.of()), "script");
 
         /** What a seat may ask of a brain, or what is known to be true of it. */
         public enum Can {
@@ -122,19 +122,19 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
          * @param acp        the programs that speak ACP for it, in the order they are tried
          * @param otherNames the other binaries it installs as, beside its spellings and those programs
          */
-        public record Program(String title, String command, String login, Set<Can> can, List<Start> acp, List<String> otherNames) {
+        public record ProgramFacts(String title, String command, String login, Set<Can> can, List<Start> acp, List<String> otherNames) {
         }
 
-        private final Program program;
+        private final ProgramFacts program;
         private final List<String> spellings;
 
-        Brain(Program program, String... spellings) {
+        Brain(ProgramFacts program, String... spellings) {
             this.program = program;
             this.spellings = List.of(spellings);
         }
 
         /** The facts of its program. */
-        public Program program() {
+        public ProgramFacts program() {
             return program;
         }
 
