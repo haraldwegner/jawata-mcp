@@ -283,6 +283,27 @@ public interface SeatSettings {
     }
 
     /**
+     * Replaces every stored choice with these in one write (28h D58 (d)): a hire reads either the old set or the new one. A choice the brain
+     * registry refuses leaves that seat's old choice in place; a stored seat that is not listed loses its choice.
+     *
+     * @param choices one map per seat with seat, brain and, optionally, model
+     * @return {@code seats} (every choice stored now), {@code refused} (seat and reason), {@code removed} (seats) and {@code applies}
+     */
+    default Map<String, Object> replaceStoredSeatChoices(List<Map<String, String>> choices) {
+        throw new UnsupportedOperationException("no seat-choice store is open");
+    }
+
+    /**
+     * Drops one seat's stored choice (28h z173).
+     *
+     * @param seat the seat
+     * @return {@code seat}, {@code removed} (whether one was stored) and {@code applies}
+     */
+    default Map<String, Object> removeStoredSeatChoice(String seat) {
+        throw new UnsupportedOperationException("no seat-choice store is open");
+    }
+
+    /**
      * Times one prompt through a brain's own program, run after run, with no tools, so a lead can learn how fast a model answers without a
      * shell.
      *

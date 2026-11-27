@@ -14,9 +14,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 /**
  * The engine's one answer about the agent programs a seat can run on (Sprint 28h, D57 (c) and the architect's watch of C26), for a host that is
  * not the engine's own process: the studio asks it instead of checking and testing each program itself, so a rule about a brain (which models
- * it offers, how its command line names one) is kept in the engine alone. Five actions: the models each chat brain's own session offers, which
+ * it offers, how its command line names one) is kept in the engine alone. The actions: the models each chat brain's own session offers, which
  * programs this machine has and whether they are logged in, a one-word test run through a brain and model before a seat keeps the choice, the
- * stored brain and model of every seat, and the storing of one seat's choice.
+ * stored brain and model of every seat, and the storing of one seat's choice, of the whole set at once, or the removal of one.
  */
 public final class BrainsTool implements Tool {
 
@@ -45,24 +45,30 @@ public final class BrainsTool implements Tool {
                    brains(action="probe", brain="claude-code", model="Haiku 5.5") — a one-word run through it (Claude: under a cent)
                    brains(action="choices")                       — the stored brain and model of every seat
                    brains(action="set", seat="pm", brain="claude-code", model="Haiku 5.5") — store one seat's choice
+                   brains(action="replace", choices=[{seat, brain, model}, ...]) — store the whole set at once
+                   brains(action="remove", seat="pm")             — drop one seat's choice
 
             models answers {brains: [{brain, label, models}]}, the brain's own default left out; with no brain named, a brain whose session could
             not be opened carries {error} instead. status answers {brains: [{id, label, installed, login, reason, loginCommand, models, hirable,
             takesModel, writesHeldByInstruction}]}. probe answers {brain, ok, answer, modelsUsed, costUsd, seconds, error, loginCommand}; a model is
             named as a Brain list shows it, and the engine gives the program's command line what it takes. A brain or model the engine does not know
             is refused by name, never answered with an empty list. choices answers {seats: [{seat, brain, model}]}. set checks the brain and
-            model against the registry and answers {seat, brain, model, applies}; a wrong one is refused and not stored. The stored choice is
-            what the next hire of that seat starts on. A hire that is already running is not moved.
+            model against the registry and answers {seat, brain, model, applies}; a wrong one is refused and not stored. replace writes the set in
+            one step and answers {seats, refused: [{seat, reason}], removed, applies}: a refused seat keeps its old choice, an unlisted one loses
+            it. remove answers {seat, removed, applies}. The stored choice is what the next hire of that seat starts on. A hire that is already
+            running is not moved.
             """;
     }
 
     @Override
     public Map<String, Object> getInputSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("action", Map.of("type", "string", "enum", List.of("models", "status", "probe", "choices", "set"), "description", "What to ask (default models)."));
+        properties.put("action", Map.of("type", "string", "enum", List.of("models", "status", "probe", "choices", "set", "replace", "remove"), "description", "What to ask (default models)."));
+        properties.put("choices", Map.of("type", "array", "description", "replace: every stored choice, one per seat.",
+            "items", Map.of("type", "object", "properties", Map.of("seat", Map.of("type", "string"), "brain", Map.of("type", "string"), "model", Map.of("type", "string")))));
         properties.put("brain", Map.of("type", "string", "description", "The brain's id (e.g. claude-code, cursor). models: omit for every ready chat brain; probe and set: required."));
         properties.put("model", Map.of("type", "string", "description", "probe and set: the model, as a Brain list shows it; omit for the brain's own default."));
-        properties.put("seat", Map.of("type", "string", "description", "set: the seat whose stored choice is replaced."));
+        properties.put("seat", Map.of("type", "string", "description", "set and remove: the seat whose stored choice is changed."));
         properties.put("prompt", Map.of("type", "string", "description", "probe: a prompt to time; with it, repeat or keepRunning, the probe times runs."));
         properties.put("repeat", Map.of("type", "integer", "description", "probe: how many timed runs, 1 to 20 (default 1)."));
         properties.put("keepRunning", Map.of("type", "boolean", "description", "probe: start the program once and time each run from its prompt."));
@@ -82,7 +88,9 @@ public final class BrainsTool implements Tool {
                 ? timedProbe(door, brain, arguments) : probe(door, brain, arguments.path("model").asText(""));
             case "choices" -> choices(door);
             case "set" -> set(door, arguments.path("seat").asText(""), brain, arguments.path("model").asText(""));
-            default -> ToolResponse.invalidParameter("action", "action must be models, status, probe, choices or set, not '" + action + "'");
+            case "replace" -> replace(door, arguments.path("choices"));
+            case "remove" -> remove(door, arguments.path("seat").asText(""));
+            default -> ToolResponse.invalidParameter("action", "action must be models, status, probe, choices, set, replace or remove, not '" + action + "'");
         };
     }
 
@@ -189,6 +197,40 @@ public final class BrainsTool implements Tool {
             return ToolResponse.error("PRECONDITION_NOT_MET", refused.getMessage(), org.jawata.mcp.execution.SeatBrains.WHERE);
         } catch (IllegalStateException closed) {
             return ToolResponse.error("PRECONDITION_NOT_MET", closed.getMessage(), org.jawata.mcp.execution.SeatBrains.WHERE);
+        }
+    }
+
+    /** The whole set of choices in one write (28h D58 (d)); a call that does not say the list, or names a seat twice, stores nothing. */
+    private static ToolResponse replace(SeatSettings door, JsonNode choices) {
+        if (!choices.isArray()) {
+            return ToolResponse.invalidParameter("choices", "a replace names the whole list of choices; an empty list drops them all");
+        }
+        List<Map<String, String>> asked = new ArrayList<>();
+        java.util.Set<String> seats = new java.util.HashSet<>();
+        for (JsonNode each : choices) {
+            String seat = each.path("seat").asText("").strip();
+            if (seat.isEmpty() || !seats.add(seat)) {
+                return ToolResponse.invalidParameter("choices", "each choice names its seat, and a seat only once");
+            }
+            asked.add(Map.of("seat", seat, "brain", each.path("brain").asText(""), "model", each.path("model").asText("")));
+        }
+        return changed(() -> door.replaceStoredSeatChoices(asked));
+    }
+
+    /** One seat's stored choice dropped (28h z173). */
+    private static ToolResponse remove(SeatSettings door, String seat) {
+        if (seat.isBlank()) {
+            return ToolResponse.invalidParameter("seat", "a removal names the seat");
+        }
+        return changed(() -> door.removeStoredSeatChoice(seat));
+    }
+
+    /** A change to the stored choices, answered with what the door says, or with why it could not be made. */
+    private static ToolResponse changed(Supplier<Map<String, Object>> change) {
+        try {
+            return ToolResponse.success(change.get());
+        } catch (IllegalArgumentException | IllegalStateException refused) {
+            return ToolResponse.error("PRECONDITION_NOT_MET", refused.getMessage(), org.jawata.mcp.execution.SeatBrains.WHERE);
         }
     }
 

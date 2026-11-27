@@ -209,4 +209,89 @@ class SeatBrainsTest {
         assertEquals("claude-code", heard.get(0).brain());
         assertEquals("Haiku 5.5", heard.get(0).model());
     }
+
+    @Test
+    @DisplayName("28h D58 (d): replacing the choices stores the listed ones, drops the others and tells each listener both")
+    void aReplaceStoresTheListedChoicesAndDropsTheRest() throws Exception {
+        Path dir = java.nio.file.Files.createTempDirectory("seat-brains-replace-");
+        SeatBrains.Store store = SeatBrains.Store.open(dir.resolve("choices"));
+        store.save("developer", "cursor", "old", REGISTRY);
+        store.save("tester", "cursor", "old", REGISTRY);
+        java.util.List<SeatBrains.Notice> heard = new java.util.concurrent.CopyOnWriteArrayList<>();
+        store.listen(heard::add);
+
+        SeatBrains.Replaced replaced = store.replace(java.util.List.of(
+            new SeatBrains.Notice("developer", "claude-code", "new"), new SeatBrains.Notice("pm", "cursor", "")), REGISTRY);
+
+        assertAll(
+            () -> assertEquals("developer=claude-code/new;pm=cursor/registry-model", store.text()),
+            () -> assertEquals("developer=claude-code/new;pm=cursor/registry-model", java.nio.file.Files.readString(dir.resolve("choices"))),
+            () -> assertEquals(java.util.List.of("developer", "pm"), replaced.stored().stream().map(SeatBrains.Notice::seat).toList()),
+            () -> assertEquals(java.util.List.of("tester"), replaced.removed()),
+            () -> assertEquals(java.util.Map.of(), replaced.refused()),
+            () -> assertEquals(java.util.List.of("developer=claude-code/new", "pm=cursor/registry-model", "tester=/"),
+                heard.stream().map(each -> each.seat() + "=" + each.brain() + "/" + each.model()).toList()));
+    }
+
+    @Test
+    @DisplayName("28h D58 (d): a choice the registry refuses is named and that seat keeps the choice it had; the others are stored")
+    void aReplaceKeepsTheChoiceOfARefusedSeat() throws Exception {
+        Path dir = java.nio.file.Files.createTempDirectory("seat-brains-refused-");
+        SeatBrains.Store store = SeatBrains.Store.open(dir.resolve("choices"));
+        store.save("developer", "cursor", "old", REGISTRY);
+
+        SeatBrains.Replaced replaced = store.replace(java.util.List.of(
+            new SeatBrains.Notice("developer", "codex", "x"), new SeatBrains.Notice("pm", "claude-code", "new")), REGISTRY);
+
+        assertEquals("developer=cursor/old;pm=claude-code/new", store.text());
+        assertEquals(java.util.List.of(), replaced.removed());
+        assertEquals(java.util.Set.of("developer"), replaced.refused().keySet());
+        assertTrue(replaced.refused().get("developer").contains("codex"), replaced.refused().toString());
+    }
+
+    @Test
+    @DisplayName("28h D58 (d): a reader during a replace sees one whole set of choices, never some of each")
+    void aReaderDuringAReplaceSeesOneWholeSet() throws Exception {
+        Path dir = java.nio.file.Files.createTempDirectory("seat-brains-whole-");
+        SeatBrains.Store store = SeatBrains.Store.open(dir.resolve("choices"));
+        java.util.List<SeatBrains.Notice> left = java.util.List.of(
+            new SeatBrains.Notice("developer", "cursor", "left"), new SeatBrains.Notice("pm", "cursor", "left"));
+        java.util.List<SeatBrains.Notice> right = java.util.List.of(
+            new SeatBrains.Notice("developer", "claude-code", "right"), new SeatBrains.Notice("pm", "claude-code", "right"));
+        store.replace(left, REGISTRY);
+        java.util.Set<String> whole = java.util.Set.of("developer=cursor/left;pm=cursor/left", "developer=claude-code/right;pm=claude-code/right");
+        java.util.Set<String> seen = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        java.util.concurrent.atomic.AtomicBoolean writing = new java.util.concurrent.atomic.AtomicBoolean(true);
+        Thread reader = new Thread(() -> {
+            while (writing.get()) {
+                seen.add(store.text());
+            }
+        });
+        reader.start();
+        for (int i = 0; i < 200; i++) {
+            store.replace(i % 2 == 0 ? right : left, REGISTRY);
+        }
+        writing.set(false);
+        reader.join();
+
+        assertTrue(whole.containsAll(seen), seen.toString());
+    }
+
+    @Test
+    @DisplayName("28h z173: removing a seat's choice drops only that one, and says whether there was one")
+    void aRemoveDropsOneChoice() throws Exception {
+        Path dir = java.nio.file.Files.createTempDirectory("seat-brains-remove-");
+        SeatBrains.Store store = SeatBrains.Store.open(dir.resolve("choices"));
+        store.save("developer", "cursor", "m", REGISTRY);
+        store.save("pm", "cursor", "m", REGISTRY);
+        java.util.List<SeatBrains.Notice> heard = new java.util.concurrent.CopyOnWriteArrayList<>();
+        store.listen(heard::add);
+
+        assertTrue(store.remove("developer"));
+        assertFalse(store.remove("developer"), "a seat with no choice reported one removed");
+
+        assertEquals("pm=cursor/m", store.text());
+        assertEquals("pm=cursor/m", java.nio.file.Files.readString(dir.resolve("choices")));
+        assertEquals(java.util.List.of(new SeatBrains.Notice("developer", "", "")), heard);
+    }
 }

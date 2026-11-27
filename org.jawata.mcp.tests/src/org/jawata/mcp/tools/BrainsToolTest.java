@@ -164,6 +164,39 @@ class BrainsToolTest {
     }
 
     @Test
+    @DisplayName("28h D58 (d), z173: replace stores a whole set in one call, remove drops one choice, and a replace naming no list stores nothing")
+    @SuppressWarnings("unchecked")
+    void replaceAndRemoveThroughTheTool(@TempDir Path seats, @TempDir Path data) {
+        stored.put("jawata.agent.hireBrains", "{\"cursor\":{\"model\":\"m\"},\"claude-code\":{\"model\":\"h\"}}");
+        org.jawata.mcp.execution.SeatBrains.Store store = org.jawata.mcp.execution.SeatBrains.install(data.resolve("choices"));
+        try {
+            tool(seats).execute(JSON.createObjectNode().put("action", "set").put("seat", "tester").put("brain", "cursor"));
+            ObjectNode replace = JSON.createObjectNode().put("action", "replace");
+            replace.putArray("choices").add(JSON.createObjectNode().put("seat", "developer").put("brain", "claude-code").put("model", "x"))
+                .add(JSON.createObjectNode().put("seat", "pm").put("brain", "codex"));
+
+            ToolResponse replaced = tool(seats).execute(replace);
+
+            assertTrue(replaced.isSuccess(), () -> String.valueOf(replaced.getError()));
+            Map<String, Object> answer = (Map<String, Object>) replaced.getData();
+            assertEquals(List.of(Map.of("seat", "developer", "brain", "claude-code", "model", "x")), answer.get("seats"));
+            assertEquals(List.of("tester"), answer.get("removed"));
+            assertEquals(List.of("pm"), ((List<Map<String, Object>>) answer.get("refused")).stream().map(row -> row.get("seat")).toList());
+
+            assertFalse(tool(seats).execute(JSON.createObjectNode().put("action", "replace")).isSuccess(), "a replace with no list was taken");
+            assertEquals("developer=claude-code/x", store.text(), "CONTROL: the refused call changed what is stored");
+
+            ToolResponse removed = tool(seats).execute(JSON.createObjectNode().put("action", "remove").put("seat", "developer"));
+
+            assertTrue(removed.isSuccess(), () -> String.valueOf(removed.getError()));
+            assertEquals(true, ((Map<String, Object>) removed.getData()).get("removed"));
+            assertEquals("", store.text());
+        } finally {
+            org.jawata.mcp.execution.SeatBrains.uninstall();
+        }
+    }
+
+    @Test
     @DisplayName("28h D57 (c): a brain the registry does not name is refused by name, never answered with an empty list")
     void anUnknownBrainIsRefused(@TempDir Path seats) {
         ToolResponse answer = tool(seats).execute(JSON.createObjectNode().put("brain", "nobody"));

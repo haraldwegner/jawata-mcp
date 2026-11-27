@@ -3830,13 +3830,33 @@
       "status",
       "probe",
       "choices",
-      "set"
+      "set",
+      "replace",
+      "remove"
      ],
      "type": "string"
     },
     "brain": {
      "description": "The brain's id (e.g. claude-code, cursor). models: omit for every ready chat brain; probe and set: required.",
      "type": "string"
+    },
+    "choices": {
+     "description": "replace: every stored choice, one per seat.",
+     "items": {
+      "properties": {
+       "brain": {
+        "type": "string"
+       },
+       "model": {
+        "type": "string"
+       },
+       "seat": {
+        "type": "string"
+       }
+      },
+      "type": "object"
+     },
+     "type": "array"
     },
     "keepRunning": {
      "description": "probe: start the program once and time each run from its prompt.",
@@ -3859,7 +3879,7 @@
      "type": "integer"
     },
     "seat": {
-     "description": "set: the seat whose stored choice is replaced.",
+     "description": "set and remove: the seat whose stored choice is changed.",
      "type": "string"
     }
    },

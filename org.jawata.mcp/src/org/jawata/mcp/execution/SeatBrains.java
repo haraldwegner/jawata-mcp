@@ -39,6 +39,16 @@ public final class SeatBrains {
     public record Notice(String seat, String brain, String model) {
     }
 
+    /**
+     * What {@link Store#replace} did.
+     *
+     * @param stored  every choice stored now
+     * @param refused each listed seat that was not taken, with why; such a seat keeps the choice it had
+     * @param removed each seat whose choice was dropped because it was not listed
+     */
+    public record Replaced(List<Notice> stored, Map<String, String> refused, List<String> removed) {
+    }
+
     private static final AtomicReference<Store> OPEN = new AtomicReference<>();
 
     private SeatBrains() {
@@ -106,6 +116,10 @@ public final class SeatBrains {
     static String put(String stored, String seat, String brain, String model) {
         Map<String, String[]> entries = parse(stored == null ? "" : stored);
         entries.put(seat, new String[] {brain, model == null || model.isBlank() ? null : model});
+        return written(entries);
+    }
+
+    private static String written(Map<String, String[]> entries) {
         StringBuilder out = new StringBuilder();
         for (Map.Entry<String, String[]> each : entries.entrySet()) {
             if (out.length() > 0) {
@@ -282,8 +296,12 @@ public final class SeatBrains {
          * Other seats are kept. A wrong brain or model is not stored.
          */
         public Notice save(String seat, String brain, String model, String registry) {
-            Choice checked = SeatBrains.choose(encode(seat) + "=" + encode(brain) + (model == null || model.isBlank() ? "" : "/" + encode(model)), registry, seat);
+            Choice checked = checked(seat, brain, model, registry);
             return publish(seat, checked);
+        }
+
+        private Choice checked(String seat, String brain, String model, String registry) {
+            return SeatBrains.choose(encode(seat) + "=" + encode(brain) + (model == null || model.isBlank() ? "" : "/" + encode(model)), registry, seat);
         }
 
         private Notice publish(String seat, Choice checked) {
@@ -299,10 +317,76 @@ public final class SeatBrains {
                 text.set(next);
             }
             Notice notice = new Notice(seat.strip(), checked.brain(), checked.model());
+            tell(notice);
+            return notice;
+        }
+
+        private void tell(Notice notice) {
             for (Consumer<Notice> listener : listeners) {
                 listener.accept(notice);
             }
-            return notice;
+        }
+
+        /**
+         * Replaces the whole stored value with {@code choices} in one write (28h D58 (d)), so a hire started meanwhile reads either the old
+         * value or the new one, never some of each. A listed seat the registry refuses keeps the choice it had and is reported; a stored seat
+         * that is not listed is dropped. Listeners hear each stored choice and, with an empty brain and model, each dropped one.
+         */
+        public Replaced replace(List<Notice> choices, String registry) {
+            Map<String, Choice> taken = new LinkedHashMap<>();
+            Map<String, String> refused = new LinkedHashMap<>();
+            for (Notice each : choices) {
+                String seat = each.seat().strip();
+                try {
+                    taken.put(seat, checked(seat, each.brain(), each.model(), registry));
+                } catch (IllegalArgumentException no) {
+                    refused.put(seat, no.getMessage());
+                }
+            }
+            Map<String, String[]> next = new LinkedHashMap<>();
+            List<String> removed = new java.util.ArrayList<>();
+            String body;
+            synchronized (lock) {
+                for (Map.Entry<String, String[]> held : parse(text.get()).entrySet()) {
+                    if (refused.containsKey(held.getKey())) {
+                        next.put(held.getKey(), held.getValue());
+                    } else if (!taken.containsKey(held.getKey())) {
+                        removed.add(held.getKey());
+                    }
+                }
+                taken.forEach((seat, choice) -> next.put(seat, new String[] {choice.brain(), choice.model()}));
+                body = written(next);
+                write(file, body);
+                text.set(body);
+            }
+            List<Notice> stored = listed(body);
+            stored.forEach(this::tell);
+            removed.forEach(seat -> tell(new Notice(seat, "", "")));
+            return new Replaced(stored, refused, removed);
+        }
+
+        /**
+         * Drops one seat's stored choice (28h z173) and tells listeners with an empty brain and model.
+         *
+         * @return whether a choice was stored for the seat
+         * @throws IllegalArgumentException when the stored value could not be read, which a removal does not overwrite
+         */
+        public boolean remove(String seat) {
+            String name = seat.strip();
+            synchronized (lock) {
+                if (text.get() == null) {
+                    throw new IllegalArgumentException("the stored seat choices could not be read. " + WHERE);
+                }
+                Map<String, String[]> entries = parse(text.get());
+                if (entries.remove(name) == null) {
+                    return false;
+                }
+                String body = written(entries);
+                write(file, body);
+                text.set(body);
+            }
+            tell(new Notice(name, "", ""));
+            return true;
         }
 
         /** Writes {@code body} to a temporary file in the same folder and renames it over {@code file}. */

@@ -14,6 +14,7 @@ import java.util.function.Supplier;
 import org.jawata.mcp.engine.SeatSettings;
 import org.jawata.mcp.engine.SettingKeys;
 import org.jawata.mcp.engine.ToolCalls;
+import org.jawata.mcp.execution.SeatBrains.Store;
 import org.jawata.spi.host.EngineSettings;
 
 /**
@@ -457,8 +458,7 @@ public final class SeatSettingsService implements SeatSettings {
     @Override
     public Map<String, String> storedSeatChoice(String seat, String brain, String model) {
         String registry = settings.get(Hirer.BRAINS_SETTING).orElse("");
-        SeatBrains.Store store = SeatBrains.installed()
-            .orElseThrow(() -> new IllegalStateException("no seat-choice store is open. " + SeatBrains.WHERE));
+        SeatBrains.Store store = openStore();
         SeatBrains.Notice notice = store.save(seat, brain, model, registry);
         Map<String, String> row = new LinkedHashMap<>();
         row.put("seat", notice.seat());
@@ -466,6 +466,33 @@ public final class SeatSettingsService implements SeatSettings {
         row.put("model", notice.model());
         row.put("applies", "applies from the next hire of this seat");
         return row;
+    }
+
+    private Store openStore() {
+        return SeatBrains.installed()
+            .orElseThrow(() -> new IllegalStateException("no seat-choice store is open. " + SeatBrains.WHERE));
+    }
+
+    @Override
+    public Map<String, Object> replaceStoredSeatChoices(List<Map<String, String>> choices) {
+        List<SeatBrains.Notice> asked = choices.stream()
+            .map(each -> new SeatBrains.Notice(each.get("seat"), each.get("brain"), each.getOrDefault("model", ""))).toList();
+        SeatBrains.Replaced replaced = openStore().replace(asked, settings.get(Hirer.BRAINS_SETTING).orElse(""));
+        Map<String, Object> answer = new LinkedHashMap<>();
+        answer.put("seats", replaced.stored().stream().map(this::choiceRow).toList());
+        answer.put("refused", replaced.refused().entrySet().stream().map(each -> Map.of("seat", each.getKey(), "reason", each.getValue())).toList());
+        answer.put("removed", replaced.removed());
+        answer.put("applies", "applies from the next hire of each seat");
+        return answer;
+    }
+
+    @Override
+    public Map<String, Object> removeStoredSeatChoice(String seat) {
+        Map<String, Object> answer = new LinkedHashMap<>();
+        answer.put("seat", seat.strip());
+        answer.put("removed", openStore().remove(seat));
+        answer.put("applies", "applies from the next hire of this seat");
+        return answer;
     }
 
     @Override
@@ -476,13 +503,18 @@ public final class SeatSettingsService implements SeatSettings {
         }
         List<Map<String, String>> rows = new ArrayList<>();
         for (SeatBrains.Notice notice : SeatBrains.listed(store.text())) {
-            Map<String, String> row = new LinkedHashMap<>();
-            row.put("seat", notice.seat());
-            row.put("brain", notice.brain());
-            row.put("model", notice.model());
+            Map<String, String> row = choiceRow(notice);
             rows.add(row);
         }
         return rows;
+    }
+
+    private Map<String, String> choiceRow(SeatBrains.Notice notice) {
+        Map<String, String> row = new LinkedHashMap<>();
+        row.put("seat", notice.seat());
+        row.put("brain", notice.brain());
+        row.put("model", notice.model());
+        return row;
     }
 
     @Override
