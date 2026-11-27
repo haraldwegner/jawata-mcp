@@ -354,8 +354,9 @@ public final class AcpServer {
         }
         // A hire the engine knows by plan id is stopped with every hire below it, and the answer names them (Stage 24, M14, ND3); one it does not
         // know by plan id is found by its seat and brief as before.
-        List<String> names = entry.get().enginePlan().map(plan -> HireRegistry.shared().stopTree(plan, null)).orElse(List.of());
-        int stopped = names.isEmpty() ? HireRegistry.shared().stop(entry.get().seat(), entry.get().task()) : names.size();
+        List<String> byPlan = entry.get().enginePlan().map(plan -> HireRegistry.shared().stopTree(plan, null)).orElse(List.of());
+        List<String> names = byPlan.isEmpty() ? HireRegistry.shared().stopNaming(entry.get().seat(), entry.get().task()) : byPlan;
+        int stopped = names.size();
         if (stopped == 0) {
             return JsonRpcMessage.errorResponse(id, INVALID_PARAMS,
                 "this engine is not running a hire of " + entry.get().seat() + " for that brief, so there is nothing here to stop", null);

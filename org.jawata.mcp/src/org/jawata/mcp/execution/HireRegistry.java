@@ -1014,20 +1014,7 @@ public final class HireRegistry {
      * has nothing below it.
      */
     public synchronized int stop(String seat, String brief) {
-        int stoppedCount = 0;
-        for (Running hire : running) {
-            if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
-                if (hire.planId.isEmpty()) {
-                    stopped.add(hire.thread);
-                    hire.onStop.forEach(Runnable::run);
-                    hire.thread.interrupt();
-                    stoppedCount++;
-                } else {
-                    stoppedCount += stopTree(hire.planId, null).size();
-                }
-            }
-        }
-        return stoppedCount;
+        return stopNaming(seat, brief).size();
     }
 
     /** How many finished answers are kept. */
@@ -1287,5 +1274,23 @@ public final class HireRegistry {
             }
         }
         noteToolCall(kept ? new ToolCall(title, input).line(title) : title);
+    }
+
+    /** As {@link #stop(String, String)}, answering each stopped agent as first name and seat (28h z167), so the answer can say who. */
+    public synchronized java.util.List<String> stopNaming(String seat, String brief) {
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (Running hire : running) {
+            if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
+                if (hire.planId.isEmpty()) {
+                    stopped.add(hire.thread);
+                    hire.onStop.forEach(Runnable::run);
+                    hire.thread.interrupt();
+                    names.add(hire.name + " · " + hire.seat);
+                } else {
+                    names.addAll(stopTree(hire.planId, null));
+                }
+            }
+        }
+        return names;
     }
 }

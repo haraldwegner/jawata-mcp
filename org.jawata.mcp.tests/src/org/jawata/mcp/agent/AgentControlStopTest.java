@@ -130,6 +130,8 @@ class AgentControlStopTest {
         assertNull(answer.get("error"), answer.toString());
         assertEquals("t1", answer.path("result").path("planId").asText());
         assertEquals(1, answer.path("result").path("stopped").asInt());
+        // 28h z167: this card knows no plan id yet, and the answer still names whom it stopped
+        assertTrue(answer.path("result").path("stoppedNames").path(0).asText("").endsWith("· " + SEAT), "the stop names nobody it stopped: " + answer);
         assertTrue(interrupted.await(5, TimeUnit.SECONDS), "the thread running the hire was never interrupted");
         worker.join(5_000);
         assertFalse(worker.isAlive(), "the hire thread did not end");
