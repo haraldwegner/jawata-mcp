@@ -75,9 +75,18 @@ public final class HireRegistry {
         /** The lines it wrote that start STEP:, without the mark, in the order written; a line still being written is included. */
         List<String> progressLines() {
             synchronized (written) {
-                return written.toString().lines().map(String::strip).filter(line -> line.startsWith("STEP:"))
-                    .map(line -> line.substring("STEP:".length()).strip()).filter(line -> !line.isEmpty()).toList();
+                return stepLines(written.toString());
             }
+        }
+
+        /** How many STEP: lines it has finished writing; guarded by {@link #written}. */
+        int finishedStepLines() {
+            return stepLines(written.substring(0, written.lastIndexOf("\n") + 1)).size();
+        }
+
+        private static List<String> stepLines(String text) {
+            return text.lines().map(String::strip).filter(line -> line.startsWith("STEP:"))
+                .map(line -> line.substring("STEP:".length()).strip()).filter(line -> !line.isEmpty()).toList();
         }
 
         Running(String seat, String brief, String name, String leadId, Thread thread) {
@@ -1225,16 +1234,27 @@ public final class HireRegistry {
         return attempts.getOrDefault(planId == null ? "" : planId, 1);
     }
 
-    /** Keeps what the brain of the hire running on the current thread wrote to its caller, so its progress lines can be read while it runs (28h z85). */
+    /**
+     * Keeps what the brain of the hire running on the current thread wrote to its caller, so its progress lines can be read while it runs
+     * (28h z85). A chunk that finishes a STEP: line is told to subscribers as a {@code step} event, so the person's card of that hire says
+     * what it is doing; no lead's inbox takes it, so no agent is woken by it.
+     */
     public void noteText(String chunk) {
+        List<Event> told = new java.util.ArrayList<>();
         for (Running hire : running) {
             if (hire.thread == Thread.currentThread()) {
                 synchronized (hire.written) {
+                    int before = hire.finishedStepLines();
                     hire.written.append(chunk);
+                    if (!hire.planId.isEmpty() && hire.finishedStepLines() > before) {
+                        told.add(new Event("step", hire.planId, hire.name, hire.seat, hire.brief, hire.leadId, null, hire.background));
+                    }
                 }
                 hire.lastActivityMs = System.currentTimeMillis();
             }
         }
+        // Told outside the lock: a subscriber answers a host and takes locks of its own.
+        told.forEach(this::tell);
     }
 
     /** Writes again the line of a call the hire on the current thread already made, from the input its brain has now sent; it counts no call (28h z129). */

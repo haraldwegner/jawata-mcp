@@ -351,12 +351,19 @@ class HireEntriesTest {
     void aRunningHiresCardCarriesItsLatestStepLine() {
         watch.observe(withInput(hireCall("tool_call", "t1", "pending"), "main", "developer", "z85 card"));
 
+        java.util.List<String> told = new java.util.concurrent.CopyOnWriteArrayList<>();
+        Runnable unsubscribe = org.jawata.mcp.execution.HireRegistry.shared().subscribe(event -> told.add(event.kind() + " " + event.planId()));
         try (org.jawata.mcp.execution.HireRegistry.Registration running =
                  org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "z85 card", "")) {
             org.jawata.mcp.execution.HireRegistry.shared().planOpened("plan-z85-card");
-            org.jawata.mcp.execution.HireRegistry.shared().noteText("STEP: reading the class\nthen more\nSTEP: renaming it\n");
+            org.jawata.mcp.execution.HireRegistry.shared().noteText("STEP: reading the class\nthen more\nSTEP: ren");
+            org.jawata.mcp.execution.HireRegistry.shared().noteText("aming it\nand some words\n");
 
             assertEquals("renaming it", watch.entry("t1").orElseThrow().toMeta().path("step").asText(), "the card does not say what the agent is doing");
+            // the panel is sent a card only when the registry tells of the hire, so each finished line is told, once, and other text is not
+            assertEquals(2, java.util.Collections.frequency(told, "step plan-z85-card"), "the card subscribers were not told of each line: " + told);
+        } finally {
+            unsubscribe.run();
         }
         HireEntry done = watch.observe(answered(hireCall("tool_call_update", "t1", "completed"), "{\"data\":{\"cleanExit\":true}}")).orElseThrow();
 
