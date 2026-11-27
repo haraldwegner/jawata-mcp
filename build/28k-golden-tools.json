@@ -3711,16 +3711,16 @@
      "description": "read/write: the file, as an absolute path.",
      "type": "string"
     },
-    "prefix": {
-     "description": "append_row: the letters the rows are numbered with, such as z.",
-     "type": "string"
-    },
     "pattern": {
      "description": "search: a Java regular expression matched against each line.",
      "type": "string"
     },
     "precedentOverride": {
      "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "type": "string"
+    },
+    "prefix": {
+     "description": "append_row: the letters the rows are numbered with, such as z.",
      "type": "string"
     }
    },
@@ -3838,6 +3838,10 @@
      "description": "The brain's id (e.g. claude-code, cursor). models: omit for every ready chat brain; probe and set: required.",
      "type": "string"
     },
+    "keepRunning": {
+     "description": "probe: start the program once and time each run from its prompt.",
+     "type": "boolean"
+    },
     "model": {
      "description": "probe and set: the model, as a Brain list shows it; omit for the brain's own default.",
      "type": "string"
@@ -3845,6 +3849,14 @@
     "precedentOverride": {
      "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
      "type": "string"
+    },
+    "prompt": {
+     "description": "probe: a prompt to time; with it, repeat or keepRunning, the probe times runs.",
+     "type": "string"
+    },
+    "repeat": {
+     "description": "probe: how many timed runs, 1 to 20 (default 1).",
+     "type": "integer"
     },
     "seat": {
      "description": "set: the seat whose stored choice is replaced.",

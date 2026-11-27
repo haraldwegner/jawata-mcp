@@ -488,12 +488,7 @@ public final class SeatSettingsService implements SeatSettings {
     @Override
     public java.util.List<java.util.Map<String, Object>> timedProbe(String brain, String model, String prompt,
             int repeat, boolean keepRunning) {
-        AcpBrainSession.Program program = AcpBrainSession.programFor(settings.get(Hirer.BRAINS_SETTING).orElse(""), brain)
-            .orElseThrow(() -> new IllegalArgumentException("The brain registry names no program for " + brain + "."));
-        try {
-            return TimedProbe.run(program, model, prompt, repeat, keepRunning);
-        } catch (java.io.IOException failed) {
-            throw new java.io.UncheckedIOException(brain + "'s adapter could not be started: " + failed.getMessage(), failed);
-        }
+        String registry = settings.get(Hirer.BRAINS_SETTING).orElse("");
+        return AcpBrainSession.timedRunsIn(brain, model, prompt, repeat, keepRunning, registry);
     }
 }

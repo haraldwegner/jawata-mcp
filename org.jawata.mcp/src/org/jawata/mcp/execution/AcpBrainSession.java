@@ -200,6 +200,18 @@ public final class AcpBrainSession {
         return folder;
     }
 
+    /** Times a prompt through the program the registry names for a brain (28h z93): the engine's own question about a brain, not a hire. */
+    static java.util.List<java.util.Map<String, Object>> timedRunsIn(String brain, String model, String prompt,
+            int repeat, boolean keepRunning, String registry) {
+        Program program = programFor(registry, brain)
+            .orElseThrow(() -> new IllegalArgumentException("The brain registry names no program for " + brain + "."));
+        try {
+            return TimedProbe.run(program, model, prompt, repeat, keepRunning);
+        } catch (java.io.IOException failed) {
+            throw new java.io.UncheckedIOException(brain + "'s adapter could not be started: " + failed.getMessage(), failed);
+        }
+    }
+
     /**
      * What it takes to start a brain that speaks ACP: the command line the brain's own installation defines, and the variables it needs
      * beyond the resident's. Per brain, never per call.
