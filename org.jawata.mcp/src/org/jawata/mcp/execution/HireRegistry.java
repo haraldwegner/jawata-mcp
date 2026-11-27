@@ -994,15 +994,23 @@ public final class HireRegistry {
         return Optional.empty();
     }
 
-    /** Stops every running hire of this seat for this brief and answers how many there were. */
+    /**
+     * Stops every running hire of this seat for this brief, each with every hire below it as {@link #stopTree} does (28h z130: this stop,
+     * used when a card knows no plan id, left a lead's developer running), and answers how many were stopped. A hire with no plan open yet
+     * has nothing below it.
+     */
     public synchronized int stop(String seat, String brief) {
         int stoppedCount = 0;
         for (Running hire : running) {
             if (hire.seat.equals(seat) && hire.brief.equals(normal(brief))) {
-                stopped.add(hire.thread);
-                hire.onStop.forEach(Runnable::run);
-                hire.thread.interrupt();
-                stoppedCount++;
+                if (hire.planId.isEmpty()) {
+                    stopped.add(hire.thread);
+                    hire.onStop.forEach(Runnable::run);
+                    hire.thread.interrupt();
+                    stoppedCount++;
+                } else {
+                    stoppedCount += stopTree(hire.planId, null).size();
+                }
             }
         }
         return stoppedCount;

@@ -99,4 +99,20 @@ class HireStopCascadeTest {
             () -> assertTrue(engineer.interrupted.get()),
             () -> assertFalse(lead.interrupted.get(), "stopping a hire stopped the lead above it"));
     }
+
+    @Test
+    @DisplayName("28h z130: the stop that finds a hire by its seat and brief ends the hires under it too")
+    void stoppingBySeatAndBriefStopsEverythingUnderIt() throws Exception {
+        Hire lead = aHire("pm", "z130 the sprint", "z130-chat", "z130-plan-lead");
+        Hire developer = aHire("developer", "z130 write", "z130-plan-lead", "z130-plan-developer");
+
+        int stopped = HireRegistry.shared().stop("pm", "z130 the sprint");
+        lead.thread.join(5_000);
+        developer.thread.join(5_000);
+
+        assertAll(
+            () -> assertTrue(lead.interrupted.get(), "the lead was not stopped"),
+            () -> assertTrue(developer.interrupted.get(), "a hire of the lead went on running after the lead was stopped"),
+            () -> assertEquals(2, stopped));
+    }
 }
