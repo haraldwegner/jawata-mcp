@@ -103,9 +103,10 @@ class GetMethodAtPositionToolTest {
 
         ToolResponse response = tool.execute(args);
 
-        assertTrue(response.isSuccess());
+        // 28h z162: this test failed once in a full run and neither check said which it was, so both name what the tool answered
+        assertTrue(response.isSuccess(), () -> "the call failed: " + response.getError());
         Map<String, Object> data = getData(response);
-        assertEquals(true, data.get("isConstructor"));
+        assertEquals(true, data.get("isConstructor"), () -> "the position was not read as the constructor: " + data);
         assertEquals("HelloWorld", data.get("name"));
         assertNull(data.get("returnType"));
     }
