@@ -286,4 +286,182 @@ class GitToolTest {
         assertEquals("", run(remote, "tag"));
         assertTrue(!run(repo, "rev-parse", "HEAD").equals(run(remote, "rev-parse", "main")), "the attributed commit was pushed");
     }
+
+    /** One entry of a hire's answer under `changes`: oldText and newText may be null (a file the hire created has no oldText). */
+    private static ObjectNode change(String path, String oldText, String newText, boolean cleanBefore) {
+        return JSON.createObjectNode().put("path", path).put("oldText", oldText).put("newText", newText).put("cleanBefore", cleanBefore);
+    }
+
+    /** A hire's recorded answer that carries `changes` and `changesOmitted`, as HireTool writes them; answers the plan's id. */
+    private String hireThatCarriedChanges(List<ObjectNode> changes, String... omitted) {
+        PlanId plan = ledger.open(List.of(new GatedStep(0, "compile_workspace", JSON.createObjectNode())));
+        ObjectNode answer = JSON.createObjectNode().put("plan", plan.toString()).put("cleanExit", true);
+        var changedFiles = answer.putArray("changedFiles");
+        var carried = answer.putArray("changes");
+        for (ObjectNode one : changes) {
+            changedFiles.add(one.get("path").asText());
+            carried.add(one);
+        }
+        var left = answer.putArray("changesOmitted");
+        for (String file : omitted) {
+            changedFiles.add(file);
+            left.add(file);
+        }
+        HireRegistry.shared().record("developer", "brief for " + plan, answer);
+        return plan.toString();
+    }
+
+    /** The discard call for a plan; run as the given caller, or with no caller identity at all when callerId is null. */
+    private ToolResponse discard(String callerId, String plan, Path folder, String... files) {
+        ObjectNode arguments = JSON.createObjectNode().put("action", "discard").put("folder", folder.toString()).put("planId", plan);
+        var named = arguments.putArray("files");
+        for (String file : files) {
+            named.add(file);
+        }
+        if (callerId == null) {
+            return git.execute(arguments);
+        }
+        return CallerIdentity.supplied(callerId).speaking(() -> git.execute(arguments));
+    }
+
+    /** The strings a successful answer holds under a key; a refusal fails here with its own message. */
+    private static List<String> listed(ToolResponse answer, String key) {
+        assertTrue(answer.isSuccess(), String.valueOf(answer.getError()));
+        Object value = ((java.util.Map<?, ?>) answer.getData()).get(key);
+        return ((List<?>) value).stream().map(String::valueOf).toList();
+    }
+
+    /** A refusal's code and message on one line; fails when the call was not refused. */
+    private static String refusedWith(ToolResponse answer) {
+        assertFalse(answer.isSuccess(), "the call was not refused");
+        return answer.getError().getCode() + ": " + answer.getError().getMessage();
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): discard puts a tracked file back to its committed bytes exactly, and deletes a file the hire created")
+    void discardPutsBackExactBytesAndDeletesWhatTheHireCreated() throws Exception {
+        run(repo, "config", "core.autocrlf", "false");
+        Files.write(repo.resolve("b.txt"), "b\r\n".getBytes(StandardCharsets.UTF_8));
+        run(repo, "add", "b.txt");
+        run(repo, "commit", "-q", "-m", "b");
+        Files.write(repo.resolve("b.txt"), "bb\r\n".getBytes(StandardCharsets.UTF_8));
+        Files.writeString(repo.resolve("new.txt"), "made by the hire\n");
+        String plan = hireThatCarriedChanges(List.of(change("b.txt", "b\r\n", "bb\r\n", true), change("new.txt", null, "made by the hire\n", true)));
+        String caller = "discard-t1-" + System.nanoTime();
+        HireRegistry.shared().startedBy(plan, caller);
+
+        ToolResponse answer = discard(caller, plan, repo, "b.txt", "new.txt");
+
+        List<String> thrownAway = listed(answer, "thrownAway");
+        assertTrue(java.util.Arrays.equals("b\r\n".getBytes(StandardCharsets.UTF_8), Files.readAllBytes(repo.resolve("b.txt"))), "b.txt is not back to its committed bytes");
+        assertFalse(Files.exists(repo.resolve("new.txt")), "the file the hire created was not deleted");
+        assertTrue(thrownAway.contains("b.txt") && thrownAway.contains("new.txt"), "thrownAway is " + thrownAway);
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): discard leaves a file untouched that the person had changed before the hire ran, and says why")
+    void discardKeepsAFileThePersonChangedBeforeTheHire() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatCarriedChanges(List.of(change("a.txt", "one\n", "two\n", false)));
+        String caller = "discard-t2-" + System.nanoTime();
+        HireRegistry.shared().startedBy(plan, caller);
+
+        ToolResponse answer = discard(caller, plan, repo, "a.txt");
+
+        assertEquals(List.of("a.txt (you had changes in it before the hire ran)"), listed(answer, "kept"));
+        assertEquals(List.of(), listed(answer, "thrownAway"));
+        assertEquals("two\n", Files.readString(repo.resolve("a.txt")), "the file was touched");
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): discard leaves a file untouched whose text is no longer the hire's, and says it changed since")
+    void discardKeepsAFileThatChangedSinceTheHire() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "three\n");
+        String plan = hireThatCarriedChanges(List.of(change("a.txt", "one\n", "two\n", true)));
+        String caller = "discard-t3-" + System.nanoTime();
+        HireRegistry.shared().startedBy(plan, caller);
+
+        ToolResponse answer = discard(caller, plan, repo, "a.txt");
+
+        assertEquals(List.of("a.txt (it has changed since the hire)"), listed(answer, "kept"));
+        assertEquals("three\n", Files.readString(repo.resolve("a.txt")), "the file was touched");
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): a hire that ran in a subfolder has its file put back, the path counted from the repository top")
+    void discardWorksForAHireThatRanInASubfolder() throws Exception {
+        Files.createDirectories(repo.resolve("src"));
+        Files.writeString(repo.resolve("src/B.java"), "class B {}\n");
+        run(repo, "add", "src/B.java");
+        run(repo, "commit", "-q", "-m", "B");
+        Files.writeString(repo.resolve("src/B.java"), "class B { int x; }\n");
+        String plan = hireThatCarriedChanges(List.of(change("src/B.java", "class B {}\n", "class B { int x; }\n", true)));
+        String caller = "discard-t4-" + System.nanoTime();
+        HireRegistry.shared().startedBy(plan, caller);
+
+        ToolResponse answer = discard(caller, plan, repo.resolve("src"), "src/B.java");
+
+        List<String> thrownAway = listed(answer, "thrownAway");
+        assertEquals("class B {}\n", Files.readString(repo.resolve("src/B.java")), "the file is not back to its committed text");
+        assertEquals(List.of("src/B.java"), thrownAway);
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): a file whose path leaves the hire's folder is left untouched, and says so")
+    void discardKeepsAFileOutsideTheHiresFolder() throws Exception {
+        Files.writeString(work.resolve("outside.txt"), "new\n");
+        String plan = hireThatCarriedChanges(List.of(change("../outside.txt", "old\n", "new\n", true)));
+        String caller = "discard-t5-" + System.nanoTime();
+        HireRegistry.shared().startedBy(plan, caller);
+
+        ToolResponse answer = discard(caller, plan, repo, "../outside.txt");
+
+        assertEquals(List.of("../outside.txt (its path leaves the hire's folder)"), listed(answer, "kept"));
+        assertEquals("new\n", Files.readString(work.resolve("outside.txt")), "the file outside the folder was touched");
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): a file the plan did not change refuses the whole call, naming it, and touches no other file")
+    void discardRefusesAFileThePlanDidNotChange() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatCarriedChanges(List.of(change("a.txt", "one\n", "two\n", true)));
+        String caller = "discard-t6-" + System.nanoTime();
+        HireRegistry.shared().startedBy(plan, caller);
+
+        ToolResponse answer = discard(caller, plan, repo, "a.txt", "ghost.txt");
+
+        String said = refusedWith(answer);
+        assertTrue(said.startsWith("FILE_NOT_CHANGED_BY_PLAN") && said.contains("ghost.txt"), said);
+        assertEquals("two\n", Files.readString(repo.resolve("a.txt")), "a file was put back although the call was refused");
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): discard is refused for a caller who did not issue the plan, and for a call with no caller, and touches nothing")
+    void discardIsRefusedForSomeoneElsesHire() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatCarriedChanges(List.of(change("a.txt", "one\n", "two\n", true)));
+        HireRegistry.shared().startedBy(plan, "discard-t7-issuer-" + System.nanoTime());
+
+        String noCaller = refusedWith(discard(null, plan, repo, "a.txt"));
+        String stranger = refusedWith(discard("discard-t7-stranger-" + System.nanoTime(), plan, repo, "a.txt"));
+
+        assertTrue(noCaller.startsWith("NOT_YOUR_HIRE"), "no caller: " + noCaller);
+        assertTrue(stranger.startsWith("NOT_YOUR_HIRE"), "a stranger: " + stranger);
+        assertEquals("two\n", Files.readString(repo.resolve("a.txt")), "a file was put back although the call was refused");
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): a file too large for the hire to carry is kept, and the answer says to put it back yourself")
+    void discardKeepsAFileTooLargeToCompare() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        Files.writeString(repo.resolve("big.txt"), "very large\n");
+        String plan = hireThatCarriedChanges(List.of(change("a.txt", "one\n", "two\n", true)), "big.txt");
+        String caller = "discard-t8-" + System.nanoTime();
+        HireRegistry.shared().startedBy(plan, caller);
+
+        ToolResponse answer = discard(caller, plan, repo, "big.txt");
+
+        assertEquals(List.of("big.txt (too large to compare, put it back yourself)"), listed(answer, "kept"));
+        assertEquals(List.of(), listed(answer, "thrownAway"));
+    }
 }
