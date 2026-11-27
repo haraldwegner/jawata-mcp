@@ -84,6 +84,7 @@ public final class GitTool implements Tool {
             or co-author. Pushes the branch to its upstream, makes the annotated tag and pushes it, and with publish (default true) publishes
             the GitHub release marked latest through gh.
             Both refuse a message naming an AI agent as co-author.
+            commit and release are refused to a hired seat other than the pm or main; discard is not.
             """;
     }
 
@@ -108,8 +109,13 @@ public final class GitTool implements Tool {
         if (folder.isBlank() || !Files.isDirectory(Path.of(folder))) {
             return ToolResponse.invalidParameter("folder", "the repository folder is needed and must exist: '" + folder + "'");
         }
+        String action = arguments.path("action").asText("");
+        Optional<ToolResponse> notAllowed = seatRefusal(action);
+        if (notAllowed.isPresent()) {
+            return notAllowed.get();
+        }
         try {
-            return switch (arguments.path("action").asText("")) {
+            return switch (action) {
                 case "commit" -> commit(Path.of(folder), arguments);
                 case "release" -> release(Path.of(folder), arguments);
                 case "discard" -> discard(Path.of(folder), arguments);
@@ -121,6 +127,19 @@ public final class GitTool implements Tool {
             Thread.currentThread().interrupt();
             return ToolResponse.error("INTERRUPTED", "the git command was interrupted", null);
         }
+    }
+
+    /** Commit and release are the pm's and main's; a calling hire of another seat is refused them, and discard is not touched (28h Stage 28 (h)). */
+    private static Optional<ToolResponse> seatRefusal(String action) {
+        if (!action.equals("commit") && !action.equals("release")) {
+            return Optional.empty();
+        }
+        Optional<String> seat = CallerIdentity.serving().flatMap(caller -> HireRegistry.shared().seatOfCaller(caller.id()));
+        if (seat.isEmpty() || seat.get().equalsIgnoreCase("pm") || seat.get().equalsIgnoreCase("main")) {
+            return Optional.empty();
+        }
+        return Optional.of(refused("SEAT_NOT_ALLOWED", "the " + seat.get() + " seat may not " + action
+            + "; only the pm commits and only main releases; a hire of another seat may discard its own files"));
     }
 
     /** Puts back single files a hire changed (28h Stage 28 (h)): only for the caller that issued the hire, and only what the plan's answer names. */

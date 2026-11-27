@@ -464,4 +464,85 @@ class GitToolTest {
         assertEquals(List.of("big.txt (too large to compare, put it back yourself)"), listed(answer, "kept"));
         assertEquals(List.of(), listed(answer, "thrownAway"));
     }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): a hire of the developer seat is refused commit with SEAT_NOT_ALLOWED, and nothing is committed")
+    void aDeveloperHireMayNotCommit() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatChanged(true, "a.txt");
+        ObjectNode arguments = JSON.createObjectNode().put("action", "commit").put("folder", repo.toString()).put("planId", plan).put("message", "Step 1");
+
+        ToolResponse answer;
+        try (HireRegistry.Registration running = HireRegistry.shared().begin("developer", "s3 developer asks to commit", "")) {
+            HireRegistry.shared().planOpened("s3-developer");
+            answer = CallerIdentity.supplied("s3-developer").speaking(() -> git.execute(arguments));
+        }
+
+        String said = refusedWith(answer);
+        assertTrue(said.startsWith("SEAT_NOT_ALLOWED") && said.contains("developer"), said);
+        assertEquals("start", run(repo, "log", "-1", "--format=%s"), "a commit was made");
+        assertTrue(run(repo, "status", "--porcelain").contains("a.txt"), "a.txt was committed");
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): a hire of the chief-engineer seat is refused release with SEAT_NOT_ALLOWED, before anything is pushed")
+    void aChiefEngineerHireMayNotRelease() throws Exception {
+        ToolResponse answer;
+        try (HireRegistry.Registration running = HireRegistry.shared().begin("chief-engineer", "s3 chief asks to release", "")) {
+            HireRegistry.shared().planOpened("s3-chief");
+            answer = release("s3-chief", "v9.9.9");
+        }
+
+        String said = refusedWith(answer);
+        assertTrue(said.startsWith("SEAT_NOT_ALLOWED"), said);
+        assertEquals("", run(remote, "tag"), "a tag reached the remote");
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): a hire of the pm seat commits a passed step as before")
+    void aPmHireMayCommit() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatChanged(true, "a.txt");
+        ObjectNode arguments = JSON.createObjectNode().put("action", "commit").put("folder", repo.toString()).put("planId", plan).put("message", "Step 1 by the pm");
+
+        ToolResponse answer;
+        try (HireRegistry.Registration running = HireRegistry.shared().begin("pm", "s3 pm commits", "")) {
+            HireRegistry.shared().planOpened("s3-pm");
+            answer = CallerIdentity.supplied("s3-pm").speaking(() -> git.execute(arguments));
+        }
+
+        assertTrue(answer.isSuccess(), String.valueOf(answer.getError()));
+        assertEquals("Step 1 by the pm", run(repo, "log", "-1", "--format=%s"));
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): the principal's key, whose seat is main, commits a passed step as before")
+    void thePrincipalMayCommit() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatChanged(true, "a.txt");
+        ObjectNode arguments = JSON.createObjectNode().put("action", "commit").put("folder", repo.toString()).put("planId", plan).put("message", "Step 1 by main");
+        HireRegistry.shared().speaksFor("s3-key", "s3-chat");
+
+        ToolResponse answer = CallerIdentity.supplied("s3-key").speaking(() -> git.execute(arguments));
+
+        assertTrue(answer.isSuccess(), String.valueOf(answer.getError()));
+        assertEquals("Step 1 by main", run(repo, "log", "-1", "--format=%s"));
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (h): a hire of the chief-engineer seat may discard the files of a hire it issued; the seat rule does not touch discard")
+    void aChiefEngineerHireMayDiscard() throws Exception {
+        Files.writeString(repo.resolve("a.txt"), "two\n");
+        String plan = hireThatCarriedChanges(List.of(change("a.txt", "one\n", "two\n", true)));
+        HireRegistry.shared().startedBy(plan, "s3-chief-discard");
+
+        ToolResponse answer;
+        try (HireRegistry.Registration running = HireRegistry.shared().begin("chief-engineer", "s3 chief discards", "")) {
+            HireRegistry.shared().planOpened("s3-chief-discard");
+            answer = discard("s3-chief-discard", plan, repo, "a.txt");
+        }
+
+        assertEquals(List.of("a.txt"), listed(answer, "thrownAway"));
+        assertEquals("one\n", Files.readString(repo.resolve("a.txt")), "the file was not put back");
+    }
 }
