@@ -238,6 +238,20 @@ class ExtractClassToolTest {
     }
 
     @Test
+    @DisplayName("28h z150: in a project indented with spaces that declares no formatter, the extracted class carries no tab")
+    void theExtractedClassFollowsTheProjectsSpaces() throws Exception {
+        assertFalse(Files.readString(targetFile).contains("\t"), "CONTROL: the fixture is indented with spaces");
+
+        ToolResponse r = tool.execute(args("PointMeta", "label", "unit"));
+        assertTrue(r.isSuccess(), () -> "extract(kind=class) failed: " + r.getError());
+
+        String extracted = Files.readString(pkgDir.resolve("PointMeta.java"));
+        assertFalse(extracted.contains("\t"), () -> "the new class is indented with tabs:\n" + extracted);
+        String original = Files.readString(targetFile);
+        assertFalse(original.contains("\t"), () -> "the rewritten class gained tabs:\n" + original);
+    }
+
+    @Test
     @DisplayName("S7.1: the front door extracts a field group into a new class")
     void theFrontDoorExtractsAFieldGroup() throws Exception {
         String before = Files.readString(targetFile);

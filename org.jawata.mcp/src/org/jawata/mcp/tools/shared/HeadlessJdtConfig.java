@@ -143,8 +143,17 @@ public final class HeadlessJdtConfig {
             new org.eclipse.jdt.internal.core.manipulation.MembersOrderPreferenceCacheCommon()
                 .install();
 
-            // FORMATTER TAB CHAR IS NOT SET HERE, and BOTH central routes have now
-            // been tried and measured.
+            // 28h z150: the refactorings that write a whole new type (extract class, introduce parameter object) format it with the project's
+            // options, which fall back to this workspace's; without it a project that declares no formatter got tabs. A project that declares
+            // one still wins, as in FormatterOptions. Only the engine's own workspace is set: a host with a JDT UI never reaches this.
+            java.util.Hashtable<String, String> core = org.eclipse.jdt.core.JavaCore.getOptions();
+            core.put(org.eclipse.jdt.core.formatter.DefaultCodeFormatterConstants.FORMATTER_TAB_CHAR, org.eclipse.jdt.core.JavaCore.SPACE);
+            core.put(org.eclipse.jdt.core.formatter.DefaultCodeFormatterConstants.FORMATTER_TAB_SIZE, "4");
+            core.put(org.eclipse.jdt.core.formatter.DefaultCodeFormatterConstants.FORMATTER_INDENTATION_SIZE, "4");
+            org.eclipse.jdt.core.JavaCore.setOptions(core);
+
+            // FORMATTER TAB CHAR FOR STATEMENT REWRITES IS NOT SET BY THE ABOVE, and BOTH central routes were
+            // tried and measured for those.
             //
             // v2.14.1 #5 tried JavaCore.setOptions — the INSTANCE scope — and it did
             // not reach the code-generating rewrites. That is why FormatterOptions

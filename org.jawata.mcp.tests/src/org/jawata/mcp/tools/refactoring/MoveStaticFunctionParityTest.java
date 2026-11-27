@@ -44,6 +44,8 @@ class MoveStaticFunctionParityTest {
     @Test
     @DisplayName("row 24 pins the moved static and its repointed calls")
     void theRowsOutcomeIsPinned() throws Exception {
+        // The product runs this once at startup (JavaProvider); without it here the output depended on an earlier test having run it (28h z150).
+        org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized();
         RowParity.appliedRow(helper, "move", "move_static_function",
             (service, cache) -> new MoveTool(() -> service, cache),
             pkg -> {

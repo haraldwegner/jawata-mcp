@@ -51,25 +51,25 @@ public class ParameterObjectDesk {
 package com.example;
 
 public class DeliveryAddress {
-	private String city;
-	private String street;
-	private int postcode;
+    private String city;
+    private String street;
+    private int postcode;
 
-	public DeliveryAddress(String city, String street, int postcode) {
-		this.city = city;
-		this.street = street;
-		this.postcode = postcode;
-	}
+    public DeliveryAddress(String city, String street, int postcode) {
+        this.city = city;
+        this.street = street;
+        this.postcode = postcode;
+    }
 
-	public String getCity() {
-		return city;
-	}
+    public String getCity() {
+        return city;
+    }
 
-	public String getStreet() {
-		return street;
-	}
+    public String getStreet() {
+        return street;
+    }
 
-	public int getPostcode() {
-		return postcode;
-	}
+    public int getPostcode() {
+        return postcode;
+    }
 }
