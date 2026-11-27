@@ -21,8 +21,9 @@ import com.fasterxml.jackson.databind.JsonNode;
  *
  * @param observed    whether the run's calls were named; false when some were counted and none named
  * @param jawata      calls to a jawata tool
- * @param other       every call that is neither a jawata call nor a shell call on Java
- * @param shellOnJava the shell calls whose command names a Java file, each with the reason it declared
+ * @param other       every call that is neither a jawata call nor a call on Java outside jawata
+ * @param shellOnJava the shell calls whose command names a Java file, and the brain's own reads and searches of Java files, each with the
+ *                    reason it declared
  */
 public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava> shellOnJava, java.util.List<CallOutcomes.Failed> failed) {
 
@@ -67,6 +68,8 @@ public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava>
                 jawata++;
             } else if (RunEffects.isCliShell(bare) && JAVA_FILE.matcher(commandOf(call.arguments())).find()) {
                 shell.add(shellOnJava(commandOf(call.arguments())));
+            } else if (RunEffects.isCliFileReader(bare) && readsJava(bare, call.arguments())) {
+                shell.add(shellOnJava(bare + " " + targetOf(call.arguments())));
             } else {
                 other++;
             }
@@ -121,6 +124,24 @@ public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava>
         Optional<String> reason = declared.find() ? Optional.of(declared.group(1).strip()).filter(r -> !r.isEmpty()) : Optional.empty();
         String shown = command.length() > COMMAND_LIMIT ? command.substring(0, COMMAND_LIMIT) + "…" : command;
         return new ShellOnJava(shown, reason);
+    }
+
+    /**
+     * Whether a native read or search looked at Java: a file, folder or file filter it names ends in {@code .java}, its type is java, or a
+     * file-name search's pattern ends in {@code .java}. A content search's pattern is the text it looked for and says nothing about the files.
+     */
+    private static boolean readsJava(String tool, JsonNode arguments) {
+        boolean named = java.util.stream.Stream.of("file_path", "filePath", "path", "glob", "include")
+            .anyMatch(key -> JAVA_FILE.matcher(arguments.path(key).asText("")).find());
+        return named || "java".equals(arguments.path("type").asText(""))
+            || "glob".equalsIgnoreCase(tool) && JAVA_FILE.matcher(arguments.path("pattern").asText("")).find();
+    }
+
+    /** What a native read or search looked at, in the order a person reads it: what was searched for, then where. */
+    private static String targetOf(JsonNode arguments) {
+        return java.util.stream.Stream.of("pattern", "file_path", "filePath", "path", "glob", "include", "type")
+            .map(key -> arguments.path(key).asText("")).filter(value -> !value.isEmpty())
+            .collect(java.util.stream.Collectors.joining(" "));
     }
 
     /** The shell command a call carried: the {@code command} or {@code cmd} argument, a list joined by spaces. */

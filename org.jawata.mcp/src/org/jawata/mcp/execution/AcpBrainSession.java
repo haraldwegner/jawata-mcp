@@ -878,6 +878,11 @@ public final class AcpBrainSession {
                                 name = shell;
                             }
                         }
+                        // 28h z129: the adapter titles a read or search by what it shows ("Read File"), so no reading of Java was seen.
+                        String reader = update.path("_meta").path("claudeCode").path("toolName").asText("");
+                        if (RunEffects.isCliFileReader(reader)) {
+                            name = reader;
+                        }
                         callAt.put(update.path("toolCallId").asText(""), toolNames.size());
                         toolNames.add(name);
                         toolCalls.add(new ToolCall(name, update.has("rawInput") ? update.get("rawInput") : JSON.createObjectNode()));

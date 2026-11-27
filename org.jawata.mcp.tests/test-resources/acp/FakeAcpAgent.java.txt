@@ -393,6 +393,18 @@ public class FakeAcpAgent {
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
                 + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"b1\",\"status\":\"completed\"}}}");
             chunk(session, "ran");
+        } else if (text.startsWith("CLAUDEREAD:")) {
+            // As Claude's ACP adapter sends a read of a file (28h z129): titled by what it shows, kind read, the tool named only in _meta.
+            String file = text.substring("CLAUDEREAD:".length()).trim().replace("\\", "\\\\").replace("\"", "\\\"");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"_meta\":{\"claudeCode\":{\"toolName\":\"Read\"}},\"sessionUpdate\":\"tool_call\",\"toolCallId\":\"r1\","
+                + "\"title\":\"Read File\",\"kind\":\"read\",\"status\":\"pending\",\"rawInput\":{}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"_meta\":{\"claudeCode\":{\"toolName\":\"Read\"}},\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"r1\","
+                + "\"rawInput\":{\"file_path\":\"" + file + "\"}}}}");
+            send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session
+                + "\",\"update\":{\"sessionUpdate\":\"tool_call_update\",\"toolCallId\":\"r1\",\"status\":\"completed\"}}}");
+            chunk(session, "read");
         } else if (text.startsWith("CURSORNEWFILE")) {
             // Cursor's agent creating a file: as CURSOREDIT, but the diff of the completed call has no old text (architect watch of C27).
             send("{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"" + session

@@ -49,10 +49,25 @@ class ToolUseTest {
         assertAll(
             () -> assertTrue(use.observed()),
             () -> assertEquals(2, use.jawata(), "THE CLAIM: the two jawata calls, one prefixed and one bare"),
-            () -> assertEquals(1, use.shellOnJava().size(), "CONTROL: `ls -la` names no Java and is not counted here"),
-            () -> assertEquals(3, use.other(), "Read, `ls -la` and Grep"),
+            () -> assertEquals(2, use.shellOnJava().size(), "the Read of A.java and the grep; CONTROL: `ls -la` names no Java and is not counted here"),
+            () -> assertEquals(2, use.other(), "`ls -la` and a Grep that names no Java"),
             () -> assertEquals(6, use.jawata() + use.other() + use.shellOnJava().size()),
-            () -> assertEquals("grep -rn foo src/A.java", use.shellOnJava().get(0).command()));
+            () -> assertEquals("grep -rn foo src/A.java", use.shellOnJava().get(1).command()));
+    }
+
+    @Test
+    @DisplayName("28h z129: the brain program's own Read, Grep and Glob on Java are listed beside the shell calls, each with what it looked at")
+    void theBrainsOwnReadsOfJavaAreMarked() {
+        ToolUse use = of(5,
+            call("Read", "{\"file_path\":\"/x/A.java\"}"),
+            call("Grep", "{\"pattern\":\"foo\",\"glob\":\"*.java\"}"),
+            call("Glob", "{\"pattern\":\"src/**/*.java\"}"),
+            call("Read", "{\"file_path\":\"/x/notes.md\"}"),
+            call("Grep", "{\"pattern\":\"A\\\\.java\",\"path\":\"/x/logs\"}"));
+        assertAll(
+            () -> assertEquals(List.of("Read /x/A.java", "Grep foo *.java", "Glob src/**/*.java"),
+                use.shellOnJava().stream().map(ToolUse.ShellOnJava::command).toList()),
+            () -> assertEquals(2, use.other(), "CONTROL: a note read and a search of logs for a file name read no Java"));
     }
 
     @Test

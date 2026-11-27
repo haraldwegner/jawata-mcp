@@ -694,6 +694,15 @@ class AcpBrainSessionTest {
     }
 
     @Test
+    @DisplayName("28h z129: a read Claude's ACP adapter titles by what it shows is kept as a Read call with its file, so the card can see a read of Java")
+    void aReadClaudeMakesIsKeptAsAReadCall() throws Exception {
+        HiredBrain.Outcome outcome = hire("CLAUDEREAD:/w/src/A.java");
+
+        assertEquals(List.of("Read"), outcome.toolNames(), "the call kept the title the adapter opened it with: " + outcome.toolNames());
+        assertEquals("/w/src/A.java", outcome.toolCalls().get(0).arguments().path("file_path").asText(), "the call was kept without the file it read");
+    }
+
+    @Test
     @DisplayName("a shown model the catalogue holds is the value the command line is given")
     void aShownModelBecomesTheProgramsValue() throws Exception {
         // The stand-in's command names this test's own folder, so what its session records is no other test's.

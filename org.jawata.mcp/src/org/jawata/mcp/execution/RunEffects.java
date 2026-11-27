@@ -51,6 +51,10 @@ public final class RunEffects {
     private static final Set<String> CLI_SHELLS = Set.of(
         "Bash", "shell", "exec_command", "run_shell_command", "bash", "Shell");
 
+    /** Those of the readers below that read or search the content of files, so a use of them on Java is Java read without jawata (28h z129). */
+    private static final Set<String> CLI_FILE_READERS = Set.of(
+        "Read", "Grep", "Glob", "read_file", "view", "grep", "glob", "search", "ReadFile");
+
     /** The brain CLIs' own readers and bookkeeping — they change nothing in the tree. */
     private static final Set<String> CLI_READERS = Set.of(
         "Read", "Grep", "Glob", "LS", "WebFetch", "WebSearch", "TodoWrite", "ToolSearch",
@@ -176,6 +180,11 @@ public final class RunEffects {
     /** Whether a bare name is one of the brain CLIs' own file editors, which change code by hand. */
     static boolean isCliEditor(String bare) {
         return CLI_EDITORS.contains(bare);
+    }
+
+    /** Whether a bare name is one of the brain CLIs' own readers of file content. */
+    static boolean isCliFileReader(String bare) {
+        return CLI_FILE_READERS.contains(bare);
     }
 
     /** Whether a bare name is one of the brain CLIs' own shells, whose command decides what a call did. */
