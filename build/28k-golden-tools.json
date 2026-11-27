@@ -3775,9 +3775,17 @@
      "description": "What to do.",
      "enum": [
       "commit",
-      "release"
+      "release",
+      "discard"
      ],
      "type": "string"
+    },
+    "files": {
+     "description": "discard: the files to put back, as the hire's changes name them (paths from the repository's top folder).",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "folder": {
      "description": "The repository, or a folder inside it, as an absolute path.",
@@ -3792,7 +3800,7 @@
      "type": "string"
     },
     "planId": {
-     "description": "commit: the plan id of the hire whose step is committed.",
+     "description": "commit, discard: the plan id of the hire whose step is committed, or whose files are put back.",
      "type": "string"
     },
     "precedentOverride": {

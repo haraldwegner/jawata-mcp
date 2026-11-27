@@ -91,10 +91,12 @@ public final class GitTool implements Tool {
     @Override
     public Map<String, Object> getInputSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
-        properties.put("action", Map.of("type", "string", "enum", List.of("commit", "release"), "description", "What to do."));
+        properties.put("action", Map.of("type", "string", "enum", List.of("commit", "release", "discard"), "description", "What to do."));
         properties.put("folder", Map.of("type", "string", "description", "The repository, or a folder inside it, as an absolute path."));
-        properties.put("planId", Map.of("type", "string", "description", "commit: the plan id of the hire whose step is committed."));
+        properties.put("planId", Map.of("type", "string", "description", "commit, discard: the plan id of the hire whose step is committed, or whose files are put back."));
         properties.put("message", Map.of("type", "string", "description", "commit: the commit message."));
+        properties.put("files", Map.of("type", "array", "items", Map.of("type", "string"), "description",
+            "discard: the files to put back, as the hire's changes name them (paths from the repository's top folder)."));
         properties.put("recheck", Map.of("type", "boolean", "description",
             "commit: when checks of the plan did not pass, run those checks again on the files as they stand; commit if they all pass."));
         properties.put("tag", Map.of("type", "string", "description", "release: the tag to make, such as v1.2.3."));
