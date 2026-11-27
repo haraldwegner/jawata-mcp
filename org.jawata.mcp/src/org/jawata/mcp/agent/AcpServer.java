@@ -670,8 +670,8 @@ public final class AcpServer {
     /**
      * The person's answer to a proposal put to them: it is kept on the hire's entry, shown to the host as an update of the hire's tool call,
      * and recorded in the transcript lane as the person's verdict. A response to anything else is ignored, and so is an answer that chose
-     * nothing (the host cancelled the question): no choice is no verdict, and none is invented. A yes changes no file. A no puts back the files
-     * the hire changed that can be put back exactly ({@link TakeBack}) and the card says which it kept and why.
+     * nothing (the host cancelled the question): no choice is no verdict, and none is invented. Neither answer changes a file (28h D58 (h)): a
+     * no is given to the session's brain as a turn of its own, "not this, fix it".
      */
     private void answerProposal(JsonRpcMessage response) {
         Asked asked = proposals.remove(String.valueOf(response.getId()));
@@ -685,8 +685,8 @@ public final class AcpServer {
             return;
         }
         java.util.Optional<HireEntry> answered = hires.answered(asked.planId(), verdict);
-        // The files are put back before the host is told, so what it is shown is what is on disk.
-        String tookBack = HireEntry.REJECTED.equals(verdict) ? asked.proposal().takeBack(org.jawata.core.host.HostProcesses.system()).sentence() : "";
+        // 28h D58 (h): a no changes no file. It goes to the lead as "not this, fix it", which keeps what is useful and throws away the rest.
+        String tookBack = HireEntry.REJECTED.equals(verdict) ? "Not accepted. Nothing was put back; your agent is asked to fix it." : "";
         answered.ifPresent(entry -> {
             ObjectNode shown = JSON.createObjectNode();
             shown.put("sessionUpdate", "tool_call_update");
@@ -702,6 +702,12 @@ public final class AcpServer {
             "The person's answer to the proposal of " + asked.seat() + " (" + asked.planId() + "): " + verdict + (tookBack.isEmpty() ? "" : ". " + tookBack),
             "Recorded the person's verdict on the proposal of " + asked.seat() + ": " + verdict + (tookBack.isEmpty() ? "" : ". " + tookBack),
             answered.map(entry -> List.of(entry.cardLine())).orElse(List.of()));
+        if (HireEntry.REJECTED.equals(verdict)) {
+            aTurnOfItsOwn(asked.session(), "[you said no to the work of " + asked.seat() + "]", () -> "The person said no to the proposal of "
+                + asked.seat() + " (" + asked.planId() + "): not this, fix it. Nothing was put back. Files it changed: "
+                + String.join(", ", asked.proposal().files()) + ". Have the lead of this work check them: keep what passes its checks, throw away"
+                + " only the broken files, and hire a new worker for what is left. The task stays open until its checks pass.");
+        }
     }
 
     /**
@@ -774,17 +780,22 @@ public final class AcpServer {
         if (!quiet) {
             HireRegistry.shared().markDelivered(event);
         }
+        aTurnOfItsOwn(session,
+            quiet ? "[" + event.name() + " · " + event.seat() + " has gone quiet]" : "[report of " + event.name() + " · " + event.seat() + "]",
+            () -> note + (quiet ? quietNotice(event) : reportOf(session, event)));
+    }
+
+    /** A turn the engine gives the session's brain, not typed by the person: it waits for a running turn, and the person's messages go first. */
+    private void aTurnOfItsOwn(PrincipalSession session, String shown, java.util.function.Supplier<String> text) {
         deliveries.execute(() -> {
             java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());
             if (!takeTheTurnAfterThePersons(turn, session.id())) {
                 return;
             }
             try {
-                conductTurn(JSON.createObjectNode(), session, "msg_" + UUID.randomUUID(),
-                    quiet ? "[" + event.name() + " · " + event.seat() + " has gone quiet]" : "[report of " + event.name() + " · " + event.seat() + "]",
-                    note + (quiet ? quietNotice(event) : reportOf(session, event)));
+                conductTurn(JSON.createObjectNode(), session, "msg_" + UUID.randomUUID(), shown, text.get());
             } catch (RuntimeException failed) {
-                java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.WARNING, "the report of a hire could not be delivered", failed);
+                java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.WARNING, "the turn \"" + shown + "\" could not be given", failed);
             } finally {
                 turn.unlock();
             }

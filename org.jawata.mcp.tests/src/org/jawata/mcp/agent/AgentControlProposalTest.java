@@ -30,7 +30,9 @@ class AgentControlProposalTest {
 
     /** An agent whose brain runs one hire (planId t1, seat developer) that ends with the given answer, and the messages it sent the host. */
     private static final class Connection {
-        final List<JsonNode> said = new ArrayList<>();
+        final List<JsonNode> said = new java.util.concurrent.CopyOnWriteArrayList<>();
+        /** Every prompt the brain was given, in order: the person's own, then what the engine gave it as turns of its own. */
+        final List<String> prompts = new java.util.concurrent.CopyOnWriteArrayList<>();
         final AcpServer server;
 
         Connection(String answerJson, String status) {
@@ -46,6 +48,11 @@ class AgentControlProposalTest {
 
                 @Override
                 public void answer(String prompt, Consumer<String> chunks, Consumer<JsonNode> toolCalls) {
+                    prompts.add(prompt);
+                    if (prompts.size() > 1) {
+                        chunks.accept("ok");
+                        return;
+                    }
                     ObjectNode started = JSON.createObjectNode().put("sessionUpdate", "tool_call").put("toolCallId", "t1").put("status", "pending")
                         .put("title", "mcp__jawata-javata-dev__hire");
                     ObjectNode input = started.putObject("rawInput").put("hirer", "chief-engineer").put("seat", "developer").put("brief", "build it");
@@ -192,106 +199,29 @@ class AgentControlProposalTest {
     }
 
     @Test
-    @DisplayName("open point 8: a rejected proposal puts back the files the hire changed, exactly and only where nothing of the person's is lost, and the card says what it kept and why")
-    void aRejectPutsBackWhatItCanAndSaysWhatItKept(@org.junit.jupiter.api.io.TempDir java.nio.file.Path folder) throws Exception {
-        repoWith(folder, java.util.Map.of("src/B.java", "b\r\n", "src/C.java", "c\n", "src/D.java", "d\n"));
-        // the hire edits B (clean before), creates A, and edits C and D; the person had edited C before the hire ran, and edits D after it
-        java.nio.file.Files.writeString(folder.resolve("src/B.java"), "bb\r\n");
+    @DisplayName("28h D58 (h): a no puts nothing back and reaches the lead as a new turn, 'not this, fix it', with the plan and its files; a yes starts no turn")
+    void aNoReachesTheLeadAndChangesNoFile(@org.junit.jupiter.api.io.TempDir java.nio.file.Path folder) throws Exception {
+        repoWith(folder, java.util.Map.of("src/B.java", "b\n"));
+        java.nio.file.Files.writeString(folder.resolve("src/B.java"), "bb\n");
         java.nio.file.Files.writeString(folder.resolve("src/A.java"), "a\n");
-        java.nio.file.Files.writeString(folder.resolve("src/C.java"), "cc\n");
-        java.nio.file.Files.writeString(folder.resolve("src/D.java"), "dd and then the person's own edit\n");
-        Connection connection = new Connection(answerChanging(new Object[] { "src/A.java", null, "a\n", true },
-            new Object[] { "src/B.java", "b\r\n", "bb\r\n", true }, new Object[] { "src/C.java", "c\n", "cc\n", false },
-            new Object[] { "src/D.java", "d\n", "dd\n", true }), "completed", AgentRecorder.off(), folder.toString());
-
-        connection.answer(connection.questions().get(0), connection.selected("reject"), Channel.HOST);
-
-        assertFalse(java.nio.file.Files.exists(folder.resolve("src/A.java")), "a file the hire created was not deleted");
-        assertEquals("b\r\n", java.nio.file.Files.readString(folder.resolve("src/B.java")), "a clean tracked file is back to its exact bytes, line endings included");
-        assertEquals("cc\n", java.nio.file.Files.readString(folder.resolve("src/C.java")), "a file the person had edited before the hire was overwritten");
-        assertEquals("dd and then the person's own edit\n", java.nio.file.Files.readString(folder.resolve("src/D.java")),
-            "a file changed after the hire was overwritten");
-        String said = connection.said.toString();
-        assertTrue(said.contains("Put back: src/A.java, src/B.java"), said);
-        assertTrue(said.contains("src/C.java (you had changes in it before the hire ran)"), said);
-        assertTrue(said.contains("src/D.java (it has changed since the hire)"), said);
-        assertEquals("rejected", connection.lastEntry().path("verdict").asText());
-    }
-
-    @Test
-    @DisplayName("a rejected proposal of a hire that ran in a subfolder is put back from the repository's top folder, where git names its paths")
-    void aRejectPutsBackFromTheRepositoryRootWhenTheHireRanInASubfolder(@org.junit.jupiter.api.io.TempDir java.nio.file.Path folder) throws Exception {
-        repoWith(folder, java.util.Map.of("src/B.java", "b\n"));
-        java.nio.file.Files.writeString(folder.resolve("src/B.java"), "bb\n");
-        java.nio.file.Files.writeString(folder.resolve("src/N.java"), "n\n");
-        // the hire ran in src, so git named its two files from the top folder: src/B.java and src/N.java
-        Connection connection = new Connection(answerChanging(new Object[] { "src/B.java", "b\n", "bb\n", true },
-            new Object[] { "src/N.java", null, "n\n", true }), "completed", AgentRecorder.off(), folder.resolve("src").toString());
-
-        connection.answer(connection.questions().get(0), connection.selected("reject"), Channel.HOST);
-
-        assertEquals("b\n", java.nio.file.Files.readString(folder.resolve("src/B.java")), connection.said.toString());
-        assertFalse(java.nio.file.Files.exists(folder.resolve("src/N.java")), "a file the hire created in a subfolder was not deleted: " + connection.said);
-        assertTrue(connection.said.toString().contains("Put back: src/B.java, src/N.java"), connection.said.toString());
-    }
-
-    @Test
-    @DisplayName("a yes changes no file, and a no with no known folder keeps every file and says so")
-    void anAcceptTouchesNoFileAndAnUnknownFolderKeepsEveryFile(@org.junit.jupiter.api.io.TempDir java.nio.file.Path folder) throws Exception {
-        repoWith(folder, java.util.Map.of("src/B.java", "b\n"));
-        java.nio.file.Files.writeString(folder.resolve("src/B.java"), "bb\n");
-        String answer = answerChanging(new Object[] { "src/B.java", "b\n", "bb\n", true });
+        String answer = answerChanging(new Object[] { "src/A.java", null, "a\n", true }, new Object[] { "src/B.java", "b\n", "bb\n", true });
+        Connection no = new Connection(answer, "completed", AgentRecorder.off(), folder.toString());
         Connection yes = new Connection(answer, "completed", AgentRecorder.off(), folder.toString());
-        Connection noFolder = new Connection(answer, "completed");
 
         yes.answer(yes.questions().get(0), yes.selected("accept"), Channel.HOST);
-        noFolder.answer(noFolder.questions().get(0), noFolder.selected("reject"), Channel.HOST);
-
-        assertEquals("bb\n", java.nio.file.Files.readString(folder.resolve("src/B.java")), "an accept touched a file");
-        assertTrue(noFolder.said.toString().contains("the folder the hire ran in is not known"), noFolder.said.toString());
-    }
-
-    @Test
-    @DisplayName("a no on a hire whose folder name is not a legal path throws nothing, puts nothing back and says the folder is not known")
-    void aRejectWhoseFolderIsNotALegalPathKeepsEveryFileAndSaysSo() {
-        // jawata-distinct: the folder is a string no machine reads as a path (a NUL character), unlike the sibling tests, whose folders are real or empty
-        // TakeBack logs the folder name it could not read, NUL character included; left on the console that byte lands in the suite's shard log and
-        // makes every text tool treat the log as binary, so the warning is caught here (and asserted) instead of being printed
-        java.util.logging.Logger takeBackLog = java.util.logging.Logger.getLogger("org.jawata.mcp.agent.TakeBack");
-        List<java.util.logging.LogRecord> logged = new ArrayList<>();
-        java.util.logging.Handler capture = new java.util.logging.Handler() {
-            @Override
-            public void publish(java.util.logging.LogRecord record) {
-                logged.add(record);
-            }
-
-            @Override
-            public void flush() {
-            }
-
-            @Override
-            public void close() {
-            }
-        };
-        boolean toParent = takeBackLog.getUseParentHandlers();
-        takeBackLog.addHandler(capture);
-        takeBackLog.setUseParentHandlers(false);
-        Connection connection;
-        try {
-            connection = new Connection(CHANGED, "completed", AgentRecorder.off(), "not a legal path \u0000 at all");
-            connection.answer(connection.questions().get(0), connection.selected("reject"), Channel.HOST);
-        } finally {
-            takeBackLog.removeHandler(capture);
-            takeBackLog.setUseParentHandlers(toParent);
+        no.answer(no.questions().get(0), no.selected("reject"), Channel.HOST);
+        for (int i = 0; i < 100 && no.prompts.size() < 2; i++) {
+            Thread.sleep(50);
         }
 
-        assertEquals(1, logged.size(), logged.toString());
-        assertEquals(java.util.logging.Level.WARNING, logged.get(0).getLevel());
-        String said = connection.said.toString();
-        assertTrue(said.contains("Nothing was put back."), said);
-        assertTrue(said.contains("src/A.java (the folder the hire ran in is not known)"), said);
-        assertTrue(said.contains("src/B.java (the folder the hire ran in is not known)"), said);
-        assertEquals("rejected", connection.lastEntry().path("verdict").asText(), said);
+        assertEquals("bb\n", java.nio.file.Files.readString(folder.resolve("src/B.java")), "a file was put back");
+        assertTrue(java.nio.file.Files.exists(folder.resolve("src/A.java")), "a file the hire created was deleted");
+        assertEquals(2, no.prompts.size(), no.prompts.toString());
+        String told = no.prompts.get(1);
+        assertTrue(told.contains("not this, fix it") && told.contains("t1") && told.contains("src/A.java") && told.contains("src/B.java"), told);
+        assertEquals("rejected", no.lastEntry().path("verdict").asText());
+        assertTrue(no.said.toString().contains("Nothing was put back"), no.said.toString());
+        assertEquals(1, yes.prompts.size(), "a yes started a turn: " + yes.prompts);
     }
 
     @Test

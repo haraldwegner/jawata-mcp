@@ -211,14 +211,6 @@ final class HireWatch {
      * and the folder it ran in (empty when its call named none).
      */
     record Proposal(List<String> files, List<TreeAttribution.FileChange> changes, List<String> omitted, String directory) {
-
-        /**
-         * What the person's no does: puts back, in the folder the hire ran in, the files this proposal changed, each only when that is exact and
-         * safe, and says what it left and why ({@link TakeBack}).
-         */
-        TakeBack.Result takeBack(org.jawata.core.host.HostProcesses host) {
-            return TakeBack.of(host, directory, this);
-        }
     }
 
     /**
