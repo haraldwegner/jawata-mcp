@@ -19,8 +19,8 @@ public class StaticDestination {
     }
 
     public static int roundUp(int cents) {
-            return ((cents + 99) / 100) * 100;
-        }
+        return ((cents + 99) / 100) * 100;
+    }
 }
 === StaticCaller.java ===
 package com.example;

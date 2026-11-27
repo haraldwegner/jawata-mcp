@@ -77,6 +77,17 @@ public final class FormatterOptions {
         return options;
     }
 
+    /**
+     * The code settings a JDT processor that moves members needs: the project's tab and indent widths. Left at their zero defaults the
+     * processor cannot strip a moved member's old indentation, so its body and closing brace land one level too deep (28h z163).
+     */
+    public static org.eclipse.jdt.internal.corext.codemanipulation.CodeGenerationSettings codeGenerationSettings(IJavaProject project) {
+        var settings = new org.eclipse.jdt.internal.corext.codemanipulation.CodeGenerationSettings();
+        settings.tabWidth = org.eclipse.jdt.internal.corext.util.CodeFormatterUtil.getTabWidth(project);
+        settings.indentWidth = org.eclipse.jdt.internal.corext.util.CodeFormatterUtil.getIndentWidth(project);
+        return settings;
+    }
+
     /** True when the project scope explicitly declares a formatter tab char. */
     private static boolean projectDeclaresTabChar(ICompilationUnit cu) {
         try {

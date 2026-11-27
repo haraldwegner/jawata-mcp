@@ -383,7 +383,8 @@ public class MoveMethodTool extends AbstractRefactoringTool
         }
 
         MoveStaticMembersProcessor processor =
-            new MoveStaticMembersProcessor(new IMember[] { method }, new CodeGenerationSettings());
+            new MoveStaticMembersProcessor(new IMember[] { method },
+                org.jawata.mcp.tools.shared.FormatterOptions.codeGenerationSettings(method.getJavaProject()));
         processor.setDestinationTypeFullyQualifiedName(targetType);
         // Unlike a moved FIELD, a forwarder here is a legitimate choice: it keeps an old
         // published entry point compiling while callers migrate. Off by default, because

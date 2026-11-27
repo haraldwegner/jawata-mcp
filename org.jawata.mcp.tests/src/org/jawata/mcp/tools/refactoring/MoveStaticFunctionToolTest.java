@@ -72,6 +72,22 @@ class MoveStaticFunctionToolTest {
     }
 
     @Test
+    @DisplayName("28h z163: the moved method is indented as one level inside its new class, body and closing brace with it")
+    void theMovedMethodKeepsOneLevelOfIndentation() throws Exception {
+        org.jawata.mcp.tools.shared.HeadlessJdtConfig.ensureInitialized(); // as the product does at startup
+        Path home = pkg.resolve("StaticHome.java");
+        ObjectNode args = moveArgs(home, "public static int roundUp", 22);
+        args.put("targetType", "com.example.StaticDestination");
+
+        ToolResponse r = tool.execute(args);
+
+        assertTrue(r.isSuccess(), "the move must run; got: " + r.getError());
+        String destination = read(pkg.resolve("StaticDestination.java"));
+        assertTrue(destination.contains("\n    public static int roundUp(int cents) {\n        return ((cents + 99) / 100) * 100;\n    }\n"),
+            () -> "the moved method is not indented one level:\n" + destination);
+    }
+
+    @Test
     @DisplayName("a static method moves to the named type and every qualified call repoints")
     void theStaticMethodMoves() throws Exception {
         Path home = pkg.resolve("StaticHome.java");
