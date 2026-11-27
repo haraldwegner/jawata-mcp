@@ -71,7 +71,7 @@ final class HireWatch {
         Optional<JsonNode> toolUse = Optional.empty();
         /** Tool calls the hire made, as its answer counted them (D10). */
         int toolSteps;
-        /** The names of the tool calls the hire made, in order, as its answer listed them (28h D57 (i)). */
+        /** The lines of the tool calls the hire made, in order, as its answer listed them: the tool and what it looked at (28h D57 (i), z129). */
         List<String> callLines = List.of();
         /** Code changes the hire's brain made by hand, outside any engine tool, as its answer counted them (D10). */
         int editsByHand;
