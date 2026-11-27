@@ -159,114 +159,25 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
     @Override
     public String getDescription() {
         return """
-            Run JUnit / TestNG tests in a forked runner JVM on the project's
-            own classpath and return parsed pass/fail/skip results with stack
-            traces for failures.
+            Run JUnit / TestNG tests in a forked JVM and return pass/fail/skip with failure traces.
 
-            USAGE:
-              run_tests(scope={kind:"method", typeName:"com.example.FooTest", methodName:"testBar"})
-              run_tests(scope={kind:"method", filePath:"...", line:42, column:4})
-              run_tests(scope={kind:"class",  typeName:"com.example.FooTest"})
-              run_tests(scope={kind:"class",  filePath:"...", line:10, column:0})
-              run_tests(scope={kind:"package", packageName:"com.example.tests"})
+            scope (run/start), with scope.kind:
+            - "method": {typeName, methodName} OR {filePath, line, column}; {filePath, methodName} is NOT valid.
+            - "class": {typeName} or {filePath, line, column}. - "package": {packageName}.
+            Zero-based. coverage=true or attribution=true records evidence.
 
-            Async (long suites — progressive results):
-              run_tests(action="start", scope=...)        → { sessionId, state }
-              run_tests(action="status", sessionId="...") → live per-class progress
-                (plannedTests, classesStarted/Finished, testsFinished, recentEvents)
-                + the full summary once FINISHED; the summary stays retrievable
-                after completion.
-              run_tests(action="cancel", sessionId="...") → reaps the runner
-                process tree, returns the honest partial result (cancelled=true,
-                evidenceFinalized=false).
-              action="run" (default) behaves synchronously as above.
+            action:
+            - run (default), start (async, returns sessionId), status, cancel (sessionId).
+            - coverage_report (artifactId), coverage_uncovered (target), coverage_artifacts, coverage_delete (artifactId).
+            - coverage_delta (diff, range), coverage_baseline_set / coverage_baseline_compare (name),
+              coverage_threshold_set (lineThresholdPercent, waivers), coverage_stability (artifactId,
+              otherArtifactId), coverage_import (execFile).
+            - coverage_tests_covering (target), coverage_of_test (test), coverage_impacted_tests (symbols or diff,
+              forScope): needs attribution; narrow a run only if mayNarrow is true.
+            - coverage_mutation (targetClasses; targetTests, timeoutSeconds).
 
-            Coverage evidence (JaCoCo on the same runner lifecycle):
-              run_tests(coverage=true, scope=...)              → coverageArtifactId
-              run_tests(action="coverage_report" [, artifactId]) → totals + provenance
-                (git revision + dirty fingerprint, selection, evidence kind,
-                completion status) + per-state histogram; STALE classes are
-                REFUSED, an unfinalized run reports unknown-run-failed, a run
-                with no exec data reports instrumentation-failure — counts are
-                never invented.
-              run_tests(action="coverage_uncovered", target="com.example.Foo#m")
-                → per-symbol states + uncovered/partly-covered lines + branch
-                gaps + links into the compiler-aware tools + a smallest-next-
-                action hint; same-FQN-in-two-bundles yields separate facts.
-              run_tests(action="coverage_artifacts") / (action="coverage_delete",
-                artifactId=...) manage stored artifacts explicitly.
-              run_tests(action="coverage_delta", diff="worktree|staged|range")
-                → changed-lines coverage (rename-aware; unstable lines never
-                count covered); baselines via coverage_baseline_set/compare
-                (regression judged per symbol/line, blind to a rising global
-                percentage); coverage_threshold_set stores a VERSIONED policy
-                whose value/version/waivers surface in responses;
-                coverage_stability registers unstable lines from two
-                same-selection runs; coverage_import ingests a CI exec file
-                (class-id gated).
-
-            Who-tests-what (attribution=true runs record per-test segments):
-              run_tests(action="coverage_tests_covering", target="Foo#m")
-                → the tests that EXERCISED the symbol, ranked focused-first
-                (unit before integration), kinds labeled; answers
-                "unavailable" without attribution evidence — never guesses.
-              run_tests(action="coverage_of_test", test="FooTest#m")
-                → every symbol that test exercised.
-              run_tests(action="coverage_impacted_tests" [, symbols] [, diff]
-                [, forScope])
-                → the smallest evidence-backed test set for a change, plus
-                selectionVerdict — read mayNarrow, which is a COMPLETE answer
-                for the forScope you named ('whole-suite' by default). Do not
-                shorten a run on impactedTests while mayNarrow is false: the
-                reason beside it says what the evidence could not speak for.
-
-            SELECTION BY COMPILER REACH, and it is the DEFAULT, not a flag:
-              a scope={kind:"package"} run executes only the tests this same
-              evidence says your changes reach, and reports what it narrowed to
-              under `selection` on the run, start AND status responses. Where
-              the evidence cannot carry the claim it runs the WHOLE scope and
-              says why — it never shortens silently, and it never shortens a
-              run that is itself recording coverage or attribution. Pass
-              fullRun=true to pin the whole scope, which is what a checkpoint
-              or a release gate wants.
-
-            Mutation (OPT-IN, always targeted, runtime-bounded):
-              run_tests(action="coverage_mutation", targetClasses=["com.example.Foo"]
-                [, targetTests] [, timeoutSeconds])
-                → killed/survived/timed-out/no-coverage; each SURVIVOR maps to
-                its symbol + line + a candidate missing-assertion location.
-                targetTests defaults to the attribution-derived exercising set.
-
-            Inputs:
-            - scope.kind — "method" | "class" | "package".
-            - For kind="method": pass EXACTLY ONE of these combinations
-                {typeName, methodName}              (find method by FQN + name)
-                OR {filePath, line, column}         (find method at cursor position)
-              {filePath, methodName} is NOT a valid combination — methodName must pair
-              with typeName, never with filePath.
-            - For kind="class": pass EXACTLY ONE of
-                {typeName}                          (FQN)
-                OR {filePath, line, column}         (find class at cursor position)
-            - For kind="package": pass {packageName}.
-            - framework — "junit4" | "junit5" | "testng" | "auto" (default).
-            - timeoutSeconds — default 120, hard-cap 600.
-            - vmArgs — optional list of JVM flags (e.g. ["-Xmx512m"]).
-            - projectKey — optional. Restrict to a single loaded project.
-
-            Result: { framework, projectsTested, summary{total, passed, failed,
-              skipped, aborted?, timeMs, timedOut?, evidenceFinalized,
-              evidenceNote?}, failures[{testClass, testMethod, status, message,
-              stackTrace, durationMs}], stdoutTail, stderrTail }
-            evidenceFinalized=false means the runner JVM died, was killed, or
-            timed out — the counts are the partial events seen, never a
-            fabricated total.
-
-            Failure modes:
-            - INVALID_PARAMETER — bad scope (no @Test method at position,
-              empty package, no test framework on classpath, an unsupported
-              scope-field combination such as {filePath, methodName}, compile
-              errors in the project, or the concurrent-session limit.
-            - INTERNAL_ERROR — the runner toolchain could not be launched.
+            A package run is narrowed by default to the tests the coverage evidence says your changes reach
+            (reported under `selection`). evidenceFinalized=false: counts are partial.
             """;
     }
 
@@ -280,114 +191,83 @@ public class RunTestsTool extends WorkspaceTool<LoadedWorkspace> {
         Map<String, Object> scopeProps = new LinkedHashMap<>();
         scopeProps.put("kind", Map.of("type", "string",
             "enum", List.of("method", "class", "package"),
-            "description", "Scope of the test run."));
+            "description", "Scope kind."));
         scopeProps.put("filePath", Map.of("type", "string",
-            "description", "Source file. For kind=method or kind=class; must be paired with {line, column}, never with methodName."));
+            "description", "With line and column."));
         scopeProps.put("line", Map.of("type", "integer",
-            "description", "Zero-based line. Paired with filePath + column for cursor-position lookup (kind=method or kind=class)."));
+            "description", "Zero-based."));
         scopeProps.put("column", Map.of("type", "integer",
-            "description", "Zero-based column. Paired with filePath + line for cursor-position lookup (kind=method or kind=class)."));
+            "description", "Zero-based."));
         scopeProps.put("typeName", Map.of("type", "string",
-            "description", "Fully-qualified class name. For kind=class: pass alone. For kind=method: pair with methodName."));
+            "description", "Class FQN."));
         scopeProps.put("methodName", Map.of("type", "string",
-            "description", "Test method name. Must be paired with typeName for kind=method. NOT valid with filePath — use {filePath, line, column} for cursor-position lookups instead."));
+            "description", "With typeName only."));
         scopeProps.put("packageName", Map.of("type", "string",
-            "description", "Package FQN (kind=package)."));
+            "description", "Package FQN."));
         scope.put("properties", scopeProps);
         scope.put("required", List.of("kind"));
         properties.put("scope", scope);
         properties.put("framework", Map.of("type", "string",
             "enum", List.of("junit4", "junit5", "testng", "auto"),
-            "description", "Default 'auto' — detected from project classpath."));
+            "description", "Default auto."));
         properties.put("timeoutSeconds", Map.of("type", "integer",
-            "description", "Default 120; hard-capped at 600."));
+            "description", "Default 120, max 600."));
         properties.put("vmArgs", Map.of("type", "array",
             "items", Map.of("type", "string"),
-            "description", "Optional JVM flags for the forked test runner."));
+            "description", "JVM flags for the runner."));
         properties.put("action", Map.of("type", "string",
             "enum", ACTIONS,
-            "description", "run (default) = synchronous. start = async, returns a sessionId "
-                + "immediately. status/cancel operate on a sessionId (scope not needed). "
-                + "The coverage_* actions query and manage coverage evidence — including "
-                + "coverage_impacted_tests, which selects the tests a diff actually touches, "
-                + "and coverage_mutation, which checks whether those tests would notice a "
-                + "change."));
+            "description", "Default run."));
         properties.put("sessionId", Map.of("type", "string",
-            "description", "Session handle from action=start; required for status/cancel."));
+            "description", "status/cancel: id from start."));
         properties.put("extraClasspath", Map.of("type", "array",
             "items", Map.of("type", "string"),
-            "description", "Launch descriptor: extra jar/dir paths appended to the runner "
-                + "classpath at RUNTIME only (e.g. plain-Java projects whose build model "
-                + "cannot declare them)."));
+            "description", "Extra runtime classpath entries."));
         properties.put("coverage", Map.of("type", "boolean",
-            "description", "Collect JaCoCo coverage during this run (action=run/start); the "
-                + "response carries a coverageArtifactId for the coverage_* query actions."));
+            "description", "Record JaCoCo coverage; returns coverageArtifactId."));
         properties.put("fullRun", Map.of("type", "boolean",
-            "description", "PIN the whole scope. A kind='package' run otherwise narrows "
-                + "ITSELF to the tests the coverage evidence says your changes reach — by "
-                + "default, on every client and OS, with no flag to remember. Pass this "
-                + "true where the whole scope is the point: a checkpoint, a release gate. "
-                + "Where the evidence cannot prove the narrowing is safe the response SAYS "
-                + "SO and everything runs anyway, so a quiet short run is not a state this "
-                + "can reach. Only the test-manager seat may pass it (a developer runs the "
-                + "tests its change reaches), and it gives a reason."));
+            "description", "Run the whole package scope, no narrowing (checkpoint/release). Only the "
+                + "test-manager seat may pass it, with reason."));
         properties.put("reason", Map.of("type", "string",
-            "description", "fullRun only: why the whole scope is run now, for the pm the test-manager "
-                + "answers to to weigh against what a full run costs the machine. Required from the "
-                + "test-manager seat when fullRun is true."));
+            "description", "fullRun: why; required from test-manager."));
         properties.put("evidenceKind", Map.of("type", "string",
             "enum", List.of("unit", "integration", "system", "replay", "manual"),
-            "description", "Evidence classification recorded in the coverage artifact "
-                + "(default unit)."));
+            "description", "Coverage label (default unit)."));
         properties.put("artifactId", Map.of("type", "string",
-            "description", "Coverage artifact for the coverage_* actions (default: latest)."));
+            "description", "coverage_*: artifact (default latest)."));
         properties.put("target", Map.of("type", "string",
-            "description", "coverage_uncovered / coverage_tests_covering target: "
-                + "'com.example.Foo' or 'com.example.Foo#method'."));
+            "description", "'pkg.Foo' or 'pkg.Foo#method'."));
         properties.put("attribution", Map.of("type", "boolean",
-            "description", "Collect PER-TEST coverage segments during this run (implies "
-                + "coverage=true); enables the who-tests-what queries."));
+            "description", "Per-test coverage (implies coverage)."));
         properties.put("test", Map.of("type", "string",
-            "description", "coverage_of_test: 'com.example.FooTest#method'."));
+            "description", "coverage_of_test: 'pkg.FooTest#method'."));
         properties.put("symbols", Map.of("type", "array",
             "items", Map.of("type", "string"),
-            "description", "coverage_impacted_tests: explicit symbol list (else derived "
-                + "from the git diff)."));
+            "description", "coverage_impacted_tests: changed symbols (default: from git diff)."));
         properties.put("forScope", Map.of("type", "string",
-            "description", "coverage_impacted_tests: the scope you mean to NARROW, so the "
-                + "verdict can be a complete answer rather than a half of one — "
-                + "'whole-suite' (the default, and the strictest) or 'package:com.foo'. "
-                + "Evidence recorded from a run narrower than this cannot say which tests "
-                + "cover it, only which cover what that run happened to execute, so "
-                + "selectionVerdict.mayNarrow comes back false and says which."));
+            "description", "coverage_impacted_tests: whole-suite (default) or package:com.foo."));
         properties.put("diff", Map.of("type", "string",
             "enum", List.of("worktree", "staged", "range"),
-            "description", "coverage_delta / coverage_impacted_tests: which git diff "
-                + "(default worktree)."));
+            "description", "Default worktree."));
         properties.put("range", Map.of("type", "string",
-            "description", "Commit range for diff=range, e.g. 'HEAD~1..HEAD'."));
+            "description", "diff=range: e.g. HEAD~1..HEAD."));
         properties.put("name", Map.of("type", "string",
-            "description", "Baseline name for coverage_baseline_set/compare."));
+            "description", "Baseline name."));
         properties.put("otherArtifactId", Map.of("type", "string",
-            "description", "coverage_stability: the second same-selection artifact."));
+            "description", "coverage_stability: second run's artifact."));
         properties.put("lineThresholdPercent", Map.of("type", "number",
-            "description", "coverage_threshold_set: the line-coverage threshold; every "
-                + "change bumps the stored policy VERSION."));
+            "description", "coverage_threshold_set."));
         properties.put("waivers", Map.of("type", "array",
             "items", Map.of("type", "object"),
-            "description", "coverage_threshold_set: [{pattern, reason}] — always visible "
-                + "in threshold-bearing responses."));
+            "description", "coverage_threshold_set: [{pattern, reason}]."));
         properties.put("execFile", Map.of("type", "string",
-            "description", "coverage_import: path to an external jacoco.exec (CI run); "
-                + "acceptance is gated by the class-id check."));
+            "description", "coverage_import: jacoco.exec path."));
         properties.put("targetClasses", Map.of("type", "array",
             "items", Map.of("type", "string"),
-            "description", "coverage_mutation: the production classes to mutate "
-                + "(typically the CHANGED classes — mutation is always targeted)."));
+            "description", "coverage_mutation: classes to mutate."));
         properties.put("targetTests", Map.of("type", "array",
             "items", Map.of("type", "string"),
-            "description", "coverage_mutation: the exercising test classes; omitted = "
-                + "derived from attribution evidence."));
+            "description", "coverage_mutation: tests (default from attribution)."));
         schema.put("properties", properties);
         return withProjectKey(schema);
     }

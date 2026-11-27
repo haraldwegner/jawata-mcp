@@ -113,18 +113,8 @@ public final class RemoveDeadCodeRule implements CleanupRule {
 
     @Override
     public String kindSummary() {
-        return """
-            Remove Dead Code: delete private members and local variables
-            the compiler proves are never used — methods, constructors,
-            fields and nested types. An unused local whose initializer has
-            a side effect KEEPS the side effect as a statement. A private
-            field whose initializer calls code is LEFT, and package or wider
-            members are not looked at: inline kind=unreferenced_member takes
-            both. Unused imports are deliberately left alone: organize_imports owns
-            them. Casts and parameters are out of scope — an unnecessary
-            cast is not unreachable code, and dropping a parameter can
-            rename the method, which is
-            change_method_signature kind=change_signature's job.""";
+        return "delete unused private members and locals (side effects kept). A private field whose initializer "
+            + "calls code, and non-private members, are LEFT: use inline kind=unreferenced_member.";
     }
 
     @Override

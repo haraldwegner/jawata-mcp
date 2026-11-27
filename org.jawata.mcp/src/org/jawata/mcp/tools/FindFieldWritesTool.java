@@ -50,36 +50,9 @@ public class FindFieldWritesTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Find all write accesses (mutations) to a field.
-
-            INPUT CONTRACT: TWO alternative invocation forms (Sprint 14 /
-            bugs.md #12 — both halves shipped in v1.8.0):
-
-            (a) Position-based — pass (filePath, line, column) on a field
-                declaration or reference. ZERO-BASED coordinates.
-
-            (b) FQN-based (v1.8.0) — pass `symbol` = "com.foo.Bar#fieldName".
-                Optional `scope` = "workspace" (default) or "project"
-                (requires projectKey).
-
-            USAGE: Position cursor on a field declaration or reference.
-            OUTPUT: List of locations where the field is modified.
-
-            IMPORTANT: Uses ZERO-BASED coordinates.
-
-            Sprint 14 graceful degradation: when the (filePath, line, column)
-            position does NOT resolve to a field — either no symbol at all, or
-            a non-field symbol (method, type, local variable, …) — the
-            response is a SUCCESS with empty writeLocations PLUS a
-            `nearbyFieldCandidates` list (up to 3 fields declared within ±1
-            line of the requested position, each with name + line + column).
-            Re-call with one of those coordinates if the position was off.
-
-            Unlike find_references which returns all usages, this returns only
-            locations where the field value is changed (assignments, increments, etc).
-            Useful for data flow analysis and understanding state mutations.
-
-            Requires load_project to be called first.
+            Find the writes to a field (assignments, increments). Give filePath, line, column (ZERO-BASED) on the
+            field, or symbol="pkg.Type#field" (scope workspace|project). A position that is not a field answers
+            empty writeLocations plus nearbyFieldCandidates.
             """;
     }
 
@@ -90,23 +63,23 @@ public class FindFieldWritesTool extends AbstractTool {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("filePath", Map.of(
             "type", "string",
-            "description", "Path to source file (position-based form)."));
+            "description", "Source file."));
         properties.put("line", Map.of(
             "type", "integer",
-            "description", "Zero-based line number (position-based form)."));
+            "description", "Zero-based line."));
         properties.put("column", Map.of(
             "type", "integer",
-            "description", "Zero-based column number (position-based form)."));
+            "description", "Zero-based column."));
         properties.put("symbol", Map.of(
             "type", "string",
-            "description", "Sprint 14 FQN form (bugs.md #12 capability half): 'com.foo.Bar#fieldName'."));
+            "description", "pkg.Type#field instead of a position."));
         properties.put("scope", Map.of(
             "type", "string",
             "enum", List.of("workspace", "project"),
-            "description", "FQN-form scope: 'workspace' (default) or 'project' (requires projectKey)."));
+            "description", "With symbol; default workspace; project needs projectKey."));
         properties.put("maxResults", Map.of(
             "type", "integer",
-            "description", "Max write locations to return (default 100)."));
+            "description", "Default 100."));
         schema.put("properties", properties);
         return withProjectKey(schema);
     }

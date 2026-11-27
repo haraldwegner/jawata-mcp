@@ -46,13 +46,7 @@ public class ComposeMethodTool extends AbstractTool
     /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            TOWARD: reshape a long method into a short sequence of
-            intention-revealing calls. Needs: `sections` = an array of
-            >= 2 disjoint {startLine, startColumn, endLine, endColumn,
-            methodName} statement ranges to extract. Applies atomically
-            (auto_apply=false not supported). (find_quality_issue
-            kind=long_method locates candidates.)""";
+        return "split a long method into calls: filePath, sections (2+ statement ranges).";
     }
 
 
@@ -84,12 +78,11 @@ public class ComposeMethodTool extends AbstractTool
         Map<String, Object> section = new LinkedHashMap<>();
         section.put("type", "object");
         section.put("description",
-            "One statement section to extract: {startLine, startColumn, endLine, endColumn, methodName} "
-                + "(ZERO-BASED, section must be complete statements inside the method body).");
+            "{startLine, startColumn, endLine, endColumn, methodName}, ZERO-BASED, complete statements.");
         schema.put("properties", Map.of(
-            "filePath", Map.of("type", "string", "description", "Source file of the long method."),
+            "filePath", Map.of("type", "string", "description", "Source file."),
             "sections", Map.of("type", "array", "items", section,
-                "description", ">= 2 disjoint sections to extract, each with its own methodName.")));
+                "description", "2+ disjoint sections.")));
         schema.put("required", List.of("filePath", "sections"));
         return withAutoApply(withProjectKey(schema));
     }

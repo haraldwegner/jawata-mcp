@@ -91,14 +91,8 @@ public class MoveStatementsToCallersTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            the inverse: move a function's FIRST or LAST statement out to
-            every call site. Needs: filePath, line, column on the statement.
-            Refuses a statement in the middle (no call-site position
-            reproduces running after part of the body), one mentioning the
-            method's own parameters or locals, a method that is overridden or
-            overrides (dispatch makes "the callers" unanswerable), a call
-            buried in a larger expression, and a method with no callers at
-            all — moving something to nobody is a deletion.""";
+            a function's FIRST or LAST statement out to every caller: filePath, line, column on it.
+            Refuses one using parameters/locals, overridden methods, calls inside expressions, no callers.""";
     }
 
 

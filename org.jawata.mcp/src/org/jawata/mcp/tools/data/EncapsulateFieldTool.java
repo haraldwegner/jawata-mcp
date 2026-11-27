@@ -59,14 +59,8 @@ public class EncapsulateFieldTool extends AbstractRefactoringTool implements Too
 
     @Override
     public String getDescription() {
-        return """
-            generate a getter and setter for a field, rewrite every direct access
-            through them, and tighten the field's visibility. Position on the field
-            declaration or any reference to it, or name it with symbol=pkg.Type#field.
-            Defaults: getterName is 'get' + Capitalized (or 'is' for a boolean),
-            setterName is 'set' + Capitalized, newFieldVisibility is private.
-            An accessor name that already exists is a conflict: it REFUSES and
-            modifies nothing.""";
+        return "getter/setter, accesses rewritten, field made private: field position or symbol; "
+            + "getterName, setterName, newFieldVisibility, generateJavadoc optional.";
     }
 
     @Override
@@ -75,22 +69,22 @@ public class EncapsulateFieldTool extends AbstractRefactoringTool implements Too
         schema.put("type", "object");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("filePath", Map.of("type", "string",
-            "description", "Source file containing the field."));
+            "description", "Source file."));
         properties.put("line", Map.of("type", "integer",
-            "description", "Zero-based line number on the field."));
+            "description", "Zero-based line of the target."));
         properties.put("column", Map.of("type", "integer",
-            "description", "Zero-based column number on the line."));
+            "description", "Zero-based column."));
         properties.put("getterName", Map.of("type", "string",
-            "description", "Optional. Default: 'get' + Capitalized name; 'is' for boolean."));
+            "description", "encapsulate_field: default getX/isX."));
         properties.put("setterName", Map.of("type", "string",
-            "description", "Optional. Default: 'set' + Capitalized name."));
+            "description", "encapsulate_field: default setX."));
         properties.put("newFieldVisibility", Map.of("type", "string",
             "enum", List.of("public", "protected", "private", "package"),
-            "description", "Visibility for the field after encapsulation (default 'private')."));
+            "description", "encapsulate_field: default private."));
         properties.put("generateJavadoc", Map.of("type", "boolean",
-            "description", "Emit Javadoc stubs on the generated accessors (default false)."));
+            "description", "Javadoc on accessors (default false)."));
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-            "field to encapsulate"));
+            "target"));
         schema.put("properties", properties);
         // Sprint 24 (D1): position OR name form.
         schema.put("required", List.of());

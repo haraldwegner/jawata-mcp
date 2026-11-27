@@ -97,17 +97,12 @@ public class HierarchyTool extends AbstractTool implements KindedTool {
 
     @Override
     public String preamble() {
-        return "Move a member up to a supertype or down to subtypes"
-            + " (behaviour-preserving, reversible).";
+        return "Restructure a class hierarchy (behaviour-preserving, undoable). ZERO-BASED coordinates.";
     }
 
     @Override
     public String footer() {
-        return """
-            IMPORTANT: ZERO-BASED coordinates. Applies by default; returns
-            filesModified/diff/undoChangeId/summary. Pass auto_apply=false to stage only.
-
-            Requires load_project to be called first.""";
+        return "";
     }
 
     @Override
@@ -121,14 +116,14 @@ public class HierarchyTool extends AbstractTool implements KindedTool {
         // DERIVED from the routing table, so a direction cannot be dispatched and left out of
         // the enum a client reads.
         direction.put("enum", publishedKinds());
-        direction.put("description", "Which way through the hierarchy. See the tool description.");
+        direction.put("description", "Which change; see the tool description.");
         properties.put("direction", direction);
-        properties.put("filePath", Map.of("type", "string", "description", "Path to source file."));
-        properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the member at the caret."));
+        properties.put("filePath", Map.of("type", "string", "description", "Source file."));
+        properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the target."));
         properties.put("column", Map.of("type", "integer", "description", "Zero-based column."));
 
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-            "member to pull up or push down"));
+            "member or constructor"));
         // THE BACKSTOP: every parameter any delegate declares reaches the published contract,
         // curated or not. A kind wired for EXECUTION and unwired for CONTRACT runs correctly
         // for anyone who already knows the argument names and is invisible in tools/list.

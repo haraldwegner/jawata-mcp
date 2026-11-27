@@ -89,7 +89,7 @@ public class GenerateTool extends AbstractTool
 
     @Override
     public String preamble() {
-        return "Generate boilerplate into the type at a caret (reversible).";
+        return "Generate code into the type at a caret or named by typeName (undoable).";
     }
 
     @Override
@@ -102,35 +102,9 @@ public class GenerateTool extends AbstractTool
         return "Kinds (all ZERO-BASED coordinates on a caret in the target type):";
     }
 
-    /**
-     * PROJECTED from the delegates now — the golden for the equivalence test.
-     *
-     * <p>{@code public} where the other doors' goldens are package-private, for one reason
-     * that is about packages rather than about API: this is the only front door outside
-     * {@code org.jawata.mcp.tools}, and the seam's test lives with the seam.</p>
-     */
-    public static final String LEGACY_KIND_BLOCK = """
-            Kinds (all ZERO-BASED coordinates on a caret in the target type):
-            - constructor      — a constructor. Needs: fields[]. Optional: visibility, callSuper.
-            - getters_setters  — accessors. Needs: fields[]. Optional: accessorKind (getters|setters|both, default both), visibility, getterStyle (classic|record), setterStyle (classic|fluent), generateJavadoc.
-            - equals_hashcode  — equals() + hashCode(). Needs: fields[].
-            - tostring         — toString(). Needs: fields[]. Optional: style.
-            - test_skeleton    — a test class for the type. Optional: framework, includePrivateMethods.
-            - override_methods — override/implement methods. Optional: methods[] (else all overridable).
-            - copy_class       — clone the top-level class at the caret into a new same-package file.
-                                 Needs: newTypeName. The compiler-cheap way to derive a sibling class
-                                 (e.g. PizzaSalami -> PizzaFungi) before Extract Superclass, instead
-                                 of re-authoring a near-duplicate.
-            - add_method       — a method on the type at the caret: on a class a stub whose body throws UnsupportedOperationException, so a test of its behaviour fails for the behaviour and not for a missing method; on an interface the bare signature. Needs: methodName. Optional: returnType (default void), parameters[] ({name, type}), visibility (public by default).""";
-
     @Override
     public String footer() {
-        return """
-            Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
-            auto_apply=false to stage only.
-
-            Requires load_project to be called first.
-            """;
+        return "";
     }
 
     @Override
@@ -149,31 +123,30 @@ public class GenerateTool extends AbstractTool
         // not to the constant would have been routed, described in the projected bullet
         // list, and MISSING from the enum a client reads in tools/list.
         kind.put("enum", publishedKinds());
-        kind.put("description", "Which generator to run. See the tool description for per-kind params.");
+        kind.put("description", "What to generate; see the tool description.");
         properties.put("kind", kind);
 
-        properties.put("filePath", Map.of("type", "string", "description", "Path to source file."));
-        properties.put("line", Map.of("type", "integer", "description", "Zero-based line of a caret in the target type."));
+        properties.put("filePath", Map.of("type", "string", "description", "Source file."));
+        properties.put("line", Map.of("type", "integer", "description", "Zero-based line in the type."));
         properties.put("column", Map.of("type", "integer", "description", "Zero-based column."));
         properties.put("fields", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "constructor/getters_setters/equals_hashcode/tostring: field names to include."));
-        properties.put("visibility", Map.of("type", "string", "description", "constructor/getters_setters/add_method: member visibility (e.g. public)."));
-        properties.put("callSuper", Map.of("type", "string", "description", "constructor: whether to call super (auto|true|false)."));
+            "description", "Field names to include."));
+        properties.put("visibility", Map.of("type", "string", "description", "e.g. public."));
+        properties.put("callSuper", Map.of("type", "string", "description", "constructor: auto|true|false."));
         properties.put("accessorKind", Map.of("type", "string", "enum", List.of("getters", "setters", "both"),
-            "description", "getters_setters: which accessors to generate (default both)."));
-        properties.put("style", Map.of("type", "string", "description", "tostring: rendering style."));
-        properties.put("framework", Map.of("type", "string", "description", "test_skeleton: test framework (e.g. junit5)."));
-        properties.put("includePrivateMethods", Map.of("type", "boolean", "description", "test_skeleton: also stub private methods."));
+            "description", "getters_setters: default both."));
+        properties.put("style", Map.of("type", "string", "description", "tostring: style."));
+        properties.put("framework", Map.of("type", "string", "description", "test_skeleton: e.g. junit5."));
+        properties.put("includePrivateMethods", Map.of("type", "boolean", "description", "test_skeleton: also private methods."));
         properties.put("methods", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "override_methods: specific method names to override (default all overridable)."));
+            "description", "override_methods: names (default all overridable)."));
         properties.put("newTypeName", Map.of("type", "string",
-            "description", "copy_class: name for the cloned class (must not already exist in the package)."));
+            "description", "copy_class: new class name."));
         properties.put("indentChar", Map.of("type", "string", "enum", List.of("space", "tab"),
-            "description", "Override the indentation of generated code. Default: match the target "
-                + "project's formatter config (.settings/.editorconfig), else spaces. Rarely needed."));
+            "description", "Override indentation (default: project formatter)."));
 
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
-            "type to generate into"));
+            "target type"));
 
         // THE BACKSTOP now lives on KindedTool — every parameter any delegate declares
         // reaches the published contract, whether or not someone curated it above.

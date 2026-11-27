@@ -81,15 +81,8 @@ public class MoveStatementsIntoFunctionTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            move a statement that sits beside a call INTO the function being
-            called. Needs: filePath, line, column on the statement; the call
-            is its neighbour, and which side it is on decides whether the
-            statement lands at the top or the bottom of the callee.
-            EVERY call site is checked for the same statement first: with
-            three of four, moving it in would ADD behaviour at the fourth, so
-            the call is refused and says how many matched. The statement may
-            mention only static bindings and literals — a caller's local is
-            not in scope inside the callee and differs per call anyway.""";
+            a statement beside a call into the called function: filePath, line, column on the statement.
+            Every call site must have it; it may use only statics and literals.""";
     }
 
 

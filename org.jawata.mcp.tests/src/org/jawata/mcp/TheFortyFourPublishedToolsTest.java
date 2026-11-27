@@ -126,4 +126,49 @@ class TheFortyFourPublishedToolsTest {
 
         assertFalse(difference(dropped, golden()).isEmpty(), "a tool lost from the list must not pass");
     }
+
+    /**
+     * 28h D58 (b): Claude Code keeps the first 4,096 characters of a tool's explanation and drops the rest, so every explanation fits in
+     * them, with the names of all its operations (the values of its {@code kind} or {@code action} parameter) before the details.
+     */
+    @Test
+    @DisplayName("every explanation fits in 4,096 characters and names all its operations in its first 1,500")
+    void everyExplanationFitsAndNamesItsOperationsFirst() {
+        List<String> faults = new ArrayList<>();
+        int total = 0;
+        for (Map<String, Object> definition : published()) {
+            String name = String.valueOf(definition.get("name"));
+            String explanation = String.valueOf(definition.get("description"));
+            total += explanation.length();
+            if (explanation.length() > 4096) {
+                faults.add(name + " is " + explanation.length() + " characters");
+            }
+            String head = explanation.substring(0, Math.min(1500, explanation.length()));
+            JsonNode properties = JSON.valueToTree(definition.get("inputSchema")).path("properties");
+            for (String selector : new String[] {"kind", "action"}) {
+                List<String> missing = new ArrayList<>();
+                for (JsonNode operation : properties.path(selector).path("enum")) {
+                    if (!head.contains(operation.asText())) {
+                        missing.add(operation.asText());
+                    }
+                }
+                if (!missing.isEmpty()) {
+                    faults.add(name + " does not name early: " + missing);
+                }
+            }
+        }
+        assertEquals("", String.join("\n", faults), "all explanations together are " + total + " characters");
+    }
+
+    /**
+     * 28h D58 (b): one list is about 55,000 tokens instead of about 87,000, compared as characters: at most 55/87 of the whole list as it
+     * stood when the change request was written.
+     */
+    @Test
+    @DisplayName("the whole published list is at most 55/87 of what it was")
+    void theWholeListIsTrimmed() throws IOException {
+        int now = JSON.writeValueAsString(published()).length();
+        int before = 267_739; // measured 2026-11-27, before any trimming
+        assertTrue(now <= before * 55 / 87, "the published list is " + now + " characters");
+    }
 }

@@ -90,17 +90,7 @@ public class ReplaceFunctionWithCommandTool extends AbstractApplyingRefactoringT
     /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            turn a STATIC function into an object: its parameters
-            become final fields set by a constructor, its body becomes
-            execute(), and every call site becomes `new Type(args).execute()`
-            (Fowler: Replace Function with Command). Needs: filePath, line,
-            column on the function, newTypeName. The reason to want it is that
-            the parameters are FIELDS afterwards, so the body can be broken
-            into named steps that share them — which compose_method cannot do
-            while they are parameters. Refuses an instance method (its receiver
-            would be a field nobody named) and a function something else
-            redeclares (a command has no dispatch).""";
+        return "a STATIC function becomes a class with execute(): filePath, line, column (or symbol), newTypeName.";
     }
 
     /**

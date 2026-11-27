@@ -384,66 +384,26 @@ public final class ExperienceTool implements Tool {
     @Override
     public String getDescription() {
         return """
-            Local experience/knowledge store — record and recall grounded lessons, domain
-            facts, failure modes and hazards for THIS codebase.
+            Local knowledge store for this codebase: lessons, domain facts, failure modes. Recall before a
+            refactor or a root-cause claim; record what you learn.
 
-            USAGE: experience(kind="record", type, summary, ...)
-                   experience(kind="recall", lane=<one> | lanes=[<a>,<b>], symbol?/package?/operation?/symptom?/external_system?)
+            kind:
+            - record: type, summary; lesson and failure_mode need situation and verdict; anchor symbol or
+              packages[]/symbols[].
+            - recall: lane or lanes (or occasion) AND a cue (symbol, package, operation, symptom, external_system).
+              A call naming no lane is refused. format=text for plain lines.
+            - nominate (lane(s), question) ranks candidates; decide (query_id, selected_ids).
+            - primer (limit): accepted domain nodes. list (type, status, language, scope, limit).
+            - promote (id, status), delete (ids), set_form, review, review_sweep (seats), migrate_form, refresh
+              (re-resolve symbol pointers), stats, fallback, fallback_report, duplicate_check, vectorise.
+            - load (path of *.md; omit for default roots), wipe_and_import (confirm:true; wipes first), wipe.
+            - export, import (entries or path), prune (days), dedup (confirm:true merges), compact, backup, restore.
+            - promote_rule (ids, summary), amend_rule (id, summary), retire_rule (id).
+            - describe: action next|done|area|jobs_for.
+            - transcript_append, transcript_verify (quote).
 
-            EVERY recall AND nominate NAMES ITS LANE(S), and a call that names none is refused
-            with the list of lanes. The lane is chosen BEFORE the search and each lane is ranked
-            on its own: experience (also lessons) = what was learned; patterns = the borrowed
-            design catalogue; domain (also business) = facts and contracts; rules; code = what
-            each member is FOR, asked by job to check whether something already exists, never to
-            read code (the compiler tools do that). "all" names every lane at once.
-
-            Kinds:
-            - record — store an observation as a candidate entry. Needs: type, summary.
-              Optional: confidence (low|medium|high); anchor with symbol (FQN) OR
-              packages[]/symbols[]; language (anchor language, default java — non-Java
-              anchors are never staled by JDT maintenance); details, operation, scope_kind,
-              symptoms[], links[{rel,target}], fault_owner, external_system, status,
-              exceptions[].
-            - recall — TERMINAL retrieval for a cue. Give any of symbol / package / operation
-              / symptom / external_system. Returns exactly the fitting node(s) with pointers
-              resolved to current code, OR an authoritative absence — never a similarity pile.
-              Pass format="text" for flat, injection-ready lines (else structured JSON).
-            - primer — the always-on DOMAIN layer: accepted domain nodes for a SessionStart
-              orientation. Optional: limit (default 20), format="text".
-            - load — seed the store from memory files. Optional: path (a directory of *.md or
-              a single file; OMIT to seed from the configured default roots — the layered
-              CLAUDE.md set + memory dirs), recursive (default true; false = don't walk
-              subdirectories). Ingest FOLLOWS
-              the link graph: [[wikilinks]] and relative [x](file.md) links are crawled
-              transitively (cycle-safe, bounded, skips reported). Frontmatter
-              type/description/symbol/language; entries are accepted/medium; idempotent per
-              source (re-load replaces).
-            - reseed — the explicit "initial load": wipe EVERYTHING, then load from the
-              default roots (or path). REQUIRES confirm:true. Optional: path, recursive.
-            - refresh — re-resolve Java symbol pointers through JDT; flag stale (superseded).
-              Non-Java anchors are opaque (never staled).
-            - wipe — remove everything.
-            - promote — set an entry's curation status. Needs: id. Optional: status (default accepted).
-            - list — curation view: browse entries by type / status / scope (symbol|package
-              prefix) / language, newest first (limit, default 50). Unlike recall this SHOWS
-              the set — including rejected/superseded — so candidates can be promoted.
-              format="text" for flat lines.
-            - export — full-fidelity dump (optionally filtered by status/type). Pass path to
-              write a JSON file (backup/sharing), else entries return inline.
-            - import — re-ingest exported entries (dedup by id). Pass entries[] inline or
-              path to an export file.
-            - prune — GC the store: delete rejected/superseded entries older than 'days'
-              (default 30; 0 = all of them).
-            - dedup — surface near-duplicate active entries (same summary + scope). Reports
-              groups; pass confirm:true to MERGE (best survives, rest superseded).
-            - compact — reclaim H2 file space after prunes/wipes. Briefly closes the store
-              (concurrently attached residents reconnect); run when quiet.
-            - stats — store overview: entry counts by status/language + the backing file
-              location and size.
-
-            The store is local + workspace-scoped. Record after a surprising failure, a
-            discovered invariant, or a hazard the compiler cannot tell you; recall before a
-            refactor or before asserting a root cause.
+            Lanes: experience (or lessons), patterns, domain (or business), rules, code (what members are FOR,
+            to check whether something exists), transcript; "all" is every lane.
             """;
     }
 
@@ -456,93 +416,59 @@ public final class ExperienceTool implements Tool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", KINDS);
-        kind.put("description", "Which store operation: record (write) or recall (terminal retrieval).");
+        kind.put("description", "See the tool description.");
         props.put("kind", kind);
 
         // recall cues (singular; record uses packages[]/symbols[]/symptoms[]).
         props.put("package", Map.of("type", "string",
-            "description", "recall: a package you are working in (cue)."));
+            "description", "recall cue: package."));
         props.put("symptom", Map.of("type", "string",
-            "description", "recall: an observed symptom / cue phrase (alias-normalized)."));
+            "description", "recall cue: observed symptom."));
 
         // maintenance
         props.put("path", Map.of("type", "string",
-            "description", "load/wipe_and_import: a directory of *.md memory files, or a single"
-                + " file."
-                + " Omit to use the configured default roots."));
+            "description", "load/wipe_and_import: *.md directory or file (omit: default roots)."));
         props.put("recursive", Map.of("type", "boolean",
-            "description", "load/wipe_and_import: walk subdirectories of directory roots"
-                + " (default TRUE —"
-                + " the crawl finds everything; pass false to stay flat)."));
+            "description", "load/wipe_and_import: walk subdirectories (default true)."));
         props.put("confirm", Map.of("type", "boolean",
-            "description", "wipe_and_import: REQUIRED true (wipes first)."
-                + " dedup: true = merge the groups."));
+            "description", "wipe_and_import REQUIRED; dedup: merge."));
         props.put("days", Map.of("type", "integer",
-            "description", "prune: age threshold in days for rejected/superseded (default 30)."));
+            "description", "prune: age of rejected/superseded (default 30; 0 all)."));
         props.put("id", Map.of("type", "string", "description",
-            "promote: the entry id to re-status."));
+            "Entry id."));
         props.put("limit", Map.of("type", "integer",
-            "description", "primer: max domain nodes (default 20); list: max rows (default 50);"
-                + " describe action=next: max units to hand out (default 10) — this is the"
-                + " token budget for one describing pass."));
+            "description", "primer (default 20), list (50), describe next (10)."));
         props.put("format", Map.of("type", "string", "enum", List.of("json", "text"),
-            "description", "recall/primer/list: text = flat injection-ready lines; default json."));
+            "description", "recall/primer/list (default json)."));
         props.put("scope", Map.of("type", "string",
-            "description", "list: symbol/package prefix filter. describe action=next: the"
-                + " package to describe, including its subpackages; omit for the whole"
-                + " workspace."));
+            "description", "list: symbol/package prefix. describe next: package (default all)."));
         // Sprint 28f Stage 7 — the describing queue's own parameters. They are PUBLISHED
         // because this schema is the only thing an agent can see: a parameter the code reads
         // and the schema omits is usable and undiscoverable, which is the sibling of the
         // defect the KINDS javadoc above records for verbs.
         props.put("action", Map.of("type", "string",
             "enum", List.of("next", "done", "area", "jobs_for"),
-            "description", "describe: 'next' takes the source units still to describe,"
-                + " 'done' records one as described, 'area' answers what the package a"
-                + " given file lives in is FOR — its area and the jobs inside it — and"
-                + " 'jobs_for' answers, for each member you name, the job the store"
-                + " ALREADY holds for it — in that job's own words, because a flag saying"
-                + " one exists cannot tell you whether the work in front of you is the same"
-                + " work — and lists the members that have none."));
+            "description", "describe: next (units to describe), done (record one), area (what a file's package "
+                + "is for), jobs_for (stored job per member)."));
         props.put("filePaths", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "describe action=jobs_for: source files whose members should be"
-                + " derived and asked about, instead of naming each member yourself. Needs"
-                + " a loaded project — which members a file declares is JDT's answer, and"
-                + " a caller parsing the file itself would be guessing. Without a project"
-                + " this REFUSES rather than answering that nothing is missing."));
+            "description", "jobs_for: source files whose members to ask about (needs a loaded project)."));
         props.put("changedLines", Map.of("type", "object",
-            "description", "describe action=jobs_for, with filePaths: the lines the caller WROTE, as"
-                + " an object from a file path (spelled as in filePaths) to a list of [first, last]"
-                + " line pairs, 1-based and inclusive. Only the methods those lines fall in — their"
-                + " Javadoc included — are asked about. A file with no entry, or an empty list, is"
-                + " asked about whole, which is the default: silence is never read as 'nothing was"
-                + " written'. Lines that fall in no method ask about nothing, and the call is refused"
-                + " rather than answered with an empty list."));
+            "description", "jobs_for with filePaths: {path: [[first,last]]}, 1-based; only methods in those lines."));
         props.put("filePath", Map.of("type", "string",
-            "description", "describe action=area: the source file whose package you want"
-                + " described. The package is derived through JDT rather than from the"
-                + " directory names, because which package a file declares is a fact about"
-                + " source roots that a path cannot be read for."));
+            "description", "describe area: source file."));
         props.put("unit", Map.of("type", "string",
-            "description", "describe action=done: the unit path action=next handed you."));
+            "description", "describe done: unit from next."));
         props.put("contentHash", Map.of("type", "string",
-            "description", "describe action=done: the contentHash action=next handed you WITH"
-                + " that unit. Required, and not re-read from the file on purpose — you"
-                + " described the text you were given, and recording today's text instead"
-                + " would claim a description nobody wrote and retire the unit for good."));
+            "description", "describe done REQUIRED: the hash next gave with that unit."));
         props.put("bundle", Map.of("type", "string",
-            "description", "describe action=done: which bundle the unit belongs to, for the"
-                + " coverage report. Omitted is a real state and is counted as"
-                + " 'unattributed' rather than folded into another bundle."));
+            "description", "describe done: bundle of the unit."));
         props.put("entries", Map.of("type", "array", "items", Map.of("type", "object"),
-            "description", "import: exported entries (inline alternative to path)."));
+            "description", "import: exported entries."));
 
         props.put("type", Map.of("type", "string",
-            "description", "record: entry type (domain_fact / lesson / failure_mode / api_contract / naming_convention / ...)."));
+            "description", "record: domain_fact, lesson, failure_mode, api_contract, naming_convention, ..."));
         props.put("summary", Map.of("type", "string", "description",
-            "record: ONE judgeable sentence of experience — what was learned, stated so a"
-            + " later reader can judge whether it transfers. Not a heading, not a title"
-            + " (a heading-shaped summary is refused). "
+            "record: ONE judgeable sentence of experience; a heading is refused. "
             // Sprint 28c D9: the story template reaches the AUTHOR here, derived from
             // StoryTemplate rather than re-typed — the same rule SITUATION_SHAPES
             // follows two properties down, and for the same reason: the schema
@@ -561,38 +487,24 @@ public final class ExperienceTool implements Tool {
         // AFTER it; two copies would drift and no test would compare them — the
         // same drift the verdict enum below was fixed for.
         props.put("situation", Map.of("type", "string", "description",
-            "record: WHEN this applies. " + org.jawata.mcp.knowledge.EntryForm.SITUATION_SHAPES
-            + " Never a package or a symbol: a location matches everything inside it and"
-            + " distinguishes nothing. REQUIRED for lesson and failure_mode."));
+            "record, REQUIRED for lesson and failure_mode: WHEN this applies. "
+            + org.jawata.mcp.knowledge.EntryForm.SITUATION_SHAPES));
         props.put("cause", Map.of("type", "string", "description",
-            "record: the DIAGNOSIS — the underlying problem the solution addresses,"
-            + " distinct from the symptoms that reveal it. One symptom has many causes"
-            + " (a fast heartbeat: running, a heart attack, a virus) and the solution"
-            + " binds to the cause; when a symptom recall returns several entries, this"
-            + " field is what discriminates between them. Optional; never derived."));
+            "record: the underlying problem, distinct from its symptoms."));
         props.put("question", Map.of("type", "string", "description",
-            "nominate: the question in your OWN WORDS, for the anchorless path — no symbol,"
-            + " no package, no operation. Say what you are trying to do. The answer comes"
-            + " back as RANKED CANDIDATES plus a query_id, never as a match: ranking is an"
-            + " ordering, not a claim that anything fits."));
+            "nominate: your question in words; returns ranked candidates and query_id."));
         props.put("query_id", Map.of("type", "string", "description",
-            "decide: the id the matching nominate call returned. It is required because a"
-            + " selection is only meaningful about the candidates it was offered — without"
-            + " it, any entry in the store could be returned as a vouched answer."));
+            "decide: id from nominate."));
         props.put("selected_ids", Map.of("type", "array", "items",
             Map.of("type", "string"), "description",
-            "decide: the candidate ids you judged APPLICABLE, after reading each one's"
-            + " situation. An EMPTY list is a real answer and often the right one — it"
-            + " records that nothing applied, which is what the store previously could not"
-            + " say. Ids the nomination did not offer are refused, not ignored."));
+            "decide: candidates that apply; empty is a valid answer."));
         // Sprint 28g S16-7: delete and promote_rule READ `ids`, and this schema never declared it
         // (it listed `id` and `selected_ids`), so a client building its call from the schema could
         // not make either call: three INVALID_PARAMETER failures sat in the field pile, and an agent
         // could not remove a malformed entry it had written.
         props.put("ids", Map.of("type", "array", "items", Map.of("type", "string"),
             "description",
-            "delete: the entry ids to remove — exactly these and no others; a non-empty array,"
-            + " even for one id. promote_rule: the entry ids the rule is distilled from."));
+            "delete: entry ids to remove (array, even for one). promote_rule: source ids."));
         // The enum is DERIVED from the gate's own set, never re-typed here: a
         // second copy of a closed vocabulary drifts from the first with no test
         // noticing, which is the exact drift EntryForm's javadoc condemns about
@@ -600,144 +512,88 @@ public final class ExperienceTool implements Tool {
         // (Set.of has no iteration order).
         props.put("verdict", Map.of("type", "string",
             "enum", org.jawata.mcp.knowledge.EntryForm.VERDICTS.stream().sorted().toList(),
-            "description", "record: how it turned out. REQUIRED for lesson and failure_mode —"
-            + " for those the outcome IS the lesson. Use 'unproven' when it genuinely has not"
-            + " been settled; that is an answer, and inventing a verdict is not."));
+            "description", "record: outcome. REQUIRED for lesson and failure_mode; unproven if unsettled."));
         props.put("symbol", Map.of("type", "string",
-            "description", "record: anchor FQN (mutually exclusive with packages/symbols)."));
+            "description", "Anchor/cue FQN (record: not with packages/symbols)."));
         props.put("language", Map.of("type", "string",
-            "description", "record: anchor language (default java). Non-Java anchors (rust, ts, ...)"
-                + " are opaque to JDT maintenance — stored + recalled, never staled."));
+            "description", "Anchor language (default java)."));
         props.put("packages", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "record: scope packages."));
         props.put("symbols", Map.of("type", "array", "items", Map.of("type", "string"),
             "description", "record: scope symbols."));
         props.put("details", Map.of("type", "string", "description",
-            "record: the longer story — including artifacts: paths, flags, ids and code"
-            + " references live HERE, not in symptoms."));
+            "record: longer story; paths, ids and code references go here."));
         props.put("operation", Map.of("type", "string", "description",
-            "record: operation this entry relates to. promote_rule: WHO the rule binds — seat:<name>"
-                + " for one seat, an activity label such as release, or all for every seat; required"
-                + " on a proposal (status=candidate)."));
+            "record/recall: operation. promote_rule: who it binds (seat:<name>, an activity, or all); "
+                + "required when status=candidate."));
         props.put("gate", Map.of("type", "string", "description",
-            "record, for a seat outcome (operation=seat:<name>) of work no code gate applies to, such as a plan fold: the gate that applies"
-                + " to that work (for a document, the search that found the folded text), or that no code gate applies and why. A seat"
-                + " outcome with neither this nor an answered gate call is refused."));
+            "record of a seat outcome with no answered gate call: the gate that applies, or why none (else refused)."));
         props.put("scope_kind", Map.of("type", "string",
             "description", "record: symbol|package|operation|symptom|external_system|..."));
         props.put("symptoms", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "record: how the problem LOOKED — each item a prose observation"
-                + " in words. NOT paths, flags, tags, code symbols or headings (refused"
-                + " with a redirect): artifacts belong in 'details', symbols in"
-                + " 'symbol'/'symbols', tool output in the tool lane, which the tools"
-                + " record themselves."));
+            "description", "record: how the problem LOOKED, in words; paths or symbols are refused, and tool "
+                + "output belongs to the tool lane."));
         props.put("links", Map.of("type", "array",
             "items", Map.of("type", "object"),
             // DERIVED from the gate's own set, like the verdict enum below it. The
             // literal that used to sit here named four relations, none of which any
             // writer in the codebase actually used.
-            "description", "record: typed edges [{rel, target}]. Allowed: "
-                + org.jawata.mcp.knowledge.EntryForm.linkVocabulary()
-                + ". cured_by points at a jawata CAPABILITY rather than a code address"
-                + " (find_quality_issue(kind=…), seat:refactor) and is filled ONLY when the"
-                + " remedy needs no judgement — a cure WILL be run, and one that is right half"
-                + " the time is worse than none. A two-phase remedy (read the error, work out"
-                + " why, then decide) earns detected_by and no cure."));
+            "description", "record: [{rel, target}], rel: " + org.jawata.mcp.knowledge.EntryForm.linkVocabulary()
+                + ". cured_by names a jawata capability, only for a no-judgement cure."));
         props.put("fault_owner", Map.of("type", "string", "enum", List.of("internal", "external", "shared"),
-            "description", "record: who owns the fault."));
+            "description", "record: fault owner."));
         props.put("external_system", Map.of("type", "string",
-            "description", "record: the external dependency, when the fault is external."));
+            "description", "External dependency."));
         props.put("seats", Map.of("type", "string", "description",
-            "review_sweep: the directory holding the seat files. Lists, under rulesNobodyAsks, the"
-                + " accepted rules whose operation label no seat or activity asks for, so a typo in"
-                + " a label is reported rather than silently binding nothing."));
+            "review_sweep: seat files directory."));
         props.put("status", Map.of("type", "string", "description",
-            "record: default candidate. promote_rule: candidate (a proposal, injected nowhere until he"
-                + " accepts it with kind=promote) or accepted (the default)."));
+            "record: default candidate. promote_rule: candidate (proposal) or accepted (default)."));
         props.put("surface", Map.of("type", "string",
-            "description", "recall: which surface is asking — 'seat' when a driven seat"
-                + " run recalls, omitted for an ordinary question. Affects only the"
-                + " quality counters (stats), never what is retrieved."));
+            "description", "recall: 'seat' from a seat run."));
         props.put("rule_lifecycle_note", Map.of("type", "string",
-            "description", "NOT AN INPUT — the rule verbs, said once. promote_rule(ids,"
-                + " summary[, situation]) distils entries into a RULE at version 1, linked"
-                + " derived_from each source; the sources are NOT superseded and go on"
-                + " answering as themselves. amend_rule(id, summary) writes a NEW version"
-                + " and supersedes the old one, which stays readable — what a rule USED to"
-                + " say is what a version number is for. retire_rule(id) records that it"
-                + " stopped applying, as of now: recall stops offering it, list and get"
-                + " still answer. Retiring is not rejecting and not superseding — the rule"
-                + " was right, nothing replaced it, and it stopped applying."));
+            "description", "NOT AN INPUT."));
         props.put("lane", Map.of("type", "string",
             "enum", List.of("experience", "patterns", "domain", "code", "rules", "transcript",
                 "lessons", "business"),
-            "description", "recall/nominate: REQUIRED (this or lanes) — which LIFECYCLE is"
-                + " searched, chosen BEFORE the search; a call naming no lane is refused."
-                + " 'experience' (also 'lessons') is what happened in a situation: lessons and"
-                + " failure modes; 'patterns' is the borrowed catalogue of design patterns;"
-                + " 'domain' (also 'business') is what is true whoever reads it: facts,"
-                + " contracts, conventions; 'rules' are versioned and retired; 'code' says what"
-                + " each member and package is FOR, regenerated from the code it came from, and"
-                + " is asked only to check whether something already exists; 'transcript' is the"
-                + " discussion itself (what he typed, what the agent said to him, one line per"
-                + " tool call), asked with recall only, after a compaction, before something is"
-                + " attributed to him, or on demand, and never part of 'all'. Each lane is"
-                + " ranked and cut on its own and the answer says how many rows each searched."
-                + " It is a FILTER, not a cue: give a cue as well."));
+            "description", "recall/nominate: REQUIRED (this, lanes or occasion). A filter, not a cue. transcript: "
+                + "recall only, never part of 'all'."));
         props.put("lanes", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "recall/nominate: several lanes at once, by the same names as"
-                + " lane. Each is searched and ranked on its own."));
+            "description", "Several lanes."));
         java.util.List<String> occasionNames = new java.util.ArrayList<>();
         for (org.jawata.mcp.knowledge.Occasion o : org.jawata.mcp.knowledge.Occasion.values()) {
             occasionNames.add(o.wire());
         }
         props.put("occasion", Map.of("type", "string", "enum", occasionNames,
-            "description", "recall/nominate: the situation this call is made in, INSTEAD of lane /"
-                + " lanes (naming both is refused) — the engine answers which lanes that situation"
-                + " asks, so a client spells no lane. "
+            "description", "recall/nominate: INSTEAD of lane/lanes (both is refused). "
                 + org.jawata.mcp.knowledge.Occasion.known()));
         props.put("proceed_without_clean_backup", Map.of("type", "boolean", "description",
-            "wipe, prune, import, delete, restore, wipe_and_import: the copy taken first is checked"
-                + " (its count must equal its rows) and tried 3 times; if it is still not clean the"
-                + " operation is REFUSED and nothing changes. Repeat the request with this set to"
-                + " true to go on anyway; one copy is still taken."));
+            "Destructive kinds refuse without a clean backup copy; true proceeds anyway."));
         props.put("exceptions", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "record: exceptions / caveats."));
+            "description", "record: caveats."));
         props.put("key", Map.of("type", "string", "description",
-            "transcript_append: the client's own id for the record that opened the turn; the same"
-                + " for every capture of that turn, so a second capture completes the first. The"
-                + " store numbers the turns of a session itself."));
+            "transcript_append: client's id of the turn's opening record."));
         props.put("ts", Map.of("type", "string", "description",
-            "transcript_append: when the turn ended, ISO-8601 (default: now)."));
+            "transcript_append: ISO-8601 (default now)."));
         props.put("client", Map.of("type", "string", "description",
-            "transcript_append: the client that held the session."));
+            "transcript_append: client."));
         props.put("capture", Map.of("type", "string", "description",
-            "transcript_append: 'turn' for a capture at a turn's end (default), 'compaction' for"
-                + " the catch-up taken before a compaction."));
+            "transcript_append: turn (default) or compaction."));
         props.put("his", Map.of("type", "string", "description",
-            "transcript_append: what he typed in the turn, verbatim."));
+            "transcript_append: user's words, verbatim."));
         props.put("agent", Map.of("type", "string", "description",
-            "transcript_append: what the agent said to him in the turn, verbatim."));
+            "transcript_append: agent's words, verbatim."));
         props.put("tools", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "transcript_append: one line per tool call (tool, key argument, ok or"
-                + " failed). Never tool output."));
+            "description", "transcript_append: one line per tool call, no output."));
         props.put("quote", Map.of("type", "string", "description",
-            "transcript_verify: the words attributed to him."));
+            "transcript_verify: words attributed to the user."));
         props.put("recent", Map.of("type", "integer", "description",
-            "recall with lane=transcript alone: his most recent N messages, newest first, with"
-                + " the turn each came from. The thread to pick up after a compaction."));
+            "recall, lane=transcript alone: user's last N messages."));
         props.put("sessions", Map.of("type", "integer", "description",
-            "recall with lane=transcript alone: the N most recently active sessions the lane holds (session id, client, first"
-                + " words typed, turns, first and latest time), for a host that lists and reloads the agent's sessions."));
+            "recall, lane=transcript alone: N most recent sessions."));
         props.put("full", Map.of("type", "boolean", "description",
-            "recall with lane=transcript alone and a session: every turn of that session in full (what was typed, what the agent"
-                + " said, one line per tool call), unclipped, for a host reloading it."));
+            "recall, lane=transcript alone with a session: every turn in full."));
         props.put(BUDGET_MILLIS, Map.of("type", "integer",
-            "description", "recall/primer: the CALLER's deadline in milliseconds — state it"
-                + " when your own timeout is shorter than the 15s default, so a wedged store"
-                + " answers KNOWLEDGE_UNAVAILABLE inside your window instead of a transport"
-                + " timeout. Clamped: a caller may ask for a faster answer, never a longer"
-                + " wait."));
+            "description", "recall/primer: your deadline in ms (default 15s; can only shorten)."));
 
         schema.put("properties", props);
         schema.put("required", List.of("kind"));

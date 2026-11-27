@@ -71,63 +71,19 @@ public class InspectTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Read-only structural inspection. One front door over the get_* family.
+            Read-only structural inspection.
 
             USAGE: inspect(kind="<kind>", ...)
-
-            Kinds and their params:
-            - type_hierarchy   — super/sub types of a type. Needs: typeName.
-            - document_symbols — the symbol outline of a file. Needs: filePath.
-            - type_members     — methods/fields/nested types of a type. Needs: typeName.
-            - classpath        — classpath info for the project. (no params)
-            - project_structure— modules/source roots/packages. (no params)
-            - type_usage       — usage summary of a type. Needs: typeName.
-            - complexity       — complexity metrics for a file. Needs: filePath.
-            - dependency_graph — dependency edges. Needs: scope, name.
-            - di_registrations — DI bean/registration sites. (no params)
-            - landmarks        — the workspace's load-bearing types, most-referenced
-                                 first: what a human knows from having worked here.
-                                 Start a session with it instead of searching your
-                                 way in. Optional: limit (default 20).
-                                 ALWAYS CHECK `ready`. Ranking a large workspace
-                                 takes minutes, so the call answers quickly and
-                                 may return `ready:false` with `examined`/`total`
-                                 instead of the list — that is "still working",
-                                 NOT "this workspace has no landmarks", and the
-                                 two are otherwise the same empty list. Ask again
-                                 to get it: one ranking runs per workspace however
-                                 many callers ask, so asking again joins it rather
-                                 than starting another.
-            - source           — readable source for ANY type by FQN (JDK,
-                                 dependency jars, workspace). Needs: typeName.
-                                 Origin is declared: workspace-source |
-                                 attached-source | sources-jar (the sibling
-                                 …-sources.jar in the local repo, existing
-                                 only — no silent fetch) | disassembled-stub
-                                 (honest header, signatures only).
-                                 PAGED: maxChars (default 24000) + offset;
-                                 every reply reports sourceLength and
-                                 returnedChars, and a clipped one carries the
-                                 offset to ask for next. A big JDK type is
-                                 ~100K characters — one page, then continue.
-            - suite_policy     — the project's accepted aborts as a list, read from
-                                 build/expected-aborts.<os>: each pattern with the reason
-                                 written above it, its file and line, and the file's
-                                 last-commit date. Reads those files and no others.
-                                 No such file is found=false, never an empty list.
-                                 (No params; the coverage threshold policy is NOT here —
-                                 it surfaces on run_tests' coverage responses.)
-            - impacted_tests   — the smallest evidence-backed set of tests a change reaches:
-                                 the SAME selection as run_tests(action=
-                                 coverage_impacted_tests), reached from a read-only door
-                                 because a hired seat cannot call run_tests. Optional:
-                                 symbols[] (else derived from the git diff), diff
-                                 (worktree|staged|range), range, forScope. Needs coverage
-                                 evidence recorded with attribution=true; without it the
-                                 answer says attributionAvailable=false and why, and
-                                 narrows nothing.
-
-            Requires load_project to be called first.
+            - type_hierarchy, type_members, type_usage: typeName.
+            - document_symbols, complexity: filePath.
+            - classpath, project_structure, di_registrations: no params.
+            - dependency_graph: scope, name.
+            - landmarks: most-referenced types; limit (default 20). CHECK `ready`: false means
+              still ranking (not empty) - ask again.
+            - source: source of any type, JDK and jars too: typeName; paged by maxChars/offset.
+            - suite_policy: accepted test aborts from build/expected-aborts.<os>.
+            - impacted_tests: tests a change reaches; symbols[] or diff/range, forScope. Needs coverage
+              recorded with attribution=true.
             """;
     }
 
@@ -140,32 +96,24 @@ public class InspectTool extends AbstractTool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", KINDS);
-        kind.put("description", "Which inspection to run. See the tool description for per-kind params.");
+        kind.put("description", "What to inspect.");
         properties.put("kind", kind);
 
-        properties.put("typeName", Map.of("type", "string", "description", "type_hierarchy/type_members/type_usage: type name."));
-        properties.put("filePath", Map.of("type", "string", "description", "document_symbols/complexity: source file."));
-        properties.put("scope", Map.of("type", "string", "description", "dependency_graph: scope (e.g. package/class)."));
-        properties.put("name", Map.of("type", "string", "description", "dependency_graph: the entity name."));
-        properties.put("limit", Map.of("type", "integer", "description", "landmarks: how many to name (default 20)."));
+        properties.put("typeName", Map.of("type", "string", "description", "Type name."));
+        properties.put("filePath", Map.of("type", "string", "description", "Source file."));
+        properties.put("scope", Map.of("type", "string", "description", "dependency_graph: e.g. package or class."));
+        properties.put("name", Map.of("type", "string", "description", "dependency_graph: entity name."));
+        properties.put("limit", Map.of("type", "integer", "description", "landmarks: default 20."));
         properties.put("maxChars", Map.of("type", "integer", "description",
-            "source: characters of source per page (default "
-                + org.jawata.mcp.tools.shared.LibrarySource.DEFAULT_MAX_CHARS
-                + ", which every current client accepts). A whole JDK type can be ~100K "
-                + "characters and be REFUSED by the client as too large; the reply always "
-                + "reports sourceLength so a page never reads as the whole type."));
-        properties.put("offset", Map.of("type", "integer", "description",
-            "source: character offset into the source — the next page. A truncated reply's "
-                + "hint names the offset to ask for."));
+            "source: page size (default " + org.jawata.mcp.tools.shared.LibrarySource.DEFAULT_MAX_CHARS + ")."));
+        properties.put("offset", Map.of("type", "integer", "description", "source: character offset of the page."));
         properties.put("symbols", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "impacted_tests: explicit symbol list (else derived from the git diff)."));
+            "description", "impacted_tests: changed symbols (default: from git diff)."));
         properties.put("diff", Map.of("type", "string", "enum", List.of("worktree", "staged", "range"),
-            "description", "impacted_tests: which git diff (default worktree)."));
-        properties.put("range", Map.of("type", "string", "description",
-            "impacted_tests: commit range for diff=range, e.g. 'HEAD~1..HEAD'."));
+            "description", "impacted_tests: default worktree."));
+        properties.put("range", Map.of("type", "string", "description", "diff=range: e.g. HEAD~1..HEAD."));
         properties.put("forScope", Map.of("type", "string", "description",
-            "impacted_tests: the scope you mean to narrow — 'whole-suite' (default) or "
-                + "'package:com.foo' — so the verdict is complete for that scope."));
+            "impacted_tests: whole-suite (default) or package:com.foo."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));

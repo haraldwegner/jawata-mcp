@@ -69,17 +69,8 @@ public class ReplaceConstructorWithFactoryTool extends AbstractApplyingRefactori
     /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            TOWARD: a constructor becomes a static
-            factory method and every `new X(...)` call site is rewritten
-            to call it, ACROSS FILES. protectConstructor defaults TRUE,
-            which makes the constructor private so the old path is
-            impossible rather than merely unused. Needs: line, column on
-            the class (optional factoryMethodName, default `create`;
-            factoryClass to put the factory on another type;
-            protectConstructor). Works on an implicit default
-            constructor too. Unblocks abstract-factory, factory-method,
-            builder and null-object.""";
+        return "`new` calls (all files) become a factory method: line, column on the constructor, "
+            + "factoryMethodName REQUIRED; factoryClass, protectConstructor (default true) optional.";
     }
 
 
@@ -124,17 +115,11 @@ public class ReplaceConstructorWithFactoryTool extends AbstractApplyingRefactori
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column on that line."));
         properties.put("factoryMethodName", Map.of("type", "string",
-            "description", "Name for the generated factory method, e.g. 'create' or "
-                + "'newInstance'. No default: the name is the call site every reader "
-                + "will see, and it is the caller's decision."));
+            "description", "replace_constructor_with_factory REQUIRED: e.g. create."));
         properties.put("factoryClass", Map.of("type", "string",
-            "description", "Optional fully-qualified type to HOST the factory method. "
-                + "Default: the constructor's own class."));
+            "description", "Host type FQN (default: the constructor's class)."));
         properties.put("protectConstructor", Map.of("type", "boolean",
-            "description", "Optional, default TRUE: make the constructor private so "
-                + "callers cannot bypass the factory. Setting it false leaves the old "
-                + "path reachable — the operation then adds a factory rather than "
-                + "replacing the constructor."));
+            "description", "Default true: make the constructor private."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column", "factoryMethodName"));
         return withAutoApply(withProjectKey(schema));

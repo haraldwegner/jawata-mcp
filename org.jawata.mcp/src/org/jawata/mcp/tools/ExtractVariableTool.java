@@ -58,9 +58,7 @@ public class ExtractVariableTool extends AbstractApplyingRefactoringTool
     /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            extract an expression range into a local variable.
-            Needs: startLine, startColumn, endLine, endColumn (optional variableName).""";
+        return "expression range into a local: startLine, startColumn, endLine, endColumn; variableName optional.";
     }
 
 

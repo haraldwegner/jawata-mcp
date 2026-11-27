@@ -147,33 +147,10 @@ public class DeleteAnonymousImplementationTool extends AbstractApplyingRefactori
     @Override
     public String getDescription() {
         return """
-            Delete an anonymous implementation whose methods only FORWARD to one
-            collaborator, and make that collaborator implement the interface instead.
-
-            USAGE:
-              delete_anonymous_implementation(filePath="...", line=12, column=30)
-
-            Point at the `new SomeInterface() { ... }` expression. The creation becomes
-            the receiver its methods were forwarding to, and the receiver's own type
-            gains `implements SomeInterface` plus the import it needs.
-
-            Seventeen hand edits in Sprint 8 had this shape and no tool performed it.
-
-            It moves NO code — the bodies are deleted because the target already
-            declares the methods they called, and that equivalence is the whole safety
-            argument. So it REFUSES, naming what it saw, when a body is not a single
-            forwarding call, when the receiver is implicit (that forwards to the
-            enclosing instance — a different edit), when the arguments are not the
-            method's own parameters unchanged and in order, when the forward names a
-            different method, when two methods forward to different receivers, when the
-            created type is not an interface, when the target's type is not source here,
-            when the target does not declare one of the methods, and when the anonymous
-            body declares anything that is not a method.
-
-            IMPORTANT: ZERO-BASED coordinates. Applies by default and returns
-            filesModified/diff/undoChangeId/summary; pass auto_apply=false to stage.
-
-            Requires load_project to be called first.
+            Replace `new SomeInterface() {...}` whose methods only forward to one collaborator with that
+            collaborator, which gains `implements`. Position on the expression (ZERO-BASED). Every method must be a
+            single same-named call with its parameters in order on the same explicit receiver, whose source type
+            declares it; anything else is refused. Undoable.
             """;
     }
 
@@ -183,9 +160,9 @@ public class DeleteAnonymousImplementationTool extends AbstractApplyingRefactori
         schema.put("type", "object");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("filePath", Map.of("type", "string",
-            "description", "Source file holding the anonymous implementation."));
+            "description", "Source file."));
         properties.put("line", Map.of("type", "integer",
-            "description", "Zero-based line on or inside the `new Interface() { ... }`."));
+            "description", "Zero-based line in the expression."));
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column."));
         schema.put("properties", properties);

@@ -4,14 +4,12 @@ import org.jawata.mcp.change.RefactoringChangeCache;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -29,181 +27,41 @@ class FrontDoorDescriptionTest {
         return new InlineTool(() -> null, new RefactoringChangeCache());
     }
 
-    /**
-     * INLINE'S PUBLISHED DESCRIPTION AS IT STOOD BEFORE THE SEAM — the golden.
-     *
-     * <p>It pins the prose across a comparison that is deliberately weak. M5 replaced
-     * per-door hand-alignment with one uniform bullet rule, so byte-identity became the
-     * wrong question — it would pin text the door no longer publishes — and what is left is
-     * a whitespace-insensitive comparison. Without a golden, "the assembler produces a
-     * description" would be true of any description at all.</p>
-     *
-     * <p><b>It lives here rather than on the door, and that is C6a's doing.</b> It sat as a
-     * constant on {@code InlineTool} until the checkpoint's clause was read literally: no
-     * door may retain a literal {@code USAGE:} line in its own source. This golden is the
-     * whole OLD description, usage line included, so it was the last one left in those seven
-     * files — and it was test data in a shipped class, read from exactly one place. Moving
-     * it satisfies the clause as written and takes the constant out of production at the
-     * same time.</p>
-     */
-    private static final String INLINE_LEGACY_DESCRIPTION = """
-            Inline a method, a local variable, a whole class, a subclass into its
-            parent, or a middle man's forwarding (behaviour-preserving, reversible).
-
-            USAGE: inline(kind="<method|variable|class|subclass|middle_man>", filePath=..., line=..., column=...)
-
-            - method   — inline all call sites of the method at the position.
-            - variable — replace uses of the local variable at the position with its initializer.
-            - class    — fold a class into the SINGLE class that uses it, then delete it.
-                         Refuses when more than one class references it, when it has
-                         subtypes, when the user holds none or several fields of its
-                         type, when that field is assigned outside its own initializer,
-                         when it has a constructor with a body, or when a member name
-                         would collide. Each refusal names which. (find_quality_issue
-                         kind=lazy_class locates candidates.)
-            - subclass — fold a subclass that carries NO DISTINCTION into its parent:
-                         its members move up, every reference to it becomes a reference
-                         to the parent, and it is deleted. Refuses when the subclass
-                         actually distinguishes something — it overrides a parent
-                         method, an instanceof or a cast names its type, or its
-                         constructor fixes an argument instead of forwarding — because
-                         replacing a distinction with a field is a design decision.
-                         Also refuses a subclass with subtypes (that is Collapse
-                         Hierarchy), an abstract parent, a parent outside this
-                         workspace, and a colliding member name.
-            - middle_man — stop a class forwarding: every method whose whole body is
-                         one call on one of its own fields, passing its parameters
-                         through unchanged, is deleted and its call sites become
-                         `middleMan.<accessor>().method(args)`. The accessor is
-                         generated if the class has none — that exposure IS the
-                         refactoring, and the summary says it happened. Refuses a class
-                         with no forwarder at all. A class forwarding to SEVERAL
-                         fields is NOT refused — name the one to remove with
-                         `delegateField` and repeat; the fork's own GiantController is
-                         why the old blanket refusal was wrong. A method that
-                         transforms the result is left alone: that is behaviour, not
-                         forwarding. (find_quality_issue kind=middle_man finds them.)
-
-            IMPORTANT: ZERO-BASED coordinates. Applies by default; returns
-            filesModified/diff/undoChangeId/summary. Pass auto_apply=false to stage only.
-
-            Requires load_project to be called first.
-            """;
-
     /** Every character that is not whitespace, in order — layout removed, content kept. */
     private static String content(String text) {
         return text.replaceAll("\\s+", "");
     }
 
     @Test
-    @DisplayName("M5 changed the LAYOUT of inline's description and not one character of its prose")
-    void theProjectionLosesNoProse() {
-        // The strongest claim available once the bullets are projected, and the honest one.
-        // M4 could assert byte-identity because it only moved the algorithm. M5 deliberately
-        // replaces hand-alignment with one uniform rule, so byte-identity is the wrong
-        // question — asserting it would mean pinning text the door no longer publishes.
-        // What must NOT change is the prose, and this compares every non-whitespace
-        // character in order: a dropped sentence, a mangled refusal, a bullet that lost its
-        // tail all fail here, while the alignment is free to differ.
-        //
-        // EQUALITY BECAME THE WRONG QUESTION A SECOND TIME, and for the opposite reason.
-        // M5 made byte-identity wrong because the LAYOUT changed. Sprint 28g D9 change 3 makes
-        // whole-text equality wrong because the door GREW: `unreferenced_member` is a sixth
-        // kind, so the published description legitimately contains prose that was never in the
-        // legacy text, and the generated usage line now reads one name longer.
-        //
-        // The golden is deliberately NOT updated. Its constant says "AS IT STOOD BEFORE THE
-        // SEAM", and a constant edited every time a kind is added stops being that and becomes
-        // a snapshot of itself — a label going false while the code around it changes is this
-        // sprint family's most-recorded defect, and a golden re-recorded from the current state
-        // can no longer fail for the reason it was written. So the legacy text stays frozen and
-        // the claim is checked PER PART: every piece of the old prose must still be found in
-        // what the door publishes. A dropped sentence, a mangled refusal or a bullet that lost
-        // its tail still fails here; a kind being ADDED does not.
-        String published = content(FrontDoorDescription.ASSEMBLER.describe(inline()));
-
-        // PROOF OF LIFE. Containment against an empty or tiny description would pass every
-        // check below having compared almost nothing.
-        assertTrue(published.length() > 1000,
-            "the assembled description must actually be the door's prose, or the containment"
-                + " checks below are vacuous. Got " + published.length() + " characters");
-
-        for (String part : legacyParts()) {
-            assertTrue(published.contains(content(part)),
-                "this piece of inline's pre-seam prose is no longer in what the door"
-                    + " publishes, so the move lost documentation rather than relocating it:\n"
-                    + part);
-        }
-
-        // NO PER-KIND CONTAINMENT CHECK HERE, and the omission is deliberate. A first version
-        // added one — `published.contains(kind)` for each of the five pre-seam kinds — offered
-        // as compensation for excluding the generated usage line. A C5 round-2 audit showed all
-        // five were ENTAILED by the bullet loop above: each kind name is the leading token of
-        // its own bullet, so asserting the bullet is contained already asserts the name is.
-        // Five assertions that cannot fail independently, added inside the very fold that was
-        // deleting assertions which cannot fail — the seventh consecutive instance of that
-        // recurrence in this sprint family, so they are removed rather than kept as coverage
-        // that measures nothing.
-        //
-        // The usage line is genuinely covered, by `theUsageLineComesFromTheRoutingTable`: it
-        // iterates `door.publishedKinds()` under an exact `assertEquals(6, ...)`, so a kind
-        // that stopped reaching the line fails there.
-    }
-
-    /**
-     * The frozen golden, split into the parts whose prose must survive: the preamble, one
-     * entry per pre-seam bullet, and the closing notes.
-     *
-     * <p>The generated USAGE line is excluded by construction — it is assembled from the
-     * routing table, so its text necessarily changes when a kind is added, and the five
-     * legacy kind names are asserted against it separately.</p>
-     */
-    private static List<String> legacyParts() {
-        int usage = INLINE_LEGACY_DESCRIPTION.indexOf("USAGE:");
-        int firstBullet = INLINE_LEGACY_DESCRIPTION.indexOf("\n- ");
-        int tail = INLINE_LEGACY_DESCRIPTION.indexOf("IMPORTANT:");
-
-        List<String> parts = new ArrayList<>();
-        parts.add(INLINE_LEGACY_DESCRIPTION.substring(0, usage));
-        for (String bullet : INLINE_LEGACY_DESCRIPTION.substring(firstBullet, tail).split("\n- ")) {
-            if (!bullet.isBlank()) {
-                parts.add(bullet);
-            }
-        }
-        parts.add(INLINE_LEGACY_DESCRIPTION.substring(tail));
-        return parts;
-    }
-
-    @Test
-    @DisplayName("move's projected block loses no prose either, though its bullets were laid out differently")
-    void moveProjectionLosesNoProse() {
-        // A SECOND door, and deliberately one whose hand-alignment differed: two of move's
-        // six bullets carried the kind name on a line of its own because the name is long.
-        // If the projection quietly dropped or duplicated text when a bullet's first line was
-        // empty, inline alone would not have shown it.
-        MoveTool door = new MoveTool(() -> null, new RefactoringChangeCache());
-        assertEquals(content(MoveTool.LEGACY_KIND_BLOCK),
-            content(FrontDoorDescription.ASSEMBLER.kindBlockOf(door)),
-            "every non-whitespace character of move's six bullets must survive the move onto"
-                + " its delegates");
-    }
-
-    @Test
-    @DisplayName("extract's eleven bullets project too, and its lead-in line survives the move")
-    void extractProjectionLosesNoProse() {
-        // The THIRD door, and the one with a region no delegate owns: its block opens with a
-        // line about the coordinates that is true of every kind and is not a bullet. A pure
-        // projection over delegates() would drop it silently, which is why the door keeps it
-        // as kindBlockLeadIn() and the assembler puts it back.
+    @DisplayName("extract's lead-in line opens its projected block")
+    void extractKeepsItsLeadIn() {
+        // The one door region no delegate owns: a line about the coordinates that is true of
+        // every kind and is not a bullet. A pure projection over delegates() would drop it
+        // silently, which is why the door keeps it as kindBlockLeadIn().
         ExtractTool door = new ExtractTool(() -> null, new RefactoringChangeCache());
         String block = FrontDoorDescription.ASSEMBLER.kindBlockOf(door);
 
         assertTrue(block.startsWith("Kinds and their params (all ZERO-BASED coordinates):\n- "),
-            "the lead-in must open the block and the first bullet must follow it directly,"
-                + " with no blank line the hand-written block did not have: " + block);
-        assertEquals(content(ExtractTool.LEGACY_KIND_BLOCK), content(block),
-            "every non-whitespace character of extract's eleven bullets, and of the lead-in"
-                + " above them, must survive the move onto its delegates");
+            "the lead-in must open the block and the first bullet must follow it directly: " + block);
+    }
+
+    @Test
+    @DisplayName("every projected door bullets each routed kind with what its delegate says")
+    void everyProjectedDoorBulletsItsDelegates() {
+        RefactoringChangeCache cache = new RefactoringChangeCache();
+        for (KindedTool door : List.of(
+                new MoveTool(() -> null, cache),
+                new ExtractTool(() -> null, cache),
+                new RefactorToPatternTool(() -> null, cache),
+                new org.jawata.mcp.tools.codegen.GenerateTool(() -> null, cache))) {
+            String block = FrontDoorDescription.ASSEMBLER.kindBlockOf(door);
+            assertFalse(door.delegates().isEmpty(), "a door with no delegates would pass vacuously");
+            door.delegates().forEach((kind, delegate) -> {
+                assertTrue(block.contains("- " + kind + " — "), kind + " must have its own bullet: " + block);
+                assertTrue(content(block).contains(content(delegate.kindSummary())),
+                    kind + "'s bullet must be what the delegate says");
+            });
+        }
     }
 
     @Test
@@ -277,83 +135,17 @@ class FrontDoorDescriptionTest {
     }
 
     @Test
-    @DisplayName("refactor_to_pattern's eleven bullets survive PER KIND, though one changed place")
-    void refactorToPatternProjectionLosesNoProsePerKind() {
-        // Compared per kind and not in order, because this door's declared text change IS a
-        // reorder: decompose_conditional was written third, beside compose_method, and is
-        // eleventh in the routing table and in the published `kind` enum. The projection
-        // makes all three agree. An ordered comparison would fail on that and say nothing
-        // about whether any bullet's prose survived, which is the thing worth checking.
+    @DisplayName("refactor_to_pattern's eleven bullets follow the routing order, and the state bullet names both shapes")
+    void refactorToPatternBulletOrderIsTheRoutingOrder() {
         RefactorToPatternTool door = new RefactorToPatternTool(() -> null, new RefactoringChangeCache());
-        Map<String, String> was = bullets(RefactorToPatternTool.LEGACY_KIND_BLOCK);
         Map<String, String> now = bullets(FrontDoorDescription.ASSEMBLER.kindBlockOf(door));
 
-        // PROOF OF LIFE: two empty maps are equal, and so are two maps this helper failed to
-        // parse. Eleven is the door's contracted kind count.
-        assertEquals(11, was.size(), "the legacy block must parse to eleven bullets: " + was.keySet());
-        assertEquals(11, now.size(), "and so must the projection: " + now.keySet());
-
-        // ONE KIND IS EXEMPT, AND THE EXEMPTION IS ASSERTED RATHER THAN SKIPPED — an exemption
-        // and a passing check are indistinguishable from outside, which is this sprint family's
-        // most-repeated finding.
-        //
-        // Sprint 28g D9 change 4 gave `refactor_to_state` a SECOND entry path: state spread
-        // across nullable fields, branched on with null tests, where before it performed only a
-        // switch on an int state field. So the legacy sentence — "a method switching on an int
-        // state field becomes delegation to nested State classes" — became FALSE of the
-        // operation, describing one of its two shapes as though it were the whole. Rewriting it
-        // is a documentation change the behaviour change REQUIRED, not prose lost in the move,
-        // and containment cannot express it because the old sentence is gone rather than
-        // extended. Asserting the inequality means a silent revert of that prose fails here.
-        assertNotEquals(was.get("refactor_to_state"), now.get("refactor_to_state"),
-            "refactor_to_state's bullet is the one deliberate rewrite: D9 change 4 added the"
-                + " nullable-field shape, so the int-switch-only sentence no longer describes"
-                + " the operation. Equal again means the prose was REVERTED");
-
-        // AND THE SECOND HALF, which inequality cannot reach. A C5 round-2 audit found the
-        // message above claiming it would also catch "the second entry path going
-        // undocumented"; it would not — any THIRD rewrite that still omits the nullable shape
-        // differs from the legacy text and satisfies the inequality. So the thing the exemption
-        // is granted FOR is asserted directly.
+        assertEquals(11, now.size(), "the projection must parse to eleven bullets: " + now.keySet());
+        assertEquals(door.publishedKinds(), List.copyOf(now.keySet()),
+            "the bullets are in the order the door routes and publishes them");
+        // Sprint 28g D9 change 4: state spread across nullable fields is its second entry path.
         assertTrue(now.get("refactor_to_state").contains("nullable"),
-            () -> "the rewritten bullet must document the shape the rewrite was granted for:\n"
-                + now.get("refactor_to_state"));
-
-        // AND THE OTHER TEN STILL COMPARE EXACTLY, which is the claim this test was written
-        // for: the move onto the delegates lost nothing.
-        Map<String, String> wasRest = new LinkedHashMap<>(was);
-        Map<String, String> nowRest = new LinkedHashMap<>(now);
-        wasRest.remove("refactor_to_state");
-        nowRest.remove("refactor_to_state");
-        assertEquals(wasRest, nowRest,
-            "every OTHER kind's prose must survive the move onto its delegate, character for"
-                + " non-whitespace character");
-    }
-
-    @Test
-    @DisplayName("…and the reorder is real: decompose_conditional moved from third to last")
-    void refactorToPatternBulletOrderIsNowTheRoutingOrder() {
-        // The declared change, asserted rather than left in a commit message.
-        RefactorToPatternTool door = new RefactorToPatternTool(() -> null, new RefactoringChangeCache());
-        List<String> was = List.copyOf(bullets(RefactorToPatternTool.LEGACY_KIND_BLOCK).keySet());
-        List<String> now = List.copyOf(
-            bullets(FrontDoorDescription.ASSEMBLER.kindBlockOf(door)).keySet());
-
-        assertEquals(2, was.indexOf("decompose_conditional"), "it was written third: " + was);
-        assertEquals(10, now.indexOf("decompose_conditional"), "it is now last: " + now);
-        assertEquals(door.publishedKinds(), now,
-            "and the bullets are now in the order the door routes and publishes them, which"
-                + " is what a reader comparing the kind enum against the bullets will find");
-    }
-
-    @Test
-    @DisplayName("generate's seven bullets project in place")
-    void generateProjectionLosesNoProse() {
-        org.jawata.mcp.tools.codegen.GenerateTool door =
-            new org.jawata.mcp.tools.codegen.GenerateTool(() -> null, new RefactoringChangeCache());
-        assertEquals(content(org.jawata.mcp.tools.codegen.GenerateTool.LEGACY_KIND_BLOCK),
-            content(FrontDoorDescription.ASSEMBLER.kindBlockOf(door)),
-            "generate's bullets were already in routing order, so this one compares in order");
+            () -> "the bullet must document the nullable-field shape:\n" + now.get("refactor_to_state"));
     }
 
     @Test

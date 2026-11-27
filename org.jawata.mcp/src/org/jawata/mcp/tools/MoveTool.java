@@ -106,9 +106,7 @@ public class MoveTool extends AbstractTool implements KindedTool {
 
     @Override
     public String preamble() {
-        return """
-            Move a class, a package, a method, a field, or statements across a call,
-            updating references (behaviour-preserving, reversible).""";
+        return "Move code, updating references (behaviour-preserving, undoable). ZERO-BASED coordinates.";
     }
 
     @Override
@@ -116,76 +114,9 @@ public class MoveTool extends AbstractTool implements KindedTool {
         return ", ...";
     }
 
-    /**
-     * PROJECTED from the delegates now (Stage 6a, M5) — this door no longer writes bullets.
-     *
-     * <p>Kept as the golden for the equivalence test: the layout changes by design, the prose
-     * must not. Two of these six bullets carried their name on a line of its own because the
-     * kind is long, which is the hand-alignment the projection replaces.</p>
-     */
-    static final String LEGACY_KIND_BLOCK = """
-            - class   — move the type at a caret to another package.
-                        Needs: filePath, line, column, targetPackage (optional targetProjectKey).
-            - package — move/rename a whole package.
-                        Needs: packageName, newPackageName.
-            - method  — move a method to another type. Which engine runs is read off the
-                        method's own modifiers, not asked of you.
-                        An INSTANCE method moves onto a RECEIVER — one of its parameters
-                        or fields — and every call site is rewritten to invoke it there.
-                        Needs: the method's position (filePath, line, column) or its
-                        symbol, plus `target`, the parameter/field whose type receives it.
-                        `target` may be omitted when exactly one candidate exists; with
-                        several, the call is refused and lists them.
-                        A STATIC method has no receiver — its call sites name the owning
-                        TYPE — so it needs `targetType` instead, the destination's
-                        fully-qualified name, and JDT's Move Static Members repoints every
-                        qualified reference across the workspace.
-                        Optional keepDelegate leaves a forwarder behind on either path.
-
-            - field   — move a field to an EXISTING class, updating every reference.
-                        Needs: filePath, line, column on the declaration, plus targetType
-                        (the destination's fully-qualified name).
-                        A STATIC field needs no receiver: JDT's engine rewrites the
-                        qualified references. An INSTANCE field needs `target` — the
-                        field of the source class holding the destination instance —
-                        because every access becomes `receiver.name` and nothing in the
-                        code says which field that is. Instance moves are scoped to a
-                        PRIVATE field, whose accesses all live in one file; a non-private
-                        one is refused, since each outside reader needs its own receiver
-                        derived there (encapsulate it first). To move fields into a NEW
-                        class, use extract kind=class, which needs no receiver.
-
-            - statements_into_function
-                      — move a statement that sits beside a call INTO the function being
-                        called. Needs: filePath, line, column on the statement; the call
-                        is its neighbour, and which side it is on decides whether the
-                        statement lands at the top or the bottom of the callee.
-                        EVERY call site is checked for the same statement first: with
-                        three of four, moving it in would ADD behaviour at the fourth, so
-                        the call is refused and says how many matched. The statement may
-                        mention only static bindings and literals — a caller's local is
-                        not in scope inside the callee and differs per call anyway.
-
-            - statements_to_callers
-                      — the inverse: move a function's FIRST or LAST statement out to
-                        every call site. Needs: filePath, line, column on the statement.
-                        Refuses a statement in the middle (no call-site position
-                        reproduces running after part of the body), one mentioning the
-                        method's own parameters or locals, a method that is overridden or
-                        overrides (dispatch makes "the callers" unanswerable), a call
-                        buried in a larger expression, and a method with no callers at
-                        all — moving something to nobody is a deletion.""";
-
     @Override
     public String footer() {
-        return """
-            updateReferences (default true) applies to kind=class and kind=package ONLY.
-            For the other four, repointing the references IS the refactoring.
-            IMPORTANT: ZERO-BASED coordinates.
-            Applies by default; returns filesModified/diff/undoChangeId/summary.
-
-            Requires load_project to be called first.
-            """;
+        return "";
     }
 
     @Override
@@ -197,18 +128,16 @@ public class MoveTool extends AbstractTool implements KindedTool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", publishedKinds());
-        kind.put("description",
-            "Move a class or a method (by caret or by name), a package (by name), a FIELD onto another type, or STATEMENTS across a call boundary in either direction "
-                + "(statements_into_function / statements_to_callers).");
+        kind.put("description", "What to move.");
         properties.put("kind", kind);
 
-        properties.put("filePath", Map.of("type", "string", "description", "class/method: path to the source file."));
-        properties.put("line", Map.of("type", "integer", "description", "class/method: zero-based line of a caret in the type or method."));
-        properties.put("column", Map.of("type", "integer", "description", "class/method: zero-based column."));
-        properties.put("targetPackage", Map.of("type", "string", "description", "class: destination package name."));
-        properties.put("targetProjectKey", Map.of("type", "string", "description", "class: optional destination project (cross-project move)."));
-        properties.put("packageName", Map.of("type", "string", "description", "package: the package to move/rename."));
-        properties.put("newPackageName", Map.of("type", "string", "description", "package: the new package name."));
+        properties.put("filePath", Map.of("type", "string", "description", "Source file."));
+        properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the target."));
+        properties.put("column", Map.of("type", "integer", "description", "Zero-based column."));
+        properties.put("targetPackage", Map.of("type", "string", "description", "class: destination package."));
+        properties.put("targetProjectKey", Map.of("type", "string", "description", "class: destination project (optional)."));
+        properties.put("packageName", Map.of("type", "string", "description", "package: current name."));
+        properties.put("newPackageName", Map.of("type", "string", "description", "package: new name."));
         // NAMED PER KIND, because it is not common and calling it common was a lie a C6
         // audit caught. Only class and package read it; the other four rewrite references
         // as the whole point of what they do — a moved field whose readers are not
@@ -216,21 +145,17 @@ public class MoveTool extends AbstractTool implements KindedTool {
         // text said "Common: updateReferences (default true)" at the front door and four
         // kinds ignored it silently, which is worse than not offering it.
         properties.put("updateReferences", Map.of("type", "boolean",
-            "description", "kind=class and kind=package ONLY: update all references "
-                + "(default true). The other kinds do not accept it — for them repointing "
-                + "the references IS the refactoring, and leaving them behind produces code "
-                + "that does not compile."));
+            "description", "class/package ONLY: update references (default true)."));
 
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
-            "class to move (kind=class; kind=package uses packageName)"));
+            "class (kind=class)"));
         // `symbol` was ACCEPTED here and not PUBLISHED. The front door's name-form
         // materializer reads either key, so a member FQN has always worked for kind=method;
         // only typeName was declared, so a client reading tools/list could not know. A C6
         // audit found the same shape on kind=middle_man's accessorName, which is why both
         // are written out now rather than left to the backstop below.
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-            "member to move: pkg.Type#method for kind=method, pkg.Type#field for kind=field."
-                + " The statement kinds are POSITIONAL — a statement has no name"));
+            "method or field (the statement kinds are positional)"));
 
         // THE BACKSTOP now lives on KindedTool. This door and three others each wrote it
         // out; `inline` did not, which is how row 36's accessorName shipped unpublished.

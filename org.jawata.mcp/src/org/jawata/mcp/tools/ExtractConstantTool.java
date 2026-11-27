@@ -58,9 +58,7 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool
     /** The bullet a client reads under {@code extract} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            extract an expression range into a static final constant.
-            Needs: startLine, startColumn, endLine, endColumn, constantName.""";
+        return "expression range into a static final constant: startLine, startColumn, endLine, endColumn, constantName.";
     }
 
 
@@ -139,9 +137,7 @@ public class ExtractConstantTool extends AbstractApplyingRefactoringTool
             ),
             "replaceAllOccurrences", Map.of(
                 "type", "boolean",
-                "description", "Replace EVERY occurrence of the expression with the new "
-                    + "constant (default true, the IDE default); false replaces only the "
-                    + "selected occurrence."
+                "description", "constant: replace every occurrence (default true)."
             )
         ));
         schema.put("required", List.of("filePath", "startLine", "startColumn", "endLine", "endColumn", "constantName"));

@@ -189,200 +189,24 @@ public class ProfileTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Process-level diagnostics for a running JVM — threads, deadlocks, heap,
-            GC state, native memory, heap dumps. Works on any session from
-            debug(action=launch|attach); does not require or change debuggability.
+            Measure and diagnose a running JVM: threads, heap, GC, memory, CPU and latency.
 
-            USAGE: profile(action="<action>", sessionId="<from debug launch|attach>", ...)
-
-            - threads    — every OS thread the JVM knows about: name, id, daemon,
-                           state, and its Java stack (bounded by maxFrames, default 20).
-                           A process-level dump — it works even mid-breakpoint, unlike
-                           debug(action=threads) which reads the suspended JDI view.
-            - deadlock   — from the SAME dump `threads` would read, so the two can never
-                           disagree. `deadlocked: false` when there is none — an absence
-                           is an answer. When there IS one, the summary NAMES the wait
-                           chain (who blocks whom), not just the raw thread list.
-            - histogram  — the heap's class histogram, ranked by retained bytes, capped
-                           at `limit` (default 20, max 200) — with the TRUE total class
-                           count and totals reported alongside, so a capped list never
-                           reads as the whole heap.
-            - gc         — current heap/generation sizes (used/total per region) plus
-                           Metaspace — a snapshot, not a trend; call it again to see one.
-            - nmt        — native memory summary by category (reserved/committed). If
-                           the target was not launched with -XX:NativeMemoryTracking
-                           (it cannot be turned on after the fact), this says so plainly
-                           — `enabled: false` and why — never a fabricated all-zero report.
-            - heap_dump  — a full HPROF heap dump, ARTIFACT-STORED with provenance.
-                           `live` (default true) dumps only reachable objects after a
-                           full GC — usually far smaller and what you want for "what's
-                           actually retained"; `live: false` includes unreachable
-                           garbage too, for the rare case that matters.
-
-            PROFILES THAT NAME SYMBOLS — Java Flight Recorder, parsed and ranked:
-            - sample     — a BOUNDED, targeted recording: `durationSeconds` (default 5,
-                           max 30) of CPU/allocation/lock sampling at the "profile" JFC
-                           template's rate, artifact-stored when it completes. BLOCKS
-                           for the duration — the call that waits is the call that
-                           returns the data, same as debug(action=wait).
-            - jfr_dump   — dump the CONTINUOUS recording the dev/sim preset already
-                           runs (name "jawata"), ON DEMAND, mid-run — no new sampling
-                           window, whatever it already captured. Refused, honestly, if
-                           the target has no such recording (not preset-launched, or
-                           Flight Recorder is disabled — `enabled: false` + why, same
-                           shape as `nmt`'s capability-absent report).
-            - hotspots   — rank a JFR artifact's methods for `dimension` = cpu | alloc
-                           | wall | lock | gc. cpu/alloc/lock are PER-METHOD rankings (the
-                           top stack frame of each sample) — symbol-named
-                           (`ClassName#methodName`, the same key get_call_hierarchy and
-                           find_references take), paginated (`offset`/`limit`, default
-                           20 max 200), with the TRUE total sample and method counts
-                           reported alongside so a capped page never reads as the whole
-                           picture. `samples` on each row is a SAMPLE count — how often
-                           this method was caught on top of the stack — not an
-                           instrumented call count; said plainly, not implied (for a real
-                           invocation count, action=call_counts). `wall` ranks by total
-                           ELAPSED MILLISECONDS per method (`wallMillis`): on-CPU time —
-                           each execution sample worth one MEASURED sampling interval —
-                           PLUS the real durations of time spent blocked on a monitor,
-                           parked, waiting, or in blocking I/O. It is a genuine wall-clock
-                           profile (where elapsed time goes), not lock-time renamed —
-                           `lock` alone is only monitor-enter. `gc` has no Java stack to
-                           rank a method BY (a GC pause is a fact about the collector), so
-                           it reports pauseCount/totalPauseMillis/maxPauseMillis instead
-                           of inventing an attribution JFR does not provide.
-
-            - domain_events — artifactId: the TARGET'S OWN domain events emitted during a
-                           recording — its application-defined jdk.jfr.Event types (an
-                           OrderPlaced, a RiskBreach), as opposed to the JVM's built-in
-                           jdk.* events. Grouped by type with a count and a bounded sample
-                           of each type's fields. This is the domain context D12 pairs with
-                           a latency measurement — sample() (or the incident JFR slice) to
-                           record, then domain_events to read the target's own vocabulary
-                           out of the same recording. Empty, honestly, when the target
-                           emits none.
-            - call_counts — className + durationSeconds: TRUE per-method invocation counts
-                           for a class, via the same non-suspending method_trace probe D8
-                           provides — every method ENTRY counted, symbol-named, ranked. This
-                           is a real call count, distinct from a hotspot row's `samples`
-                           (which is how often a method was caught on top of the stack — a
-                           method called 10,000× at 1µs each is ~0 samples but 10,000 calls).
-                           Reports eventsLost / countsAreLowerBounds honestly when a very hot
-                           class outruns the event ring.
-
-            LATENCY AT A NAMED SEAM:
-            - latency_seam — className + method: a JDT-RESOLVED seam (checked against
-                           the WORKSPACE source before touching the live JVM — a wrong
-                           name is refused with a compiler-accurate reason, not a JDI
-                           error three steps later). Traces every call via the SAME
-                           non-suspending method_trace probe `debug` uses (D8) — the
-                           program is never stopped — for `durationSeconds` (default 5,
-                           max 30; the call BLOCKS for it). Reports p50/p99/p999 TWICE:
-                           `raw` (measured) and `corrected` (coordinated-omission
-                           corrected — see below), millisecond resolution, stated as
-                           such (this is a JDI event timestamp, not a nanosecond
-                           instrument).
-
-                           WHY TWO SETS OF PERCENTILES: most latency measurements are
-                           CLOSED-LOOP — the next call starts only after the last one
-                           finishes (this is the easy thing to build, and it is what
-                           this stage's own fixture does). A closed-loop caller SKIPS
-                           the calls a real, open-loop caller would still have issued
-                           during a slow patch — so its raw trace under-reports its own
-                           tail, worse the slower the stall. `corrected` backfills the
-                           samples that silence hid (Gil Tene's fix, as HdrHistogram
-                           implements it: for an observed value v against the expected
-                           inter-call gap i, add phantom samples at v-i, v-2i, ... down
-                           to i). Both numbers are reported so the correction's effect
-                           is VISIBLE, never asserted. `expectedIntervalMillis` — pass it
-                           if you know the target's intended call rate; omitted, it is
-                           INFERRED as the median gap between observed call starts.
-               Below 200 paired samples, p999 is flagged as unreliable
-                           rather than reported as if it were not.
-
-            INCIDENT BUNDLE ON ALARM — one declared signal, one local bundle:
-            - incident_arm    — sessionId + alarmFile (a path the TARGET writes to when
-                           IT decides something is wrong — the target declares what,
-                           jawata only captures; same division as replay/D9). Optional
-                           logFile (the target's own app log, sliced into the bundle),
-                           live (heap-dump reachability, default true), jfrSliceSeconds
-                           (default 15 — how much of the continuous recording's recent
-                           past to keep). Returns immediately with an incidentId — this
-                           does NOT block, because an alarm's timing is exactly what you
-                           do not know in advance.
-            - incident_status — poll this. The FIRST call after the alarm file appears
-                           CAPTURES the bundle right there (JFR slice, thread dump, heap
-                           histogram, a heap dump, a log slice, a replay descriptor, and
-                           a summary naming the alarming symbol — SEVEN parts, all
-                           artifact-stored with provenance) and reports `bundleReady`.
-                           `fired: false` before that — an absence, not a failure.
-            - incident_get    — the full bundle, once `bundleReady`. Refused, honestly,
-                           if you ask before it exists.
-            - incident_disarm — release a watch you no longer need. A bundle it already
-                           captured STAYS in the artifact store; only the watch goes away.
-                           The armed table is bounded, and when it is full of watches that
-                           have never fired, arming another is REFUSED rather than silently
-                           dropping one of the watches you already asked for — this is how
-                           you make room.
-
-            DECLARED JMX READS + RUNTIME LOG CONTROL:
-            - jmx_read   — objectName + attribute: one MBean attribute, via the SAME
-                           local JMX the dev/sim preset already enables (no new
-                           capability, no authentication surface — loopback-only).
-            - log_level  — loggerName ("" = root) + level, via the platform Logging
-                           MBean. Optional expirySeconds: after that long the level
-                           REVERTS — not to whatever it was when you made THIS call, but
-                           to the level the logger had before jawata first touched it
-                           (`revertsTo` says which). Bumping again while a revert is
-                           pending moves the deadline; it does not change the
-                           destination, so two overlapping bumps cannot leave the target
-                           stranded at an intermediate level. Without expirySeconds the
-                           change is permanent and any pending revert is cancelled — a
-                           diagnostic verbosity bump should not outlive its reason, but
-                           neither should it undo a level you deliberately set.
-                           The timer runs in THIS server: if jawata restarts before the
-                           expiry, the level stays as set (`revertPerformedBy` says so —
-                           we cannot schedule work inside a JVM we do not own).
-
-            NATIVE BOUNDARY TRIAGE — for a crash that killed the process (no live
-            session, no sessionId; these three read a file, not a JVM):
-            - native_hs_err  — hsErrFile: parse the JVM's own hs_err_pid<pid>.log
-                           fatal-error report. HotSpot ALREADY correlates Java and
-                           native frames for the crashing thread's own stack — the
-                           combined frame list carries each frame's kind
-                           (compiledJava/interpretedJava/vmInternal/vmStub/native),
-                           and Java frames are symbol-named (`ClassName#methodName`,
-                           the same key as everywhere else) while native/VM frames
-                           carry library+offset and a resolved function name WHERE
-                           HotSpot could resolve one (never invented when it could
-                           not — e.g. a stripped library frame stays offset-only,
-                           honestly). No external tool is needed for this — it is
-                           the JDK's own diagnostic, always available.
-            - native_nmt     — hsErrFile: the memory-tracking section EMBEDDED in
-                           the crash report itself (only present if the crashed JVM
-                           was launched with -XX:NativeMemoryTracking=summary — it
-                           cannot be turned on post-mortem). Absent, honestly:
-                           `enabled: false` + why, same shape as the live `nmt`
-                           action's capability-absent report.
-            - native_handoff — hsErrFile + optional adapterCommand (default "gdb";
-                           "lldb" also understood) + optional corePath (else
-                           inferred from the hs_err file's own "dumping to ..."
-                           line): hands the crash to a CONFIGURED external debugger
-                           for a deeper backtrace than hs_err alone carries,
-                           correlating any frame whose function name matches a
-                           symbol hs_err already resolved. An OPTIONAL adapter —
-                           honest about platform support: `available: false` + why
-                           when the command is not found on this machine, never a
-                           silent skip.
-
-            ARTIFACTS: artifacts / artifact_delete — heap dumps, JFR recordings (and
-            anything debug produced) with provenance and an expiry; explicit delete,
-            because these get large. Shares the store with `debug` — one place either
-            front door can find what a session left behind.
-
-            RARE OR LONG-RUNNING WATCHES: hand the sessionId to a SUBAGENT — the same
-            handle debug(action=wait) hands off, so one session serves both doors
-            without re-attaching.
+            USAGE: profile(action="<action>", sessionId=<from debug launch|attach>, ...)
+            - threads (maxFrames), deadlock, histogram (limit), gc, nmt (needs -XX:NativeMemoryTracking at launch),
+              heap_dump (live).
+            - sample (durationSeconds; BLOCKS): record JFR. jfr_dump: dump the preset's continuous recording.
+            - hotspots (artifactId; dimension, offset, limit). call_tree (artifactId, entryPoint; maxDepth).
+              domain_events (artifactId): the application's own JFR events.
+            - call_counts (className; durationSeconds): true invocation counts.
+            - latency_seam (className, method; durationSeconds, expectedIntervalMillis; BLOCKS): p50/p99/p999,
+              raw and coordinated-omission corrected, millisecond resolution.
+            - incident_arm (alarmFile; logFile, live, jfrSliceSeconds), then incident_status (incidentId; captures
+              the bundle once the alarm file appears), incident_get, incident_disarm.
+            - jmx_read (objectName, attribute). log_level (loggerName, level; expirySeconds reverts it).
+            - native_hs_err, native_nmt, native_handoff (hsErrFile; adapterCommand, corePath): a crashed JVM, no
+              sessionId.
+            - artifacts, artifact_delete (artifactId).
+            For long watches, hand the sessionId to a SUBAGENT.
             """;
     }
 
@@ -395,43 +219,27 @@ public class ProfileTool extends AbstractTool {
         Map<String, Object> action = new LinkedHashMap<>();
         action.put("type", "string");
         action.put("enum", ACTIONS);
-        action.put("description", "Which profiling action to run.");
+        action.put("description", "See the tool description.");
         properties.put("action", action);
 
         properties.put("sessionId", Map.of("type", "string",
-            "description", "Every action but artifacts/artifact_delete: the session "
-                + "handle (from debug(action=launch|attach))."));
+            "description", "Debug session id."));
         properties.put("maxFrames", Map.of("type", "integer",
-            "description", "threads: max stack frames per thread (default "
-                + DEFAULT_STACK_FRAMES + ")."));
+            "description", "threads: default " + DEFAULT_STACK_FRAMES + "."));
         properties.put("limit", Map.of("type", "integer",
-            "description", "histogram: max rows (default " + DEFAULT_HISTOGRAM_LIMIT + ", max "
-                + MAX_HISTOGRAM_LIMIT + "). hotspots: max rows (default " + DEFAULT_HOTSPOT_LIMIT
-                + ", max " + MAX_HOTSPOT_LIMIT + "). The true total is always reported too."));
+            "description", "histogram (default " + DEFAULT_HISTOGRAM_LIMIT + ", max " + MAX_HISTOGRAM_LIMIT
+                + "), hotspots (default " + DEFAULT_HOTSPOT_LIMIT + ", max " + MAX_HOTSPOT_LIMIT + ")."));
         properties.put("live", Map.of("type", "boolean",
-            "description", "heap_dump / incident_arm: reachable objects only after a full "
-                + "GC (default true, smaller); false includes unreachable garbage too."));
+            "description", "Reachable objects only (default true)."));
         properties.put("artifactId", Map.of("type", "string",
-            "description", "artifact_delete: which artifact to remove. hotspots: which "
-                + "JFR artifact to rank (from action=sample or action=jfr_dump). call_tree: "
-                + "the same — the tree reads a recording already taken, so it costs no "
-                + "second sample."));
+            "description", "From sample/jfr_dump, or to delete."));
         properties.put("entryPoint", Map.of("type", "string",
-            "description", "call_tree (required): the method the tree is rooted at, as "
-                + "Type#method, or a bare Type to enter at any of its methods. Samples whose "
-                + "stack never passes through it are not this question's business, and a tree "
-                + "with no root is every thread's Thread#run, which names nothing. Zero "
-                + "samples through it is reported as an ABSENCE of samples rather than as a "
-                + "measurement that the method is fast."));
+            "description", "call_tree REQUIRED: Type#method or Type."));
         properties.put("maxDepth", Map.of("type", "integer",
-            "description", "call_tree: how deep to render below the entry point (default 12, "
-                + "max 40). A node whose children are cut says how many were cut, because a "
-                + "tree truncated in silence reads as a leaf."));
+            "description", "call_tree: default 12, max 40."));
         properties.put("durationSeconds", Map.of("type", "integer",
-            "description", "sample: how long to record (default " + DEFAULT_SAMPLE_SECONDS
-                + ", max " + MAX_SAMPLE_SECONDS + "). latency_seam: how long to trace "
-                + "(default " + DEFAULT_LATENCY_SECONDS + ", max " + MAX_LATENCY_SECONDS
-                + "). Either call BLOCKS for this long."));
+            "description", "sample (default " + DEFAULT_SAMPLE_SECONDS + ", max " + MAX_SAMPLE_SECONDS
+                + "), latency_seam (default " + DEFAULT_LATENCY_SECONDS + ", max " + MAX_LATENCY_SECONDS + ")."));
         properties.put("dimension", Map.of("type", "string",
             "enum", List.of("cpu", "alloc", "wall", "lock", "gc"),
             // C15 audit / architect F1: this string IS the contract an agent reads, and it
@@ -439,65 +247,41 @@ public class ProfileTool extends AbstractTool {
             // including it — reintroducing, on the only published surface, the very confusion
             // the repair was written to remove ("nothing was waiting" versus "the waiting is
             // not shown here"). The two keys that resolve it were undocumented here.
-            "description", "hotspots: which profile to rank by (default cpu). cpu/alloc/lock "
-                + "rank by sample count; wall ranks by total elapsed milliseconds per method — "
-                + "on-CPU time plus time BLOCKED IN work, attributed to the blocked method "
-                + "itself rather than to the JVM primitive it parked in. Time whose stack is "
-                + "READABLE but entirely JVM namespaces is a thread WAITING FOR work: it is "
-                + "reported beside the ranking as idleWallMillis/idleEvents and is NOT in the "
-                + "rows, because one collapsed park row otherwise outranks every real method. An "
-                + "event whose frames could not be read at all is a different fact and is "
-                + "counted as eventsWithoutStack, never as idle. Each row carries "
-                + "blockingEvents and cpuSamples, the observations its milliseconds were summed "
-                + "from, and sharePercent of the ranked total. gc is a pause summary."));
+            "description", "hotspots (default cpu). cpu/alloc/lock count samples; wall is elapsed ms on CPU plus "
+                + "blocked in work (idle waiting is reported apart as idleWallMillis, unreadable stacks as "
+                + "eventsWithoutStack); gc is a pause summary."));
         properties.put("className", Map.of("type", "string",
-            "description", "latency_seam: the fully-qualified class (Outer$Inner for a "
-                + "nested one) declaring the seam method — JDT-resolved against the "
-                + "workspace source before the live JVM is touched."));
+            "description", "Class FQN (nested: Outer$Inner)."));
         properties.put("method", Map.of("type", "string",
-            "description", "latency_seam: the seam method's name (no overload "
-                + "disambiguation — all overloads on the class are traced together)."));
+            "description", "latency_seam: method name (all overloads)."));
         properties.put("expectedIntervalMillis", Map.of("type", "integer",
-            "description", "latency_seam: the target's intended gap between calls, for "
-                + "the coordinated-omission correction. Omitted: inferred as the median "
-                + "observed gap between call starts."));
+            "description", "latency_seam: intended gap between calls (default: inferred)."));
         properties.put("offset", Map.of("type", "integer",
-            "description", "hotspots: pagination offset (default 0)."));
+            "description", "hotspots: page offset."));
         properties.put("alarmFile", Map.of("type", "string",
-            "description", "incident_arm: the path the TARGET writes to when it declares "
-                + "an alarm. jawata watches for it; the target decides what and when."));
+            "description", "incident_arm: file the target writes to raise the alarm."));
         properties.put("logFile", Map.of("type", "string",
-            "description", "incident_arm: the target's own application log, if any — the "
-                + "last lines are sliced into the bundle. Omit if there is none."));
+            "description", "incident_arm: application log to slice."));
         properties.put("jfrSliceSeconds", Map.of("type", "integer",
-            "description", "incident_arm: how much of the continuous recording's recent "
-                + "past to keep in the bundle (default " + DEFAULT_JFR_SLICE_SECONDS + ")."));
+            "description", "incident_arm: recording kept (default " + DEFAULT_JFR_SLICE_SECONDS + ")."));
         properties.put("incidentId", Map.of("type", "string",
-            "description", "incident_status / incident_get / incident_disarm: the handle from "
-                + "action=incident_arm."));
+            "description", "From incident_arm."));
         properties.put("objectName", Map.of("type", "string",
-            "description", "jmx_read: the MBean's ObjectName (e.g. "
-                + "\"java.lang:type=Memory\")."));
+            "description", "jmx_read: e.g. java.lang:type=Memory."));
         properties.put("attribute", Map.of("type", "string",
-            "description", "jmx_read: the attribute to read."));
+            "description", "jmx_read."));
         properties.put("loggerName", Map.of("type", "string",
-            "description", "log_level: the logger's name; \"\" (default) is the root logger."));
+            "description", "log_level: \"\" = root."));
         properties.put("level", Map.of("type", "string",
-            "description", "log_level: the new level (e.g. FINE, INFO, WARNING) — the "
-                + "java.util.logging.Level constant names."));
+            "description", "log_level: e.g. FINE, INFO."));
         properties.put("expirySeconds", Map.of("type", "integer",
-            "description", "log_level: after this long, the level automatically REVERTS "
-                + "to what it was. Omitted: the change is permanent until set again."));
+            "description", "log_level: revert after this long; omitted = permanent."));
         properties.put("hsErrFile", Map.of("type", "string",
-            "description", "native_hs_err / native_nmt / native_handoff: path to the "
-                + "hs_err_pid<pid>.log the crashed JVM wrote. No sessionId — the process "
-                + "that crashed is gone."));
+            "description", "native_*: hs_err_pid<pid>.log."));
         properties.put("adapterCommand", Map.of("type", "string",
-            "description", "native_handoff: the external debugger command (default \""
-                + DEFAULT_ADAPTER_COMMAND + "\"; \"lldb\" also understood)."));
+            "description", "native_handoff: default " + DEFAULT_ADAPTER_COMMAND + "; or lldb."));
         properties.put("corePath", Map.of("type", "string",
-            "description", "native_handoff: path to the core dump. Omitted: inferred from "
-                + "the hs_err file's own \"dumping to ...\" line."));
+            "description", "native_handoff: core dump (default from hs_err)."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("action"));

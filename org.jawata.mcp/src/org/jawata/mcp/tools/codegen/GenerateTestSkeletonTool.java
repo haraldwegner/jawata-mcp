@@ -51,7 +51,7 @@ public class GenerateTestSkeletonTool extends AbstractTool
     /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return "a test class for the type. Optional: framework, includePrivateMethods.";
+        return "test class; framework, includePrivateMethods optional.";
     }
 
 

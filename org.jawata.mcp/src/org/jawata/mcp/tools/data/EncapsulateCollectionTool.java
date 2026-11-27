@@ -136,19 +136,8 @@ public class EncapsulateCollectionTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            stop handing out a collection field: the accessor returns a read-only
-            view and the adds and removes move onto the owning class, where the
-            object can see them. Point at the ACCESSOR — which is what a
-            mutable_data finding names, by file, line and Class#method — not at
-            the field. Refuses an accessor that already wraps or copies (it is
-            already safe, so there is nothing to do), a concrete or array return
-            type (no read-only view of one exists; widen it with
-            change_method_signature kind=change_signature first), and a static
-            field (that is global_data's kind). Each refusal names which. A mutator the class
-            ALREADY has is not refused — it is a step already taken, so it is
-            skipped and the accessor is still closed, which is upstream's own
-            commonest shape. (find_quality_issue kind=mutable_data locates
-            candidates.)""";
+            the collection ACCESSOR (position on it, not the field) returns a read-only view; add/remove move
+            to the owner; itemName optional. Refuses concrete or array return types and static fields.""";
     }
 
     /** Structural: it adds methods to the class's published surface. */
@@ -181,9 +170,7 @@ public class EncapsulateCollectionTool extends AbstractRefactoringTool
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column inside the accessor."));
         properties.put("itemName", Map.of("type", "string",
-            "description", "Noun for the generated mutators — itemName=Course gives "
-                + "addCourse/removeCourse (default: the field's name with a trailing 's' "
-                + "dropped). Every call site reads it."));
+            "description", "encapsulate_collection: Course gives addCourse/removeCourse."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column"));
         return withAutoApply(withProjectKey(schema));

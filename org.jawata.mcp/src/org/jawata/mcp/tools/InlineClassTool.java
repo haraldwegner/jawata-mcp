@@ -97,13 +97,8 @@ public class InlineClassTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            fold a class into the SINGLE class that uses it, then delete it.
-            Refuses when more than one class references it, when it has
-            subtypes, when the user holds none or several fields of its
-            type, when that field is assigned outside its own initializer,
-            when it has a constructor with a body, or when a member name
-            would collide. Each refusal names which. (find_quality_issue
-            kind=lazy_class locates candidates.)""";
+            fold a class into its SINGLE user and delete it: line, column or symbol=pkg.Type. Refuses several
+            users, subtypes, a constructor with a body, not exactly one field of its type, name collisions.""";
     }
 
     /** Structural: it folds a class away entirely. */

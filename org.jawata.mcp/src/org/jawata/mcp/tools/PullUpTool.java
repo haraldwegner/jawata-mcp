@@ -56,27 +56,8 @@ public class PullUpTool extends AbstractRefactoringTool implements ToolKindDeleg
 
     @Override
     public String getDescription() {
-        return """
-            Move a method or field from a subtype up to its direct superclass.
-
-            Point at the member — a position inside it, or its name — and optionally
-            ask for abstractInOriginal.
-
-            Inputs:
-            - filePath / line / column — position inside the method or field
-              to move (zero-based line/column).
-            - abstractInOriginal (default false) — for methods, also leave
-              an abstract declaration on the original subtype.
-
-            The supertype is the direct superclass of the subtype. To climb
-            multiple levels, call hierarchy(direction=up) repeatedly.
-
-            Conflict (e.g. supertype already declares the same member,
-            superclass is from a binary jar) → REFACTORING_FAILED with no
-            files modified.
-
-            Requires load_project to be called first.
-            """;
+        return "Move a method or field up into the direct superclass: position or symbol=pkg.Type#member; "
+            + "abstractInOriginal optional.";
     }
 
     @Override
@@ -91,7 +72,7 @@ public class PullUpTool extends AbstractRefactoringTool implements ToolKindDeleg
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column number on the line."));
         properties.put("abstractInOriginal", Map.of("type", "boolean",
-            "description", "For methods only: leave an abstract declaration on the subtype (default false)."));
+            "description", "up, methods: leave an abstract declaration (default false)."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column"));
         return withAutoApply(withProjectKey(schema));

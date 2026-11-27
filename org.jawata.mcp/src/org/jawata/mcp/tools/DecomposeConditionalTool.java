@@ -112,14 +112,8 @@ public class DecomposeConditionalTool extends AbstractTool
     /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            TOWARD: a tangled `if` becomes a named test and a named
-            branch on each side. Needs: line, column on the `if`, plus
-            conditionName / thenName / elseName — name at least one; a part
-            you do not name is left alone. YOU supply the names, because they
-            are the refactoring. Refuses an `else if` chain (that is
-            replace_conditional_with_polymorphism) and a condition that
-            assigns. Applies atomically (auto_apply=false not supported).""";
+        return "name an `if`'s test/branches as methods: line, column on it, plus at least one of conditionName, "
+            + "thenName, elseName. Refuses `else if` chains and assigning conditions.";
     }
 
 
@@ -158,14 +152,11 @@ public class DecomposeConditionalTool extends AbstractTool
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column of that caret."));
         properties.put("conditionName", Map.of("type", "string",
-            "description", "decompose_conditional: name for the extracted test, e.g. notSummer. "
-                + "Omit to leave the condition alone."));
+            "description", "decompose_conditional: test method name."));
         properties.put("thenName", Map.of("type", "string",
-            "description", "decompose_conditional: name for the extracted then-branch. "
-                + "Omit to leave it alone."));
+            "description", "decompose_conditional: then-branch method name."));
         properties.put("elseName", Map.of("type", "string",
-            "description", "decompose_conditional: name for the extracted else-branch. "
-                + "Omit to leave it alone."));
+            "description", "decompose_conditional: else-branch method name."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column"));
         return withAutoApply(withProjectKey(schema));

@@ -84,16 +84,7 @@ public final class ReturnModifiedValueRule implements CleanupRule {
 
     @Override
     public String kindSummary() {
-        return """
-            Return Modified Value: a local whose only job is to hold
-            the answer, assigned on every branch and returned at the end,
-            becomes a direct return per branch and the variable goes. The
-            local cure for the cqs smell — the method stops mutating state
-            to express its result. Refuses when the variable is read
-            anywhere else, when an assignment is not the last statement of
-            its branch (the statements after it would stop running), when
-            any path leaves it unassigned, or when the assignment is inside
-            a loop, which is an accumulation and not an answer.""";
+        return "a result local assigned in each branch and returned at the end becomes direct returns.";
     }
 
     @Override

@@ -117,28 +117,9 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            add a component to a RECORD, and pass it at every construction (mcp#63).
-
-            The canonical constructor's signature is not its own — the language fixes it to
-            the record's components — so a component is added by editing the HEADER, which
-            is what change_method_signature refuses and points here for. The accessors and
-            equals/hashCode/toString are compiler-generated and need no edit; every `new`
-            does, which is why `defaultValue` is REQUIRED whenever a construction exists.
-
-            Refuses: a class rather than a record (NOT_A_RECORD — that IS a signature
-            change), a name the record already declares (COMPONENT_NAME_TAKEN), existing
-            constructions with no `defaultValue` (NO_DEFAULT_FOR_EXISTING_CALLS — a value
-            that compiles is the worst thing to guess), and an EXPLICITLY declared canonical
-            constructor (EXPLICIT_CANONICAL_CONSTRUCTOR), whose body would need an assignment
-            this operation would be inventing. A COMPACT constructor is handled: its
-            parameter list is implicit, so it needs no edit.
-
-            viaSecondaryConstructor:true changes the shape instead of the call sites — the
-            record gains the component AND an overload taking the old component list that
-            delegates with defaultValue, so no construction is rewritten. mcp D10: asked
-            three times to add an optional factor with default NaN, this correctly rewrote
-            78 sites in 24 files, and all three were undone — the wanted shape was one
-            four-argument constructor in one file.""";
+            add a RECORD component: typeName or position, componentType and componentName REQUIRED;
+            defaultValue required if constructions exist; viaSecondaryConstructor=true leaves them unchanged.
+            Refuses an explicit canonical constructor.""";
     }
 
     @Override
@@ -150,21 +131,13 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
     public Map<String, Object> parameterSchema() {
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("componentType", Map.of("type", "string",
-            "description", "REQUIRED. The new component's type, as the source spells it."));
+            "description", "add_record_component REQUIRED: type as source spells it."));
         props.put("componentName", Map.of("type", "string",
-            "description", "REQUIRED. The new component's name — it becomes the accessor "
-                + "every reader calls, so it is the caller's decision and has no default."));
+            "description", "add_record_component REQUIRED: name."));
         props.put("defaultValue", Map.of("type", "string",
-            "description", "The value passed at EXISTING constructions. Required whenever "
-                + "any exist: a value cannot be derived from a type, and one that compiles "
-                + "is the worst kind of guess."));
+            "description", "Value passed at existing constructions; required if any."));
         props.put("viaSecondaryConstructor", Map.of("type", "boolean",
-            "description", "Default false. True adds the component and a SECONDARY "
-                + "constructor taking the OLD component list, delegating to the canonical "
-                + "one with defaultValue — so every existing construction is left untouched. "
-                + "One file changes instead of all of them. Use it when the default is a "
-                + "sentinel (NaN, null, -1): a value nobody wanted at any site is a value no "
-                + "site should have to spell."));
+            "description", "Add an old-shape constructor instead of rewriting constructions."));
         return props;
     }
 

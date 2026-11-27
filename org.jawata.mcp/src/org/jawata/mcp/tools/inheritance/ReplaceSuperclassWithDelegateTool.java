@@ -117,16 +117,9 @@ public class ReplaceSuperclassWithDelegateTool extends AbstractApplyingRefactori
     @Override
     public String getDescription() {
         return """
-            Replace Superclass with Delegate — a class that inherits only to REUSE holds its old
-            superclass instead and forwards to it, so the reuse survives and the false is-a goes.
-            Point at the subclass (typeName=pkg.Type, or a position); fieldName names the
-            delegate, defaulting to the superclass's own name uncapitalised.
-            REFUSES when anything treats an instance AS its superclass — passed where the
-            superclass is expected, assigned to a superclass-typed variable, or returned as one —
-            because deleting `extends` removes exactly that substitutability. Also refuses an
-            OVERRIDE (a caller may depend on dynamic dispatch, which delegation does not give)
-            and a class that is itself extended. This is the cure composition_over_inheritance
-            names in its own findings.""";
+            A subclass holds its superclass as a field and forwards instead of extending it: typeName or
+            position; fieldName optional. Refuses instances used as the superclass, overrides, a class that
+            is itself extended.""";
     }
 
     /** Structural: it changes the type's place in the hierarchy. */
@@ -141,16 +134,15 @@ public class ReplaceSuperclassWithDelegateTool extends AbstractApplyingRefactori
         schema.put("type", "object");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("filePath", Map.of("type", "string",
-            "description", "Source file declaring the subclass."));
+            "description", "Source file."));
         properties.put("line", Map.of("type", "integer",
-            "description", "Zero-based line of the class declaration."));
+            "description", "Zero-based line."));
         properties.put("column", Map.of("type", "integer",
-            "description", "Zero-based column on that line."));
+            "description", "Zero-based column."));
         properties.put("typeName", Map.of("type", "string",
-            "description", "Fully-qualified class name, as an alternative to a position."));
+            "description", "Class FQN instead of a position."));
         properties.put("fieldName", Map.of("type", "string",
-            "description", "Name for the delegate field. Default: the superclass's own name,"
-                + " uncapitalised."));
+            "description", "replace_superclass_with_delegate: field (default superclass name)."));
         schema.put("properties", properties);
         return withAutoApply(withProjectKey(schema));
     }

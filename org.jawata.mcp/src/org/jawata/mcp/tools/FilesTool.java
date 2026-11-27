@@ -47,28 +47,15 @@ public final class FilesTool implements Tool {
     @Override
     public String getDescription() {
         return """
-            Read any file, search the files under a folder, and write or edit a text document (.md, .csv, .txt, .html and the like). Writes nothing else.
+            Read any file, search a folder, and write or edit text documents (.md, .csv, .txt, .html ...); never code
+            or configuration. Paths are absolute.
 
-            USAGE: files(action="read",   path="/abs/file" [, offset=0] [, limit=2000])
-                   files(action="search", folder="/abs/folder", pattern="<Java regex>" [, glob="*.java"] [, maxResults=200])
-                   files(action="write",  path="/abs/notes/plan.md", content="...")
-                   files(action="edit",   path="/abs/notes/plan.md", oldText="...", newText="...")
-                   files(action="append_row", path="/abs/notes/plan.md", prefix="z", content="- **({row}) Title.** text")
-
-            append_row adds a numbered row to a plan: the number is one above the highest (zN) in the document, taken as the row is written,
-            and put where {row} stands in content, after the last such row. Two writers never get one number, so a row is added with it and
-            never numbered by hand. It answers {path, row, line}.
-
-            edit replaces ONE exact passage of an existing document and leaves the rest as it was: oldText must occur exactly once, so a passage
-            found twice or not at all is refused and nothing is written, and an empty one is refused. It answers {path, replaced: 1, bytes}.
-            It is held to the same refusals as write (only a text document; never one that tells an agent what it may do) and does not make a file.
-
-            read answers {path, content, totalLines, firstLine, truncated}: lines from offset (0-based), at most limit of them.
-            search answers {matches: [{path, line, text}], truncated, leftOut}: line is 1-based; .git and node_modules are not searched, nor a
-            file over 2 MB or one that is not text. A file the access policy does not let the call open is not searched, and leftOut counts them.
-            write creates the folders it needs and replaces the file; a path that is not a text document (a picture, code, a build or
-            configuration file) is REFUSED and nothing is written, because a seat that carries this tool and no editor changes documents and
-            never code. The kinds are the ones the main seat and a lead may write, named once in the engine.
+            - read: path; offset (0-based), limit.
+            - search: folder, pattern (Java regex); glob, maxResults. Result lines are 1-based.
+            - write: path, content (replaces the file).
+            - edit: path, oldText (must occur exactly once), newText.
+            - append_row: path, prefix, content with {row}: adds a plan row numbered one above the highest (zN).
+              Use it instead of numbering by hand.
             """;
     }
 
@@ -77,16 +64,16 @@ public final class FilesTool implements Tool {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("action", Map.of("type", "string", "enum", List.of("read", "search", "write", "edit", "append_row"), "description", "What to do."));
         properties.put("prefix", Map.of("type", "string", "description", "append_row: the letters the rows are numbered with, such as z."));
-        properties.put("oldText", Map.of("type", "string", "description", "edit: the exact passage to replace; it must occur exactly once in the document."));
-        properties.put("newText", Map.of("type", "string", "description", "edit: what replaces it."));
-        properties.put("path", Map.of("type", "string", "description", "read/write: the file, as an absolute path."));
-        properties.put("offset", Map.of("type", "integer", "description", "read: the first line to answer, 0-based (default 0)."));
-        properties.put("limit", Map.of("type", "integer", "description", "read: how many lines at most (default 2000)."));
-        properties.put("folder", Map.of("type", "string", "description", "search: the folder searched with everything under it."));
-        properties.put("pattern", Map.of("type", "string", "description", "search: a Java regular expression matched against each line."));
-        properties.put("glob", Map.of("type", "string", "description", "search: only file names matching this glob, such as *.java."));
-        properties.put("maxResults", Map.of("type", "integer", "description", "search: how many matching lines at most (default 200)."));
-        properties.put("content", Map.of("type", "string", "description", "write: the document's whole text."));
+        properties.put("oldText", Map.of("type", "string", "description", "edit: exact passage, occurring once."));
+        properties.put("newText", Map.of("type", "string", "description", "edit: replacement."));
+        properties.put("path", Map.of("type", "string", "description", "Absolute file path."));
+        properties.put("offset", Map.of("type", "integer", "description", "read: first line, 0-based."));
+        properties.put("limit", Map.of("type", "integer", "description", "read: max lines (default 2000)."));
+        properties.put("folder", Map.of("type", "string", "description", "search: absolute folder."));
+        properties.put("pattern", Map.of("type", "string", "description", "search: Java regex."));
+        properties.put("glob", Map.of("type", "string", "description", "search: e.g. *.java."));
+        properties.put("maxResults", Map.of("type", "integer", "description", "search: default 200."));
+        properties.put("content", Map.of("type", "string", "description", "write: whole text; append_row: the row."));
         return Map.of("type", "object", "properties", properties, "required", List.of("action"));
     }
 

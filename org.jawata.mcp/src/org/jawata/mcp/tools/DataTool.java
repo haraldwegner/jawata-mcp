@@ -149,9 +149,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
 
     @Override
     public String preamble() {
-        return """
-            Change the SHAPE OF STATE: how a field is reached, what a collection hands
-            out, and where a derived value comes from (behaviour-preserving, reversible).""";
+        return "Change how state is held and reached (behaviour-preserving, undoable).";
     }
 
     @Override
@@ -161,18 +159,12 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
 
     @Override
     public String kindBlockLeadIn() {
-        return "Kinds (ZERO-BASED coordinates; a field may also be named as symbol=pkg.Type#field):";
+        return "Kinds (ZERO-BASED coordinates; symbol=pkg.Type#member also works):";
     }
 
     @Override
     public String footer() {
-        return """
-            Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
-            auto_apply=false to stage only. A conflict — an accessor name that already
-            exists, say — REFUSES and modifies nothing.
-
-            Requires load_project to be called first.
-            """;
+        return "";
     }
 
     @Override
@@ -187,7 +179,7 @@ public class DataTool extends AbstractRefactoringTool implements KindedTool {
         // IS delegates().keySet(), so a kind cannot be dispatched and left out of the enum a
         // client reads in tools/list.
         kind.put("enum", publishedKinds());
-        kind.put("description", "Which state-shape change to apply. See the tool description.");
+        kind.put("description", "Which change; see the tool description.");
         properties.put("kind", kind);
 
         // THE BACKSTOP, inherited rather than written out here: every parameter any delegate

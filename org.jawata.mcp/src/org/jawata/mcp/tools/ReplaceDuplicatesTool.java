@@ -57,20 +57,8 @@ public class ReplaceDuplicatesTool extends AbstractApplyingRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            replace a group of duplicated method bodies with calls
-            to one canonical method (Fowler: Replace Inline Code with
-            Function Call). Needs: cloneGroupId from find_duplicate_code,
-            passed with the SAME minTokens/projectKey/crossProject the
-            detection used — group ids are hashes of the clone shape, not
-            session state. Optional canonicalMethodName picks which
-            instance survives. Clones in OTHER types are skipped and
-            listed with the reason: cross-type delegation is not
-            automatically safe.
-            The same behaviour reaches extract kind=method as
-            replaceDuplicates, DEFAULT FALSE — that operation predates the
-            parameter and its shipped behaviour is to extract the selection
-            only. Every extract reports otherOccurrences whether or not the
-            flag is set, so a non-zero count is the signal to re-run with it.""";
+            make duplicated methods call one: cloneGroupId from find_duplicate_code, with the SAME
+            minTokens/projectKey/crossProject; canonicalMethodName optional. Clones in other types are skipped.""";
     }
 
 
@@ -122,17 +110,16 @@ public class ReplaceDuplicatesTool extends AbstractApplyingRefactoringTool
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("cloneGroupId", Map.of(
             "type", "string",
-            "description", "groupId from find_duplicate_code output."));
+            "description", "groupId from find_duplicate_code."));
         properties.put("canonicalMethodName", Map.of(
             "type", "string",
-            "description", "Optional. Which clone survives as the delegation target "
-                + "(default: first instance in file/line order)."));
+            "description", "Surviving clone (default first)."));
         properties.put("minTokens", Map.of(
             "type", "integer",
-            "description", "Must match the find_duplicate_code call (default 50)."));
+            "description", "As in find_duplicate_code (default 50)."));
         properties.put("crossProject", Map.of(
             "type", "boolean",
-            "description", "Must match the find_duplicate_code call (default true)."));
+            "description", "As in find_duplicate_code (default true)."));
         schema.put("properties", properties);
         schema.put("required", List.of("cloneGroupId"));
         return withAutoApply(withProjectKey(schema));

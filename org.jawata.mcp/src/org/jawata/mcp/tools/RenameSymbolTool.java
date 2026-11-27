@@ -120,24 +120,8 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
     @Override
     public String getDescription() {
         return """
-            Rename a symbol (variable, method, field, class, etc.) across the project.
-
-            Applies the rename directly (default) and returns
-            { filesModified, diff, undoChangeId, summary }. Verify with
-            compile_workspace; revert with refactoring(action=undo, undoChangeId=...) if needed.
-            Pass auto_apply: false to stage instead — returns { changeId, diff } for
-            refactoring(action=inspect) / refactoring(action=apply).
-
-            USAGE: Position on symbol, provide new name
-            OUTPUT: Modified files + unified diff + undo handle
-
-            IMPORTANT: Uses ZERO-BASED coordinates.
-            The rename runs through JDT's own rename engine: it rewrites a type's
-            constructors and renames the type's file with it, and REFUSES a rename
-            its preconditions reject (name collision, unsupported target) — the
-            refusal names the reason.
-
-            Requires load_project to be called first.
+            Rename a variable, method, field or type and all its references (a type's file too). Position
+            (ZERO-BASED) or symbol, plus newName. Undoable; refuses conflicts.
             """;
     }
 
@@ -148,29 +132,26 @@ public class RenameSymbolTool extends AbstractApplyingRefactoringTool {
         schema.put("properties", Map.of(
             "edits", Map.of(
                 "type", "boolean",
-                "description", "With auto_apply false: return the edits the rename would make, file by file with their positions "
-                    + "({ edits: [{ filePath, edits: [{ line, column, endLine, endColumn, newText }] }] }), for an editor to apply "
-                    + "to its own buffers. The change is not kept, so there is no changeId."
+                "description", "With auto_apply false: return positioned edits per file for an editor; no changeId."
             ),
             "filePath", Map.of(
                 "type", "string",
-                "description", "Path to source file containing the symbol"
+                "description", "Source file."
             ),
             "line", Map.of(
                 "type", "integer",
-                "description", "Zero-based line number"
+                "description", "Zero-based line."
             ),
             "column", Map.of(
                 "type", "integer",
-                "description", "Zero-based column number"
+                "description", "Zero-based column."
             ),
             "newName", Map.of(
                 "type", "string",
-                "description", "New name for the symbol"
+                "description", "New name."
             ),
             "symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-                "type, method or field to rename (a LOCAL variable has no name form — "
-                    + "use the position)")
+                "type, method or field (locals: position only)")
         ));
         // Sprint 24 (D1): position OR name form; only newName is always required.
         schema.put("required", List.of("newName"));

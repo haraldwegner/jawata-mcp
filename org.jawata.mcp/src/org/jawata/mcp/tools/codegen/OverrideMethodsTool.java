@@ -74,7 +74,7 @@ public class OverrideMethodsTool extends AbstractTool
     /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return "override/implement methods. Optional: methods[] (else all overridable).";
+        return "methods[] (default all overridable).";
     }
 
 

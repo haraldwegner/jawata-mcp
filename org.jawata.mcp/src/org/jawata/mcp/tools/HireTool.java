@@ -242,37 +242,16 @@ public class HireTool extends NeutralTool {
     @Override
     public String getDescription() {
         return """
-            One seat hires another to do a slice of work, and the run is recorded.
+            One seat hires another to do a slice of work; the run is recorded.
 
             USAGE: hire(seat="cataloguer", brief="...", steps=[...], workingDirectory="...")
 
-            NAME THE SEAT. The engine reads that seat's file from its own seats folder; seatFile is only for a seat that is
-            not there. hirer is known from your session; pass it only if the engine says it does not know you.
-
-            WHICH EXECUTABLE a brain is cannot be set per call — only per seat, by its own file.
-            This tool names no binary, because the dialect owns the whole command line.
-
-            The HIRED SEAT'S OWN FILE is the hire: its frontmatter names the brain, the model, the
-            tools that brain may attach and every ceiling. So changing which brain a seat uses is
-            an edit to that file and never a call-site change here.
-
-            THE STEPS ARE THE GATES, in order, each {tool, arguments}. They run against the real
-            tool registry after the brain answers, and a gate that did not answer is reported as
-            not having answered rather than as zero errors — the two are otherwise identical.
-
-            ANSWERS AT ONCE, WITH NO RESULT. The hire runs on the engine's own thread, and this call
-            answers as soon as the hire's plan is open with {hireId, name, state: running, hirer,
-            hired}. The hire's result is never this call's answer: it comes back LATER, AS A NEW
-            TURN of the seat that hired, framed as a report. Start the hires that can run beside
-            each other, then end your turn. A hire has no limit of time, cost or number of calls,
-            a caller's own timeout does not end it, and its record lands either way.
-
-            `claims` names the packages the hire works on. A claim that overlaps a running hire's
-            is refused, naming the holder.
-
-            A brain that cannot be told which tools to attach is REPORTED in the result rather
-            than left out of it: `toolsSettableByTheHirer` is false and `toolAttachment` says what
-            containment was applied instead.
+            Name the seat; its own file sets brain, model and tools. hirer is known from your session.
+            steps are the gates, run after the brain answers; a gate that did not answer is reported so.
+            ANSWERS AT ONCE with {hireId, state: running} and no result. The report comes back later as a new
+            turn of the hiring seat (or ask hire_wait): start parallel hires, then end your turn. A hire has no
+            limit of time, cost or number of calls.
+            A claim overlapping a running hire's is refused.
             """;
     }
 
@@ -280,50 +259,33 @@ public class HireTool extends NeutralTool {
     public Map<String, Object> getInputSchema() {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("hirer", Map.of("type", "string",
-            "description", "The seat issuing the brief. Leave it out: a hired seat and the chat's main are known by their session. Required"
-                + " only from a caller the engine does not know."));
+            "description", "Omit unless the engine does not know you."));
         properties.put("seat", Map.of("type", "string",
-            "description", "The seat being hired, by name, such as test-manager. Named on the record beside the hirer."));
+            "description", "Seat name, e.g. test-manager."));
         properties.put("seatFile", Map.of("type", "string",
-            "description", "Only for a seat that is not in the engine's seats folder: the path to its markdown, whose frontmatter is the"
-                + " hire — the brain, the model and the attachable tools. Left out, the engine reads the file of the seat's name from its"
-                + " own seats folder."));
+            "description", "Only for a seat not in the engine's seats folder."));
         properties.put("brief", Map.of("type", "string",
-            "description", "The instruction the hired brain is given, verbatim."));
+            "description", "Given to the hired brain verbatim."));
         properties.put("steps", Map.of("type", "array",
-            "description", "The gates, in order. Each is {tool, arguments[, expect]} — a jawata tool name"
-                + " and the arguments it is called with. They run after the brain answers. A gate that SEARCHES (it answers with matches) passes only"
-                + " on what it finds: expect {\"matches\": N} states the count it must find (0 for \"none of this is left\"), and a search that states"
-                + " nothing passes only on at least one match, so a search over a document that found nothing is not a pass.",
+            "description", "Gates in order: jawata tool calls {tool, arguments[, expect]}. A search gate passes on at least one "
+                + "match unless expect {\"matches\": N} says otherwise.",
             "items", Map.of("type", "object", "properties", Map.of(
                 "tool", Map.of("type", "string"),
                 "arguments", Map.of("type", "object"),
-                "expect", Map.of("type", "object", "description", "Optional. What a gate must find: {\"matches\": N} for a search, or {\"changed\": true} (false) for a lookup of kind git_diff, nothing else, that must show a change (none): a diff shows the unstaged changes of tracked files, so a new file or a staged change reads as no change.")))));
+                "expect", Map.of("type", "object", "description", "{\"matches\": N}, or {\"changed\": true|false} for lookup git_diff "
+                    + "only (unstaged changes of tracked files).")))));
         properties.put("instructionsFrom", Map.of("type", "string",
-            "description", "Optional. The plan id of the PM or chief-engineer hire whose INSTRUCTION blocks this"
-                + " hire carries out. The answer then reports how many ran as written (one tool, one call, the"
-                + " arguments written, no rework) and the issuer's tokens per instruction that did, read from the"
-                + " two hire records and never from either seat's report of itself."));
+            "description", "Plan id of the pm/chief-engineer hire whose instructions this one carries out (scores them)."));
         properties.put("fixes", Map.of("type", "string",
-            "description", "Optional. The plan id, from an earlier hire's answer, of the hire this one CORRECTS. Send it when a result was mostly"
-                + " right and a few parts are not acceptable: the brief names exactly what to correct, the earlier hire is accepted with this fix to"
-                + " follow, and this hire's journal row and answer name it. Leave it out when this hire corrects nothing."));
+            "description", "Plan id of an earlier hire this one corrects."));
         properties.put("observerSeatFile", Map.of("type", "string",
-            "description", "Optional, with instructionsFrom. The observer seat's markdown. When given, each step of this worker that did not run"
-                + " as the issuer's instruction wrote it is shown to that seat, and a step it halts comes back as a correction naming the"
-                + " number of the instruction, in the answer's instructionScore.observer. Without it the rules still flag the steps and say"
-                + " they were not judged."));
+            "description", "With instructionsFrom: observer seat file that judges steps not run as written."));
         properties.put("boardFile", Map.of("type", "string",
-            "description", "Optional. The sprint's ...-plan.md. When given, the plan board in it is drawn from the plan"
-                + " ledger as soon as this hire's gates have run, and the answer carries what was drawn or why it was not."));
+            "description", "Sprint ...-plan.md whose plan board is redrawn."));
         properties.put("claims", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "Optional. The packages this hire will work in, such as org.jawata.mcp.execution. A claim that overlaps one that another"
-                + " running agent holds is refused, and the refusal names the agent that holds it; a claim an agent above this one holds admits"
-                + " this hire. The claim lasts until the hire ends, however it ends."));
+            "description", "Packages this hire works in."));
         properties.put("workingDirectory", Map.of("type", "string",
-            "description", "Where the brain runs — REQUIRED, never defaulted. It is the hire's"
-                + " blast radius: the brain reads and may write here, so a caller states it rather"
-                + " than inheriting the resident's own directory."));
+            "description", "Where the brain runs, reads and may write. REQUIRED."));
         return Map.of(
             "type", "object",
             "properties", properties,

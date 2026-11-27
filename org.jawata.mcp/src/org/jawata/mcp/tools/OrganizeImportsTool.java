@@ -108,44 +108,9 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
     @Override
     public String getDescription() {
         return """
-            Organize imports (JDT's own Organize Imports engine) in one file, one
-            project, or the whole workspace.
-
-            Removes unused imports (including unused static imports) and sorts
-            per the project's import-order configuration.
-
-            USAGE:
-              organize_imports(filePath="path/to/File.java")     — the default, scope=file
-              organize_imports(scope="project", projectKey="core")
-              organize_imports(scope="workspace")
-
-            Inputs:
-            - scope — "file" (default) | "project" | "workspace".
-            - filePath — required for scope=file; unused otherwise.
-            - projectKey — for scope=project; the first loaded project when omitted.
-
-            A project or workspace run is ONE change with ONE undo handle, not a
-            per-file sweep. A file whose edit cannot be computed is skipped and NAMED
-            in `skippedFiles` with its reason — a broad run is never all-or-nothing on
-            one bad file, and never silently short.
-
-            Missing imports are ADDED as well as unused ones removed (mcp#16). An
-            AMBIGUOUS name is the one thing it will not do: `List` is java.util.List
-            and java.awt.List, and with no human to ask it is left out rather than
-            guessed. `importsAdded` counts what arrived, and every name declined
-            for ambiguity is listed in `declinedAmbiguous` with its line and its
-            candidates — add the one you mean by hand. A STATIC member is never
-            searched for, so a call such as max(a, b) with no static import is not
-            fixed; every name an import could have resolved and this run did not is
-            listed in `unresolved`, with its line and the compiler's message.
-            Applies the change directly (default) and returns
-            { filesModified, diff, undoChangeId, summary }; when imports are
-            already organized, returns hasChanges: false without touching the
-            file. Pass auto_apply: false to stage instead.
-
-            OUTPUT: Modified file(s) + unified diff + undo handle
-
-            Requires load_project to be called first.
+            Organize imports: add missing, remove unused, sort (undoable).
+            scope=file (default, filePath) | project (projectKey; default first loaded) | workspace.
+            Ambiguous names are not guessed (declinedAmbiguous); static members are never added (unresolved).
             """;
     }
 
@@ -157,10 +122,10 @@ public class OrganizeImportsTool extends AbstractApplyingRefactoringTool {
         properties.put("scope", Map.of(
             "type", "string",
             "enum", SCOPES,
-            "description", "file (default) | project | workspace."));
+            "description", "Default file."));
         properties.put("filePath", Map.of(
             "type", "string",
-            "description", "Path to source file. Required for scope=file; unused otherwise."));
+            "description", "scope=file: source file."));
         schema.put("properties", properties);
         // NO `required` list: filePath is required for one scope of three, and a JSON
         // schema cannot say that. The check lives in prepareChange, where it can name

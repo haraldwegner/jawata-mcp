@@ -123,25 +123,10 @@ public class RemoveUnreferencedMemberTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            delete a NON-PRIVATE member — a method, constructor, field or
-            nested type — that nothing in the loaded workspace references.
-            The n=0 case of this door's family: with no references there is
-            nothing to fold into, so only the deletion remains.
-            Needs: the member's symbol (pkg.Type#member) or position, plus
-            consumersAreInWorkspace, which has NO DEFAULT. "Zero references"
-            means zero in the projects that are loaded — a consumer in
-            another repository, a published artifact or a reflective lookup
-            is invisible to any search, so the caller states whether the
-            enumeration is complete rather than this tool assuming it.
-            Refuses a PRIVATE member (apply_cleanup kind=remove_dead_code
-            proves those with the compiler, which is the stronger proof) —
-            except a private field whose initializer calls code, which the
-            clean-up leaves and this deletes, saying the call went with it — a
-            method that overrides or implements anything — named as such so
-            you start at the supertype, rather than being told it has one
-            reference at the interface that declares it — a method with
-            implementors, a field sharing its declaration with other
-            fragments, and any member with a reference, listing the sites.""";
+            delete a NON-PRIVATE member nothing references: symbol=pkg.Type#member or position, plus
+            consumersAreInWorkspace (NO DEFAULT). Refuses a PRIVATE member (use apply_cleanup
+            kind=remove_dead_code; except a private field whose initializer calls code), overrides and
+            implementations, and referenced members.""";
     }
 
     /** Structural: a published member stops existing, so every consumer's compile changes. */
@@ -177,12 +162,8 @@ public class RemoveUnreferencedMemberTool extends AbstractRefactoringTool
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column of the member's name."));
         properties.put("consumersAreInWorkspace", Map.of("type", "boolean",
-            "description", "REQUIRED, no default. Your assertion that every consumer of this "
-                + "member is in the loaded workspace. A reference search can only see what is "
-                + "loaded, so a consumer in another repository, a published artifact, a "
-                + "reflective lookup or a framework binding would not appear in it and no "
-                + "search can find one. Passing true is a claim you are making, and the "
-                + "response records it."));
+            "description", "unreferenced_member REQUIRED: you assert every consumer is loaded; "
+                + "other repos and reflection are invisible to the search."));
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
             "member to delete"));
         schema.put("properties", properties);

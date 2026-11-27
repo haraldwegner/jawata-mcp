@@ -121,20 +121,8 @@ public class ReplaceDerivedVariableWithQueryTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            delete a field that is always recomputed from other fields, and answer
-            the question on demand instead — so it can no longer go stale when a
-            writer forgets to update it. Requires every write in the workspace to
-            assign THE SAME expression: that agreement IS the safety argument, and
-            the refusal quotes the ones that disagree. Every read, here and in
-            other files, becomes a call to the generated query, which keeps the
-            field's own visibility. Refuses writers that disagree, a derived
-            expression that CALLS anything (a query stands in for a cached field
-            only when the computation gives the same answer every time, and a clock
-            or a counter re-read on each access changes behaviour while compiling),
-            an expression reading a LOCAL or PARAMETER (it must move into a
-            no-argument method, and a value that comes from the call is Replace
-            Query with Parameter instead), a field nothing writes, and a method
-            name already declared. Each refusal names which.""";
+            delete a recomputed field and compute on demand: field position; queryName optional. Every write
+            must assign the SAME expression, with no calls, locals or parameters.""";
     }
 
     /** Structural: a field leaves the type's surface and a method arrives on it. */
@@ -166,8 +154,7 @@ public class ReplaceDerivedVariableWithQueryTool extends AbstractRefactoringTool
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column on the field's name."));
         properties.put("queryName", Map.of("type", "string",
-            "description", "Name for the generated query method (default: the field's own "
-                + "name, which reads at the call site as the question it answers)."));
+            "description", "replace_derived_variable: query name (default the field's)."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column"));
         return withAutoApply(withProjectKey(schema));

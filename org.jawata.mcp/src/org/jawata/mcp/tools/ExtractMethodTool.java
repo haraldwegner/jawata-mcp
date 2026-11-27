@@ -56,8 +56,8 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            extract a statement range into a new method.
-            Needs: startLine, startColumn, endLine, endColumn, methodName.""";
+            statement range into a new method: startLine, startColumn, endLine, endColumn, methodName.
+            replaceDuplicates=true also rewrites other occurrences (response counts otherOccurrences).""";
     }
 
 
@@ -135,14 +135,7 @@ public class ExtractMethodTool extends AbstractApplyingRefactoringTool
             ),
             "replaceDuplicates", Map.of(
                 "type", "boolean",
-                "description", "Also rewrite every OTHER occurrence of the selected "
-                    + "statements in the same type to call the new method (Fowler's Replace "
-                    + "Inline Code with Function Call). DEFAULT FALSE, because this "
-                    + "operation predates the parameter and its shipped behaviour is to "
-                    + "extract only the selection. The response reports otherOccurrences "
-                    + "either way, so a non-zero count is the signal to re-run with this "
-                    + "set. The engine matches on structure AND resolved bindings, so it "
-                    + "never rewrites code that merely looks alike."
+                "description", "method: also rewrite the type's other occurrences (default false)."
             )
         ));
         schema.put("required", List.of("filePath", "startLine", "startColumn", "endLine", "endColumn", "methodName"));

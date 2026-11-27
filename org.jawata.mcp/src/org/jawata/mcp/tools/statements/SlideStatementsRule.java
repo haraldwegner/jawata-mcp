@@ -75,15 +75,7 @@ public final class SlideStatementsRule implements CleanupRule {
 
     @Override
     public String kindSummary() {
-        return """
-            Slide Statements: a local declared well above its first
-            use moves down to sit directly before it, which is what
-            lets Extract Function act on the range afterwards.
-            Requires an initializer that reads only locals and
-            parameters — no field, this, array element, call or
-            construction — and no statement in between that assigns
-            to or increments any local it reads. Never moves into a
-            nested block: scope only shrinks.""";
+        return "move a local's declaration down to just before its first use (side-effect-free initializers only).";
     }
 
     @Override

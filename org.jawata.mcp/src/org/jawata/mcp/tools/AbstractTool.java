@@ -105,21 +105,16 @@ public abstract class AbstractTool extends WorkspaceTool<IJdtService> {
         Map<String, Object> newProps = new LinkedHashMap<>(oldProps);
         newProps.putIfAbsent("auto_apply", Map.of(
             "type", "boolean",
-            "description", "Default true: perform the refactoring immediately and return "
-                + "{ filesModified, diff, undoChangeId }. Set false to stage only — returns "
-                + "{ changeId, diff } for a later refactoring(action=apply) call."
+            "description", "Default true: apply, returning undoChangeId. false: stage, returning "
+                + "changeId for refactoring(action=apply)."
         ));
         // D7f: the escape from the response cap, declared HERE for the reason auto_apply is
         // — it is the same choice for every refactoring, and a flag each tool spelled for
         // itself is a flag some tool will spell differently.
         newProps.putIfAbsent("fullDiff", Map.of(
             "type", "boolean",
-            "description", "Default false: the response carries diffSummary (one row per "
-                + "file with its hunk and line counts) and the diff text capped at "
-                + org.jawata.mcp.change.DiffView.DEFAULT_MAX_CHARS
-                + " characters, setting truncated:true when it was cut. Set true for the "
-                + "whole diff — a 144-reference rename answered 167,785 characters, which "
-                + "a client could not display at all."
+            "description", "true: whole diff. Default: diffSummary plus the diff capped at "
+                + org.jawata.mcp.change.DiffView.DEFAULT_MAX_CHARS + " chars."
         ));
         wrapped.put("properties", newProps);
         return wrapped;

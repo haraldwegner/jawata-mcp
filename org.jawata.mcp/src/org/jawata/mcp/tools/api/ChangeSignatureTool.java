@@ -146,36 +146,8 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
 
     @Override
     public String getDescription() {
-        return """
-            Change method signature (parameters, return type, or name) and update all call sites.
-
-            Applies the change directly (default) and returns
-            { filesModified, diff, undoChangeId, summary }. Verify with
-            compile_workspace; revert with refactoring(action=undo, undoChangeId=...).
-            Pass auto_apply: false to stage instead — returns { changeId, diff }.
-
-            Position on the method declaration, or name it, and provide the changes.
-            OUTPUT: Modified files + unified diff + undo handle
-
-            PARAMETER OPERATIONS:
-            - Add new parameter with default value for existing calls
-            - Remove parameter (will remove from calls)
-            - Rename parameter
-            - Reorder parameters (specify all parameters in new order)
-
-            IMPORTANT: Uses ZERO-BASED coordinates.
-
-            COUPLED CHANGES: some changes cannot leave the code compiling on their own —
-            removing a parameter the body still uses, or a return-type change a
-            value-returning body cannot satisfy (neither the signature nor the body
-            compiles without the other). These ARE APPLIED anyway; the response marks
-            coupledChange: true and lists every introduced compiler error as your
-            worklist. Change the signature here, then fix each reported body/caller site
-            by its compile failure; refactoring(action=undo) to abandon. The reported error
-            locations ARE the edits to make — do not fall back to a text search.
-
-            Requires load_project to be called first.
-            """;
+        return "newName, newReturnType, newParameters (the full new list: add, remove, rename, reorder), visibility; "
+            + "or retargetCallsTo (+receiverFromParameter) to redirect call sites to an existing method.";
     }
 
     @Override
@@ -186,62 +158,53 @@ public class ChangeSignatureTool extends AbstractApplyingRefactoringTool
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("filePath", Map.of(
             "type", "string",
-            "description", "Path to source file containing the method"
+            "description", "Source file."
         ));
         properties.put("line", Map.of(
             "type", "integer",
-            "description", "Zero-based line number of method declaration"
+            "description", "Zero-based line of the declaration."
         ));
         properties.put("column", Map.of(
             "type", "integer",
-            "description", "Zero-based column number"
+            "description", "Zero-based column."
         ));
         properties.put("newName", Map.of(
             "type", "string",
-            "description", "New method name (optional, omit to keep current)"
+            "description", "change_signature: new method name."
         ));
         properties.put("newReturnType", Map.of(
             "type", "string",
-            "description", "New return type (optional, omit to keep current)"
+            "description", "change_signature: new return type."
         ));
         properties.put("newParameters", Map.of(
             "type", "array",
-            "description", "New parameter list. Each item: {name, type, defaultValue?}. Order matters.",
+            "description", "change_signature: full new parameter list, in order.",
             "items", Map.of(
                 "type", "object",
                 "properties", Map.of(
-                    "name", Map.of("type", "string", "description", "Parameter name"),
-                    "type", Map.of("type", "string", "description", "Parameter type"),
-                    "defaultValue", Map.of("type", "string", "description", "Default value for new params at call sites")
+                    "name", Map.of("type", "string", "description", "Name"),
+                    "type", Map.of("type", "string", "description", "Type"),
+                    "defaultValue", Map.of("type", "string", "description", "Argument at existing calls, for a new one")
                 )
             )
         ));
         properties.put("visibility", Map.of(
             "type", "string",
             "enum", List.of("public", "protected", "package", "private"),
-            "description", "New visibility (optional). 'package' removes the access modifier; "
-                + "the response reports the reference-impact list of affected call sites."
+            "description", "change_signature: new visibility; package removes the modifier."
         ));
         properties.put("retargetCallsTo", Map.of(
             "type", "string",
-            "description", "Rewrite every call site to invoke this (already-existing) method name "
-                + "instead, leaving the declaration unchanged — e.g. redirect callers of a "
-                + "deprecated method to its replacement. Keeps the RECEIVER as it is; to move the "
-                + "call onto a different object, add receiverFromParameter. Exclusive with the "
-                + "signature/visibility changes; verify the result with compile_workspace."
+            "description", "Existing method name the call sites should invoke instead; declaration unchanged. "
+                + "Exclusive with signature/visibility changes."
         ));
         properties.put("receiverFromParameter", Map.of(
             "type", "string",
-            "description", "Only with retargetCallsTo: the name of a parameter whose ARGUMENT "
-                + "becomes the new receiver, dropping out of the argument list — so "
-                + "`callback.x(slot, a, b)` becomes `slot.<retargetCallsTo>(a, b)`. Use it when "
-                + "the behaviour moved to the object that was being passed in. REFUSED for a "
-                + "constructor (there is no receiver to replace) and for a name that is not a "
-                + "parameter of the target, which is answered with the list of names that are."
+            "description", "With retargetCallsTo: parameter whose argument becomes the receiver. Not for constructors."
         ));
 
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-            "method whose signature changes"));
+            "method"));
         schema.put("properties", properties);
         // Sprint 24 (D1): position OR name form.
         schema.put("required", List.of());

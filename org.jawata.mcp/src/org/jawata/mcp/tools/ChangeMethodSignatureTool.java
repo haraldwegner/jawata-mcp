@@ -125,9 +125,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
 
     @Override
     public String preamble() {
-        return """
-            Change a method's SIGNATURE and the call sites that follow it — its name,
-            return type, parameters and visibility (behaviour-preserving, reversible).""";
+        return "Change a method's signature and its call sites (behaviour-preserving, undoable).";
     }
 
     @Override
@@ -143,19 +141,8 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
 
     @Override
     public String footer() {
-        return """
-            Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
-            auto_apply=false to stage only.
-
-            COUPLED CHANGES: some changes cannot leave the code compiling on their own —
-            removing a parameter the body still uses, or a return-type change a
-            value-returning body cannot satisfy. These ARE APPLIED anyway; the response
-            marks coupledChange: true and lists every introduced compiler error as your
-            worklist. The reported error locations ARE the edits to make — do not fall
-            back to a text search.
-
-            Requires load_project to be called first.
-            """;
+        return "COUPLED CHANGES (e.g. removing a parameter the body uses) ARE APPLIED anyway: coupledChange: true, "
+            + "and the listed compiler errors are your worklist.";
     }
 
     @Override
@@ -169,7 +156,7 @@ public class ChangeMethodSignatureTool extends AbstractRefactoringTool implement
         // DERIVED from the routing table: publishedKinds() IS delegates().keySet(), so a kind
         // cannot be dispatched and left out of the enum a client reads in tools/list.
         kind.put("enum", publishedKinds());
-        kind.put("description", "Which signature change to apply. See the tool description.");
+        kind.put("description", "Which change; see the tool description.");
         properties.put("kind", kind);
 
         // THE BACKSTOP, inherited rather than written out here: every parameter any delegate

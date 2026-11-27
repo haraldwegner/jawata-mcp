@@ -89,11 +89,8 @@ public class ExtractSuperclassTool extends AbstractApplyingRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            extract a common superclass from the caret class and its same-package
-            siblings. Needs: line, column, superclassName, siblings[] (optional
-            members[], mode). Default mode=jdt (the JDT engine: fields,
-            non-identical members, constructors); mode=identical is the
-            conservative byte-identical + self-contained contract.""";
+            common superclass of a class and same-package siblings: line, column (or typeName),
+            superclassName, siblings[]; members[], mode optional.""";
     }
 
     /** Structural: it reparents the class, which is a HIERARCHY change. */

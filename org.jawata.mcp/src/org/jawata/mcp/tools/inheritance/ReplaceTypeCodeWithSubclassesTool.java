@@ -99,15 +99,9 @@ public class ReplaceTypeCodeWithSubclassesTool extends AbstractApplyingRefactori
     @Override
     public String getDescription() {
         return """
-            Replace Type Code with Subclasses — each value of a type code becomes a SUBCLASS, so
-            branching on the code becomes dispatch. Point at the class (typeName=pkg.Type, or a
-            position); an optional prefix picks the constant group when there is more than one.
-            REQUIRES the code to be read through a no-argument accessor, which is Fowler's own
-            first step (self-encapsulate) — without one a subclass has nothing to override, and
-            this row refuses and names the operation that performs it rather than doing it
-            silently. CONSERVATIVE, on the same terms as its sibling replace_type_code_with_class:
-            it generates the subclasses and reports the mapping, and does NOT delete the field,
-            rewrite constructor calls, or introduce a factory.""";
+            Generate one subclass per type-code value: typeName or position; prefix picks the constant group.
+            REQUIRES the code read through a no-argument accessor. Does NOT delete the field, rewrite
+            constructor calls or add a factory.""";
     }
 
     /** Structural: it adds types to the hierarchy. */
@@ -122,16 +116,15 @@ public class ReplaceTypeCodeWithSubclassesTool extends AbstractApplyingRefactori
         schema.put("type", "object");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("filePath", Map.of("type", "string",
-            "description", "Source file declaring the class that carries the type code."));
+            "description", "Source file."));
         properties.put("line", Map.of("type", "integer",
-            "description", "Zero-based line of the class declaration."));
+            "description", "Zero-based line."));
         properties.put("column", Map.of("type", "integer",
-            "description", "Zero-based column on that line."));
+            "description", "Zero-based column."));
         properties.put("typeName", Map.of("type", "string",
-            "description", "Fully-qualified class name, as an alternative to a position."));
+            "description", "Class FQN instead of a position."));
         properties.put("prefix", Map.of("type", "string",
-            "description", "Optional constant prefix (e.g. GRADE) when the class carries more"
-                + " than one group of type codes."));
+            "description", "Constant prefix (e.g. GRADE) when several groups."));
         schema.put("properties", properties);
         return withAutoApply(withProjectKey(schema));
     }

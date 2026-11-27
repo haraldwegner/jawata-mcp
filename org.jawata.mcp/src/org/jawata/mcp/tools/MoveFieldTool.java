@@ -89,18 +89,8 @@ public class MoveFieldTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            move a field to an EXISTING class, updating every reference.
-            Needs: filePath, line, column on the declaration, plus targetType
-            (the destination's fully-qualified name).
-            A STATIC field needs no receiver: JDT's engine rewrites the
-            qualified references. An INSTANCE field needs `target` — the
-            field of the source class holding the destination instance —
-            because every access becomes `receiver.name` and nothing in the
-            code says which field that is. Instance moves are scoped to a
-            PRIVATE field, whose accesses all live in one file; a non-private
-            one is refused, since each outside reader needs its own receiver
-            derived there (encapsulate it first). To move fields into a NEW
-            class, use extract kind=class, which needs no receiver.""";
+            a field to an EXISTING class: position of the declaration, targetType. An INSTANCE field also
+            needs `target` (the source field holding the destination instance) and must be PRIVATE.""";
     }
 
     /** Structural: the field's owner changes, and every access is rewritten through it. */
@@ -140,12 +130,9 @@ public class MoveFieldTool extends AbstractRefactoringTool
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column of the field declaration."));
         properties.put("target", Map.of("type", "string",
-            "description", "move kind=field: for an INSTANCE field, the name of the field "
-                + "in the source class that holds the destination instance — the receiver "
-                + "every access is rewritten through. Not needed for a static field."));
+            "description", "Instance field: source field holding the destination instance."));
         properties.put("targetType", Map.of("type", "string",
-            "description", "move kind=field: fully-qualified name of the EXISTING class "
-                + "the field moves to."));
+            "description", "Existing destination class FQN."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column", "targetType"));
         return withAutoApply(withProjectKey(schema));

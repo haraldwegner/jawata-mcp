@@ -134,16 +134,8 @@ public class RemoveFlagArgumentTool extends AbstractApplyingRefactoringTool
 
     @Override
     public String getDescription() {
-        return """
-            Remove Flag Argument — a boolean that selects behaviour becomes two explicitly named
-            methods, so the call says what it means. Name the METHOD (symbol=pkg.Type#m, or a
-            position), the boolean parameter, and BOTH names (whenTrue, whenFalse) — there is no
-            default, because naming the two cases IS the change. Each new method DELEGATES with
-            its literal and every call site is rewritten to the one matching the literal it
-            passed; the original stays, so nothing about behaviour moves. Refuses a caller that
-            passes a variable (it has not made the decision yet, so it has no name to become) and
-            a flag every caller passes the SAME way (one of the two methods would have no caller;
-            that parameter is a constant, and kind=change_signature removes it).""";
+        return "a boolean flag becomes two named methods: parameter, whenTrue, whenFalse all REQUIRED. Callers "
+            + "must pass literals, not all the same.";
     }
 
     /** Structural: call sites move to different methods. */
@@ -167,9 +159,9 @@ public class RemoveFlagArgumentTool extends AbstractApplyingRefactoringTool
         properties.put("parameter", Map.of("type", "string",
             "description", "REQUIRED. Name of the boolean parameter that selects behaviour."));
         properties.put("whenTrue", Map.of("type", "string",
-            "description", "REQUIRED. Name for the method callers passing true will call."));
+            "description", "remove_flag_argument REQUIRED: method for true callers."));
         properties.put("whenFalse", Map.of("type", "string",
-            "description", "REQUIRED. Name for the method callers passing false will call."));
+            "description", "remove_flag_argument REQUIRED: method for false callers."));
         schema.put("properties", properties);
         schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));

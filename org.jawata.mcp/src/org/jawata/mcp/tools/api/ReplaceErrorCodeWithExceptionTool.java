@@ -116,15 +116,8 @@ public class ReplaceErrorCodeWithExceptionTool extends AbstractApplyingRefactori
 
     @Override
     public String getDescription() {
-        return """
-            Replace Error Code with Exception — a value returned to mean failure becomes a throw,
-            so it cannot be ignored by forgetting. Name the METHOD (symbol=pkg.Type#m, or a
-            position), the errorValue AS WRITTEN (-1, null, false), and the exceptionType —
-            nothing can infer which value means failure, and naming the failure is the change.
-            THIS ROW DELIBERATELY CHANGES BEHAVIOUR in the failure case, which is its point; a
-            CHECKED exception makes the compiler demand every caller say what it does about it.
-            REFUSES a caller that already TESTS the code — that caller is handling the failure,
-            and restructuring its control flow is not something this row will guess at.""";
+        return "returning errorValue becomes throwing exceptionType (both REQUIRED; message optional). CHANGES "
+            + "failure behaviour; refuses callers that test the value.";
     }
 
     /** Structural: the method's contract changes, and callers must answer for the failure. */
@@ -146,13 +139,11 @@ public class ReplaceErrorCodeWithExceptionTool extends AbstractApplyingRefactori
             "description", "Zero-based column on that line."));
         properties.put("symbol", FqnTarget.symbolSchemaProperty("method returning an error code"));
         properties.put("errorValue", Map.of("type", "string",
-            "description", "REQUIRED. The returned value that means failure, spelled as the"
-                + " source spells it: -1, null, false, \"MISSING\"."));
+            "description", "replace_error_code_with_exception REQUIRED: failure value as written, e.g. -1."));
         properties.put("exceptionType", Map.of("type", "string",
-            "description", "REQUIRED. The exception to throw. A CHECKED one makes the compiler"
-                + " demand every caller answer for the failure."));
+            "description", "REQUIRED: exception to throw."));
         properties.put("message", Map.of("type", "string",
-            "description", "Optional message for the thrown exception."));
+            "description", "Exception message."));
         schema.put("properties", properties);
         schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));

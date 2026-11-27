@@ -37,9 +37,7 @@ public class MovePackageTool extends AbstractRefactoringTool
     /** The bullet a client reads under {@code move} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            move/rename a whole package.
-            Needs: packageName, newPackageName.""";
+        return "rename/move a package: packageName, newPackageName.";
     }
 
     /** Structural: every type in the package is renamed, and every reference rewritten. */

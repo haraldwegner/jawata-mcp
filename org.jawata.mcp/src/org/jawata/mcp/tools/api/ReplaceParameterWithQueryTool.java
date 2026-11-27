@@ -124,17 +124,8 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
 
     @Override
     public String getDescription() {
-        return """
-            Replace Parameter with Query — a parameter every caller derives the same way is
-            removed, and the body derives it instead. Name the METHOD (symbol=pkg.Type#m, or a
-            position) and the parameter. The query is INFERRED from the call sites and must be
-            UNANIMOUS: every call must pass <x>.something() where x is the argument it passes
-            for another parameter of the same call. The exact inverse of
-            replace_query_with_parameter — which direction is right depends on whether the
-            dependency or the repetition costs more, so neither is a default. Refuses if the
-            method has no callers, if one caller passes something else, or if the body reads
-            the parameter more than once or inside a loop — the call site evaluates the
-            derivation once and the body would evaluate it once per read.""";
+        return "remove a `parameter` (REQUIRED) every caller derives as x.something() from another argument x; "
+            + "the body must read it once, not in a loop.";
     }
 
     /** Structural: the signature changes and every call site with it. */
@@ -156,7 +147,7 @@ public class ReplaceParameterWithQueryTool extends AbstractApplyingRefactoringTo
             "description", "Zero-based column on that line."));
         properties.put("symbol", FqnTarget.symbolSchemaProperty("method with the derived parameter"));
         properties.put("parameter", Map.of("type", "string",
-            "description", "REQUIRED. Name of the parameter to remove."));
+            "description", "Parameter to remove, or the boolean flag (remove_flag_argument). REQUIRED there."));
         schema.put("properties", properties);
         schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));

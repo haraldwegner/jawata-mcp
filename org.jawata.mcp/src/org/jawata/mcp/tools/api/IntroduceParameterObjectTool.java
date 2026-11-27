@@ -99,15 +99,8 @@ public class IntroduceParameterObjectTool extends AbstractApplyingRefactoringToo
 
     @Override
     public String getDescription() {
-        return """
-            Introduce Parameter Object — give a group of parameters that travel together a
-            CLASS, so the methods take one argument and the concept they describe exists.
-            Point at the METHOD — position, or symbol=pkg.Type#method. className is REQUIRED
-            and has no default: naming the concept is the refactoring, and a generated name
-            would deliver the mechanics and withhold the point. Wraps JDT's own engine, so
-            the class, the body's uses and every call site across files are rewritten
-            together. Optional: parameterName, topLevel, getters, setters. Refuses a method
-            with fewer than two parameters — one parameter is not a group.""";
+        return "parameters into a new class: className REQUIRED; parameterName, topLevel, getters, setters "
+            + "optional; needs 2+ parameters.";
     }
 
     /** Structural: the signature changes and every call site with it. */
@@ -129,19 +122,15 @@ public class IntroduceParameterObjectTool extends AbstractApplyingRefactoringToo
             "description", "Zero-based column on that line."));
         properties.put("symbol", FqnTarget.symbolSchemaProperty("method whose parameters group"));
         properties.put("className", Map.of("type", "string",
-            "description", "Name for the new parameter class. REQUIRED — naming the concept "
-                + "is the refactoring, so there is no default."));
+            "description", "introduce_parameter_object REQUIRED: class name."));
         properties.put("parameterName", Map.of("type", "string",
-            "description", "Name of the single parameter that replaces the group "
-                + "(optional; JDT's default is the class name, first letter lowercased)."));
+            "description", "Name of the new parameter (optional)."));
         properties.put("topLevel", Map.of("type", "boolean",
-            "description", "Create the class as its own top-level file (default true); "
-                + "false nests it inside the declaring type."));
+            "description", "Class in its own file (default true)."));
         properties.put("getters", Map.of("type", "boolean",
-            "description", "Generate a getter per field (default true)."));
+            "description", "Getters (default true)."));
         properties.put("setters", Map.of("type", "boolean",
-            "description", "Generate a setter per field (default false) — a parameter object "
-                + "is usually read-only."));
+            "description", "Setters (default false)."));
         schema.put("properties", properties);
         schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));

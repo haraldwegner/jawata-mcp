@@ -92,15 +92,8 @@ public class HideDelegateTool extends AbstractRefactoringTool implements ToolKin
     /** The bullet a client reads under {@code data} — projected, not written on the door. */
     @Override
     public String kindSummary() {
-        return """
-            hide a delegate the client should not know about: `john.getDepartment()
-            .getManager()` becomes `john.getManager()`, with a forwarding method
-            generated on the server. Hides ONE hop per run, because each hop is a
-            separate judgement about whose vocabulary a concept belongs in — a chain
-            of five takes four runs. Refuses a server type this workspace cannot edit
-            (the JDK, a dependency jar), an intermediate call that takes arguments,
-            and a name already declared on the server. Each refusal names which.
-            (find_quality_issue kind=message_chains locates candidates.)""";
+        return "a.getB().getC() becomes a.getC() via a forwarder, ONE hop per run: position in the chain; "
+            + "delegateMethodName optional.";
     }
 
     /** Structural: it adds a method to the server's published surface. */
@@ -133,8 +126,7 @@ public class HideDelegateTool extends AbstractRefactoringTool implements ToolKin
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column inside the chain."));
         properties.put("delegateMethodName", Map.of("type", "string",
-            "description", "Name for the generated forwarder on the server (default: the "
-                + "hidden call's own name). Every rewritten call site reads it."));
+            "description", "hide_delegate: forwarder name (default the hidden call's)."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column"));
         return withAutoApply(withProjectKey(schema));

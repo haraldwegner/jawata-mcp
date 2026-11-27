@@ -37,25 +37,14 @@ public class FindRefsTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Find references to a symbol. One front door over the reference searches.
+            Find references to a symbol.
 
             USAGE: find_references(kind="<kind>", ...)
-
-            - references        — all references to the symbol at a position or FQN.
-            - implementations   — implementations/subtypes of the type/method.
-            - method_references — Foo::bar method-reference EXPRESSIONS of the method
-                                  (the `::` syntax only — call sites live in
-                                  get_call_hierarchy(direction=incoming)).
-
-            Two invocation forms, every kind:
-            (a) position — filePath + ZERO-BASED line/column on the symbol.
-            (b) FQN      — symbol = "com.foo.Bar" | "com.foo.Bar#member" |
-                           "com.foo.Bar#method(int,java.lang.String)";
-                           optional scope = workspace (default) | project.
-            `query` is accepted as an alias for `symbol` (v2.8.1 back-compat).
-            PROJECTION: fields=["filePath","line"] keeps only those keys per result row.
-
-            Requires load_project to be called first.
+            - references: all references.
+            - implementations: implementations/subtypes of a type or method.
+            - method_references: `Foo::bar` expressions only (calls: get_call_hierarchy direction=incoming).
+            Address by filePath + ZERO-BASED line/column, or symbol="pkg.Type", "pkg.Type#member",
+            "pkg.Type#method(int)". fields=[...] trims rows.
             """;
     }
 
@@ -67,18 +56,18 @@ public class FindRefsTool extends AbstractTool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", KINDS);
-        kind.put("description", "Which reference search to run.");
+        kind.put("description", "Which search.");
         properties.put("kind", kind);
-        properties.put("filePath", Map.of("type", "string", "description", "Source file of the symbol."));
-        properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the symbol."));
+        properties.put("filePath", Map.of("type", "string", "description", "Source file."));
+        properties.put("line", Map.of("type", "integer", "description", "Zero-based line."));
         properties.put("column", Map.of("type", "integer", "description", "Zero-based column."));
         properties.put("symbol", Map.of("type", "string", "description",
-            "FQN form: 'com.foo.Bar' (type), 'com.foo.Bar#member' (method any overload / field), or 'com.foo.Bar#method(int,java.lang.String)' (specific overload)."));
+            "FQN instead of a position."));
         properties.put("scope", Map.of("type", "string", "enum", List.of("workspace", "project"),
-            "description", "FQN-form scope: 'workspace' (default) or 'project' (requires projectKey)."));
+            "description", "With symbol; project needs projectKey."));
         properties.put("query", Map.of("type", "string", "description",
-            "Alias for 'symbol' (kept for back-compat with the pre-v2.8.1 description)."));
-        properties.put("maxResults", Map.of("type", "integer", "description", "Optional result cap."));
+            "Alias for symbol."));
+        properties.put("maxResults", Map.of("type", "integer", "description", "Result cap."));
         properties.put("fields",
             org.jawata.mcp.tools.shared.FieldsProjection.schemaProperty("result"));
         schema.put("properties", properties);

@@ -65,35 +65,17 @@ public class FindModernizationTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Find code that could adopt a newer Java language idiom. Read-only;
-            returns ranked candidates with { filePath, line, snippet, suggestion }.
-            Apply the change with the matching refactoring tool — this only finds.
+            Find code that could use a newer Java idiom (read-only; apply with a refactoring tool).
 
-            USAGE: find_modernization(kind="<kind>")
-
-            KINDS:
-            - anon_to_lambda   — anonymous single-method implementations of a
-                                 functional interface that can become a lambda
-                                 (apply with refactor_to_pattern kind=replace_pattern_with_idiom).
-            - switch_to_pattern — classic `switch` statements that could become a
-                                 switch expression / pattern-matching switch (Java 21).
-            - loop_to_stream   — enhanced-for accumulation loops that could become a
-                                 Stream map/filter/collect pipeline.
-            - optional         — methods that return a reference type and `return null`,
-                                 candidates for Optional<T> + map/orElse.
-            - class_to_record  — plain immutable data classes (final fields + accessors +
-                                 equals/hashCode/toString, no other behaviour) that fit a
-                                 Java 16 record. The language-native answer to getter/setter
-                                 boilerplate — prefer this over generating accessors.
-            - sealed           — abstract base classes whose subclass set may be closed,
-                                 candidates for a `sealed` + `permits` hierarchy (Java 17).
-            - lombok_to_record — classes annotated @Data/@Value that are data carriers,
-                                 candidates to drop Lombok for a native record (Java 16).
-            - delombok         — any class using Lombok annotations; candidate to remove
-                                 the Lombok dependency by materializing generated members.
-
-            Optional: projectKey to scope to one loaded project; maxResults (default 200).
-            Requires load_project first.
+            USAGE: find_modernization(kind="<kind>"; maxResults, default 200)
+            - anon_to_lambda: anonymous functional classes (refactor_to_pattern kind=replace_pattern_with_idiom).
+            - switch_to_pattern: switch statements that could be switch expressions/patterns.
+            - loop_to_stream: accumulating for-each loops.
+            - optional: methods returning null.
+            - class_to_record: immutable data classes.
+            - sealed: abstract bases with a possibly closed subclass set.
+            - lombok_to_record: @Data/@Value data carriers.
+            - delombok: any Lombok use.
             """;
     }
 

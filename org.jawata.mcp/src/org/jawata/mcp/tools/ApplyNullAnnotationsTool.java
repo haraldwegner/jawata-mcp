@@ -75,26 +75,11 @@ public class ApplyNullAnnotationsTool extends AbstractApplyingRefactoringTool {
     @Override
     public String getDescription() {
         return """
-            Apply nullness annotations via the apply/undo contract (returns
-            { filesModified, diff, undoChangeId, summary }; auto_apply:false to stage).
-
-            USAGE: apply_null_annotations(kind="add", symbol="com.foo.Bar#method",
-                                          nullness="nullable" [, parameter="x"])
-
-            KINDS:
-            - add     — insert @Nullable/@NonNull (+ import) on a method return, a parameter
-                        (pass `parameter`), or a field. `style` defaults to the project's detected
-                        family, else JSpecify. PUBLIC-API GUARD: a public/protected target is
-                        refused unless allowPublicApi:true (breaking downstream contract).
-            - migrate — convert nullness annotations from one family to another (e.g.
-                        from="JETBRAINS" to="JSPECIFY"): swaps the @Nullable/@NonNull usages +
-                        imports. REFUSES ambiguous conversions (default-scoping annotations like
-                        @NonNullByDefault/@NullMarked, wildcard imports, fully-qualified usages)
-                        — returns a manual-review result rather than guessing.
-
-            Params (add): symbol (FQN, required), nullness (required), parameter, style,
-            allowPublicApi. Params (migrate): from (family, required), to (family, default
-            JSPECIFY), filePath (optional scope). Requires load_project first.
+            Add or migrate nullness annotations (undoable).
+            - add: symbol, nullness (REQUIRED); parameter, style optional. A public/protected target is refused
+              unless allowPublicApi=true.
+            - migrate: from (REQUIRED), to (default JSPECIFY), filePath optional. Ambiguous conversions are
+              returned for manual review.
             """;
     }
 
@@ -104,23 +89,23 @@ public class ApplyNullAnnotationsTool extends AbstractApplyingRefactoringTool {
         schema.put("type", "object");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("kind", Map.of("type", "string", "enum", KINDS,
-            "description", "Which mutation to apply. See the tool description."));
+            "description", "add or migrate."));
         properties.put("symbol", Map.of("type", "string",
-            "description", "FQN target: \"com.foo.Bar#method\" or \"com.foo.Bar#field\"."));
+            "description", "pkg.Type#method or pkg.Type#field."));
         properties.put("nullness", Map.of("type", "string", "enum", List.of("nullable", "nonnull"),
-            "description", "Which annotation to add."));
+            "description", "add: annotation."));
         properties.put("parameter", Map.of("type", "string",
-            "description", "Optional. For a method target, annotate this parameter instead of the return."));
+            "description", "add: parameter instead of the return."));
         properties.put("style", Map.of("type", "string",
-            "description", "Optional nullness family override (JSPECIFY/ECLIPSE/JETBRAINS/...). Default: detected, else JSpecify."));
+            "description", "Family, e.g. JSPECIFY, ECLIPSE, JETBRAINS (default detected)."));
         properties.put("allowPublicApi", Map.of("type", "boolean",
-            "description", "Required true to annotate a public/protected (exported) target."));
+            "description", "Needed for public/protected targets."));
         properties.put("from", Map.of("type", "string",
-            "description", "For kind=migrate: source nullness family (JSPECIFY/ECLIPSE/JETBRAINS/JSR305/...)."));
+            "description", "migrate: source family."));
         properties.put("to", Map.of("type", "string",
-            "description", "For kind=migrate: target family (default JSPECIFY)."));
+            "description", "migrate: target family."));
         properties.put("filePath", Map.of("type", "string",
-            "description", "For kind=migrate: optional scope to one file; omit to migrate the project."));
+            "description", "migrate: one file (default project)."));
         schema.put("properties", properties);
         schema.put("required", List.of("kind"));
         return withAutoApply(withProjectKey(schema));

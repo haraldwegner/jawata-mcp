@@ -129,47 +129,11 @@ public class FindQualityIssueTool extends AbstractTool {
 
     @Override
     public String getDescription() {
-        return """
-            Run a code-quality analysis or search across the project.
-
-            USAGE: find_quality_issue(kind="<kind>", ...)
-
-            Kinds (most accept an optional filePath; otherwise scan all files):
-            - naming         — Java naming-convention violations (PascalCase classes,
-                               camelCase methods/fields, UPPER_SNAKE_CASE constants).
-            - bugs           — common bug patterns (null deref, ==, mutation in lambda…).
-            - unused         — unused private methods and fields.
-            - large_classes  — classes exceeding maxMethods/maxFields/maxLines thresholds.
-            - circular_deps  — cyclic package or class dependencies.
-            - reflection     — Class.forName / Method.invoke / Field.get usage sites.
-            - throws         — methods declaring 'throws <query>' (query = exception FQN).
-            - catches        — 'catch (<query> ...)' blocks (query = exception FQN).
-
-            Fowler smell kinds (Sprint 17) are also registered — long_method,
-            god_class, long_parameter_list, data_clumps, feature_envy,
-            message_chains, inappropriate_intimacy, middle_man, primitive_obsession,
-            switch_statements, refused_bequest, temporary_field, lazy_class,
-            speculative_generality, parallel_inheritance, incomplete_delegation,
-            divergent_change, shotgun_surgery; most accept an optional `threshold`.
-            See the kind enum for the full list.
-
-            The available kinds are the registered detectors (see the kind enum);
-            more analyses may be added without introducing new tools.
-
-            ASYNC FAMILY SWEEPS (v3.0.0): a family sweep can take minutes and
-            outlive a client timeout. action=start returns a sweepId at once;
-            action=status shows progress (kindsDone/kindsTotal) while running
-            and returns the FULL result once finished — retrievable repeatedly,
-            so a timed-out client loses nothing. action=cancel stops between
-            kinds and status then returns the honest partial (partial: true).
-
-            Examples:
-            - find_quality_issue(kind="naming", filePath="path/to/File.java")
-            - find_quality_issue(kind="large_classes", maxLines=500)
-            - find_quality_issue(kind="throws", query="java.io.IOException")
-
-            Requires load_project to be called first.
-            """;
+        return "Code-quality analysis: kind=<one detector> OR family=<quality|fowler|solid|kerievsky>.\n"
+            + "action: run (default) | start (async, returns sweepId; use when run times out) | status | cancel.\n"
+            + "Kinds: " + String.join(", ", catalog.kinds()) + ".\n"
+            + "large_classes: maxMethods, maxFields, maxLines. throws, catches: query (exception FQN, REQUIRED). "
+            + "forbidden_edge: from, forbidden. Smells: threshold, includeTests.";
     }
 
     @Override
@@ -182,118 +146,83 @@ public class FindQualityIssueTool extends AbstractTool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", catalog.kinds()); // projected from the catalog
-        kind.put("description",
-            "Which single analysis to run. See the tool description for what each kind reports. "
-                + "Provide `kind` OR `family` (family runs the whole set).");
+        kind.put("description", "One detector; give kind or family.");
         properties.put("kind", kind);
 
         Map<String, Object> family = new LinkedHashMap<>();
         family.put("type", "string");
         family.put("enum", List.of("quality", "fowler", "solid", "kerievsky"));
-        family.put("description",
-            "Optional family lens (Sprint 20). With no `kind`, runs every detector in the family and "
-                + "merges the findings (e.g. family=\"solid\" returns the SOLID set as a unit: dip, isp, "
-                + "srp_cohesion, lsp + the tagged incomplete_delegation/refused_bequest/divergent_change/"
-                + "shotgun_surgery). With a `kind`, validates the kind belongs to the family.");
+        family.put("description", "Run a detector set; with kind, checks membership.");
         properties.put("family", family);
 
         Map<String, Object> filePath = new LinkedHashMap<>();
         filePath.put("type", "string");
-        filePath.put("description",
-            "Optional. Limit naming/bugs/unused/reflection scans to a single file. Omit for whole-project.");
+        filePath.put("description", "naming/bugs/unused/reflection: one file.");
         properties.put("filePath", filePath);
 
         Map<String, Object> query = new LinkedHashMap<>();
         query.put("type", "string");
-        query.put("description",
-            "Required for kind=throws or kind=catches: fully-qualified exception type name (e.g. 'java.io.IOException').");
+        query.put("description", "throws/catches REQUIRED: exception FQN.");
         properties.put("query", query);
 
         Map<String, Object> maxMethods = new LinkedHashMap<>();
         maxMethods.put("type", "integer");
-        maxMethods.put("description", "kind=large_classes only — class is 'large' above this method count (default 20).");
+        maxMethods.put("description", "large_classes (default 20).");
         properties.put("maxMethods", maxMethods);
 
         Map<String, Object> maxFields = new LinkedHashMap<>();
         maxFields.put("type", "integer");
-        maxFields.put("description", "kind=large_classes only — class is 'large' above this field count (default 10).");
+        maxFields.put("description", "large_classes (default 10).");
         properties.put("maxFields", maxFields);
 
         Map<String, Object> maxLines = new LinkedHashMap<>();
         maxLines.put("type", "integer");
-        maxLines.put("description", "kind=large_classes only — class is 'large' above this line count (default 300).");
+        maxLines.put("description", "large_classes (default 300).");
         properties.put("maxLines", maxLines);
 
         Map<String, Object> maxResults = new LinkedHashMap<>();
         maxResults.put("type", "integer");
-        maxResults.put("description", "kind=throws or kind=catches — caps result count (default 100).");
+        maxResults.put("description", "throws/catches (default 100).");
         properties.put("maxResults", maxResults);
 
         Map<String, Object> threshold = new LinkedHashMap<>();
         threshold.put("type", "integer");
-        threshold.put("description",
-            "Optional sensitivity threshold for the Fowler smell kinds (Sprint 17), e.g. "
-                + "long_method LOC cutoff. Each smell kind documents its threshold meaning; "
-                + "omit to use the kind's default.");
+        threshold.put("description", "Smell sensitivity (default per kind).");
         properties.put("threshold", threshold);
 
         Map<String, Object> includeTests = new LinkedHashMap<>();
         includeTests.put("type", "boolean");
-        includeTests.put("description",
-            "Fowler smell kinds only — include test sources in the scan. Test-ness comes from "
-                + "the source root's test attribute in the loaded model, not from a path or name "
-                + "convention, so a flat-layout test bundle is recognised too. "
-                + "Default false: test code legitimately has long methods and subject-under-test "
-                + "access, so it is excluded to keep findings actionable. kind=forbidden_edge leaves test sources out the same "
-                + "way, since a test may cross a boundary the product may not.");
+        includeTests.put("description", "Smell kinds and forbidden_edge: include test sources (default false).");
         properties.put("includeTests", includeTests);
 
         properties.put("from", Map.of("type", "string",
-            "description", "forbidden_edge: the source package prefix (the layer that must not depend outward)."));
+            "description", "forbidden_edge: source package prefix."));
         properties.put("forbidden", Map.of("type", "string",
-            "description", "forbidden_edge: the package prefix the `from` layer must not depend on."));
+            "description", "forbidden_edge: prefix `from` must not depend on."));
         properties.put("baseline", Map.of("type", "string",
             "enum", List.of("save", "diff"),
-            "description", "family sweeps only: 'save' snapshots the current findings; 'diff' "
-                + "returns {new, fixed, unchanged} vs the saved snapshot (trend over time)."));
+            "description", "Family sweeps: save a snapshot, or diff against it."));
         properties.put("summary", Map.of("type", "boolean",
-            "description", "Return counts-by-kind + conflicts only (NO findings array) — the "
-                + "consumable shape for a broad sweep. Works for a family sweep AND for a single "
-                + "`kind`. `count` carries the true finding total and `conflictCount` the true "
-                + "conflict total; the conflicts list itself is capped by `limit` and sets "
-                + "`conflictsTruncated` when it is."));
+            "description", "Counts and conflicts only, no findings."));
         properties.put("excludePaths", Map.of("type", "array",
             "items", Map.of("type", "string"),
-            "description", "Optional path substrings; findings (and conflicts) whose filePath contains "
-                + "any entry are dropped BEFORE counts/summary/baseline/pagination — e.g. a vendored "
-                + "module like a copied upstream source file (v2.8.1)."));
+            "description", "Drop findings whose path contains any."));
         properties.put("offset", Map.of("type", "integer",
-            "description", "Skip the first N findings (pagination; default 0)."));
+            "description", "Skip N findings."));
         properties.put("limit", Map.of("type", "integer",
-            "description", "Cap the findings returned, and the conflicts returned under `summary` "
-                + "(default " + DEFAULT_FINDINGS_LIMIT + "); the full totals are always in `count` "
-                + "and `conflictCount`. A family sweep caps by default; a single `kind` returns "
-                + "everything unless you pass this. Prefer `summary` for a broad sweep."));
+            "description", "Max findings (family default " + DEFAULT_FINDINGS_LIMIT + "; single kind all)."));
 
         schema.put("properties", properties);
         // kind OR family — validated in executeWithService (a static `required` can't express "one of").
         Map<String, Object> action = new LinkedHashMap<>();
         action.put("type", "string");
         action.put("enum", List.of("run", "start", "status", "cancel"));
-        action.put("description",
-            "run (default) = synchronous. start = run asynchronously and return a sweepId "
-                + "immediately — pass `family` for a whole family, or `kind` for a SINGLE "
-                + "detector that is too slow to answer synchronously on this project (how slow a "
-                + "kind is depends on the project, not the detector, so nothing predicts it for "
-                + "you: a timed-out `run` is the signal to start the same kind here). Either way "
-                + "the work outlives a client timeout and the result stays retrievable. status = "
-                + "progress while running, the FULL result once finished (repeatable). cancel = "
-                + "honest partial (partial: true).");
+        action.put("description", "Default run.");
         properties.put("action", action);
 
         Map<String, Object> sweepId = new LinkedHashMap<>();
         sweepId.put("type", "string");
-        sweepId.put("description", "Sweep handle from action=start; required for status/cancel.");
+        sweepId.put("description", "status/cancel: id from start.");
         properties.put("sweepId", sweepId);
 
         schema.put("required", List.of());

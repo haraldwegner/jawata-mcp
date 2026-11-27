@@ -119,16 +119,8 @@ public class ReplaceQueryWithParameterTool extends AbstractApplyingRefactoringTo
 
     @Override
     public String getDescription() {
-        return """
-            Replace Query with Parameter — a method that asks a collaborator a question mid-work
-            takes the ANSWER as a parameter instead, so it stops depending on that collaborator
-            and every call site evaluates the query itself. Name the METHOD (symbol=pkg.Type#m,
-            or a position) and the call inside it (queryCall=selectedTemperature); the range is
-            derived, because a finding names symbols and never a character offset. Wraps JDT's
-            own engine, so the body and every call site across files are rewritten together.
-            Optional: parameterName — unlike introduce_parameter_object's className it has a
-            default, because the value already has a name at the call being replaced. Refuses a
-            query name that occurs zero times, or more than once.""";
+        return "a value the body queries becomes a parameter: queryCall REQUIRED (call name, occurring once); "
+            + "parameterName optional.";
     }
 
     /** Structural: the signature changes and every call site with it. */
@@ -150,12 +142,9 @@ public class ReplaceQueryWithParameterTool extends AbstractApplyingRefactoringTo
             "description", "Zero-based column on that line."));
         properties.put("symbol", FqnTarget.symbolSchemaProperty("method that asks the query"));
         properties.put("queryCall", Map.of("type", "string",
-            "description", "REQUIRED. Simple name of the call inside the method that becomes a "
-                + "parameter, e.g. 'selectedTemperature'. Refused if it occurs zero times or "
-                + "more than once."));
+            "description", "replace_query_with_parameter REQUIRED: simple name of the call."));
         properties.put("parameterName", Map.of("type", "string",
-            "description", "Name for the new parameter (optional; JDT derives one from the "
-                + "call being replaced)."));
+            "description", "Name of the new parameter (optional)."));
         schema.put("properties", properties);
         schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));

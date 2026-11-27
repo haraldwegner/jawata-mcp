@@ -46,19 +46,15 @@ public final class FqnTarget {
     public static Map<String, Object> symbolSchemaProperty(String what) {
         return Map.of(
             "type", "string",
-            "description", "Name form (Sprint 24): address the " + what + " by its "
-                + "fully-qualified name instead of a file position — 'com.foo.Bar', "
-                + "'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. "
-                + "Explicit filePath/line/column win when both are given.");
+            "description", "FQN of the " + what + " instead of a position: 'pkg.Type#member' or "
+                + "'pkg.Type#method(int)'. A position wins.");
     }
 
     /** The shared schema property for the type-targeted tools ({@code typeName=}). */
     public static Map<String, Object> typeNameSchemaProperty(String what) {
         return Map.of(
             "type", "string",
-            "description", "Name form (Sprint 24): address the " + what + " by its "
-                + "fully-qualified type name ('com.foo.Bar') instead of a file position. "
-                + "Explicit filePath/line/column win when both are given.");
+            "description", "FQN of the " + what + " ('pkg.Type') instead of a position. A position wins.");
     }
 
     /**

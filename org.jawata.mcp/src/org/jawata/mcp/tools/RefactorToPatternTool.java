@@ -135,10 +135,7 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
 
     @Override
     public String preamble() {
-        return """
-            Apply a pattern-targeted refactoring (Kerievsky "Refactoring to Patterns"),
-            behaviour-preserving and reversible. Runs BOTH directions — toward a pattern
-            when complexity warrants, and AWAY from a pattern that has outlived its use.""";
+        return "Refactor toward or away from a design pattern (behaviour-preserving, undoable).";
     }
 
     @Override
@@ -148,108 +145,12 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
 
     @Override
     public String kindBlockLeadIn() {
-        return "Kinds (ZERO-BASED coordinates; find candidates with find_quality_issue):";
+        return "Kinds (ZERO-BASED coordinates):";
     }
-
-    /**
-     * PROJECTED from the delegates now — the golden for the equivalence test.
-     *
-     * <p>Compared PER KIND rather than in order, because this door's one text change is a
-     * reorder: see {@link #getDescription()}. An ordered comparison would fail on that and say
-     * nothing about whether any bullet's prose survived, which is the thing worth checking.</p>
-     */
-    static final String LEGACY_KIND_BLOCK = """
-            Kinds (ZERO-BASED coordinates; find candidates with find_quality_issue):
-            - inline_singleton — AWAY: a GoF singleton whose uniqueness no longer matters →
-                                 rewrite Type.getInstance() call sites to `new Type()`, make the
-                                 constructor public, and strip the static holder + accessor.
-                                 Needs: line, column on the singleton type. (find_quality_issue
-                                 kind=singleton locates candidates.)
-            - compose_method   — TOWARD: reshape a long method into a short sequence of
-                                 intention-revealing calls. Needs: `sections` = an array of
-                                 >= 2 disjoint {startLine, startColumn, endLine, endColumn,
-                                 methodName} statement ranges to extract. Applies atomically
-                                 (auto_apply=false not supported). (find_quality_issue
-                                 kind=long_method locates candidates.)
-            - decompose_conditional — TOWARD: a tangled `if` becomes a named test and a named
-                                 branch on each side. Needs: line, column on the `if`, plus
-                                 conditionName / thenName / elseName — name at least one; a part
-                                 you do not name is left alone. YOU supply the names, because they
-                                 are the refactoring. Refuses an `else if` chain (that is
-                                 replace_conditional_with_polymorphism) and a condition that
-                                 assigns. Applies atomically (auto_apply=false not supported).
-            - replace_type_code_with_class — TOWARD: generate a type-safe enum from a group of
-                                 static-final type-code constants into a new file (same package).
-                                 Needs: line, column on the class + newTypeName (optional prefix
-                                 to pick the constant group). Conservative: introduces the enum +
-                                 reports the mapping; does NOT auto-migrate usages.
-                                 (find_quality_issue kind=type_code locates candidates.)
-            - refactor_to_state — TOWARD: a method switching on an int state field becomes
-                                 delegation to nested State classes (a <Context>State interface +
-                                 one inner class per case). Needs: line, column on/inside the
-                                 switch. Conservative — refuses unsafe shapes (see errors).
-                                 (find_quality_issue kind=switch_statements locates candidates.)
-            - refactor_to_command_dispatcher — TOWARD: a type-coded action switch becomes nested
-                                 Command classes selected by a switch-expression. Needs: line,
-                                 column on/inside the switch. Conservative — case bodies must not
-                                 use the method's parameters. (find_quality_issue
-                                 kind=switch_statements locates candidates.)
-            - form_template_method — TOWARD: two sibling subclass methods sharing a skeleton →
-                                 a template method pulled into the abstract superclass + abstract
-                                 steps for what differs. Needs: line, column on one subclass's
-                                 method. Conservative — no-arg methods, same statement count, same
-                                 file. (find_quality_issue kind=parallel_inheritance or
-                                 find_duplicate_code locate candidates.)
-            - refactor_to_visitor — TOWARD: generate a <Base>Visitor interface + accept()
-                                 double-dispatch across an abstract hierarchy (the invasive
-                                 boilerplate; migrate the instanceof-chain accumulator after).
-                                 Needs: line, column on the abstract base type. Base abstract +
-                                 >= 2 subtypes in the same file. (find_quality_issue
-                                 kind=switch_statements locates instanceof/type-code chains.)
-            - replace_pattern_with_idiom — AWAY: replace a pattern with the language feature that
-                                 superseded it. v1.4: an anonymous class implementing a functional
-                                 interface -> a lambda. Needs: line, column on the anonymous class's
-                                 `new` keyword (optional idiom, default anonymous_to_lambda).
-                                 (find_modernization kind=anon_to_lambda locates candidates.)
-            - replace_constructor_with_factory — TOWARD: a constructor becomes a static
-                                 factory method and every `new X(...)` call site is rewritten
-                                 to call it, ACROSS FILES. protectConstructor defaults TRUE,
-                                 which makes the constructor private so the old path is
-                                 impossible rather than merely unused. Needs: line, column on
-                                 the class (optional factoryMethodName, default `create`;
-                                 factoryClass to put the factory on another type;
-                                 protectConstructor). Works on an implicit default
-                                 constructor too. Unblocks abstract-factory, factory-method,
-                                 builder and null-object.
-            - replace_conditional_with_polymorphism — TOWARD: a switch on an ENUM becomes one
-                                 virtual call — an interface, one implementation per arm, and
-                                 a dispatch table keyed by the discriminator, all nested in
-                                 the context. Distinct from refactor_to_state, which requires
-                                 a private int FIELD, the old labelled switch form, and the
-                                 switch as the method's only statement; this handles the
-                                 general shape (enum discriminator, arrow form, selector a
-                                 parameter or local). Variables the arms read from the
-                                 enclosing method travel as parameters on the generated
-                                 method; the response reports them as threadedParameters.
-                                 Needs: line, column on or inside the switch (optional
-                                 interfaceName, default <Method>Behaviour).
-                                 REFUSES: a non-enum discriminator, fall-through, fewer than
-                                 two non-default arms, an arm that ASSIGNS a method-scope
-                                 variable, an arm using `this` for anything but a context
-                                 field, and an arm that returns or breaks/continues to a label
-                                 outside itself. (find_quality_issue kind=switch_statements
-                                 locates candidates — but read them: most are parsers, where
-                                 the operation is the wrong answer.)""";
 
     @Override
     public String footer() {
-        return """
-            Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
-            auto_apply=false to stage without applying. Verify with compile_workspace;
-            revert with refactoring(action=undo, undoChangeId=...).
-
-            Requires load_project to be called first.
-            """;
+        return "compose_method and decompose_conditional refuse auto_apply=false.";
     }
 
     @Override
@@ -267,30 +168,26 @@ public class RefactorToPatternTool extends AbstractTool implements KindedTool {
         // said "four callers" until C6a measured it with find_references; the same wrong
         // number was in TheRoutingTableIsTheKindListTest and in commit 10082733.)
         kind.put("enum", publishedKinds());
-        kind.put("description", "Which pattern transform to apply. See the tool description for per-kind params.");
+        kind.put("description", "Which transform; see the tool description.");
         properties.put("kind", kind);
 
-        properties.put("filePath", Map.of("type", "string", "description", "Path to source file."));
-        properties.put("line", Map.of("type", "integer",
-            "description", "Zero-based line of the target (e.g. the singleton type for inline_singleton)."));
-        properties.put("column", Map.of("type", "integer", "description", "Zero-based column of the target."));
+        properties.put("filePath", Map.of("type", "string", "description", "Source file."));
+        properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the target."));
+        properties.put("column", Map.of("type", "integer", "description", "Zero-based column."));
         properties.put("sections", Map.of("type", "array",
             "items", Map.of("type", "object"),
-            "description", "compose_method: >= 2 disjoint {startLine, startColumn, endLine, endColumn, "
-                + "methodName} statement ranges (ZERO-BASED) to extract into named sub-methods."));
+            "description", "compose_method: 2+ disjoint {startLine, startColumn, endLine, endColumn, methodName}, zero-based."));
         properties.put("newTypeName", Map.of("type", "string",
-            "description", "replace_type_code_with_class: name for the generated enum type."));
+            "description", "replace_type_code_with_class: enum name."));
         properties.put("prefix", Map.of("type", "string",
-            "description", "replace_type_code_with_class: optional constant prefix to convert (e.g. STATUS)."));
+            "description", "replace_type_code_with_class: constant prefix (default largest group)."));
         properties.put("idiom", Map.of("type", "string",
-            "description", "replace_pattern_with_idiom: which idiom (default anonymous_to_lambda)."));
+            "description", "replace_pattern_with_idiom: default anonymous_to_lambda."));
 
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
-            "target type (kinds inline_singleton / replace_type_code_with_class / "
-                + "refactor_to_visitor)"));
+            "type (type-targeted kinds)"));
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-            "target method (kind form_template_method); the switch- and range-targeted "
-                + "kinds keep their coordinates"));
+            "method (form_template_method)"));
 
         // THE BACKSTOP — every parameter any delegate declares reaches the published
         // contract, whether or not someone curated it above.

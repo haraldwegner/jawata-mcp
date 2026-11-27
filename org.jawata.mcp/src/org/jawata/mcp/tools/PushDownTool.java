@@ -47,25 +47,7 @@ public class PushDownTool extends AbstractRefactoringTool implements ToolKindDel
 
     @Override
     public String getDescription() {
-        return """
-            Move a method or field from a supertype down into all of its
-            direct subtypes.
-
-            Point at the member — a position inside it, or its name.
-
-            Inputs:
-            - filePath / line / column — position inside the method or field
-              to push down (zero-based line/column).
-
-            All direct subtypes receive a copy of the member; the original
-            on the supertype is removed. JDT's checkInitialConditions
-            rejects the operation if any subtype is read-only (binary, in a
-            sealed jar) before any modification happens.
-
-            Conflict → REFACTORING_FAILED with no files modified.
-
-            Requires load_project to be called first.
-            """;
+        return "Move a method or field down into all direct subtypes: position or symbol=pkg.Type#member.";
     }
 
     @Override

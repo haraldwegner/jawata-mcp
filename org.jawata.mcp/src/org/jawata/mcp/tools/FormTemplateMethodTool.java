@@ -61,13 +61,8 @@ public class FormTemplateMethodTool extends AbstractApplyingRefactoringTool
     /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            TOWARD: two sibling subclass methods sharing a skeleton →
-            a template method pulled into the abstract superclass + abstract
-            steps for what differs. Needs: line, column on one subclass's
-            method. Conservative — no-arg methods, same statement count, same
-            file. (find_quality_issue kind=parallel_inheritance or
-            find_duplicate_code locate candidates.)""";
+        return "two sibling methods into a superclass template: line, column on one (or symbol); no-arg, same "
+            + "statement count, same file.";
     }
 
 

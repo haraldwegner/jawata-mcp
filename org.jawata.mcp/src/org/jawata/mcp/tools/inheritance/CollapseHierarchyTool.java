@@ -121,18 +121,9 @@ public class CollapseHierarchyTool extends AbstractApplyingRefactoringTool
     @Override
     public String getDescription() {
         return """
-            Collapse Hierarchy — a class between a parent and its own subtypes that is not
-            earning the level is merged into the parent: its members move up, its subtypes are
-            reparented onto the parent, and it is deleted. Point at the MIDDLE class
-            (typeName=pkg.Type, or a position).
-            This is the case inline kind=subclass refuses: that row folds a LEAF subclass, this
-            one folds a class that still has subtypes, and each refusal names the other.
-            REFUSES a class that carries a distinction — it overrides a parent method, an
-            instanceof or a cast asks for its type, or its constructor fixes an argument
-            instead of forwarding — because replacing a distinction with a field is a design
-            decision. Also refuses an abstract parent when something constructs the class, a
-            colliding member name, a parent outside this workspace, and a file declaring other
-            top-level types.""";
+            Merge a MIDDLE class (with subtypes) into its parent and delete it: typeName or position.
+            A leaf subclass is inline kind=subclass. Refuses overrides, instanceof/casts on it,
+            constructors fixing arguments, name collisions, an external parent, other top-level types in the file.""";
     }
 
     /** Structural: it removes a level from a hierarchy and reparents everything below it. */
@@ -147,13 +138,13 @@ public class CollapseHierarchyTool extends AbstractApplyingRefactoringTool
         schema.put("type", "object");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("filePath", Map.of("type", "string",
-            "description", "Source file declaring the class to collapse."));
+            "description", "Source file."));
         properties.put("line", Map.of("type", "integer",
-            "description", "Zero-based line of the class declaration."));
+            "description", "Zero-based line."));
         properties.put("column", Map.of("type", "integer",
-            "description", "Zero-based column on that line."));
+            "description", "Zero-based column."));
         properties.put("typeName", Map.of("type", "string",
-            "description", "Fully-qualified class name, as an alternative to a position."));
+            "description", "Class FQN instead of a position."));
         schema.put("properties", properties);
         return withAutoApply(withProjectKey(schema));
     }

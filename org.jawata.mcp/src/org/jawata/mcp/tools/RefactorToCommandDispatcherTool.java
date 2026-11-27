@@ -61,12 +61,8 @@ public class RefactorToCommandDispatcherTool extends AbstractApplyingRefactoring
     /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            TOWARD: a type-coded action switch becomes nested
-            Command classes selected by a switch-expression. Needs: line,
-            column on/inside the switch. Conservative — case bodies must not
-            use the method's parameters. (find_quality_issue
-            kind=switch_statements locates candidates.)""";
+        return "action switch into Command classes: line, column on it; case bodies must not use the method's "
+            + "parameters.";
     }
 
 

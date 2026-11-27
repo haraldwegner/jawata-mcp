@@ -72,9 +72,7 @@ public class GenerateGettersSettersTool extends AbstractTool
     /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return "accessors. Needs: fields[]. Optional: accessorKind (getters|setters|both,"
-            + " default both), visibility, getterStyle (classic|record), setterStyle"
-            + " (classic|fluent), generateJavadoc.";
+        return "accessors: fields[]; accessorKind, visibility, getterStyle, setterStyle, generateJavadoc optional.";
     }
 
 
@@ -157,14 +155,14 @@ public class GenerateGettersSettersTool extends AbstractTool
         properties.put("getterStyle", Map.of(
             "type", "string",
             "enum", List.of("classic", "record"),
-            "description", "classic = getX()/isX() (default); record = property-named accessor x()"));
+            "description", "classic getX (default) or record x()."));
         properties.put("setterStyle", Map.of(
             "type", "string",
             "enum", List.of("classic", "fluent"),
-            "description", "classic = void (default); fluent = returns this for chaining"));
+            "description", "classic void (default) or fluent."));
         properties.put("generateJavadoc", Map.of(
             "type", "boolean",
-            "description", "Emit Javadoc on the generated accessors (default false)"));
+            "description", "Javadoc on accessors."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column", "fields"));
         return withAutoApply(withProjectKey(schema));

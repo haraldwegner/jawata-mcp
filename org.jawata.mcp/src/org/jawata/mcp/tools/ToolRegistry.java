@@ -348,10 +348,7 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
 
         properties.put("precedentOverride", Map.of(
             "type", "string",
-            "description", "Optional. One line saying why THIS case differs from a past call"
-                + " of this tool on this target that was reverted or errored. Required only"
-                + " when that precedent has already been surfaced to you and you are calling"
-                + " anyway; the reason is logged with the call. Never reaches the tool."));
+            "description", "One line why to call despite a surfaced past failure; logged."));
 
         published.put("properties", properties);
         return published;

@@ -131,15 +131,8 @@ public class ReplaceCommandWithFunctionTool extends AbstractApplyingRefactoringT
 
     @Override
     public String getDescription() {
-        return """
-            Replace Command with Function — a command object that is only ever constructed and
-            immediately run becomes one static function. Name the CLASS (typeName=pkg.Type, or a
-            position). Its single public method takes the constructor's parameters followed by
-            its own, the fields and constructor go, and every `new C(a).m(b)` becomes `C.m(a,
-            b)`. The exact inverse of extract kind=function_to_command. REFUSES when a supertype
-            declares the method — that command is being dispatched, not wasted — which is by far
-            the commonest case; also a computed field, several constructors, and a use this
-            rewrite cannot reach.""";
+        return "a command CLASS (typeName or position) becomes one static method. Refuses a method declared by a "
+            + "supertype, computed fields, several constructors.";
     }
 
     /** Structural: the class loses its state and every construction site changes shape. */
@@ -160,7 +153,7 @@ public class ReplaceCommandWithFunctionTool extends AbstractApplyingRefactoringT
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column on that line."));
         properties.put("typeName", Map.of("type", "string",
-            "description", "Fully-qualified name of the command class, instead of a position."));
+            "description", "replace_command_with_function: command class FQN."));
         schema.put("properties", properties);
         schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));

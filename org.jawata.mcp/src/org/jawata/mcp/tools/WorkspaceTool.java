@@ -44,7 +44,7 @@ public abstract class WorkspaceTool<W extends LoadedWorkspace> extends NeutralTo
 	    Map<String, Object> newProps = new LinkedHashMap<>(oldProps);
 	    newProps.putIfAbsent("projectKey", Map.of(
 	        "type", "string",
-	        "description", "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace."
+	        "description", "Restrict to one loaded project (project action=list); default all."
 	    ));
 	    wrapped.put("properties", newProps);
 	    return wrapped;

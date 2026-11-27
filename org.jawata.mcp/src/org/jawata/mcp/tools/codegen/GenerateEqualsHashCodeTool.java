@@ -67,7 +67,7 @@ public class GenerateEqualsHashCodeTool extends AbstractTool
     /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return "equals() + hashCode(). Needs: fields[].";
+        return "fields[].";
     }
 
 

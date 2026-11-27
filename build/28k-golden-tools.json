@@ -3,7 +3,7 @@
   "inputSchema": {
    "properties": {
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     }
    },
@@ -35,11 +35,11 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "query": {
@@ -70,11 +70,11 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     }
    },
@@ -102,11 +102,11 @@
      "type": "array"
     },
     "filePath": {
-     "description": "Source file of the symbol.",
+     "description": "Source file.",
      "type": "string"
     },
     "kind": {
-     "description": "Which reference search to run.",
+     "description": "Which search.",
      "enum": [
       "references",
       "implementations",
@@ -115,27 +115,27 @@
      "type": "string"
     },
     "line": {
-     "description": "Zero-based line of the symbol.",
+     "description": "Zero-based line.",
      "type": "integer"
     },
     "maxResults": {
-     "description": "Optional result cap.",
+     "description": "Result cap.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "query": {
-     "description": "Alias for 'symbol' (kept for back-compat with the pre-v2.8.1 description).",
+     "description": "Alias for symbol.",
      "type": "string"
     },
     "scope": {
-     "description": "FQN-form scope: 'workspace' (default) or 'project' (requires projectKey).",
+     "description": "With symbol; project needs projectKey.",
      "enum": [
       "workspace",
       "project"
@@ -143,7 +143,7 @@
      "type": "string"
     },
     "symbol": {
-     "description": "FQN form: 'com.foo.Bar' (type), 'com.foo.Bar#member' (method any overload / field), or 'com.foo.Bar#method(int,java.lang.String)' (specific overload).",
+     "description": "FQN instead of a position.",
      "type": "string"
     }
    },
@@ -158,7 +158,7 @@
   "inputSchema": {
    "properties": {
     "diff": {
-     "description": "impacted_tests: which git diff (default worktree).",
+     "description": "impacted_tests: default worktree.",
      "enum": [
       "worktree",
       "staged",
@@ -167,15 +167,15 @@
      "type": "string"
     },
     "filePath": {
-     "description": "document_symbols/complexity: source file.",
+     "description": "Source file.",
      "type": "string"
     },
     "forScope": {
-     "description": "impacted_tests: the scope you mean to narrow \u2014 'whole-suite' (default) or 'package:com.foo' \u2014 so the verdict is complete for that scope.",
+     "description": "impacted_tests: whole-suite (default) or package:com.foo.",
      "type": "string"
     },
     "kind": {
-     "description": "Which inspection to run. See the tool description for per-kind params.",
+     "description": "What to inspect.",
      "enum": [
       "type_hierarchy",
       "document_symbols",
@@ -194,46 +194,46 @@
      "type": "string"
     },
     "limit": {
-     "description": "landmarks: how many to name (default 20).",
+     "description": "landmarks: default 20.",
      "type": "integer"
     },
     "maxChars": {
-     "description": "source: characters of source per page (default 24000, which every current client accepts). A whole JDK type can be ~100K characters and be REFUSED by the client as too large; the reply always reports sourceLength so a page never reads as the whole type.",
+     "description": "source: page size (default 24000).",
      "type": "integer"
     },
     "name": {
-     "description": "dependency_graph: the entity name.",
+     "description": "dependency_graph: entity name.",
      "type": "string"
     },
     "offset": {
-     "description": "source: character offset into the source \u2014 the next page. A truncated reply's hint names the offset to ask for.",
+     "description": "source: character offset of the page.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "range": {
-     "description": "impacted_tests: commit range for diff=range, e.g. 'HEAD~1..HEAD'.",
+     "description": "diff=range: e.g. HEAD~1..HEAD.",
      "type": "string"
     },
     "scope": {
-     "description": "dependency_graph: scope (e.g. package/class).",
+     "description": "dependency_graph: e.g. package or class.",
      "type": "string"
     },
     "symbols": {
-     "description": "impacted_tests: explicit symbol list (else derived from the git diff).",
+     "description": "impacted_tests: changed symbols (default: from git diff).",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "typeName": {
-     "description": "type_hierarchy/type_members/type_usage: type name.",
+     "description": "Type name.",
      "type": "string"
     }
    },
@@ -277,11 +277,11 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "scope": {
@@ -293,7 +293,7 @@
      "type": "string"
     },
     "symbol": {
-     "description": "Name form (Sprint 24): address the member to analyze (kinds method/control_flow/data_flow/change_impact/symbol; kind=type already takes typeName) by its fully-qualified name instead of a file position \u2014 'com.foo.Bar', 'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the member to analyze (kinds method/control_flow/data_flow/change_impact/symbol; kind=type already takes typeName) instead of a position: 'pkg.Type#member' or 'pkg.Type#method(int)'. A position wins.",
      "type": "string"
     },
     "typeName": {
@@ -343,11 +343,11 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     }
    },
@@ -380,11 +380,11 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "severity": {
@@ -413,11 +413,11 @@
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     }
    },
@@ -461,11 +461,11 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "scope": {
@@ -488,31 +488,31 @@
   "inputSchema": {
    "properties": {
     "column": {
-     "description": "Zero-based column number (position-based form).",
+     "description": "Zero-based column.",
      "type": "integer"
     },
     "filePath": {
-     "description": "Path to source file (position-based form).",
+     "description": "Source file.",
      "type": "string"
     },
     "line": {
-     "description": "Zero-based line number (position-based form).",
+     "description": "Zero-based line.",
      "type": "integer"
     },
     "maxResults": {
-     "description": "Max write locations to return (default 100).",
+     "description": "Default 100.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "scope": {
-     "description": "FQN-form scope: 'workspace' (default) or 'project' (requires projectKey).",
+     "description": "With symbol; default workspace; project needs projectKey.",
      "enum": [
       "workspace",
       "project"
@@ -520,7 +520,7 @@
      "type": "string"
     },
     "symbol": {
-     "description": "Sprint 14 FQN form (bugs.md #12 capability half): 'com.foo.Bar#fieldName'.",
+     "description": "pkg.Type#field instead of a position.",
      "type": "string"
     }
    },
@@ -540,11 +540,11 @@
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     }
    },
@@ -579,11 +579,11 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "query": {
@@ -603,7 +603,7 @@
   "inputSchema": {
    "properties": {
     "action": {
-     "description": "run (default) = synchronous. start = run asynchronously and return a sweepId immediately \u2014 pass `family` for a whole family, or `kind` for a SINGLE detector that is too slow to answer synchronously on this project (how slow a kind is depends on the project, not the detector, so nothing predicts it for you: a timed-out `run` is the signal to start the same kind here). Either way the work outlives a client timeout and the result stays retrievable. status = progress while running, the FULL result once finished (repeatable). cancel = honest partial (partial: true).",
+     "description": "Default run.",
      "enum": [
       "run",
       "start",
@@ -613,7 +613,7 @@
      "type": "string"
     },
     "baseline": {
-     "description": "family sweeps only: 'save' snapshots the current findings; 'diff' returns {new, fixed, unchanged} vs the saved snapshot (trend over time).",
+     "description": "Family sweeps: save a snapshot, or diff against it.",
      "enum": [
       "save",
       "diff"
@@ -621,14 +621,14 @@
      "type": "string"
     },
     "excludePaths": {
-     "description": "Optional path substrings; findings (and conflicts) whose filePath contains any entry are dropped BEFORE counts/summary/baseline/pagination \u2014 e.g. a vendored module like a copied upstream source file (v2.8.1).",
+     "description": "Drop findings whose path contains any.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "family": {
-     "description": "Optional family lens (Sprint 20). With no `kind`, runs every detector in the family and merges the findings (e.g. family=\"solid\" returns the SOLID set as a unit: dip, isp, srp_cohesion, lsp + the tagged incomplete_delegation/refused_bequest/divergent_change/shotgun_surgery). With a `kind`, validates the kind belongs to the family.",
+     "description": "Run a detector set; with kind, checks membership.",
      "enum": [
       "quality",
       "fowler",
@@ -638,23 +638,23 @@
      "type": "string"
     },
     "filePath": {
-     "description": "Optional. Limit naming/bugs/unused/reflection scans to a single file. Omit for whole-project.",
+     "description": "naming/bugs/unused/reflection: one file.",
      "type": "string"
     },
     "forbidden": {
-     "description": "forbidden_edge: the package prefix the `from` layer must not depend on.",
+     "description": "forbidden_edge: prefix `from` must not depend on.",
      "type": "string"
     },
     "from": {
-     "description": "forbidden_edge: the source package prefix (the layer that must not depend outward).",
+     "description": "forbidden_edge: source package prefix.",
      "type": "string"
     },
     "includeTests": {
-     "description": "Fowler smell kinds only \u2014 include test sources in the scan. Test-ness comes from the source root's test attribute in the loaded model, not from a path or name convention, so a flat-layout test bundle is recognised too. Default false: test code legitimately has long methods and subject-under-test access, so it is excluded to keep findings actionable. kind=forbidden_edge leaves test sources out the same way, since a test may cross a boundary the product may not.",
+     "description": "Smell kinds and forbidden_edge: include test sources (default false).",
      "type": "boolean"
     },
     "kind": {
-     "description": "Which single analysis to run. See the tool description for what each kind reports. Provide `kind` OR `family` (family runs the whole set).",
+     "description": "One detector; give kind or family.",
      "enum": [
       "naming",
       "bugs",
@@ -709,51 +709,51 @@
      "type": "string"
     },
     "limit": {
-     "description": "Cap the findings returned, and the conflicts returned under `summary` (default 100); the full totals are always in `count` and `conflictCount`. A family sweep caps by default; a single `kind` returns everything unless you pass this. Prefer `summary` for a broad sweep.",
+     "description": "Max findings (family default 100; single kind all).",
      "type": "integer"
     },
     "maxFields": {
-     "description": "kind=large_classes only \u2014 class is 'large' above this field count (default 10).",
+     "description": "large_classes (default 10).",
      "type": "integer"
     },
     "maxLines": {
-     "description": "kind=large_classes only \u2014 class is 'large' above this line count (default 300).",
+     "description": "large_classes (default 300).",
      "type": "integer"
     },
     "maxMethods": {
-     "description": "kind=large_classes only \u2014 class is 'large' above this method count (default 20).",
+     "description": "large_classes (default 20).",
      "type": "integer"
     },
     "maxResults": {
-     "description": "kind=throws or kind=catches \u2014 caps result count (default 100).",
+     "description": "throws/catches (default 100).",
      "type": "integer"
     },
     "offset": {
-     "description": "Skip the first N findings (pagination; default 0).",
+     "description": "Skip N findings.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "query": {
-     "description": "Required for kind=throws or kind=catches: fully-qualified exception type name (e.g. 'java.io.IOException').",
+     "description": "throws/catches REQUIRED: exception FQN.",
      "type": "string"
     },
     "summary": {
-     "description": "Return counts-by-kind + conflicts only (NO findings array) \u2014 the consumable shape for a broad sweep. Works for a family sweep AND for a single `kind`. `count` carries the true finding total and `conflictCount` the true conflict total; the conflicts list itself is capped by `limit` and sets `conflictsTruncated` when it is.",
+     "description": "Counts and conflicts only, no findings.",
      "type": "boolean"
     },
     "sweepId": {
-     "description": "Sweep handle from action=start; required for status/cancel.",
+     "description": "status/cancel: id from start.",
      "type": "string"
     },
     "threshold": {
-     "description": "Optional sensitivity threshold for the Fowler smell kinds (Sprint 17), e.g. long_method LOC cutoff. Each smell kind documents its threshold meaning; omit to use the kind's default.",
+     "description": "Smell sensitivity (default per kind).",
      "type": "integer"
     }
    },
@@ -774,11 +774,11 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "query": {
@@ -801,35 +801,35 @@
   "inputSchema": {
    "properties": {
     "crossProject": {
-     "description": "When false, group clones only within a single project. Default true.",
+     "description": "Group across projects (default true).",
      "type": "boolean"
     },
     "limit": {
-     "description": "Max clone groups returned (default 20); groupCount always reflects the full set (v2.8.1).",
+     "description": "Max groups (default 20).",
      "type": "integer"
     },
     "minTokens": {
-     "description": "Minimum normalized-token count per method (default 50).",
+     "description": "Min tokens per method (default 50).",
      "type": "integer"
     },
     "offset": {
-     "description": "Skip the first N groups (pagination; default 0) (v2.8.1).",
+     "description": "Skip N groups.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "summary": {
-     "description": "Counts only (groupCount/instanceCount), NO groups array \u2014 for large workspaces (v2.8.1). Default false.",
+     "description": "Counts only.",
      "type": "boolean"
     },
     "threshold": {
-     "description": "Match threshold; v1.8.0 honours 1.0 only (exact match). Default 1.0.",
+     "description": "Only 1.0 (exact) is honoured.",
      "type": "number"
     }
    },
@@ -859,11 +859,11 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     }
    },
@@ -882,7 +882,7 @@
      "type": "boolean"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     }
    },
@@ -895,7 +895,7 @@
   "inputSchema": {
    "properties": {
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectPath": {
@@ -923,7 +923,7 @@
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
@@ -963,7 +963,7 @@
      "type": "boolean"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "shape": {
@@ -990,43 +990,43 @@
   "inputSchema": {
    "properties": {
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "column": {
-     "description": "Zero-based column number",
+     "description": "Zero-based column.",
      "type": "integer"
     },
     "edits": {
-     "description": "With auto_apply false: return the edits the rename would make, file by file with their positions ({ edits: [{ filePath, edits: [{ line, column, endLine, endColumn, newText }] }] }), for an editor to apply to its own buffers. The change is not kept, so there is no changeId.",
+     "description": "With auto_apply false: return positioned edits per file for an editor; no changeId.",
      "type": "boolean"
     },
     "filePath": {
-     "description": "Path to source file containing the symbol",
+     "description": "Source file.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "line": {
-     "description": "Zero-based line number",
+     "description": "Zero-based line.",
      "type": "integer"
     },
     "newName": {
-     "description": "New name for the symbol",
+     "description": "New name.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "symbol": {
-     "description": "Name form (Sprint 24): address the type, method or field to rename (a LOCAL variable has no name form \u2014 use the position) by its fully-qualified name instead of a file position \u2014 'com.foo.Bar', 'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the type, method or field (locals: position only) instead of a position: 'pkg.Type#member' or 'pkg.Type#method(int)'. A position wins.",
      "type": "string"
     }
    },
@@ -1041,27 +1041,27 @@
   "inputSchema": {
    "properties": {
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "filePath": {
-     "description": "Path to source file. Required for scope=file; unused otherwise.",
+     "description": "scope=file: source file.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "scope": {
-     "description": "file (default) | project | workspace.",
+     "description": "Default file.",
      "enum": [
       "file",
       "project",
@@ -1078,7 +1078,7 @@
   "inputSchema": {
    "properties": {
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "column": {
@@ -1086,23 +1086,23 @@
      "type": "integer"
     },
     "filePath": {
-     "description": "Source file holding the anonymous implementation.",
+     "description": "Source file.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "line": {
-     "description": "Zero-based line on or inside the `new Interface() { ... }`.",
+     "description": "Zero-based line in the expression.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     }
    },
@@ -1119,89 +1119,89 @@
   "inputSchema": {
    "properties": {
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "boundaryLine": {
-     "description": "Zero-based line of the FIRST statement of the second phase. Required and undefaulted: where one job ends and the next begins is a judgement about meaning that nothing in the syntax marks.",
+     "description": "split_phase: zero-based line of phase two's first statement.",
      "type": "integer"
     },
     "canonicalMethodName": {
-     "description": "Optional. Which clone survives as the delegation target (default: first instance in file/line order).",
+     "description": "Surviving clone (default first).",
      "type": "string"
     },
     "cloneGroupId": {
-     "description": "groupId from find_duplicate_code output.",
+     "description": "groupId from find_duplicate_code.",
      "type": "string"
     },
     "column": {
-     "description": "interface/superclass/class: zero-based column.",
+     "description": "Zero-based caret column.",
      "type": "integer"
     },
     "constantName": {
-     "description": "constant: name for the extracted constant.",
+     "description": "constant: new name.",
      "type": "string"
     },
     "createGetterSetter": {
-     "description": "Optional, default true: generate accessors on the extracted class rather than exposing its fields.",
+     "description": "class: generate accessors (default true).",
      "type": "boolean"
     },
     "createTopLevel": {
-     "description": "Optional, default true: create the extracted class as its own top-level file. False nests it inside the original.",
+     "description": "class: own file (default true), else nested.",
      "type": "boolean"
     },
     "crossProject": {
-     "description": "Must match the find_duplicate_code call (default true).",
+     "description": "As in find_duplicate_code (default true).",
      "type": "boolean"
     },
     "endColumn": {
-     "description": "method/variable/constant: zero-based end column.",
+     "description": "Range kinds: zero-based.",
      "type": "integer"
     },
     "endLine": {
-     "description": "method/variable/constant: zero-based end line.",
+     "description": "Range kinds: zero-based.",
      "type": "integer"
     },
     "fieldName": {
-     "description": "Optional: name of the reference field the original class keeps. Defaults to the new type's name, first letter lowercased.",
+     "description": "class/combine_functions: name of the holding field.",
      "type": "string"
     },
     "fields": {
-     "description": "Names of the fields to MOVE into the new class. Required: the operation's whole point is which state travels together, and guessing that is a design decision no default can make.",
+     "description": "class: field names to move.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "filePath": {
-     "description": "Path to source file.",
+     "description": "Source file.",
      "type": "string"
     },
     "firstName": {
-     "description": "Name for the first phase (default: <function>Phase1).",
+     "description": "split_phase: first function (default <function>Phase1).",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "functions": {
-     "description": "Names of the static functions to combine. WHICH functions belong together is the design decision this carries out, so there is no default: at least two, all sharing the type of their first parameter.",
+     "description": "combine_functions: 2+ static function names.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "interfaceName": {
-     "description": "interface: name for the extracted interface.",
+     "description": "interface: new name.",
      "type": "string"
     },
     "intermediateName": {
-     "description": "Name for the record the phases pass between them (default: <Function>Intermediate).",
+     "description": "split_phase: record (default <Function>Intermediate).",
      "type": "string"
     },
     "kind": {
-     "description": "Which extract refactoring to run. See the tool description for per-kind params.",
+     "description": "What to extract; see the tool description.",
      "enum": [
       "method",
       "variable",
@@ -1218,33 +1218,33 @@
      "type": "string"
     },
     "line": {
-     "description": "interface/superclass/class: zero-based line of a caret in the type.",
+     "description": "Zero-based caret line.",
      "type": "integer"
     },
     "members": {
-     "description": "superclass: optional member names to pull up (default: auto-discover the identical methods; mode=jdt also accepts fields and non-identical members).",
+     "description": "superclass: members to pull up (default: identical methods).",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "methodName": {
-     "description": "method: name for the extracted method.",
+     "description": "method/temp_to_query: new method name.",
      "type": "string"
     },
     "methodNames": {
-     "description": "interface: optional method names to declare in the new interface.",
+     "description": "interface: methods to declare.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "minTokens": {
-     "description": "Must match the find_duplicate_code call (default 50).",
+     "description": "As in find_duplicate_code (default 50).",
      "type": "integer"
     },
     "mode": {
-     "description": "superclass: jdt (default) = the general JDT engine; identical = the conservative byte-identical + self-contained contract.",
+     "description": "superclass: jdt (default, also fields and differing members) or identical (conservative).",
      "enum": [
       "jdt",
       "identical"
@@ -1252,58 +1252,58 @@
      "type": "string"
     },
     "newTypeName": {
-     "description": "Name for the extracted class.",
+     "description": "New class name.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "replaceAllOccurrences": {
-     "description": "Replace EVERY occurrence of the expression with the new constant (default true, the IDE default); false replaces only the selected occurrence.",
+     "description": "constant: replace every occurrence (default true).",
      "type": "boolean"
     },
     "replaceDuplicates": {
-     "description": "Also rewrite every OTHER occurrence of the selected statements in the same type to call the new method (Fowler's Replace Inline Code with Function Call). DEFAULT FALSE, because this operation predates the parameter and its shipped behaviour is to extract only the selection. The response reports otherOccurrences either way, so a non-zero count is the signal to re-run with this set. The engine matches on structure AND resolved bindings, so it never rewrites code that merely looks alike.",
+     "description": "method: also rewrite the type's other occurrences (default false).",
      "type": "boolean"
     },
     "secondName": {
-     "description": "Name for the second phase (default: <function>Phase2).",
+     "description": "split_phase: second function (default <function>Phase2).",
      "type": "string"
     },
     "siblings": {
-     "description": "superclass: sibling class simple names in the same package to reparent + pull from.",
+     "description": "superclass: sibling simple names in the same package.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "startColumn": {
-     "description": "method/variable/constant: zero-based start column.",
+     "description": "Range kinds: zero-based.",
      "type": "integer"
     },
     "startLine": {
-     "description": "method/variable/constant: zero-based start line of the selection.",
+     "description": "Range kinds: zero-based.",
      "type": "integer"
     },
     "superclassName": {
-     "description": "superclass: name for the generated abstract parent.",
+     "description": "superclass: new name.",
      "type": "string"
     },
     "symbol": {
-     "description": "Name form (Sprint 24): address the member to extract from: pkg.Type#method for kind=function_to_command. The RANGE kinds (method, variable, constant, split_phase, temp_to_query) are positional \u2014 a statement range and a local have no name by its fully-qualified name instead of a file position \u2014 'com.foo.Bar', 'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the function (function_to_command; range kinds need coordinates) instead of a position: 'pkg.Type#member' or 'pkg.Type#method(int)'. A position wins.",
      "type": "string"
     },
     "typeName": {
-     "description": "Name form (Sprint 24): address the type to extract from (kinds interface/superclass/class; the range kinds method/variable/constant need their coordinates) by its fully-qualified type name ('com.foo.Bar') instead of a file position. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the type (interface, superclass, class) ('pkg.Type') instead of a position. A position wins.",
      "type": "string"
     },
     "variableName": {
-     "description": "variable: optional name for the extracted variable.",
+     "description": "variable: new name.",
      "type": "string"
     }
    },
@@ -1318,11 +1318,11 @@
   "inputSchema": {
    "properties": {
     "accessorName": {
-     "description": "kind=middle_man: name for the accessor that exposes the delegate (default: the field's own name). Every rewritten call site reads it.",
+     "description": "middle_man: accessor name (default: the field's name).",
      "type": "string"
     },
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "column": {
@@ -1330,23 +1330,23 @@
      "type": "integer"
     },
     "consumersAreInWorkspace": {
-     "description": "REQUIRED, no default. Your assertion that every consumer of this member is in the loaded workspace. A reference search can only see what is loaded, so a consumer in another repository, a published artifact, a reflective lookup or a framework binding would not appear in it and no search can find one. Passing true is a claim you are making, and the response records it.",
+     "description": "unreferenced_member REQUIRED: you assert every consumer is loaded; other repos and reflection are invisible to the search.",
      "type": "boolean"
     },
     "delegateField": {
-     "description": "kind=middle_man: which field to stop forwarding to, when the class forwards to more than one. Required only then, and the refusal lists the candidates.",
+     "description": "middle_man: field to stop forwarding to; required if several.",
      "type": "string"
     },
     "filePath": {
-     "description": "Path to source file.",
+     "description": "Source file.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "kind": {
-     "description": "Inline a method, a local variable, a whole class, a subclass into its parent, a middle man's forwarding, or a non-private member nothing references \u2014 the n=0 case, where there is no user to fold into and only the deletion remains.",
+     "description": "What to inline or delete.",
      "enum": [
       "method",
       "variable",
@@ -1358,19 +1358,19 @@
      "type": "string"
     },
     "line": {
-     "description": "Zero-based line of the symbol to inline.",
+     "description": "Zero-based line of the symbol.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "symbol": {
-     "description": "Name form (Sprint 24): address the target to inline: pkg.Type#method for kind=method, pkg.Type for kind=class, subclass and middle_man, pkg.Type#member for kind=unreferenced_member. kind=variable is POSITIONAL only \u2014 a local has no name to address it by by its fully-qualified name instead of a file position \u2014 'com.foo.Bar', 'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the method, type (class, subclass, middle_man) or member; variable is positional only instead of a position: 'pkg.Type#member' or 'pkg.Type#method(int)'. A position wins.",
      "type": "string"
     }
    },
@@ -1385,31 +1385,31 @@
   "inputSchema": {
    "properties": {
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "column": {
-     "description": "class/method: zero-based column.",
+     "description": "Zero-based column.",
      "type": "integer"
     },
     "filePath": {
-     "description": "class/method: path to the source file.",
+     "description": "Source file.",
      "type": "string"
     },
     "forbiddenPackage": {
-     "description": "A package prefix the DESTINATION must not come to depend on. With oldOwnerAccess=parameter, a move that would create exactly that dependency is refused before anything is written \u2014 the layering check applied to this tool's own result, which no detector can do beforehand because the edge does not exist yet.",
+     "description": "With oldOwnerAccess=parameter: refuse if the destination would depend on it.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "keepDelegate": {
-     "description": "Leave a forwarding method on the original type (default false).",
+     "description": "Leave a forwarder (default false).",
      "type": "boolean"
     },
     "kind": {
-     "description": "Move a class or a method (by caret or by name), a package (by name), a FIELD onto another type, or STATEMENTS across a call boundary in either direction (statements_into_function / statements_to_callers).",
+     "description": "What to move.",
      "enum": [
       "class",
       "package",
@@ -1421,15 +1421,15 @@
      "type": "string"
     },
     "line": {
-     "description": "class/method: zero-based line of a caret in the type or method.",
+     "description": "Zero-based line of the target.",
      "type": "integer"
     },
     "newPackageName": {
-     "description": "package: the new package name.",
+     "description": "package: new name.",
      "type": "string"
     },
     "oldOwnerAccess": {
-     "description": "Only consulted when the moved body STILL REACHES the type it came from, which the engine answers and this tool asks. Default 'refuse': the move is declined and names what it would cost, because JDT's own answer is to do it silently, and that silence sent eleven of Sprint 8's move edits to hand work. 'parameter' takes it deliberately \u2014 and MEASURED it costs TWO things rather than one: the old owner is added as a parameter, so the destination's package comes to depend on the owner's, AND the engine WIDENS the members the moved body reads, turning a private field public. The move opens the old owner's encapsulation as well as inverting the dependency.",
+     "description": "When the body still reaches the old type: refuse (default), or parameter (adds the old owner as parameter and WIDENS members read, e.g. private to public).",
      "enum": [
       "refuse",
       "parameter"
@@ -1437,47 +1437,47 @@
      "type": "string"
     },
     "oldOwnerName": {
-     "description": "With oldOwnerAccess=parameter: the name for the added parameter. Omit to take the engine's suggestion.",
+     "description": "Name of that parameter.",
      "type": "string"
     },
     "packageName": {
-     "description": "package: the package to move/rename.",
+     "description": "package: current name.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "symbol": {
-     "description": "Name form (Sprint 24): address the member to move: pkg.Type#method for kind=method, pkg.Type#field for kind=field. The statement kinds are POSITIONAL \u2014 a statement has no name by its fully-qualified name instead of a file position \u2014 'com.foo.Bar', 'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the method or field (the statement kinds are positional) instead of a position: 'pkg.Type#member' or 'pkg.Type#method(int)'. A position wins.",
      "type": "string"
     },
     "target": {
-     "description": "Name of the parameter/field whose type receives the method (optional when there is exactly one possible target).",
+     "description": "Receiving parameter/field (instance method or instance field).",
      "type": "string"
     },
     "targetPackage": {
-     "description": "class: destination package name.",
+     "description": "class: destination package.",
      "type": "string"
     },
     "targetProjectKey": {
-     "description": "class: optional destination project (cross-project move).",
+     "description": "class: destination project (optional).",
      "type": "string"
     },
     "targetType": {
-     "description": "For a STATIC method: fully-qualified name of the existing class it moves to. A static method has no receiver, so `target` does not apply to it and this does.",
+     "description": "Existing destination class FQN (static method, or field).",
      "type": "string"
     },
     "typeName": {
-     "description": "Name form (Sprint 24): address the class to move (kind=class; kind=package uses packageName) by its fully-qualified type name ('com.foo.Bar') instead of a file position. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the class (kind=class) ('pkg.Type') instead of a position. A position wins.",
      "type": "string"
     },
     "updateReferences": {
-     "description": "kind=class and kind=package ONLY: update all references (default true). The other kinds do not accept it \u2014 for them repointing the references IS the refactoring, and leaving them behind produces code that does not compile.",
+     "description": "class/package ONLY: update references (default true).",
      "type": "boolean"
     }
    },
@@ -1492,11 +1492,11 @@
   "inputSchema": {
    "properties": {
     "abstractInOriginal": {
-     "description": "For methods only: leave an abstract declaration on the subtype (default false).",
+     "description": "up, methods: leave an abstract declaration (default false).",
      "type": "boolean"
     },
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "column": {
@@ -1504,11 +1504,11 @@
      "type": "integer"
     },
     "delegateName": {
-     "description": "Name for the generated behaviour class. Default: <Subclass>Behaviour.",
+     "description": "replace_subclass_with_delegate: class name (default <Subclass>Behaviour).",
      "type": "string"
     },
     "direction": {
-     "description": "Which way through the hierarchy. See the tool description.",
+     "description": "Which change; see the tool description.",
      "enum": [
       "up",
       "down",
@@ -1521,39 +1521,39 @@
      "type": "string"
     },
     "fieldName": {
-     "description": "Name for the delegate field. Default: the superclass's own name, uncapitalised.",
+     "description": "replace_superclass_with_delegate: field (default superclass name).",
      "type": "string"
     },
     "filePath": {
-     "description": "Path to source file.",
+     "description": "Source file.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "line": {
-     "description": "Zero-based line of the member at the caret.",
+     "description": "Zero-based line of the target.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "prefix": {
-     "description": "Optional constant prefix (e.g. GRADE) when the class carries more than one group of type codes.",
+     "description": "Constant prefix (e.g. GRADE) when several groups.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "symbol": {
-     "description": "Name form (Sprint 24): address the member to pull up or push down by its fully-qualified name instead of a file position \u2014 'com.foo.Bar', 'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the member or constructor instead of a position: 'pkg.Type#member' or 'pkg.Type#method(int)'. A position wins.",
      "type": "string"
     },
     "typeName": {
-     "description": "Fully-qualified class name, as an alternative to a position.",
+     "description": "Class FQN instead of a position.",
      "type": "string"
     }
    },
@@ -1568,7 +1568,7 @@
   "inputSchema": {
    "properties": {
     "accessorKind": {
-     "description": "getters_setters: which accessors to generate (default both).",
+     "description": "getters_setters: default both.",
      "enum": [
       "getters",
       "setters",
@@ -1577,11 +1577,11 @@
      "type": "string"
     },
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "callSuper": {
-     "description": "constructor: whether to call super (auto|true|false).",
+     "description": "constructor: auto|true|false.",
      "type": "string"
     },
     "column": {
@@ -1589,30 +1589,30 @@
      "type": "integer"
     },
     "fields": {
-     "description": "constructor/getters_setters/equals_hashcode/tostring: field names to include.",
+     "description": "Field names to include.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "filePath": {
-     "description": "Path to source file.",
+     "description": "Source file.",
      "type": "string"
     },
     "framework": {
-     "description": "test_skeleton: test framework (e.g. junit5).",
+     "description": "test_skeleton: e.g. junit5.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "generateJavadoc": {
-     "description": "Emit Javadoc on the generated accessors (default false)",
+     "description": "Javadoc on accessors.",
      "type": "boolean"
     },
     "getterStyle": {
-     "description": "classic = getX()/isX() (default); record = property-named accessor x()",
+     "description": "classic getX (default) or record x().",
      "enum": [
       "classic",
       "record"
@@ -1620,11 +1620,11 @@
      "type": "string"
     },
     "includePrivateMethods": {
-     "description": "test_skeleton: also stub private methods.",
+     "description": "test_skeleton: also private methods.",
      "type": "boolean"
     },
     "indentChar": {
-     "description": "Override the indentation of generated code. Default: match the target project's formatter config (.settings/.editorconfig), else spaces. Rarely needed.",
+     "description": "Override indentation (default: project formatter).",
      "enum": [
       "space",
       "tab"
@@ -1632,7 +1632,7 @@
      "type": "string"
     },
     "kind": {
-     "description": "Which generator to run. See the tool description for per-kind params.",
+     "description": "What to generate; see the tool description.",
      "enum": [
       "constructor",
       "getters_setters",
@@ -1646,26 +1646,26 @@
      "type": "string"
     },
     "line": {
-     "description": "Zero-based line of a caret in the target type.",
+     "description": "Zero-based line in the type.",
      "type": "integer"
     },
     "methodName": {
-     "description": "add_method: the new method's name.",
+     "description": "add_method: name.",
      "type": "string"
     },
     "methods": {
-     "description": "override_methods: specific method names to override (default all overridable).",
+     "description": "override_methods: names (default all overridable).",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "newTypeName": {
-     "description": "copy_class: name for the cloned class (must not already exist in the package).",
+     "description": "copy_class: new class name.",
      "type": "string"
     },
     "parameters": {
-     "description": "add_method: the parameters, in order, each {name, type}.",
+     "description": "add_method: each {name, type}.",
      "items": {
       "properties": {
        "name": {
@@ -1680,19 +1680,19 @@
      "type": "array"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "returnType": {
-     "description": "add_method: the return type as written in source (default void).",
+     "description": "add_method: default void.",
      "type": "string"
     },
     "setterStyle": {
-     "description": "classic = void (default); fluent = returns this for chaining",
+     "description": "classic void (default) or fluent.",
      "enum": [
       "classic",
       "fluent"
@@ -1700,15 +1700,15 @@
      "type": "string"
     },
     "style": {
-     "description": "tostring: rendering style.",
+     "description": "tostring: style.",
      "type": "string"
     },
     "typeName": {
-     "description": "Name form (Sprint 24): address the type to generate into by its fully-qualified type name ('com.foo.Bar') instead of a file position. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the target type ('pkg.Type') instead of a position. A position wins.",
      "type": "string"
     },
     "visibility": {
-     "description": "constructor/getters_setters/add_method: member visibility (e.g. public).",
+     "description": "e.g. public.",
      "type": "string"
     }
    },
@@ -1723,47 +1723,47 @@
   "inputSchema": {
    "properties": {
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "column": {
-     "description": "Zero-based column of the target.",
+     "description": "Zero-based column.",
      "type": "integer"
     },
     "conditionName": {
-     "description": "decompose_conditional: name for the extracted test, e.g. notSummer. Omit to leave the condition alone.",
+     "description": "decompose_conditional: test method name.",
      "type": "string"
     },
     "elseName": {
-     "description": "decompose_conditional: name for the extracted else-branch. Omit to leave it alone.",
+     "description": "decompose_conditional: else-branch method name.",
      "type": "string"
     },
     "factoryClass": {
-     "description": "Optional fully-qualified type to HOST the factory method. Default: the constructor's own class.",
+     "description": "Host type FQN (default: the constructor's class).",
      "type": "string"
     },
     "factoryMethodName": {
-     "description": "Name for the generated factory method, e.g. 'create' or 'newInstance'. No default: the name is the call site every reader will see, and it is the caller's decision.",
+     "description": "replace_constructor_with_factory REQUIRED: e.g. create.",
      "type": "string"
     },
     "filePath": {
-     "description": "Path to source file.",
+     "description": "Source file.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "idiom": {
-     "description": "replace_pattern_with_idiom: which idiom (default anonymous_to_lambda).",
+     "description": "replace_pattern_with_idiom: default anonymous_to_lambda.",
      "type": "string"
     },
     "interfaceName": {
-     "description": "Optional name for the generated behaviour interface. Default: the enclosing method's name, capitalised, + 'Behaviour'.",
+     "description": "replace_conditional_with_polymorphism: default <Method>Behaviour.",
      "type": "string"
     },
     "kind": {
-     "description": "Which pattern transform to apply. See the tool description for per-kind params.",
+     "description": "Which transform; see the tool description.",
      "enum": [
       "inline_singleton",
       "compose_method",
@@ -1780,53 +1780,53 @@
      "type": "string"
     },
     "line": {
-     "description": "Zero-based line of the target (e.g. the singleton type for inline_singleton).",
+     "description": "Zero-based line of the target.",
      "type": "integer"
     },
     "newTypeName": {
-     "description": "replace_type_code_with_class: name for the generated enum type.",
+     "description": "replace_type_code_with_class: enum name.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "prefix": {
-     "description": "replace_type_code_with_class: optional constant prefix to convert (e.g. STATUS).",
+     "description": "replace_type_code_with_class: constant prefix (default largest group).",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "protectConstructor": {
-     "description": "Optional, default TRUE: make the constructor private so callers cannot bypass the factory. Setting it false leaves the old path reachable \u2014 the operation then adds a factory rather than replacing the constructor.",
+     "description": "Default true: make the constructor private.",
      "type": "boolean"
     },
     "sections": {
-     "description": "compose_method: >= 2 disjoint {startLine, startColumn, endLine, endColumn, methodName} statement ranges (ZERO-BASED) to extract into named sub-methods.",
+     "description": "compose_method: 2+ disjoint {startLine, startColumn, endLine, endColumn, methodName}, zero-based.",
      "items": {
       "type": "object"
      },
      "type": "array"
     },
     "states": {
-     "description": "THE NULLABLE-FIELD SHAPE ONLY, and required there: one state NAME per branch in source order, plus one for the final else if there is one. Unlike the switch shape there is no constant to read a label off \u2014 the states are implicit in which fields are null \u2014 so saying what each one MEANS is the content of the change and has no default. Ignored on a switch, whose labels name its states already.",
+     "description": "refactor_to_state, nullable-field shape only (required): a state name per branch in order, plus one for a final else.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "symbol": {
-     "description": "Name form (Sprint 24): address the target method (kind form_template_method); the switch- and range-targeted kinds keep their coordinates by its fully-qualified name instead of a file position \u2014 'com.foo.Bar', 'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the method (form_template_method) instead of a position: 'pkg.Type#member' or 'pkg.Type#method(int)'. A position wins.",
      "type": "string"
     },
     "thenName": {
-     "description": "decompose_conditional: name for the extracted then-branch. Omit to leave it alone.",
+     "description": "decompose_conditional: then-branch method name.",
      "type": "string"
     },
     "typeName": {
-     "description": "Name form (Sprint 24): address the target type (kinds inline_singleton / replace_type_code_with_class / refactor_to_visitor) by its fully-qualified type name ('com.foo.Bar') instead of a file position. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the type (type-targeted kinds) ('pkg.Type') instead of a position. A position wins.",
      "type": "string"
     }
    },
@@ -1841,39 +1841,39 @@
   "inputSchema": {
    "properties": {
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "className": {
-     "description": "Name for the new parameter class. REQUIRED \u2014 naming the concept is the refactoring, so there is no default.",
+     "description": "introduce_parameter_object REQUIRED: class name.",
      "type": "string"
     },
     "column": {
-     "description": "Zero-based column number",
+     "description": "Zero-based column.",
      "type": "integer"
     },
     "errorValue": {
-     "description": "REQUIRED. The returned value that means failure, spelled as the source spells it: -1, null, false, \"MISSING\".",
+     "description": "replace_error_code_with_exception REQUIRED: failure value as written, e.g. -1.",
      "type": "string"
     },
     "exceptionType": {
-     "description": "Simple name of the caught exception, to pick one try when the method has several. Optional when there is only one.",
+     "description": "replace_exception_with_precheck: caught type, to pick a try. replace_error_code_with_exception REQUIRED: exception to throw.",
      "type": "string"
     },
     "filePath": {
-     "description": "Path to source file containing the method",
+     "description": "Source file.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "getters": {
-     "description": "Generate a getter per field (default true).",
+     "description": "Getters (default true).",
      "type": "boolean"
     },
     "kind": {
-     "description": "Which signature change to apply. See the tool description.",
+     "description": "Which change; see the tool description.",
      "enum": [
       "change_signature",
       "introduce_parameter_object",
@@ -1890,35 +1890,35 @@
      "type": "string"
     },
     "line": {
-     "description": "Zero-based line number of method declaration",
+     "description": "Zero-based line of the declaration.",
      "type": "integer"
     },
     "literal": {
-     "description": "REQUIRED. The constant's own source text, exactly as written \u2014 1.1, 42, \\\"paid\\\", true. Refused if it occurs zero times or more than once.",
+     "description": "parameterize_function REQUIRED: literal as written, e.g. 1.1 or \\\"paid\\\".",
      "type": "string"
     },
     "message": {
-     "description": "Optional message for the thrown exception.",
+     "description": "Exception message.",
      "type": "string"
     },
     "newName": {
-     "description": "New method name (optional, omit to keep current)",
+     "description": "change_signature: new method name.",
      "type": "string"
     },
     "newParameters": {
-     "description": "New parameter list. Each item: {name, type, defaultValue?}. Order matters.",
+     "description": "change_signature: full new parameter list, in order.",
      "items": {
       "properties": {
        "defaultValue": {
-        "description": "Default value for new params at call sites",
+        "description": "Argument at existing calls, for a new one",
         "type": "string"
        },
        "name": {
-        "description": "Parameter name",
+        "description": "Name",
         "type": "string"
        },
        "type": {
-        "description": "Parameter type",
+        "description": "Type",
         "type": "string"
        }
       },
@@ -1927,66 +1927,66 @@
      "type": "array"
     },
     "newReturnType": {
-     "description": "New return type (optional, omit to keep current)",
+     "description": "change_signature: new return type.",
      "type": "string"
     },
     "parameter": {
-     "description": "REQUIRED. Name of the parameter to remove.",
+     "description": "Parameter to remove, or the boolean flag (remove_flag_argument). REQUIRED there.",
      "type": "string"
     },
     "parameterName": {
-     "description": "Name of the single parameter that replaces the group (optional; JDT's default is the class name, first letter lowercased).",
+     "description": "Name of the new parameter (optional).",
      "type": "string"
     },
     "parameters": {
-     "description": "REQUIRED. Two or more parameter names to fold into one object.",
+     "description": "preserve_whole_object REQUIRED: 2+ parameter names.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "queryCall": {
-     "description": "REQUIRED. Simple name of the call inside the method that becomes a parameter, e.g. 'selectedTemperature'. Refused if it occurs zero times or more than once.",
+     "description": "replace_query_with_parameter REQUIRED: simple name of the call.",
      "type": "string"
     },
     "queryName": {
-     "description": "Name for the query (optional; defaults to the field's own name).",
+     "description": "separate_query_from_modifier: query name (default the field's).",
      "type": "string"
     },
     "receiverFromParameter": {
-     "description": "Only with retargetCallsTo: the name of a parameter whose ARGUMENT becomes the new receiver, dropping out of the argument list \u2014 so `callback.x(slot, a, b)` becomes `slot.<retargetCallsTo>(a, b)`. Use it when the behaviour moved to the object that was being passed in. REFUSED for a constructor (there is no receiver to replace) and for a name that is not a parameter of the target, which is answered with the list of names that are.",
+     "description": "With retargetCallsTo: parameter whose argument becomes the receiver. Not for constructors.",
      "type": "string"
     },
     "retargetCallsTo": {
-     "description": "Rewrite every call site to invoke this (already-existing) method name instead, leaving the declaration unchanged \u2014 e.g. redirect callers of a deprecated method to its replacement. Keeps the RECEIVER as it is; to move the call onto a different object, add receiverFromParameter. Exclusive with the signature/visibility changes; verify the result with compile_workspace.",
+     "description": "Existing method name the call sites should invoke instead; declaration unchanged. Exclusive with signature/visibility changes.",
      "type": "string"
     },
     "setters": {
-     "description": "Generate a setter per field (default false) \u2014 a parameter object is usually read-only.",
+     "description": "Setters (default false).",
      "type": "boolean"
     },
     "symbol": {
-     "description": "Name form (Sprint 24): address the method whose signature changes by its fully-qualified name instead of a file position \u2014 'com.foo.Bar', 'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the method instead of a position: 'pkg.Type#member' or 'pkg.Type#method(int)'. A position wins.",
      "type": "string"
     },
     "topLevel": {
-     "description": "Create the class as its own top-level file (default true); false nests it inside the declaring type.",
+     "description": "Class in its own file (default true).",
      "type": "boolean"
     },
     "typeName": {
-     "description": "Fully-qualified name of the command class, instead of a position.",
+     "description": "replace_command_with_function: command class FQN.",
      "type": "string"
     },
     "visibility": {
-     "description": "New visibility (optional). 'package' removes the access modifier; the response reports the reference-impact list of affected call sites.",
+     "description": "change_signature: new visibility; package removes the modifier.",
      "enum": [
       "public",
       "protected",
@@ -1996,11 +1996,11 @@
      "type": "string"
     },
     "whenFalse": {
-     "description": "REQUIRED. Name for the method callers passing false will call.",
+     "description": "remove_flag_argument REQUIRED: method for false callers.",
      "type": "string"
     },
     "whenTrue": {
-     "description": "REQUIRED. Name for the method callers passing true will call.",
+     "description": "remove_flag_argument REQUIRED: method for true callers.",
      "type": "string"
     }
    },
@@ -2015,55 +2015,55 @@
   "inputSchema": {
    "properties": {
     "accessorName": {
-     "description": "Name of the record component, and so of the accessor every read is rewritten through (default: value).",
+     "description": "replace_primitive: component name (default value).",
      "type": "string"
     },
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "column": {
-     "description": "Zero-based column number on the line.",
+     "description": "Zero-based column.",
      "type": "integer"
     },
     "componentName": {
-     "description": "REQUIRED. The new component's name \u2014 it becomes the accessor every reader calls, so it is the caller's decision and has no default.",
+     "description": "add_record_component REQUIRED: name.",
      "type": "string"
     },
     "componentType": {
-     "description": "REQUIRED. The new component's type, as the source spells it.",
+     "description": "add_record_component REQUIRED: type as source spells it.",
      "type": "string"
     },
     "defaultValue": {
-     "description": "The value passed at EXISTING constructions. Required whenever any exist: a value cannot be derived from a type, and one that compiles is the worst kind of guess.",
+     "description": "Value passed at existing constructions; required if any.",
      "type": "string"
     },
     "delegateMethodName": {
-     "description": "Name for the generated forwarder on the server (default: the hidden call's own name). Every rewritten call site reads it.",
+     "description": "hide_delegate: forwarder name (default the hidden call's).",
      "type": "string"
     },
     "filePath": {
-     "description": "Source file containing the field.",
+     "description": "Source file.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "generateJavadoc": {
-     "description": "Emit Javadoc stubs on the generated accessors (default false).",
+     "description": "Javadoc on accessors (default false).",
      "type": "boolean"
     },
     "getterName": {
-     "description": "Optional. Default: 'get' + Capitalized name; 'is' for boolean.",
+     "description": "encapsulate_field: default getX/isX.",
      "type": "string"
     },
     "itemName": {
-     "description": "Noun for the generated mutators \u2014 itemName=Course gives addCourse/removeCourse (default: the field's name with a trailing 's' dropped). Every call site reads it.",
+     "description": "encapsulate_collection: Course gives addCourse/removeCourse.",
      "type": "string"
     },
     "kind": {
-     "description": "Which state-shape change to apply. See the tool description.",
+     "description": "Which change; see the tool description.",
      "enum": [
       "encapsulate_field",
       "hide_delegate",
@@ -2080,11 +2080,11 @@
      "type": "string"
     },
     "line": {
-     "description": "Zero-based line number on the field.",
+     "description": "Zero-based line of the target.",
      "type": "integer"
     },
     "newFieldVisibility": {
-     "description": "Visibility for the field after encapsulation (default 'private').",
+     "description": "encapsulate_field: default private.",
      "enum": [
       "public",
       "protected",
@@ -2094,39 +2094,39 @@
      "type": "string"
     },
     "newName": {
-     "description": "REQUIRED. Name for the SECOND value. There is no default: saying what the second value means is the whole point of the split, and a generated name would do the mechanics and deliver none of it.",
+     "description": "split_variable REQUIRED: name of the second value.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "queryName": {
-     "description": "Name for the generated query method (default: the field's own name, which reads at the call site as the question it answers).",
+     "description": "replace_derived_variable: query name (default the field's).",
      "type": "string"
     },
     "setterName": {
-     "description": "Optional. Default: 'set' + Capitalized name.",
+     "description": "encapsulate_field: default setX.",
      "type": "string"
     },
     "specialCaseName": {
-     "description": "Name for the generated subclass (default: Null + the type's own name). Every call site reads it, so it is worth choosing.",
+     "description": "special_case: subclass name (default Null<Type>).",
      "type": "string"
     },
     "symbol": {
-     "description": "Name form (Sprint 24): address the field to encapsulate by its fully-qualified name instead of a file position \u2014 'com.foo.Bar', 'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the target instead of a position: 'pkg.Type#member' or 'pkg.Type#method(int)'. A position wins.",
      "type": "string"
     },
     "typeName": {
-     "description": "Name for the generated value type (default: the field's own name, capitalised). Every call site that constructs one reads it.",
+     "description": "replace_primitive: new type name (default from field). Class kinds: class FQN.",
      "type": "string"
     },
     "viaSecondaryConstructor": {
-     "description": "Default false. True adds the component and a SECONDARY constructor taking the OLD component list, delegating to the canonical one with defaultValue \u2014 so every existing construction is left untouched. One file changes instead of all of them. Use it when the default is a sentinel (NaN, null, -1): a value nobody wanted at any site is a value no site should have to spell.",
+     "description": "Add an old-shape constructor instead of rewriting constructions.",
      "type": "boolean"
     }
    },
@@ -2141,23 +2141,23 @@
   "inputSchema": {
    "properties": {
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "column": {
-     "description": "Optional, ZERO-BASED column of that position (default 0).",
+     "description": "Zero-based (default 0).",
      "type": "integer"
     },
     "filePath": {
-     "description": "Optional. Restrict to one file; omit to sweep the whole project.",
+     "description": "One file; omit for the whole project.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "kind": {
-     "description": "Which clean-up to apply. See the tool description.",
+     "description": "Which clean-up; see the tool description.",
      "enum": [
       "add_final",
       "redundant_modifiers",
@@ -2173,19 +2173,19 @@
      "type": "string"
     },
     "line": {
-     "description": "Optional, ZERO-BASED. Restrict the rewrite to the member at this position \u2014 the way a finding names one method. Needs filePath.",
+     "description": "Zero-based: only the member there (needs filePath).",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "symbol": {
-     "description": "Name form (Sprint 24): address the the member to clean up \u2014 the same narrowing as line/column, addressed the way a finding names it by its fully-qualified name instead of a file position \u2014 'com.foo.Bar', 'com.foo.Bar#member', or 'com.foo.Bar#method(int,java.lang.String)'. Explicit filePath/line/column win when both are given.",
+     "description": "FQN of the member to clean up instead of a position: 'pkg.Type#member' or 'pkg.Type#method(int)'. A position wins.",
      "type": "string"
     }
    },
@@ -2200,19 +2200,19 @@
   "inputSchema": {
    "properties": {
     "clean": {
-     "description": "When true, CLEAN_BUILD precedes FULL_BUILD so JDT's incremental compile cache is invalidated (bugs.md #8). Default false.",
+     "description": "Clean build first (default false).",
      "type": "boolean"
     },
     "includeTaskMarkers": {
-     "description": "Include TODO/FIXME markers (default false).",
+     "description": "Include TODO/FIXME.",
      "type": "boolean"
     },
     "limit": {
-     "description": "Max diagnostics returned (default 100); counts always reflect the full set (v2.7.1).",
+     "description": "Max diagnostics (default 100); counts are always full.",
      "type": "integer"
     },
     "minSeverity": {
-     "description": "Drop diagnostics below this severity. Default: ERROR.",
+     "description": "Default ERROR.",
      "enum": [
       "ERROR",
       "WARNING"
@@ -2220,19 +2220,19 @@
      "type": "string"
     },
     "offset": {
-     "description": "Skip the first N diagnostics (pagination; default 0) (v2.7.1).",
+     "description": "Skip N.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "scope": {
-     "description": "Filter diagnostics by the source root's test attribute in the model (every layout, incl. flat PDE bundles \u2014 not a path convention). Project-level files cross-cut; an all-test project's files are test. Default 'both' (jawata-mcp#9).",
+     "description": "Main or test sources (default both).",
      "enum": [
       "main",
       "test",
@@ -2241,7 +2241,7 @@
      "type": "string"
     },
     "summary": {
-     "description": "Counts only (errorCount/warningCount + byProject), NO diagnostics array \u2014 for workspaces with thousands of errors (v2.7.1). Default false.",
+     "description": "Counts only.",
      "type": "boolean"
     }
    },
@@ -2253,7 +2253,7 @@
   "inputSchema": {
    "properties": {
     "action": {
-     "description": "run (default) = synchronous. start = async, returns a sessionId immediately. status/cancel operate on a sessionId (scope not needed). The coverage_* actions query and manage coverage evidence \u2014 including coverage_impacted_tests, which selects the tests a diff actually touches, and coverage_mutation, which checks whether those tests would notice a change.",
+     "description": "Default run.",
      "enum": [
       "run",
       "start",
@@ -2277,19 +2277,19 @@
      "type": "string"
     },
     "artifactId": {
-     "description": "Coverage artifact for the coverage_* actions (default: latest).",
+     "description": "coverage_*: artifact (default latest).",
      "type": "string"
     },
     "attribution": {
-     "description": "Collect PER-TEST coverage segments during this run (implies coverage=true); enables the who-tests-what queries.",
+     "description": "Per-test coverage (implies coverage).",
      "type": "boolean"
     },
     "coverage": {
-     "description": "Collect JaCoCo coverage during this run (action=run/start); the response carries a coverageArtifactId for the coverage_* query actions.",
+     "description": "Record JaCoCo coverage; returns coverageArtifactId.",
      "type": "boolean"
     },
     "diff": {
-     "description": "coverage_delta / coverage_impacted_tests: which git diff (default worktree).",
+     "description": "Default worktree.",
      "enum": [
       "worktree",
       "staged",
@@ -2298,7 +2298,7 @@
      "type": "string"
     },
     "evidenceKind": {
-     "description": "Evidence classification recorded in the coverage artifact (default unit).",
+     "description": "Coverage label (default unit).",
      "enum": [
       "unit",
       "integration",
@@ -2309,22 +2309,22 @@
      "type": "string"
     },
     "execFile": {
-     "description": "coverage_import: path to an external jacoco.exec (CI run); acceptance is gated by the class-id check.",
+     "description": "coverage_import: jacoco.exec path.",
      "type": "string"
     },
     "extraClasspath": {
-     "description": "Launch descriptor: extra jar/dir paths appended to the runner classpath at RUNTIME only (e.g. plain-Java projects whose build model cannot declare them).",
+     "description": "Extra runtime classpath entries.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "forScope": {
-     "description": "coverage_impacted_tests: the scope you mean to NARROW, so the verdict can be a complete answer rather than a half of one \u2014 'whole-suite' (the default, and the strictest) or 'package:com.foo'. Evidence recorded from a run narrower than this cannot say which tests cover it, only which cover what that run happened to execute, so selectionVerdict.mayNarrow comes back false and says which.",
+     "description": "coverage_impacted_tests: whole-suite (default) or package:com.foo.",
      "type": "string"
     },
     "framework": {
-     "description": "Default 'auto' \u2014 detected from project classpath.",
+     "description": "Default auto.",
      "enum": [
       "junit4",
       "junit5",
@@ -2334,49 +2334,49 @@
      "type": "string"
     },
     "fullRun": {
-     "description": "PIN the whole scope. A kind='package' run otherwise narrows ITSELF to the tests the coverage evidence says your changes reach \u2014 by default, on every client and OS, with no flag to remember. Pass this true where the whole scope is the point: a checkpoint, a release gate. Where the evidence cannot prove the narrowing is safe the response SAYS SO and everything runs anyway, so a quiet short run is not a state this can reach. Only the test-manager seat may pass it (a developer runs the tests its change reaches), and it gives a reason.",
+     "description": "Run the whole package scope, no narrowing (checkpoint/release). Only the test-manager seat may pass it, with reason.",
      "type": "boolean"
     },
     "lineThresholdPercent": {
-     "description": "coverage_threshold_set: the line-coverage threshold; every change bumps the stored policy VERSION.",
+     "description": "coverage_threshold_set.",
      "type": "number"
     },
     "name": {
-     "description": "Baseline name for coverage_baseline_set/compare.",
+     "description": "Baseline name.",
      "type": "string"
     },
     "otherArtifactId": {
-     "description": "coverage_stability: the second same-selection artifact.",
+     "description": "coverage_stability: second run's artifact.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "range": {
-     "description": "Commit range for diff=range, e.g. 'HEAD~1..HEAD'.",
+     "description": "diff=range: e.g. HEAD~1..HEAD.",
      "type": "string"
     },
     "reason": {
-     "description": "fullRun only: why the whole scope is run now, for the pm the test-manager answers to to weigh against what a full run costs the machine. Required from the test-manager seat when fullRun is true.",
+     "description": "fullRun: why; required from test-manager.",
      "type": "string"
     },
     "scope": {
      "properties": {
       "column": {
-       "description": "Zero-based column. Paired with filePath + line for cursor-position lookup (kind=method or kind=class).",
+       "description": "Zero-based.",
        "type": "integer"
       },
       "filePath": {
-       "description": "Source file. For kind=method or kind=class; must be paired with {line, column}, never with methodName.",
+       "description": "With line and column.",
        "type": "string"
       },
       "kind": {
-       "description": "Scope of the test run.",
+       "description": "Scope kind.",
        "enum": [
         "method",
         "class",
@@ -2385,19 +2385,19 @@
        "type": "string"
       },
       "line": {
-       "description": "Zero-based line. Paired with filePath + column for cursor-position lookup (kind=method or kind=class).",
+       "description": "Zero-based.",
        "type": "integer"
       },
       "methodName": {
-       "description": "Test method name. Must be paired with typeName for kind=method. NOT valid with filePath \u2014 use {filePath, line, column} for cursor-position lookups instead.",
+       "description": "With typeName only.",
        "type": "string"
       },
       "packageName": {
-       "description": "Package FQN (kind=package).",
+       "description": "Package FQN.",
        "type": "string"
       },
       "typeName": {
-       "description": "Fully-qualified class name. For kind=class: pass alone. For kind=method: pair with methodName.",
+       "description": "Class FQN.",
        "type": "string"
       }
      },
@@ -2407,51 +2407,51 @@
      "type": "object"
     },
     "sessionId": {
-     "description": "Session handle from action=start; required for status/cancel.",
+     "description": "status/cancel: id from start.",
      "type": "string"
     },
     "symbols": {
-     "description": "coverage_impacted_tests: explicit symbol list (else derived from the git diff).",
+     "description": "coverage_impacted_tests: changed symbols (default: from git diff).",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "target": {
-     "description": "coverage_uncovered / coverage_tests_covering target: 'com.example.Foo' or 'com.example.Foo#method'.",
+     "description": "'pkg.Foo' or 'pkg.Foo#method'.",
      "type": "string"
     },
     "targetClasses": {
-     "description": "coverage_mutation: the production classes to mutate (typically the CHANGED classes \u2014 mutation is always targeted).",
+     "description": "coverage_mutation: classes to mutate.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "targetTests": {
-     "description": "coverage_mutation: the exercising test classes; omitted = derived from attribution evidence.",
+     "description": "coverage_mutation: tests (default from attribution).",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "test": {
-     "description": "coverage_of_test: 'com.example.FooTest#method'.",
+     "description": "coverage_of_test: 'pkg.FooTest#method'.",
      "type": "string"
     },
     "timeoutSeconds": {
-     "description": "Default 120; hard-capped at 600.",
+     "description": "Default 120, max 600.",
      "type": "integer"
     },
     "vmArgs": {
-     "description": "Optional JVM flags for the forked test runner.",
+     "description": "JVM flags for the runner.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "waivers": {
-     "description": "coverage_threshold_set: [{pattern, reason}] \u2014 always visible in threshold-bearing responses.",
+     "description": "coverage_threshold_set: [{pattern, reason}].",
      "items": {
       "type": "object"
      },
@@ -2466,7 +2466,7 @@
   "inputSchema": {
    "properties": {
     "action": {
-     "description": "Which debug action to run.",
+     "description": "See the tool description.",
      "enum": [
       "discover",
       "launch",
@@ -2501,92 +2501,92 @@
      "type": "string"
     },
     "args": {
-     "description": "launch: program arguments.",
+     "description": "Program arguments.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "artifactId": {
-     "description": "artifact_delete: which artifact to remove.",
+     "description": "artifact_delete.",
      "type": "string"
     },
     "breakpointId": {
-     "description": "breakpoint_clear: which breakpoint.",
+     "description": "breakpoint_clear.",
      "type": "string"
     },
     "budget": {
-     "description": "probe_set: stop after this many events (default 1000). The probe then disables itself and says so \u2014 what you have is the first N, not all.",
+     "description": "probe_set: max events (default 1000).",
      "type": "integer"
     },
     "capture": {
-     "description": "probe_set kind=logpoint: expressions to evaluate at each pass. NOTE: capturing reads a frame, which STOPS the thread briefly \u2014 the probe reports perturbs:true. Without capture, nothing is stopped.",
+     "description": "Expressions to record; on a logpoint this stops the thread each pass (perturbs).",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "classFile": {
-     "description": "redefine: path to the compiled .class with the new method bodies.",
+     "description": "redefine: compiled .class path.",
      "type": "string"
     },
     "className": {
-     "description": "breakpoint_set / step(to_line) / instances: the fully-qualified class (a nested class is Outer$Inner). For kind=exception, the exception class.",
+     "description": "Class FQN (nested: Outer$Inner); for kind=exception, the exception.",
      "type": "string"
     },
     "classpath": {
-     "description": "launch: the target's classpath.",
+     "description": "launch/replay.",
      "type": "string"
     },
     "condition": {
-     "description": "breakpoint_set kind=conditional: a boolean Java expression, evaluated in the frame that hit. A condition that cannot be evaluated STOPS and reports the error \u2014 it is never silently treated as false.",
+     "description": "kind=conditional: boolean Java expression.",
      "type": "string"
     },
     "configArea": {
-     "description": "launch (eclipse-rcp): -configuration area for the launched instance \u2014 point it at a scratch dir to leave the product's own configuration untouched.",
+     "description": "RCP: -configuration (use a scratch dir).",
      "type": "string"
     },
     "configuration": {
-     "description": "launch (a host that runs programs for jawata, such as Eclipse): the name of the person's run configuration to run with the debug agent, and attach to. Exclusive with mainClass/classpath/launcherPath. The program is not held at its start.",
+     "description": "launch: an IDE run configuration's name; exclusive with mainClass/classpath/launcherPath.",
      "type": "string"
     },
     "depth": {
-     "description": "snapshot/instances: how deep to expand objects (default 3).",
+     "description": "Object expansion depth (default 3).",
      "type": "integer"
     },
     "expression": {
-     "description": "evaluate: the Java expression to evaluate in that frame.",
+     "description": "Java expression.",
      "type": "string"
     },
     "field": {
-     "description": "breakpoint_set kind=field_access|field_write: the field to watch.",
+     "description": "Field name.",
      "type": "string"
     },
     "frameIndex": {
-     "description": "snapshot/evaluate: which stack frame (0 = the top, where it stopped). Default 0.",
+     "description": "Stack frame (default 0, top).",
      "type": "integer"
     },
     "hitCount": {
-     "description": "breakpoint_set kind=hit_count: stop on the Nth occurrence.",
+     "description": "kind=hit_count: Nth occurrence.",
      "type": "integer"
     },
     "iniPath": {
-     "description": "launch (eclipse-rcp): optional explicit .ini (--launcher.ini); default = the launcher's sibling ini.",
+     "description": "RCP: .ini (default beside launcher).",
      "type": "string"
     },
     "invariant": {
-     "description": "replay: a boolean Java expression that must ALWAYS hold (e.g. \"balance >= 0\"). Armed as its own negation, so the program runs at speed and stops only where it is actually broken.",
+     "description": "replay: boolean expression that must always hold.",
      "type": "string"
     },
     "jvmArgs": {
-     "description": "launch: extra JVM flags, ON TOP of the dev/sim preset.",
+     "description": "Extra JVM flags.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "kind": {
-     "description": "breakpoint_set: which kind of breakpoint.",
+     "description": "breakpoint_set kind.",
      "enum": [
       "line",
       "method",
@@ -2599,7 +2599,7 @@
      "type": "string"
     },
     "launcherPath": {
-     "description": "launch (eclipse-rcp shape): the product's NATIVE launcher executable. Exclusive with mainClass/classpath \u2014 the command becomes <launcher> [program args] --launcher.appendVmargs -vmargs <preset + vmargsExtra>, so the ini's own vmargs stay and the preset appends.",
+     "description": "launch Eclipse RCP: native launcher; exclusive with mainClass/classpath.",
      "type": "string"
     },
     "limit": {
@@ -2607,27 +2607,27 @@
      "type": "integer"
     },
     "line": {
-     "description": "breakpoint_set (line/conditional/hit_count) and step(to_line): the source line.",
+     "description": "Source line.",
      "type": "integer"
     },
     "mainClass": {
-     "description": "launch: the class to run.",
+     "description": "launch/replay: class to run.",
      "type": "string"
     },
     "maxBytes": {
-     "description": "snapshot: string clip length (default 4096).",
+     "description": "String clip (default 4096).",
      "type": "integer"
     },
     "maxItems": {
-     "description": "snapshot: array elements / fields per level (default 20).",
+     "description": "Per level (default 20).",
      "type": "integer"
     },
     "method": {
-     "description": "breakpoint_set kind=method: the method to break on entry of.",
+     "description": "Method name.",
      "type": "string"
     },
     "mode": {
-     "description": "step: which step.",
+     "description": "step.",
      "enum": [
       "in",
       "over",
@@ -2637,54 +2637,54 @@
      "type": "string"
     },
     "name": {
-     "description": "set_value: the local or field to overwrite.",
+     "description": "set_value: local or field.",
      "type": "string"
     },
     "offset": {
-     "description": "instances: page offset (default 0).",
+     "description": "instances: page offset.",
      "type": "integer"
     },
     "pid": {
-     "description": "attach: the JVM to attach to (from action=discover).",
+     "description": "attach: from discover.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "probeId": {
-     "description": "probe_clear / probe_read: which probe.",
+     "description": "probe_clear/probe_read.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "sessionId": {
-     "description": "status/detach/cancel: the session handle.",
+     "description": "Session id.",
      "type": "string"
     },
     "threadId": {
-     "description": "snapshot/evaluate/step/resume: the suspended thread (from a hit or from action=threads). resume: omit to resume every suspended thread.",
+     "description": "Suspended thread; resume: omit for all.",
      "type": "integer"
     },
     "timeoutMillis": {
-     "description": "wait: how long to BLOCK waiting for a hit (default 30000, max 240000). A timeout is a normal answer \u2014 'nothing yet' \u2014 not an error, and nothing is lost: the hit keeps the thread suspended until you collect it. replay: how long to run before giving up (default 60000); there, 'no violation yet, still running' is NOT the same answer as 'the invariant held', and the response says which it is.",
+     "description": "wait: default 30000, max 240000. replay: default 60000.",
      "type": "integer"
     },
     "vmargsExtra": {
-     "description": "launch (eclipse-rcp): extra VM args appended AFTER the preset in the -vmargs block.",
+     "description": "RCP: extra VM args.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "workingDirectory": {
-     "description": "launch: the target's working directory.",
+     "description": "launch.",
      "type": "string"
     },
     "workspaceArea": {
-     "description": "launch (eclipse-rcp): -data workspace for the launched instance \u2014 scratch dir for the same reason.",
+     "description": "RCP: -data (use a scratch dir).",
      "type": "string"
     }
    },
@@ -2699,7 +2699,7 @@
   "inputSchema": {
    "properties": {
     "action": {
-     "description": "Which profiling action to run.",
+     "description": "See the tool description.",
      "enum": [
       "threads",
       "deadlock",
@@ -2729,31 +2729,31 @@
      "type": "string"
     },
     "adapterCommand": {
-     "description": "native_handoff: the external debugger command (default \"gdb\"; \"lldb\" also understood).",
+     "description": "native_handoff: default gdb; or lldb.",
      "type": "string"
     },
     "alarmFile": {
-     "description": "incident_arm: the path the TARGET writes to when it declares an alarm. jawata watches for it; the target decides what and when.",
+     "description": "incident_arm: file the target writes to raise the alarm.",
      "type": "string"
     },
     "artifactId": {
-     "description": "artifact_delete: which artifact to remove. hotspots: which JFR artifact to rank (from action=sample or action=jfr_dump). call_tree: the same \u2014 the tree reads a recording already taken, so it costs no second sample.",
+     "description": "From sample/jfr_dump, or to delete.",
      "type": "string"
     },
     "attribute": {
-     "description": "jmx_read: the attribute to read.",
+     "description": "jmx_read.",
      "type": "string"
     },
     "className": {
-     "description": "latency_seam: the fully-qualified class (Outer$Inner for a nested one) declaring the seam method \u2014 JDT-resolved against the workspace source before the live JVM is touched.",
+     "description": "Class FQN (nested: Outer$Inner).",
      "type": "string"
     },
     "corePath": {
-     "description": "native_handoff: path to the core dump. Omitted: inferred from the hs_err file's own \"dumping to ...\" line.",
+     "description": "native_handoff: core dump (default from hs_err).",
      "type": "string"
     },
     "dimension": {
-     "description": "hotspots: which profile to rank by (default cpu). cpu/alloc/lock rank by sample count; wall ranks by total elapsed milliseconds per method \u2014 on-CPU time plus time BLOCKED IN work, attributed to the blocked method itself rather than to the JVM primitive it parked in. Time whose stack is READABLE but entirely JVM namespaces is a thread WAITING FOR work: it is reported beside the ranking as idleWallMillis/idleEvents and is NOT in the rows, because one collapsed park row otherwise outranks every real method. An event whose frames could not be read at all is a different fact and is counted as eventsWithoutStack, never as idle. Each row carries blockingEvents and cpuSamples, the observations its milliseconds were summed from, and sharePercent of the ranked total. gc is a pause summary.",
+     "description": "hotspots (default cpu). cpu/alloc/lock count samples; wall is elapsed ms on CPU plus blocked in work (idle waiting is reported apart as idleWallMillis, unreadable stacks as eventsWithoutStack); gc is a pause summary.",
      "enum": [
       "cpu",
       "alloc",
@@ -2764,83 +2764,83 @@
      "type": "string"
     },
     "durationSeconds": {
-     "description": "sample: how long to record (default 5, max 30). latency_seam: how long to trace (default 5, max 30). Either call BLOCKS for this long.",
+     "description": "sample (default 5, max 30), latency_seam (default 5, max 30).",
      "type": "integer"
     },
     "entryPoint": {
-     "description": "call_tree (required): the method the tree is rooted at, as Type#method, or a bare Type to enter at any of its methods. Samples whose stack never passes through it are not this question's business, and a tree with no root is every thread's Thread#run, which names nothing. Zero samples through it is reported as an ABSENCE of samples rather than as a measurement that the method is fast.",
+     "description": "call_tree REQUIRED: Type#method or Type.",
      "type": "string"
     },
     "expectedIntervalMillis": {
-     "description": "latency_seam: the target's intended gap between calls, for the coordinated-omission correction. Omitted: inferred as the median observed gap between call starts.",
+     "description": "latency_seam: intended gap between calls (default: inferred).",
      "type": "integer"
     },
     "expirySeconds": {
-     "description": "log_level: after this long, the level automatically REVERTS to what it was. Omitted: the change is permanent until set again.",
+     "description": "log_level: revert after this long; omitted = permanent.",
      "type": "integer"
     },
     "hsErrFile": {
-     "description": "native_hs_err / native_nmt / native_handoff: path to the hs_err_pid<pid>.log the crashed JVM wrote. No sessionId \u2014 the process that crashed is gone.",
+     "description": "native_*: hs_err_pid<pid>.log.",
      "type": "string"
     },
     "incidentId": {
-     "description": "incident_status / incident_get / incident_disarm: the handle from action=incident_arm.",
+     "description": "From incident_arm.",
      "type": "string"
     },
     "jfrSliceSeconds": {
-     "description": "incident_arm: how much of the continuous recording's recent past to keep in the bundle (default 15).",
+     "description": "incident_arm: recording kept (default 15).",
      "type": "integer"
     },
     "level": {
-     "description": "log_level: the new level (e.g. FINE, INFO, WARNING) \u2014 the java.util.logging.Level constant names.",
+     "description": "log_level: e.g. FINE, INFO.",
      "type": "string"
     },
     "limit": {
-     "description": "histogram: max rows (default 20, max 200). hotspots: max rows (default 20, max 200). The true total is always reported too.",
+     "description": "histogram (default 20, max 200), hotspots (default 20, max 200).",
      "type": "integer"
     },
     "live": {
-     "description": "heap_dump / incident_arm: reachable objects only after a full GC (default true, smaller); false includes unreachable garbage too.",
+     "description": "Reachable objects only (default true).",
      "type": "boolean"
     },
     "logFile": {
-     "description": "incident_arm: the target's own application log, if any \u2014 the last lines are sliced into the bundle. Omit if there is none.",
+     "description": "incident_arm: application log to slice.",
      "type": "string"
     },
     "loggerName": {
-     "description": "log_level: the logger's name; \"\" (default) is the root logger.",
+     "description": "log_level: \"\" = root.",
      "type": "string"
     },
     "maxDepth": {
-     "description": "call_tree: how deep to render below the entry point (default 12, max 40). A node whose children are cut says how many were cut, because a tree truncated in silence reads as a leaf.",
+     "description": "call_tree: default 12, max 40.",
      "type": "integer"
     },
     "maxFrames": {
-     "description": "threads: max stack frames per thread (default 20).",
+     "description": "threads: default 20.",
      "type": "integer"
     },
     "method": {
-     "description": "latency_seam: the seam method's name (no overload disambiguation \u2014 all overloads on the class are traced together).",
+     "description": "latency_seam: method name (all overloads).",
      "type": "string"
     },
     "objectName": {
-     "description": "jmx_read: the MBean's ObjectName (e.g. \"java.lang:type=Memory\").",
+     "description": "jmx_read: e.g. java.lang:type=Memory.",
      "type": "string"
     },
     "offset": {
-     "description": "hotspots: pagination offset (default 0).",
+     "description": "hotspots: page offset.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "sessionId": {
-     "description": "Every action but artifacts/artifact_delete: the session handle (from debug(action=launch|attach)).",
+     "description": "Debug session id.",
      "type": "string"
     }
    },
@@ -2855,57 +2855,57 @@
   "inputSchema": {
    "properties": {
     "boardFile": {
-     "description": "Optional. The sprint's ...-plan.md. When given, the plan board in it is drawn from the plan ledger as soon as this hire's gates have run, and the answer carries what was drawn or why it was not.",
+     "description": "Sprint ...-plan.md whose plan board is redrawn.",
      "type": "string"
     },
     "brief": {
-     "description": "The instruction the hired brain is given, verbatim.",
+     "description": "Given to the hired brain verbatim.",
      "type": "string"
     },
     "claims": {
-     "description": "Optional. The packages this hire will work in, such as org.jawata.mcp.execution. A claim that overlaps one that another running agent holds is refused, and the refusal names the agent that holds it; a claim an agent above this one holds admits this hire. The claim lasts until the hire ends, however it ends.",
+     "description": "Packages this hire works in.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "fixes": {
-     "description": "Optional. The plan id, from an earlier hire's answer, of the hire this one CORRECTS. Send it when a result was mostly right and a few parts are not acceptable: the brief names exactly what to correct, the earlier hire is accepted with this fix to follow, and this hire's journal row and answer name it. Leave it out when this hire corrects nothing.",
+     "description": "Plan id of an earlier hire this one corrects.",
      "type": "string"
     },
     "hirer": {
-     "description": "The seat issuing the brief. Leave it out: a hired seat and the chat's main are known by their session. Required only from a caller the engine does not know.",
+     "description": "Omit unless the engine does not know you.",
      "type": "string"
     },
     "instructionsFrom": {
-     "description": "Optional. The plan id of the PM or chief-engineer hire whose INSTRUCTION blocks this hire carries out. The answer then reports how many ran as written (one tool, one call, the arguments written, no rework) and the issuer's tokens per instruction that did, read from the two hire records and never from either seat's report of itself.",
+     "description": "Plan id of the pm/chief-engineer hire whose instructions this one carries out (scores them).",
      "type": "string"
     },
     "observerSeatFile": {
-     "description": "Optional, with instructionsFrom. The observer seat's markdown. When given, each step of this worker that did not run as the issuer's instruction wrote it is shown to that seat, and a step it halts comes back as a correction naming the number of the instruction, in the answer's instructionScore.observer. Without it the rules still flag the steps and say they were not judged.",
+     "description": "With instructionsFrom: observer seat file that judges steps not run as written.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "seat": {
-     "description": "The seat being hired, by name, such as test-manager. Named on the record beside the hirer.",
+     "description": "Seat name, e.g. test-manager.",
      "type": "string"
     },
     "seatFile": {
-     "description": "Only for a seat that is not in the engine's seats folder: the path to its markdown, whose frontmatter is the hire \u2014 the brain, the model and the attachable tools. Left out, the engine reads the file of the seat's name from its own seats folder.",
+     "description": "Only for a seat not in the engine's seats folder.",
      "type": "string"
     },
     "steps": {
-     "description": "The gates, in order. Each is {tool, arguments[, expect]} \u2014 a jawata tool name and the arguments it is called with. They run after the brain answers. A gate that SEARCHES (it answers with matches) passes only on what it finds: expect {\"matches\": N} states the count it must find (0 for \"none of this is left\"), and a search that states nothing passes only on at least one match, so a search over a document that found nothing is not a pass.",
+     "description": "Gates in order: jawata tool calls {tool, arguments[, expect]}. A search gate passes on at least one match unless expect {\"matches\": N} says otherwise.",
      "items": {
       "properties": {
        "arguments": {
         "type": "object"
        },
        "expect": {
-        "description": "Optional. What a gate must find: {\"matches\": N} for a search, or {\"changed\": true} (false) for a lookup of kind git_diff, nothing else, that must show a change (none): a diff shows the unstaged changes of tracked files, so a new file or a staged change reads as no change.",
+        "description": "{\"matches\": N}, or {\"changed\": true|false} for lookup git_diff only (unstaged changes of tracked files).",
         "type": "object"
        },
        "tool": {
@@ -2917,7 +2917,7 @@
      "type": "array"
     },
     "workingDirectory": {
-     "description": "Where the brain runs \u2014 REQUIRED, never defaulted. It is the hire's blast radius: the brain reads and may write here, so a caller states it rather than inheriting the resident's own directory.",
+     "description": "Where the brain runs, reads and may write. REQUIRED.",
      "type": "string"
     }
    },
@@ -2935,15 +2935,15 @@
   "inputSchema": {
    "properties": {
     "limit": {
-     "description": "Most problems listed (default 100), errors first; the summary counts all of them.",
+     "description": "Max problems listed (default 100), errors first.",
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     }
    },
@@ -2955,27 +2955,27 @@
   "inputSchema": {
    "properties": {
     "allowPublicApi": {
-     "description": "Required true to annotate a public/protected (exported) target.",
+     "description": "Needed for public/protected targets.",
      "type": "boolean"
     },
     "auto_apply": {
-     "description": "Default true: perform the refactoring immediately and return { filesModified, diff, undoChangeId }. Set false to stage only \u2014 returns { changeId, diff } for a later refactoring(action=apply) call.",
+     "description": "Default true: apply, returning undoChangeId. false: stage, returning changeId for refactoring(action=apply).",
      "type": "boolean"
     },
     "filePath": {
-     "description": "For kind=migrate: optional scope to one file; omit to migrate the project.",
+     "description": "migrate: one file (default project).",
      "type": "string"
     },
     "from": {
-     "description": "For kind=migrate: source nullness family (JSPECIFY/ECLIPSE/JETBRAINS/JSR305/...).",
+     "description": "migrate: source family.",
      "type": "string"
     },
     "fullDiff": {
-     "description": "Default false: the response carries diffSummary (one row per file with its hunk and line counts) and the diff text capped at 24000 characters, setting truncated:true when it was cut. Set true for the whole diff \u2014 a 144-reference rename answered 167,785 characters, which a client could not display at all.",
+     "description": "true: whole diff. Default: diffSummary plus the diff capped at 24000 chars.",
      "type": "boolean"
     },
     "kind": {
-     "description": "Which mutation to apply. See the tool description.",
+     "description": "add or migrate.",
      "enum": [
       "add",
       "migrate"
@@ -2983,7 +2983,7 @@
      "type": "string"
     },
     "nullness": {
-     "description": "Which annotation to add.",
+     "description": "add: annotation.",
      "enum": [
       "nullable",
       "nonnull"
@@ -2991,27 +2991,27 @@
      "type": "string"
     },
     "parameter": {
-     "description": "Optional. For a method target, annotate this parameter instead of the return.",
+     "description": "add: parameter instead of the return.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "style": {
-     "description": "Optional nullness family override (JSPECIFY/ECLIPSE/JETBRAINS/...). Default: detected, else JSpecify.",
+     "description": "Family, e.g. JSPECIFY, ECLIPSE, JETBRAINS (default detected).",
      "type": "string"
     },
     "symbol": {
-     "description": "FQN target: \"com.foo.Bar#method\" or \"com.foo.Bar#field\".",
+     "description": "pkg.Type#method or pkg.Type#field.",
      "type": "string"
     },
     "to": {
-     "description": "For kind=migrate: target family (default JSPECIFY).",
+     "description": "migrate: target family.",
      "type": "string"
     }
    },
@@ -3047,11 +3047,11 @@
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "version": {
@@ -3073,11 +3073,11 @@
      "type": "boolean"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "scope": {
@@ -3133,11 +3133,11 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "typeName": {
@@ -3156,7 +3156,7 @@
   "inputSchema": {
    "properties": {
     "action": {
-     "description": "Which lifecycle action to run.",
+     "description": "What to do.",
      "enum": [
       "apply",
       "undo",
@@ -3169,19 +3169,19 @@
      "type": "string"
     },
     "changeId": {
-     "description": "apply/inspect: the staged change id.",
+     "description": "apply/inspect: staged change id.",
      "type": "string"
     },
     "column": {
-     "description": "plan: zero-based caret column.",
+     "description": "plan: zero-based.",
      "type": "integer"
     },
     "filePath": {
-     "description": "plan: source file of the refactoring target.",
+     "description": "plan: source file.",
      "type": "string"
     },
     "kind": {
-     "description": "plan: which multi-step refactoring to plan.",
+     "description": "plan: what to plan.",
      "enum": [
       "compose_method",
       "replace_type_code_with_class",
@@ -3193,38 +3193,38 @@
      "type": "string"
     },
     "line": {
-     "description": "plan: zero-based caret line.",
+     "description": "plan: zero-based.",
      "type": "integer"
     },
     "newTypeName": {
-     "description": "plan (replace_type_code_with_class): name for the generated type.",
+     "description": "plan replace_type_code_with_class: type name.",
      "type": "string"
     },
     "planId": {
-     "description": "apply_plan/inspect_plan/undo_plan: the plan id from `plan`.",
+     "description": "Plan id from plan.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "projectKey": {
-     "description": "Optional. Restrict the query to a single loaded project (see project(action=list)). Omit to search all projects in the workspace.",
+     "description": "Restrict to one loaded project (project action=list); default all.",
      "type": "string"
     },
     "sections": {
-     "description": "plan (compose_method): statement ranges to extract, each {startLine,startColumn,endLine,endColumn,methodName} (0-based).",
+     "description": "plan compose_method: {startLine,startColumn,endLine,endColumn,methodName}, zero-based.",
      "items": {
       "type": "object"
      },
      "type": "array"
     },
     "target": {
-     "description": "plan: optional symbol/label for advice + display.",
+     "description": "plan: label (optional).",
      "type": "string"
     },
     "undoChangeId": {
-     "description": "undo: the undo handle id.",
+     "description": "undo: undo handle.",
      "type": "string"
     }
    },
@@ -3239,7 +3239,7 @@
   "inputSchema": {
    "properties": {
     "action": {
-     "description": "describe: 'next' takes the source units still to describe, 'done' records one as described, 'area' answers what the package a given file lives in is FOR \u2014 its area and the jobs inside it \u2014 and 'jobs_for' answers, for each member you name, the job the store ALREADY holds for it \u2014 in that job's own words, because a flag saying one exists cannot tell you whether the work in front of you is the same work \u2014 and lists the members that have none.",
+     "description": "describe: next (units to describe), done (record one), area (what a file's package is for), jobs_for (stored job per member).",
      "enum": [
       "next",
       "done",
@@ -3249,31 +3249,31 @@
      "type": "string"
     },
     "agent": {
-     "description": "transcript_append: what the agent said to him in the turn, verbatim.",
+     "description": "transcript_append: agent's words, verbatim.",
      "type": "string"
     },
     "budget_ms": {
-     "description": "recall/primer: the CALLER's deadline in milliseconds \u2014 state it when your own timeout is shorter than the 15s default, so a wedged store answers KNOWLEDGE_UNAVAILABLE inside your window instead of a transport timeout. Clamped: a caller may ask for a faster answer, never a longer wait.",
+     "description": "recall/primer: your deadline in ms (default 15s; can only shorten).",
      "type": "integer"
     },
     "bundle": {
-     "description": "describe action=done: which bundle the unit belongs to, for the coverage report. Omitted is a real state and is counted as 'unattributed' rather than folded into another bundle.",
+     "description": "describe done: bundle of the unit.",
      "type": "string"
     },
     "capture": {
-     "description": "transcript_append: 'turn' for a capture at a turn's end (default), 'compaction' for the catch-up taken before a compaction.",
+     "description": "transcript_append: turn (default) or compaction.",
      "type": "string"
     },
     "cause": {
-     "description": "record: the DIAGNOSIS \u2014 the underlying problem the solution addresses, distinct from the symptoms that reveal it. One symptom has many causes (a fast heartbeat: running, a heart attack, a virus) and the solution binds to the cause; when a symptom recall returns several entries, this field is what discriminates between them. Optional; never derived.",
+     "description": "record: the underlying problem, distinct from its symptoms.",
      "type": "string"
     },
     "changedLines": {
-     "description": "describe action=jobs_for, with filePaths: the lines the caller WROTE, as an object from a file path (spelled as in filePaths) to a list of [first, last] line pairs, 1-based and inclusive. Only the methods those lines fall in \u2014 their Javadoc included \u2014 are asked about. A file with no entry, or an empty list, is asked about whole, which is the default: silence is never read as 'nothing was written'. Lines that fall in no method ask about nothing, and the call is refused rather than answered with an empty list.",
+     "description": "jobs_for with filePaths: {path: [[first,last]]}, 1-based; only methods in those lines.",
      "type": "object"
     },
     "client": {
-     "description": "transcript_append: the client that held the session.",
+     "description": "transcript_append: client.",
      "type": "string"
     },
     "confidence": {
@@ -3286,41 +3286,41 @@
      "type": "string"
     },
     "confirm": {
-     "description": "wipe_and_import: REQUIRED true (wipes first). dedup: true = merge the groups.",
+     "description": "wipe_and_import REQUIRED; dedup: merge.",
      "type": "boolean"
     },
     "contentHash": {
-     "description": "describe action=done: the contentHash action=next handed you WITH that unit. Required, and not re-read from the file on purpose \u2014 you described the text you were given, and recording today's text instead would claim a description nobody wrote and retire the unit for good.",
+     "description": "describe done REQUIRED: the hash next gave with that unit.",
      "type": "string"
     },
     "days": {
-     "description": "prune: age threshold in days for rejected/superseded (default 30).",
+     "description": "prune: age of rejected/superseded (default 30; 0 all).",
      "type": "integer"
     },
     "details": {
-     "description": "record: the longer story \u2014 including artifacts: paths, flags, ids and code references live HERE, not in symptoms.",
+     "description": "record: longer story; paths, ids and code references go here.",
      "type": "string"
     },
     "entries": {
-     "description": "import: exported entries (inline alternative to path).",
+     "description": "import: exported entries.",
      "items": {
       "type": "object"
      },
      "type": "array"
     },
     "exceptions": {
-     "description": "record: exceptions / caveats.",
+     "description": "record: caveats.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "external_system": {
-     "description": "record: the external dependency, when the fault is external.",
+     "description": "External dependency.",
      "type": "string"
     },
     "fault_owner": {
-     "description": "record: who owns the fault.",
+     "description": "record: fault owner.",
      "enum": [
       "internal",
       "external",
@@ -3329,18 +3329,18 @@
      "type": "string"
     },
     "filePath": {
-     "description": "describe action=area: the source file whose package you want described. The package is derived through JDT rather than from the directory names, because which package a file declares is a fact about source roots that a path cannot be read for.",
+     "description": "describe area: source file.",
      "type": "string"
     },
     "filePaths": {
-     "description": "describe action=jobs_for: source files whose members should be derived and asked about, instead of naming each member yourself. Needs a loaded project \u2014 which members a file declares is JDT's answer, and a caller parsing the file itself would be guessing. Without a project this REFUSES rather than answering that nothing is missing.",
+     "description": "jobs_for: source files whose members to ask about (needs a loaded project).",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "format": {
-     "description": "recall/primer/list: text = flat injection-ready lines; default json.",
+     "description": "recall/primer/list (default json).",
      "enum": [
       "json",
       "text"
@@ -3348,34 +3348,34 @@
      "type": "string"
     },
     "full": {
-     "description": "recall with lane=transcript alone and a session: every turn of that session in full (what was typed, what the agent said, one line per tool call), unclipped, for a host reloading it.",
+     "description": "recall, lane=transcript alone with a session: every turn in full.",
      "type": "boolean"
     },
     "gate": {
-     "description": "record, for a seat outcome (operation=seat:<name>) of work no code gate applies to, such as a plan fold: the gate that applies to that work (for a document, the search that found the folded text), or that no code gate applies and why. A seat outcome with neither this nor an answered gate call is refused.",
+     "description": "record of a seat outcome with no answered gate call: the gate that applies, or why none (else refused).",
      "type": "string"
     },
     "his": {
-     "description": "transcript_append: what he typed in the turn, verbatim.",
+     "description": "transcript_append: user's words, verbatim.",
      "type": "string"
     },
     "id": {
-     "description": "promote: the entry id to re-status.",
+     "description": "Entry id.",
      "type": "string"
     },
     "ids": {
-     "description": "delete: the entry ids to remove \u2014 exactly these and no others; a non-empty array, even for one id. promote_rule: the entry ids the rule is distilled from.",
+     "description": "delete: entry ids to remove (array, even for one). promote_rule: source ids.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "key": {
-     "description": "transcript_append: the client's own id for the record that opened the turn; the same for every capture of that turn, so a second capture completes the first. The store numbers the turns of a session itself.",
+     "description": "transcript_append: client's id of the turn's opening record.",
      "type": "string"
     },
     "kind": {
-     "description": "Which store operation: record (write) or recall (terminal retrieval).",
+     "description": "See the tool description.",
      "enum": [
       "record",
       "recall",
@@ -3415,7 +3415,7 @@
      "type": "string"
     },
     "lane": {
-     "description": "recall/nominate: REQUIRED (this or lanes) \u2014 which LIFECYCLE is searched, chosen BEFORE the search; a call naming no lane is refused. 'experience' (also 'lessons') is what happened in a situation: lessons and failure modes; 'patterns' is the borrowed catalogue of design patterns; 'domain' (also 'business') is what is true whoever reads it: facts, contracts, conventions; 'rules' are versioned and retired; 'code' says what each member and package is FOR, regenerated from the code it came from, and is asked only to check whether something already exists; 'transcript' is the discussion itself (what he typed, what the agent said to him, one line per tool call), asked with recall only, after a compaction, before something is attributed to him, or on demand, and never part of 'all'. Each lane is ranked and cut on its own and the answer says how many rows each searched. It is a FILTER, not a cue: give a cue as well.",
+     "description": "recall/nominate: REQUIRED (this, lanes or occasion). A filter, not a cue. transcript: recall only, never part of 'all'.",
      "enum": [
       "experience",
       "patterns",
@@ -3429,29 +3429,29 @@
      "type": "string"
     },
     "lanes": {
-     "description": "recall/nominate: several lanes at once, by the same names as lane. Each is searched and ranked on its own.",
+     "description": "Several lanes.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "language": {
-     "description": "record: anchor language (default java). Non-Java anchors (rust, ts, ...) are opaque to JDT maintenance \u2014 stored + recalled, never staled.",
+     "description": "Anchor language (default java).",
      "type": "string"
     },
     "limit": {
-     "description": "primer: max domain nodes (default 20); list: max rows (default 50); describe action=next: max units to hand out (default 10) \u2014 this is the token budget for one describing pass.",
+     "description": "primer (default 20), list (50), describe next (10).",
      "type": "integer"
     },
     "links": {
-     "description": "record: typed edges [{rel, target}]. Allowed: applied | cured_by | derived_from | detected_by | fixed_by | handled_by | related | supersedes | undo. cured_by points at a jawata CAPABILITY rather than a code address (find_quality_issue(kind=\u2026), seat:refactor) and is filled ONLY when the remedy needs no judgement \u2014 a cure WILL be run, and one that is right half the time is worse than none. A two-phase remedy (read the error, work out why, then decide) earns detected_by and no cure.",
+     "description": "record: [{rel, target}], rel: applied | cured_by | derived_from | detected_by | fixed_by | handled_by | related | supersedes | undo. cured_by names a jawata capability, only for a no-judgement cure.",
      "items": {
       "type": "object"
      },
      "type": "array"
     },
     "occasion": {
-     "description": "recall/nominate: the situation this call is made in, INSTEAD of lane / lanes (naming both is refused) \u2014 the engine answers which lanes that situation asks, so a client spells no lane. Occasions: typed_message (experience, rules); lesson_lookup (experience); tool_call (experience, code); recall_gate (experience, domain); after_compaction (transcript); design_question (experience, patterns); does_it_exist (code). Name one as occasion=<name>.",
+     "description": "recall/nominate: INSTEAD of lane/lanes (both is refused). Occasions: typed_message (experience, rules); lesson_lookup (experience); tool_call (experience, code); recall_gate (experience, domain); after_compaction (transcript); design_question (experience, patterns); does_it_exist (code). Name one as occasion=<name>.",
      "enum": [
       "typed_message",
       "lesson_lookup",
@@ -3464,11 +3464,11 @@
      "type": "string"
     },
     "operation": {
-     "description": "record: operation this entry relates to. promote_rule: WHO the rule binds \u2014 seat:<name> for one seat, an activity label such as release, or all for every seat; required on a proposal (status=candidate).",
+     "description": "record/recall: operation. promote_rule: who it binds (seat:<name>, an activity, or all); required when status=candidate.",
      "type": "string"
     },
     "package": {
-     "description": "recall: a package you are working in (cue).",
+     "description": "recall cue: package.",
      "type": "string"
     },
     "packages": {
@@ -3479,43 +3479,43 @@
      "type": "array"
     },
     "path": {
-     "description": "load/wipe_and_import: a directory of *.md memory files, or a single file. Omit to use the configured default roots.",
+     "description": "load/wipe_and_import: *.md directory or file (omit: default roots).",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "proceed_without_clean_backup": {
-     "description": "wipe, prune, import, delete, restore, wipe_and_import: the copy taken first is checked (its count must equal its rows) and tried 3 times; if it is still not clean the operation is REFUSED and nothing changes. Repeat the request with this set to true to go on anyway; one copy is still taken.",
+     "description": "Destructive kinds refuse without a clean backup copy; true proceeds anyway.",
      "type": "boolean"
     },
     "query_id": {
-     "description": "decide: the id the matching nominate call returned. It is required because a selection is only meaningful about the candidates it was offered \u2014 without it, any entry in the store could be returned as a vouched answer.",
+     "description": "decide: id from nominate.",
      "type": "string"
     },
     "question": {
-     "description": "nominate: the question in your OWN WORDS, for the anchorless path \u2014 no symbol, no package, no operation. Say what you are trying to do. The answer comes back as RANKED CANDIDATES plus a query_id, never as a match: ranking is an ordering, not a claim that anything fits.",
+     "description": "nominate: your question in words; returns ranked candidates and query_id.",
      "type": "string"
     },
     "quote": {
-     "description": "transcript_verify: the words attributed to him.",
+     "description": "transcript_verify: words attributed to the user.",
      "type": "string"
     },
     "recent": {
-     "description": "recall with lane=transcript alone: his most recent N messages, newest first, with the turn each came from. The thread to pick up after a compaction.",
+     "description": "recall, lane=transcript alone: user's last N messages.",
      "type": "integer"
     },
     "recursive": {
-     "description": "load/wipe_and_import: walk subdirectories of directory roots (default TRUE \u2014 the crawl finds everything; pass false to stay flat).",
+     "description": "load/wipe_and_import: walk subdirectories (default true).",
      "type": "boolean"
     },
     "rule_lifecycle_note": {
-     "description": "NOT AN INPUT \u2014 the rule verbs, said once. promote_rule(ids, summary[, situation]) distils entries into a RULE at version 1, linked derived_from each source; the sources are NOT superseded and go on answering as themselves. amend_rule(id, summary) writes a NEW version and supersedes the old one, which stays readable \u2014 what a rule USED to say is what a version number is for. retire_rule(id) records that it stopped applying, as of now: recall stops offering it, list and get still answer. Retiring is not rejecting and not superseding \u2014 the rule was right, nothing replaced it, and it stopped applying.",
+     "description": "NOT AN INPUT.",
      "type": "string"
     },
     "scope": {
-     "description": "list: symbol/package prefix filter. describe action=next: the package to describe, including its subpackages; omit for the whole workspace.",
+     "description": "list: symbol/package prefix. describe next: package (default all).",
      "type": "string"
     },
     "scope_kind": {
@@ -3523,38 +3523,38 @@
      "type": "string"
     },
     "seats": {
-     "description": "review_sweep: the directory holding the seat files. Lists, under rulesNobodyAsks, the accepted rules whose operation label no seat or activity asks for, so a typo in a label is reported rather than silently binding nothing.",
+     "description": "review_sweep: seat files directory.",
      "type": "string"
     },
     "selected_ids": {
-     "description": "decide: the candidate ids you judged APPLICABLE, after reading each one's situation. An EMPTY list is a real answer and often the right one \u2014 it records that nothing applied, which is what the store previously could not say. Ids the nomination did not offer are refused, not ignored.",
+     "description": "decide: candidates that apply; empty is a valid answer.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "sessions": {
-     "description": "recall with lane=transcript alone: the N most recently active sessions the lane holds (session id, client, first words typed, turns, first and latest time), for a host that lists and reloads the agent's sessions.",
+     "description": "recall, lane=transcript alone: N most recent sessions.",
      "type": "integer"
     },
     "situation": {
-     "description": "record: WHEN this applies. A situation is a GREP, a TASK, or a NUMBER. A grep \u2014 something you can look up in the code in front of you: \"when a test class declares @BeforeAll or @AfterAll\". A task \u2014 what you are doing right now: \"when amending an order that is already partially filled\". A number \u2014 a value you can read off an output: \"when a test run reports a class-level exception count above zero\". If it is none of the three it describes how the system works, which is true during every call and tells no one whether this entry is for them. Never a package or a symbol: a location matches everything inside it and distinguishes nothing. REQUIRED for lesson and failure_mode.",
+     "description": "record, REQUIRED for lesson and failure_mode: WHEN this applies. A situation is a GREP, a TASK, or a NUMBER. A grep \u2014 something you can look up in the code in front of you: \"when a test class declares @BeforeAll or @AfterAll\". A task \u2014 what you are doing right now: \"when amending an order that is already partially filled\". A number \u2014 a value you can read off an output: \"when a test run reports a class-level exception count above zero\". If it is none of the three it describes how the system works, which is true during every call and tells no one whether this entry is for them.",
      "type": "string"
     },
     "status": {
-     "description": "record: default candidate. promote_rule: candidate (a proposal, injected nowhere until he accepts it with kind=promote) or accepted (the default).",
+     "description": "record: default candidate. promote_rule: candidate (proposal) or accepted (default).",
      "type": "string"
     },
     "summary": {
-     "description": "record: ONE judgeable sentence of experience \u2014 what was learned, stated so a later reader can judge whether it transfers. Not a heading, not a title (a heading-shaped summary is refused). A story owes: situation (When does this apply?); summary (What happened, or what to do?); details (Why, and what would a reader do differently?); outcome (How did it turn out?); anchor (Which code, if any?). REFUSED outright, whatever the type: empty, fallback slip, log line, compaction artifact, status note, section heading, not a claim \u2014 a log records that something happened, an experience says what to DO about it, and project progress was true when written and is false now.",
+     "description": "record: ONE judgeable sentence of experience; a heading is refused. A story owes: situation (When does this apply?); summary (What happened, or what to do?); details (Why, and what would a reader do differently?); outcome (How did it turn out?); anchor (Which code, if any?). REFUSED outright, whatever the type: empty, fallback slip, log line, compaction artifact, status note, section heading, not a claim \u2014 a log records that something happened, an experience says what to DO about it, and project progress was true when written and is false now.",
      "type": "string"
     },
     "surface": {
-     "description": "recall: which surface is asking \u2014 'seat' when a driven seat run recalls, omitted for an ordinary question. Affects only the quality counters (stats), never what is retrieved.",
+     "description": "recall: 'seat' from a seat run.",
      "type": "string"
     },
     "symbol": {
-     "description": "record: anchor FQN (mutually exclusive with packages/symbols).",
+     "description": "Anchor/cue FQN (record: not with packages/symbols).",
      "type": "string"
     },
     "symbols": {
@@ -3565,37 +3565,37 @@
      "type": "array"
     },
     "symptom": {
-     "description": "recall: an observed symptom / cue phrase (alias-normalized).",
+     "description": "recall cue: observed symptom.",
      "type": "string"
     },
     "symptoms": {
-     "description": "record: how the problem LOOKED \u2014 each item a prose observation in words. NOT paths, flags, tags, code symbols or headings (refused with a redirect): artifacts belong in 'details', symbols in 'symbol'/'symbols', tool output in the tool lane, which the tools record themselves.",
+     "description": "record: how the problem LOOKED, in words; paths or symbols are refused, and tool output belongs to the tool lane.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "tools": {
-     "description": "transcript_append: one line per tool call (tool, key argument, ok or failed). Never tool output.",
+     "description": "transcript_append: one line per tool call, no output.",
      "items": {
       "type": "string"
      },
      "type": "array"
     },
     "ts": {
-     "description": "transcript_append: when the turn ended, ISO-8601 (default: now).",
+     "description": "transcript_append: ISO-8601 (default now).",
      "type": "string"
     },
     "type": {
-     "description": "record: entry type (domain_fact / lesson / failure_mode / api_contract / naming_convention / ...).",
+     "description": "record: domain_fact, lesson, failure_mode, api_contract, naming_convention, ...",
      "type": "string"
     },
     "unit": {
-     "description": "describe action=done: the unit path action=next handed you.",
+     "description": "describe done: unit from next.",
      "type": "string"
     },
     "verdict": {
-     "description": "record: how it turned out. REQUIRED for lesson and failure_mode \u2014 for those the outcome IS the lesson. Use 'unproven' when it genuinely has not been settled; that is an answer, and inventing a verdict is not.",
+     "description": "record: outcome. REQUIRED for lesson and failure_mode; unproven if unsettled.",
      "enum": [
       "failed_avoid",
       "unproven",
@@ -3615,7 +3615,7 @@
   "inputSchema": {
    "properties": {
     "action": {
-     "description": "wait (default) answers the hire's state; stop ends a running hire you hired, and every hire under it.",
+     "description": "wait (default) or stop.",
      "enum": [
       "wait",
       "stop"
@@ -3623,15 +3623,15 @@
      "type": "string"
     },
     "hireId": {
-     "description": "The hireId the hire tool answered.",
+     "description": "From hire.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "waitSeconds": {
-     "description": "How long to wait for a running hire, 0 to 50 (default 0).",
+     "description": "0 to 50 (default 0).",
      "type": "integer"
     }
    },
@@ -3650,7 +3650,7 @@
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     }
    },
@@ -3676,47 +3676,47 @@
      "type": "string"
     },
     "content": {
-     "description": "write: the document's whole text.",
+     "description": "write: whole text; append_row: the row.",
      "type": "string"
     },
     "folder": {
-     "description": "search: the folder searched with everything under it.",
+     "description": "search: absolute folder.",
      "type": "string"
     },
     "glob": {
-     "description": "search: only file names matching this glob, such as *.java.",
+     "description": "search: e.g. *.java.",
      "type": "string"
     },
     "limit": {
-     "description": "read: how many lines at most (default 2000).",
+     "description": "read: max lines (default 2000).",
      "type": "integer"
     },
     "maxResults": {
-     "description": "search: how many matching lines at most (default 200).",
+     "description": "search: default 200.",
      "type": "integer"
     },
     "newText": {
-     "description": "edit: what replaces it.",
+     "description": "edit: replacement.",
      "type": "string"
     },
     "offset": {
-     "description": "read: the first line to answer, 0-based (default 0).",
+     "description": "read: first line, 0-based.",
      "type": "integer"
     },
     "oldText": {
-     "description": "edit: the exact passage to replace; it must occur exactly once in the document.",
+     "description": "edit: exact passage, occurring once.",
      "type": "string"
     },
     "path": {
-     "description": "read/write: the file, as an absolute path.",
+     "description": "Absolute file path.",
      "type": "string"
     },
     "pattern": {
-     "description": "search: a Java regular expression matched against each line.",
+     "description": "search: Java regex.",
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "prefix": {
@@ -3753,7 +3753,7 @@
      "type": "integer"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "staged": {
@@ -3796,7 +3796,7 @@
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "publish": {
@@ -3847,7 +3847,7 @@
      "type": "string"
     },
     "precedentOverride": {
-     "description": "Optional. One line saying why THIS case differs from a past call of this tool on this target that was reverted or errored. Required only when that precedent has already been surfaced to you and you are calling anyway; the reason is logged with the call. Never reaches the tool.",
+     "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
     },
     "prompt": {

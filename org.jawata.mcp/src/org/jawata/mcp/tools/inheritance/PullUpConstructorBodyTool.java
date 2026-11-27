@@ -112,15 +112,9 @@ public class PullUpConstructorBodyTool extends AbstractApplyingRefactoringTool
     @Override
     public String getDescription() {
         return """
-            Pull Up Constructor Body — a subclass constructor that starts by assigning the
-            SUPERCLASS's own fields hands those assignments to the superclass and calls
-            super(...) instead. Point at the constructor (symbol=pkg.Type#Type, or a position).
-            Acts on the LEADING run of statements that assign a superclass-declared field from
-            one of this constructor's parameters; the superclass constructor is GENERATED only
-            if one with those parameter types is missing, because a class part-way through this
-            refactoring already has it. REFUSES a constructor that already calls super with
-            arguments, a superclass outside source, and a body whose leading statements are
-            anything else — each by name, so you are told which case you have.""";
+            A constructor's LEADING assignments of superclass fields from its parameters become a super(...)
+            call (superclass constructor generated if missing): symbol=pkg.Type#Type or position. Refuses a
+            constructor already calling super with arguments or a superclass outside source.""";
     }
 
     /** Structural: it moves a member through the hierarchy and changes a constructor's contract. */
@@ -135,13 +129,12 @@ public class PullUpConstructorBodyTool extends AbstractApplyingRefactoringTool
         schema.put("type", "object");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("filePath", Map.of("type", "string",
-            "description", "Source file declaring the subclass constructor."));
+            "description", "Source file."));
         properties.put("line", Map.of("type", "integer",
-            "description", "Zero-based line of the constructor's declaration."));
+            "description", "Zero-based line."));
         properties.put("column", Map.of("type", "integer",
-            "description", "Zero-based column on that line."));
-        properties.put("symbol", FqnTarget.symbolSchemaProperty(
-            "subclass constructor whose leading assignments belong to the superclass"));
+            "description", "Zero-based column."));
+        properties.put("symbol", FqnTarget.symbolSchemaProperty("constructor"));
         schema.put("properties", properties);
         return withAutoApply(withProjectKey(schema));
     }

@@ -60,20 +60,8 @@ public final class GuardClausesRule implements CleanupRule {
 
     @Override
     public String kindSummary() {
-        return """
-            Replace Nested Conditional with Guard Clauses: where an
-            `if` branch always returns or throws, drop the `else`
-            and let its statements follow. Applied from the outside
-            in, a nest becomes a run of guards with the normal path
-            last. Refuses a branch that can fall through, an
-            else-if chain, and a branch whose exit is a break or a
-            continue (which leaves a loop, not the method).
-            ONE LEVEL PER RUN: the outermost such `if` in each
-            nest is unwrapped, which leaves the next one a sibling
-            for the next run. CONVERGENT, not idempotent: running it
-            twice is not the same as running it once, which is the
-            point. A nest of depth N takes N runs — re-run until it
-            reports no changes.""";
+        return "guard clauses: drop `else` after a branch that returns/throws. ONE nesting level per run; re-run "
+            + "until no changes.";
     }
 
     @Override

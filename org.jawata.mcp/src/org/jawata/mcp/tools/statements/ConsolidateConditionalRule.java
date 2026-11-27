@@ -62,14 +62,8 @@ public final class ConsolidateConditionalRule implements CleanupRule {
 
     @Override
     public String kindSummary() {
-        return """
-            Consolidate Conditional Expression: adjacent `if`s
-            with no `else` and the SAME body become one `if` joined
-            by ||, each condition parenthesised so precedence cannot
-            shift. Refuses any condition containing a method call, an
-            assignment or an increment: || short-circuits, so a later
-            condition stops being evaluated and its side effect stops
-            happening.""";
+        return "merge adjacent `if`s with the same body into one with ||; skips conditions with side effects "
+            + "or calls.";
     }
 
     @Override

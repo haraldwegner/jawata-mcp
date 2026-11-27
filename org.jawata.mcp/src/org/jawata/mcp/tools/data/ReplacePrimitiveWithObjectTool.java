@@ -161,16 +161,8 @@ public class ReplacePrimitiveWithObjectTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            replace a primitive field with a value object, MIGRATING EVERY USAGE —
-            which is the half replace_type_code_with_class leaves to you. Generates
-            a nested record (Order.Priority), retypes the field, and rewrites every
-            reference in the workspace: a read becomes `order.priority.value()`, a
-            write becomes `new Priority(x)`. Cross-file without being told anything,
-            because the rewrite is the same at every site. Refuses a non-primitive
-            field, a static final constant (a case label cannot hold an object), a
-            compound assignment or increment (whether the arithmetic belongs on the
-            wrapper or inside it is the decision you are making), and a shared
-            declaration. Each refusal names which.""";
+            a primitive/String field becomes a nested record and every usage is migrated: field position;
+            typeName, accessorName optional. Refuses static final, compound assignment/increment, shared declarations.""";
     }
 
     /** Structural: the field's declared type changes, and every reader is rewritten. */
@@ -202,11 +194,9 @@ public class ReplacePrimitiveWithObjectTool extends AbstractRefactoringTool
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column of the field declaration."));
         properties.put("typeName", Map.of("type", "string",
-            "description", "Name for the generated value type (default: the field's own "
-                + "name, capitalised). Every call site that constructs one reads it."));
+            "description", "replace_primitive: new type name (default from field). Class kinds: class FQN."));
         properties.put("accessorName", Map.of("type", "string",
-            "description", "Name of the record component, and so of the accessor every read "
-                + "is rewritten through (default: value)."));
+            "description", "replace_primitive: component name (default value)."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column"));
         return withAutoApply(withProjectKey(schema));

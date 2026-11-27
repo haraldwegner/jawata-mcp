@@ -113,18 +113,8 @@ public class ChangeReferenceToValueTool extends AbstractRefactoringTool
 
     @Override
     public String kindSummary() {
-        return """
-            make a class a VALUE: remove every setter so it cannot change after
-            it is made, then generate equals and hashCode over its fields so two
-            with the same data are the same (Fowler: Change Reference to Value).
-            Point at the CLASS — position, or typeName=pkg.Type. COMPOSED from
-            remove_setting_method per setter plus the equals/hashCode generator,
-            so it reverts through one undo handle and rolls every removal back if
-            a later step declines. Refuses a class that already declares equals
-            or hashCode (that identity was somebody's decision), a record
-            (already a value), and a class with no instance field. A setter with
-            a caller outside the class's constructors refuses with row 37's own
-            reason, naming the sites.""";
+        return "remove every setter and generate equals/hashCode: class position or typeName. Refuses existing "
+            + "equals/hashCode and setters called outside constructors.";
     }
 
     /** Structural: setters leave the published surface and two methods arrive. */

@@ -48,9 +48,7 @@ public class MoveClassTool extends AbstractRefactoringTool
     /** The bullet a client reads under {@code move} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            move the type at a caret to another package.
-            Needs: filePath, line, column, targetPackage (optional targetProjectKey).""";
+        return "a type to another package: filePath, line, column (or typeName), targetPackage; targetProjectKey optional.";
     }
 
     /** Structural: the type's fully-qualified name changes, and every reference with it. */

@@ -153,15 +153,8 @@ public class ReplaceExceptionWithPrecheckTool extends AbstractApplyingRefactorin
 
     @Override
     public String getDescription() {
-        return """
-            Replace Exception with Precheck — a try/catch used as control flow becomes an
-            explicit check. Name the METHOD (symbol=pkg.Type#m, or a position); optional
-            exceptionType picks one try when the method has several. The check is DERIVED from
-            the guarded expression and the caught exception together, so it cannot mean
-            something the handler did not: an array index against its length, a receiver
-            against null, a divisor against zero. Refuses anything else — notably a guarded
-            statement containing a METHOD CALL, because the call could raise that same
-            exception from inside itself and a precheck would not stop it escaping.""";
+        return "a try/catch used as control flow (array index, null, divide by zero) becomes a check: "
+            + "exceptionType picks the try. Refuses guarded statements that call methods.";
     }
 
     /** Behaviour-preserving within one method body; no signature and no call site moves. */
@@ -183,8 +176,8 @@ public class ReplaceExceptionWithPrecheckTool extends AbstractApplyingRefactorin
             "description", "Zero-based column on that line."));
         properties.put("symbol", FqnTarget.symbolSchemaProperty("method holding the try/catch"));
         properties.put("exceptionType", Map.of("type", "string",
-            "description", "Simple name of the caught exception, to pick one try when the"
-                + " method has several. Optional when there is only one."));
+            "description", "replace_exception_with_precheck: caught type, to pick a try. "
+                + "replace_error_code_with_exception REQUIRED: exception to throw."));
         schema.put("properties", properties);
         schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));

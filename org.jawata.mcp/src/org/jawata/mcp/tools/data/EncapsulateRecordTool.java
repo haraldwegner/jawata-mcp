@@ -104,18 +104,8 @@ public class EncapsulateRecordTool extends AbstractRefactoringTool implements To
 
     @Override
     public String kindSummary() {
-        return """
-            put every public field of a class behind accessors, so the object
-            owns its own state instead of handing it out by name (Fowler:
-            Encapsulate Record). Point at the CLASS — position, or
-            typeName=pkg.Type. COMPOSED from encapsulate_field per field, so it
-            adds one undo handle for the whole set and rolls the earlier fields
-            back if a later one declines. Each field is addressed by NAME and
-            resolved when its step runs, because encapsulating one field moves
-            the others. Refuses a Java record (already encapsulated) and a class
-            with no public instance field. Skips static fields — a constant is
-            not this refactoring's subject, and static mutable state is
-            global_data's — and names what it skipped.""";
+        return "every public instance field of a class behind accessors (static ones skipped): class position "
+            + "or typeName.";
     }
 
     /** Structural: it changes the class's published surface, field by field. */

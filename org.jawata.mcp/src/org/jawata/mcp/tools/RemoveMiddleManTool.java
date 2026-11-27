@@ -88,18 +88,8 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            stop a class forwarding: every method whose whole body is
-            one call on one of its own fields, passing its parameters
-            through unchanged, is deleted and its call sites become
-            `middleMan.<accessor>().method(args)`. The accessor is
-            generated if the class has none — that exposure IS the
-            refactoring, and the summary says it happened. Refuses a class
-            with no forwarder at all. A class forwarding to SEVERAL
-            fields is NOT refused — name the one to remove with
-            `delegateField` and repeat; the fork's own GiantController is
-            why the old blanket refusal was wrong. A method that
-            transforms the result is left alone: that is behaviour, not
-            forwarding. (find_quality_issue kind=middle_man finds them.)""";
+            delete pure forwarding methods; callers use an accessor to the delegate (generated if missing):
+            line, column or symbol=pkg.Type; accessorName, delegateField optional.""";
     }
 
     /** Structural: it changes what the class exposes to every caller it had. */
@@ -137,12 +127,9 @@ public class RemoveMiddleManTool extends AbstractRefactoringTool
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column of that caret."));
         properties.put("accessorName", Map.of("type", "string",
-            "description", "Name for the accessor that exposes the delegate (default: the "
-                + "field's own name). Every rewritten call site reads it, so it is worth "
-                + "choosing."));
+            "description", "middle_man: accessor name (default: the field's name)."));
         properties.put("delegateField", Map.of("type", "string",
-            "description", "Which field to stop forwarding to, when the class forwards to "
-                + "more than one. Required only then, and the refusal lists the candidates."));
+            "description", "middle_man: field to stop forwarding to; required if several."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column"));
         return withAutoApply(withProjectKey(schema));

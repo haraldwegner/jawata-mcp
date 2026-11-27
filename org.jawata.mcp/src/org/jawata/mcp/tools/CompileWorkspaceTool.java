@@ -80,54 +80,8 @@ public class CompileWorkspaceTool extends WorkspaceTool<LoadedWorkspace> {
     @Override
     public String getDescription() {
         return """
-            Run an incremental Java build over every loaded project (or one
-            specific project when projectKey is set) and return aggregated
-            problem markers — compiler errors, warnings, and project-level
-            errors (broken Require-Bundle, unresolved classpath, manifest
-            errors) in one call.
-
-            USAGE:
-              compile_workspace()
-              compile_workspace(projectKey="core")
-              compile_workspace(minSeverity="WARNING")
-              compile_workspace(includeTaskMarkers=true)
-              compile_workspace(clean=true)
-              compile_workspace(scope="test")
-
-            Inputs:
-            - projectKey — optional. Compile just that project; default is the
-              full workspace.
-            - minSeverity — "ERROR" (default) or "WARNING". Markers below the
-              threshold are dropped from the result.
-            - includeTaskMarkers — default false. When true, TODO/FIXME markers
-              are included in addition to PROBLEM markers.
-            - clean — default false. When true, CLEAN_BUILD precedes FULL_BUILD
-              so JDT's incremental compile cache is invalidated. Use when a
-              record's canonical constructor shape changes or any other
-              signature-shape edit that the incremental builder would otherwise
-              skip recompiling consumers for (bugs.md #8).
-            - scope — "main" | "test" | "both" (default "both"). Filters
-              diagnostics by the TEST ATTRIBUTE the importer records on each
-              source root in the model — every layout, including flat PDE
-              bundles, not a path convention. Project-level files cross-cut
-              (visible in both scopes); an all-test project's files are test
-              (jawata-mcp#9, fixed Sprint 28).
-            - summary — default false. When true, return counts only
-              (errorCount/warningCount + byProject) with NO diagnostics array —
-              the consumable shape when a broken classpath yields thousands of
-              errors (v2.7.1).
-            - limit / offset — page the diagnostics array (default limit 100,
-              offset 0). errorCount/warningCount/count always reflect the FULL
-              set; `truncated` + `hint` flag a capped page (v2.7.1).
-
-            Result:
-              { operation, projectsCompiled, errorCount, warningCount, count,
-                offset, limit, returnedCount, truncated,
-                diagnostics: [{filePath, line, column, severity, message,
-                              sourceProject}] }
-
-            Compilation errors are a normal RESULT (returned in `diagnostics`).
-            The tool itself only fails on missing projectKey or aborted build.
+            Build all loaded projects (or projectKey) and return compiler and project-level problems. Errors are a
+            normal result. Use clean=true after a signature-shape change.
             """;
     }
 
@@ -139,26 +93,26 @@ public class CompileWorkspaceTool extends WorkspaceTool<LoadedWorkspace> {
         properties.put("minSeverity", Map.of(
             "type", "string",
             "enum", List.of("ERROR", "WARNING"),
-            "description", "Drop diagnostics below this severity. Default: ERROR."));
+            "description", "Default ERROR."));
         properties.put("includeTaskMarkers", Map.of(
             "type", "boolean",
-            "description", "Include TODO/FIXME markers (default false)."));
+            "description", "Include TODO/FIXME."));
         properties.put("clean", Map.of(
             "type", "boolean",
-            "description", "When true, CLEAN_BUILD precedes FULL_BUILD so JDT's incremental compile cache is invalidated (bugs.md #8). Default false."));
+            "description", "Clean build first (default false)."));
         properties.put("scope", Map.of(
             "type", "string",
             "enum", List.of("main", "test", "both"),
-            "description", "Filter diagnostics by the source root's test attribute in the model (every layout, incl. flat PDE bundles — not a path convention). Project-level files cross-cut; an all-test project's files are test. Default 'both' (jawata-mcp#9)."));
+            "description", "Main or test sources (default both)."));
         properties.put("summary", Map.of(
             "type", "boolean",
-            "description", "Counts only (errorCount/warningCount + byProject), NO diagnostics array — for workspaces with thousands of errors (v2.7.1). Default false."));
+            "description", "Counts only."));
         properties.put("limit", Map.of(
             "type", "integer",
-            "description", "Max diagnostics returned (default 100); counts always reflect the full set (v2.7.1)."));
+            "description", "Max diagnostics (default 100); counts are always full."));
         properties.put("offset", Map.of(
             "type", "integer",
-            "description", "Skip the first N diagnostics (pagination; default 0) (v2.7.1)."));
+            "description", "Skip N."));
         schema.put("properties", properties);
         return withProjectKey(schema);
     }

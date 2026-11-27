@@ -75,7 +75,7 @@ public class InlineMethodTool extends AbstractApplyingRefactoringTool
      */
     @Override
     public String kindSummary() {
-        return "inline all call sites of the method at the position.";
+        return "a method: position on one call (inlines it) or the declaration (all), or symbol=pkg.Type#method.";
     }
 
 

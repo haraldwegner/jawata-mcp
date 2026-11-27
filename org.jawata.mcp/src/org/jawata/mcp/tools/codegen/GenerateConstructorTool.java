@@ -65,7 +65,7 @@ public class GenerateConstructorTool extends AbstractTool
     /** The bullet a client reads under {@code generate} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return "a constructor. Needs: fields[]. Optional: visibility, callSuper.";
+        return "fields[]; visibility, callSuper optional.";
     }
 
 

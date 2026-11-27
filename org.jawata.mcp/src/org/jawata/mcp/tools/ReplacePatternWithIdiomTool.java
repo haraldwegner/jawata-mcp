@@ -35,12 +35,7 @@ public class ReplacePatternWithIdiomTool extends AbstractTool
     /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            AWAY: replace a pattern with the language feature that
-            superseded it. v1.4: an anonymous class implementing a functional
-            interface -> a lambda. Needs: line, column on the anonymous class's
-            `new` keyword (optional idiom, default anonymous_to_lambda).
-            (find_modernization kind=anon_to_lambda locates candidates.)""";
+        return "AWAY: anonymous functional class to lambda: line, column on its `new`.";
     }
 
 

@@ -110,18 +110,8 @@ public class SplitVariableTool extends AbstractRefactoringTool implements ToolKi
     @Override
     public String kindSummary() {
         return """
-            split a variable assigned twice into two, each assigned once — and,
-            from the same implementation, remove an assignment to a PARAMETER,
-            which Fowler lists separately and cures identically. `newName` is
-            REQUIRED: the second value means something the first does not, and
-            saying what is the whole content of the change. Refuses a variable
-            assigned once (nothing to split), more than one reassignment (three
-            values need two names), an ACCUMULATOR — an assignment inside a LOOP,
-            or an increment — where each pass reads what the last one left, a
-            reassignment in a different block from the declaration, and a name
-            already visible. Each refusal names which. Note the accumulator test
-            is the LOOP and not self-reference: `prefix = prefix.trim()` reads
-            itself and splits correctly.""";
+            give a reassigned variable's second value its own name (also for an assigned PARAMETER): position
+            on it, newName REQUIRED. Refuses loop accumulators, increments, several reassignments.""";
     }
 
     /** Not structural: nothing outside the method can see a local. */
@@ -155,9 +145,7 @@ public class SplitVariableTool extends AbstractRefactoringTool implements ToolKi
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column on the variable's name."));
         properties.put("newName", Map.of("type", "string",
-            "description", "REQUIRED. Name for the SECOND value. There is no default: saying "
-                + "what the second value means is the whole point of the split, and a "
-                + "generated name would do the mechanics and deliver none of it."));
+            "description", "split_variable REQUIRED: name of the second value."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column", "newName"));
         return withAutoApply(withProjectKey(schema));

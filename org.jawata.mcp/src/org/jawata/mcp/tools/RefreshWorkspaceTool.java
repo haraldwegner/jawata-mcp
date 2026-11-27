@@ -84,40 +84,8 @@ public class RefreshWorkspaceTool extends WorkspaceTool<LoadedWorkspace> {
     @Override
     public String getDescription() {
         return """
-            Reconcile the JDT workspace state against disk: refresh resources,
-            invalidate the incremental compile cache, full-rebuild, return
-            aggregated diagnostics. Preserves projectKey state across calls.
-
-            USAGE:
-              refresh_workspace()
-              refresh_workspace(projectKey="core")
-
-            Inputs:
-            - projectKey — optional. Refresh just that project; default is the
-              full workspace.
-
-            Steps performed per project:
-            1. IResource.refreshLocal(DEPTH_INFINITE) — pick up files
-               created/edited externally (Write/Edit/touch/manager mutation)
-               that the file watcher may have missed (bugs.md #6).
-            2. CLEAN_BUILD then FULL_BUILD — invalidate JDT's incremental
-               cache so signature-shape changes surface as real errors
-               (bugs.md #8).
-            3. Collect IMarker.PROBLEM markers from the rebuilt projects.
-
-            Result:
-              { operation, wiringRecomputed (the bundle-pool caches were
-                cleared and the workspace resolve phase re-ran),
-                refreshedProjects: [...],
-                summary: { filesRefreshed, classFilesInvalidated,
-                           errorCount, warningCount },
-                diagnostics: [{filePath, line, column, severity, message,
-                              sourceProject}] }
-
-            projectKey-state contract: this tool does NOT call addProject /
-            removeProject internally. Any projectKey held by the caller
-            remains valid across the refresh (bugs.md #11 corollary).
-            Compilation errors are a normal RESULT, not a tool failure.
+            Re-read files from disk, re-resolve, clean-rebuild all projects (or projectKey) and return the problems.
+            Use after edits made outside jawata.
             """;
     }
 
@@ -126,7 +94,7 @@ public class RefreshWorkspaceTool extends WorkspaceTool<LoadedWorkspace> {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
         schema.put("properties", new LinkedHashMap<>(Map.of("limit", Map.of("type", "integer",
-            "description", "Most problems listed (default 100), errors first; the summary counts all of them."))));
+            "description", "Max problems listed (default 100), errors first."))));
         return withProjectKey(schema);
     }
 

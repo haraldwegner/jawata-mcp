@@ -85,19 +85,9 @@ public class SplitPhaseTool extends AbstractApplyingRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            split a function that does two jobs in sequence into two
-            functions joined by a generated record (Fowler: Split Phase).
-            Needs: filePath, line, column on the function, boundaryLine —
-            the line of the SECOND phase's first statement. boundaryLine has
-            no default because where one job ends is a judgement about
-            meaning that nothing in the syntax marks. What the record carries
-            IS derived: every local declared before the boundary and read
-            after it, which is usually few — the rest stay in phase one, and
-            that shrinkage is the readability this buys. Optional firstName,
-            secondName, intermediateName. Refuses a return before the
-            boundary (an early exit, not a phase) and a second phase that
-            ASSIGNS to a first-phase local (the carrier's components are
-            final; a mutable carrier is a design decision).""";
+            split a function into two joined by a generated record: filePath, line, column, boundaryLine;
+            firstName, secondName, intermediateName optional. Refuses a return before the boundary and a
+            second phase assigning a first-phase local.""";
     }
 
     /** Structural: it generates a carrier record and leaves two methods where one stood. */
@@ -134,16 +124,13 @@ public class SplitPhaseTool extends AbstractApplyingRefactoringTool
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column of that caret."));
         properties.put("boundaryLine", Map.of("type", "integer",
-            "description", "Zero-based line of the FIRST statement of the second phase. "
-                + "Required and undefaulted: where one job ends and the next begins is a "
-                + "judgement about meaning that nothing in the syntax marks."));
+            "description", "split_phase: zero-based line of phase two's first statement."));
         properties.put("firstName", Map.of("type", "string",
-            "description", "Name for the first phase (default: <function>Phase1)."));
+            "description", "split_phase: first function (default <function>Phase1)."));
         properties.put("secondName", Map.of("type", "string",
-            "description", "Name for the second phase (default: <function>Phase2)."));
+            "description", "split_phase: second function (default <function>Phase2)."));
         properties.put("intermediateName", Map.of("type", "string",
-            "description", "Name for the record the phases pass between them "
-                + "(default: <Function>Intermediate)."));
+            "description", "split_phase: record (default <Function>Intermediate)."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column", "boundaryLine"));
         return withAutoApply(withProjectKey(schema));

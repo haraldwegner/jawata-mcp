@@ -123,15 +123,8 @@ public class PreserveWholeObjectTool extends AbstractApplyingRefactoringTool
 
     @Override
     public String getDescription() {
-        return """
-            Preserve Whole Object — several parameters every caller pulls out of ONE object are
-            replaced by that object, and the body asks it for each value. Name the METHOD
-            (symbol=pkg.Type#m, or a position) and two or more parameters; optional
-            parameterName for the new one. The object is INFERRED from the call sites and must
-            be UNANIMOUS: every call must pass <x>.something() for each named parameter, with
-            the same x. Refuses fewer than two parameters (one derived from another argument is
-            replace_parameter_with_query), a caller passing something else, and a body that
-            reads a folded parameter more than once or inside a loop.""";
+        return "`parameters` (2+) every caller reads off ONE object are replaced by it; parameterName needed unless "
+            + "callers pass a plain name. Each must be read once, not in a loop.";
     }
 
     /** Structural: the signature changes and every call site with it. */
@@ -154,10 +147,9 @@ public class PreserveWholeObjectTool extends AbstractApplyingRefactoringTool
         properties.put("symbol", FqnTarget.symbolSchemaProperty("method with the unpacked object"));
         properties.put("parameters", Map.of("type", "array",
             "items", Map.of("type", "string"),
-            "description", "REQUIRED. Two or more parameter names to fold into one object."));
+            "description", "preserve_whole_object REQUIRED: 2+ parameter names."));
         properties.put("parameterName", Map.of("type", "string",
-            "description", "Name for the new parameter. Optional when every caller's object is"
-                + " a plain name, which is then used."));
+            "description", "Name of the new parameter."));
         schema.put("properties", properties);
         schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));

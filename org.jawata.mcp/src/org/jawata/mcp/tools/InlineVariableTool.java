@@ -61,7 +61,7 @@ public class InlineVariableTool extends AbstractApplyingRefactoringTool
     /** The bullet a client reads under {@code inline} — moved here from the door (M5). */
     @Override
     public String kindSummary() {
-        return "replace uses of the local variable at the position with its initializer.";
+        return "a local variable: filePath, line, column.";
     }
 
 

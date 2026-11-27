@@ -42,24 +42,12 @@ public final class HireWaitTool implements Tool {
     @Override
     public String getDescription() {
         return """
-            The state of one hire and, once it has finished, its report: what to call after hire when your client has no turn the report can come back in.
+            State of a hire and, once finished, its report: call after hire unless your client gets the report as a
+            new turn (only the jawata chat does).
 
-            USAGE: hire_wait(hireId="<the hireId hire answered>" [, waitSeconds=N])
-
-            hire answers at once with a hireId and the hire goes on working on the engine's own thread; its report comes back to the seat that hired
-            as a new turn only where jawata itself is that seat (the jawata chat). A client that calls this server's tools is its own principal, so it
-            asks here. Answers {state, hireId}: running (with idleSeconds, how long it has shown no sign of life, and stalled, true once that passes
-            the ceiling, 300 seconds unless the host's setting jawata.hire.stallSeconds says another, so a hire that has gone quiet is told to you and not waited for;
-            a lead with a hire running under it is never stalled, and waitingFor names those hires; soFar: toolSteps, seconds, costUsd and
-            contextTokens as its brain last reported them, "no figure" where it sent none, and below, the total of what has ended under it),
-            finished (with report, the hire's short report:
-            state, checks, number of files changed, money, time and tokens ("no figure" where the brain published none), report, the summary it
-            wrote, and record, the file that holds its whole answer and changes; and newToYou, false when the report was already handed over, by
-            this tool or to the chat), or unknown (no hire has that id on this engine).
-            action="stop" ends a running hire you hired, and every hire under it; it answers who was stopped and how many, and is refused for a hire
-            you did not start.
-            waitSeconds (0 to 50, default 0) is how long to wait for a running hire before answering running: call again, and between the calls
-            you are free to answer the person. A finished report is handed over once as new and marked read, so the chat does not hand it over again.
+            hire_wait(hireId, waitSeconds=0..50): running (idleSeconds, stalled, soFar), finished (report, record,
+            newToYou) or unknown. While running, call again.
+            action="stop" ends a hire you started and every hire under it.
             """;
     }
 
@@ -67,10 +55,10 @@ public final class HireWaitTool implements Tool {
     public Map<String, Object> getInputSchema() {
         return Map.of("type", "object",
             "properties", Map.of(
-                "hireId", Map.of("type", "string", "description", "The hireId the hire tool answered."),
-                "waitSeconds", Map.of("type", "integer", "description", "How long to wait for a running hire, 0 to " + MAX_WAIT_SECONDS + " (default 0)."),
+                "hireId", Map.of("type", "string", "description", "From hire."),
+                "waitSeconds", Map.of("type", "integer", "description", "0 to " + MAX_WAIT_SECONDS + " (default 0)."),
                 "action", Map.of("type", "string", "enum", List.of("wait", "stop"),
-                    "description", "wait (default) answers the hire's state; stop ends a running hire you hired, and every hire under it.")),
+                    "description", "wait (default) or stop.")),
             "required", List.of("hireId"));
     }
 

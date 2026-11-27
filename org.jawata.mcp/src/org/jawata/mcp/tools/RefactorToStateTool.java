@@ -79,25 +79,8 @@ public class RefactorToStateTool extends AbstractApplyingRefactoringTool
     /** The bullet a client reads under {@code refactor_to_pattern} — from the door (M5). */
     @Override
     public String kindSummary() {
-        return """
-            TOWARD: a method that branches on state becomes delegation to
-            nested State classes (a <Context>State interface + one inner
-            class per state). TWO SHAPES.
-            A switch on an int state field: the labels name the states, the
-            field is retyped and every `field = LABEL` transition is
-            rewritten to construct the right state.
-            An IF-CHAIN testing the NULLITY of the context's own fields —
-            which is what a class that never had a state field looks like,
-            and the shape real code has. There the state is COMPUTED by a
-            generated state() evaluating the chain's own conditions in the
-            chain's own order, so nothing outside the method is rewritten:
-            no field to retype, no transition site to find or miss. It needs
-            `states`, one name per branch, because nothing in the code names
-            them.
-            Needs: line, column on/inside the switch or the chain.
-            Conservative — refuses unsafe shapes (see errors).
-            (find_quality_issue kind=switch_statements locates the switch
-            shape; nothing yet reports the nullable-field one.)""";
+        return "state branching into State classes: line, column on a switch on an int state field, or on an "
+            + "if-chain testing nullable fields (then `states` is required).";
     }
 
 
@@ -124,17 +107,12 @@ public class RefactorToStateTool extends AbstractApplyingRefactoringTool
         schema.put("properties", Map.of(
             "filePath", Map.of("type", "string", "description", "Source file."),
             "line", Map.of("type", "integer",
-                "description", "Zero-based line on/inside the switch statement, or on/inside "
-                    + "the if-chain for the nullable-field shape."),
+                "description", "Zero-based line."),
             "column", Map.of("type", "integer",
-                "description", "Zero-based column on/inside the switch or the if-chain."),
+                "description", "Zero-based column."),
             "states", Map.of("type", "array", "items", Map.of("type", "string"),
-                "description", "THE NULLABLE-FIELD SHAPE ONLY, and required there: one state "
-                    + "NAME per branch in source order, plus one for the final else if there "
-                    + "is one. Unlike the switch shape there is no constant to read a label "
-                    + "off — the states are implicit in which fields are null — so saying what "
-                    + "each one MEANS is the content of the change and has no default. Ignored "
-                    + "on a switch, whose labels name its states already.")));
+                "description", "refactor_to_state, nullable-field shape only (required): a state name per "
+                    + "branch in order, plus one for a final else.")));
         schema.put("required", List.of("filePath", "line", "column"));
         return withAutoApply(withProjectKey(schema));
     }

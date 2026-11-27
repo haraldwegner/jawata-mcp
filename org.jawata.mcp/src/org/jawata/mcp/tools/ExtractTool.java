@@ -159,10 +159,7 @@ public class ExtractTool extends AbstractTool implements KindedTool {
 
     @Override
     public String preamble() {
-        return """
-            Extract a method, variable, constant, interface, superclass or class; combine functions
-            into a class; split a function into phases; turn a function into a command;
-            replace a temp with a query (behaviour-preserving, reversible).""";
+        return "Extract a method, variable, constant or type, and related restructurings (behaviour-preserving, undoable).";
     }
 
     @Override
@@ -182,102 +179,9 @@ public class ExtractTool extends AbstractTool implements KindedTool {
         return "Kinds and their params (all ZERO-BASED coordinates):";
     }
 
-    /**
-     * PROJECTED from the delegates now (Stage 6a, M5) — this door no longer writes bullets.
-     *
-     * <p>Kept as the golden for the equivalence test: the layout changes by design, the prose
-     * must not. This was the door whose hand-alignment had already broken down — {@code
-     * interface} and {@code superclass} are longer than the eight-column padding the first six
-     * bullets use, so two of eleven were already out of line before anything was moved.</p>
-     */
-    static final String LEGACY_KIND_BLOCK = """
-            Kinds and their params (all ZERO-BASED coordinates):
-            - method   — extract a statement range into a new method.
-                         Needs: startLine, startColumn, endLine, endColumn, methodName.
-            - variable — extract an expression range into a local variable.
-                         Needs: startLine, startColumn, endLine, endColumn (optional variableName).
-            - constant — extract an expression range into a static final constant.
-                         Needs: startLine, startColumn, endLine, endColumn, constantName.
-            - interface— extract an interface from the type at a caret.
-                         Needs: line, column, interfaceName (optional methodNames[] to pull up).
-            - superclass— extract a common superclass from the caret class and its same-package
-                         siblings. Needs: line, column, superclassName, siblings[] (optional
-                         members[], mode). Default mode=jdt (the JDT engine: fields,
-                         non-identical members, constructors); mode=identical is the
-                         conservative byte-identical + self-contained contract.
-            - class    — extract a group of FIELDS into a new class; the original keeps a
-                         reference and every access is rewritten through it. Needs: line,
-                         column, newTypeName, fields[] (optional fieldName, createTopLevel,
-                         createGetterSetter). fields[] has no default on purpose — WHICH
-                         state travels together is the design decision this carries out.
-                         Move Field ships INSIDE this rather than beside it: it is the
-                         constituent atom, and moving a field needs a target that already
-                         owns state, so the move and the class creation must be atomic.
-            - replace_inline_code — replace a group of duplicated method bodies with calls
-                         to one canonical method (Fowler: Replace Inline Code with
-                         Function Call). Needs: cloneGroupId from find_duplicate_code,
-                         passed with the SAME minTokens/projectKey/crossProject the
-                         detection used — group ids are hashes of the clone shape, not
-                         session state. Optional canonicalMethodName picks which
-                         instance survives. Clones in OTHER types are skipped and
-                         listed with the reason: cross-type delegation is not
-                         automatically safe.
-                         The same behaviour reaches extract kind=method as
-                         replaceDuplicates, DEFAULT FALSE — that operation predates the
-                         parameter and its shipped behaviour is to extract the selection
-                         only. Every extract reports otherOccurrences whether or not the
-                         flag is set, so a non-zero count is the signal to re-run with it.
-            - combine_functions — gather loose STATIC functions that all take the same type
-                         as their FIRST parameter into a new class holding it; each becomes
-                         an instance method taking whatever came after, and every call site
-                         becomes `new Type(data).fn(rest)` (Fowler: Combine Functions into
-                         Class). Needs: filePath, functions[], newTypeName (optional
-                         fieldName). functions[] has no default for the same reason
-                         kind=class's fields[] does not — WHICH functions belong together is
-                         the decision this carries out. Refuses a non-static function
-                         (it already has a receiver — that is move kind=method) and a
-                         function whose first parameter is a different type, naming both
-                         sides, since a guess at "the data" produces code that compiles.
-            - function_to_command — turn a STATIC function into an object: its parameters
-                         become final fields set by a constructor, its body becomes
-                         execute(), and every call site becomes `new Type(args).execute()`
-                         (Fowler: Replace Function with Command). Needs: filePath, line,
-                         column on the function, newTypeName. The reason to want it is that
-                         the parameters are FIELDS afterwards, so the body can be broken
-                         into named steps that share them — which compose_method cannot do
-                         while they are parameters. Refuses an instance method (its receiver
-                         would be a field nobody named) and a function something else
-                         redeclares (a command has no dispatch).
-            - split_phase — split a function that does two jobs in sequence into two
-                         functions joined by a generated record (Fowler: Split Phase).
-                         Needs: filePath, line, column on the function, boundaryLine —
-                         the line of the SECOND phase's first statement. boundaryLine has
-                         no default because where one job ends is a judgement about
-                         meaning that nothing in the syntax marks. What the record carries
-                         IS derived: every local declared before the boundary and read
-                         after it, which is usually few — the rest stay in phase one, and
-                         that shrinkage is the readability this buys. Optional firstName,
-                         secondName, intermediateName. Refuses a return before the
-                         boundary (an early exit, not a phase) and a second phase that
-                         ASSIGNS to a first-phase local (the carrier's components are
-                         final; a mutable carrier is a design decision).
-            - temp_to_query — extract a temp's initializer into a method, then inline the
-                         temp, so every use reads the query instead (Fowler: Replace Temp
-                         with Query). Needs: filePath, line, column on the declaration
-                         (optional methodName, default the variable's own name). COMPOSED
-                         from two operations that already ship, so it adds one undo handle
-                         for the pair and rolls the first back if the second declines.
-                         Refuses a temp that is assigned more than once — it is then not a
-                         name for one value, and Split Variable comes first.""";
-
     @Override
     public String footer() {
-        return """
-            Applies by default; returns filesModified/diff/undoChangeId/summary. Pass
-            auto_apply=false to stage without applying.
-
-            Requires load_project to be called first.
-            """;
+        return "";
     }
 
     @Override
@@ -289,41 +193,38 @@ public class ExtractTool extends AbstractTool implements KindedTool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", publishedKinds());
-        kind.put("description", "Which extract refactoring to run. See the tool description for per-kind params.");
+        kind.put("description", "What to extract; see the tool description.");
         properties.put("kind", kind);
 
-        properties.put("filePath", Map.of("type", "string", "description", "Path to source file."));
-        properties.put("startLine", Map.of("type", "integer", "description", "method/variable/constant: zero-based start line of the selection."));
-        properties.put("startColumn", Map.of("type", "integer", "description", "method/variable/constant: zero-based start column."));
-        properties.put("endLine", Map.of("type", "integer", "description", "method/variable/constant: zero-based end line."));
-        properties.put("endColumn", Map.of("type", "integer", "description", "method/variable/constant: zero-based end column."));
-        properties.put("line", Map.of("type", "integer", "description", "interface/superclass/class: zero-based line of a caret in the type."));
-        properties.put("column", Map.of("type", "integer", "description", "interface/superclass/class: zero-based column."));
-        properties.put("methodName", Map.of("type", "string", "description", "method: name for the extracted method."));
-        properties.put("variableName", Map.of("type", "string", "description", "variable: optional name for the extracted variable."));
-        properties.put("constantName", Map.of("type", "string", "description", "constant: name for the extracted constant."));
-        properties.put("interfaceName", Map.of("type", "string", "description", "interface: name for the extracted interface."));
+        properties.put("filePath", Map.of("type", "string", "description", "Source file."));
+        properties.put("startLine", Map.of("type", "integer", "description", "Range kinds: zero-based."));
+        properties.put("startColumn", Map.of("type", "integer", "description", "Range kinds: zero-based."));
+        properties.put("endLine", Map.of("type", "integer", "description", "Range kinds: zero-based."));
+        properties.put("endColumn", Map.of("type", "integer", "description", "Range kinds: zero-based."));
+        properties.put("line", Map.of("type", "integer", "description", "Zero-based caret line."));
+        properties.put("column", Map.of("type", "integer", "description", "Zero-based caret column."));
+        properties.put("methodName", Map.of("type", "string", "description", "method/temp_to_query: new method name."));
+        properties.put("variableName", Map.of("type", "string", "description", "variable: new name."));
+        properties.put("constantName", Map.of("type", "string", "description", "constant: new name."));
+        properties.put("interfaceName", Map.of("type", "string", "description", "interface: new name."));
         properties.put("methodNames", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "interface: optional method names to declare in the new interface."));
-        properties.put("superclassName", Map.of("type", "string", "description", "superclass: name for the generated abstract parent."));
+            "description", "interface: methods to declare."));
+        properties.put("superclassName", Map.of("type", "string", "description", "superclass: new name."));
         properties.put("siblings", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "superclass: sibling class simple names in the same package to reparent + pull from."));
+            "description", "superclass: sibling simple names in the same package."));
         properties.put("members", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "superclass: optional member names to pull up (default: auto-discover the identical methods; mode=jdt also accepts fields and non-identical members)."));
+            "description", "superclass: members to pull up (default: identical methods)."));
         properties.put("mode", Map.of("type", "string", "enum", List.of("jdt", "identical"),
-            "description", "superclass: jdt (default) = the general JDT engine; identical = the conservative byte-identical + self-contained contract."));
+            "description", "superclass: jdt (default, also fields and differing members) or identical (conservative)."));
 
         properties.put("typeName", org.jawata.mcp.tools.shared.FqnTarget.typeNameSchemaProperty(
-            "type to extract from (kinds interface/superclass/class; the range kinds "
-                + "method/variable/constant need their coordinates)"));
+            "type (interface, superclass, class)"));
         // ACCEPTED and not PUBLISHED until C6 — the front door's materializer reads either
         // key, so a member FQN has always worked; only typeName was declared. Stage 6 added
         // a kind whose target is a METHOD (function_to_command), which is what made the
         // omission reach a client rather than merely being untidy.
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-            "member to extract from: pkg.Type#method for kind=function_to_command. The RANGE"
-                + " kinds (method, variable, constant, split_phase, temp_to_query) are"
-                + " positional — a statement range and a local have no name"));
+            "function (function_to_command; range kinds need coordinates)"));
 
         // THE BACKSTOP now lives on KindedTool — this door wrote it out, three others wrote
         // it out again, and `inline` did not write it at all, which is how row 36's

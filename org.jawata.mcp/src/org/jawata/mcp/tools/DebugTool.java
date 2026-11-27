@@ -158,188 +158,30 @@ public class DebugTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Interactive debugging of a local JVM — attach to a running program, or
-            launch one, and work with it live.
+            Debug a local JVM live. It SUSPENDS THREADS AND CHANGES STATE: for a DEVELOPMENT OR SIMULATION machine.
 
-            USAGE: debug(action="<action>", ...)
+            USAGE: debug(action="<action>", ...); sessionId needed unless noted (*).
+            - discover*, preset_args* (JVM flags), attach* (pid).
+            - replay* (mainClass, classpath, invariant, className, line; capture): stop at the first violation.
+            - artifacts*, artifact_delete* (artifactId).
+            - launch* (mainClass, classpath; args, jvmArgs): HELD before the first instruction - arm, then resume.
+              Or launcherPath (Eclipse RCP), or configuration=<IDE run configuration> (not held).
+            - status; detach / cancel (kills a launched JVM, releases an attached one).
+            - breakpoint_set: kind line|method|conditional|hit_count|exception|field_access|field_write, className,
+              + line / method / field / condition / hitCount. breakpoint_list; breakpoint_clear (breakpointId).
+            - wait (timeoutMillis): next hit.
+            - threads. snapshot (threadId; frameIndex, depth, maxItems, maxBytes). evaluate (threadId, expression).
+            - step (threadId, mode in|over|out|to_line; to_line: className, line). resume (threadId or all).
+            - instances (className; offset, limit).
+            - set_value (threadId, name, expression), force_return, pop_frame, redefine (className, classFile:
+              bodies only), mutations (what you changed).
+            - probe_set (kind field_watch|method_trace|logpoint; budget): the program keeps running, except a
+              logpoint with capture stops the thread each pass. probe_read (values also go to hitStream),
+              probe_list, probe_clear (probeId).
 
-            - discover — the local JVMs, each flagged `debuggable` or not. A JVM that
-                         started WITHOUT a debug agent can never be given one, so it can
-                         never be attached to — that is a fact of the JVM, not a policy.
-            - attach   — attach to one. Needs: pid. Refuses, with the reason, if the
-                         target was not started debuggable. Returns a sessionId and what
-                         the JVM can actually do.
-            - launch   — start a JVM under the dev/sim preset, attached and HELD BEFORE ITS
-                         FIRST INSTRUCTION. Arm breakpoints, then action=resume to start
-                         the program — otherwise it has already run past what you wanted
-                         to see. Needs: mainClass + classpath. Optional: args, jvmArgs,
-                         workingDirectory.
-                         IN AN IDE THAT RUNS PROGRAMS FOR JAWATA (Eclipse): launch with
-                         configuration=<the name of the person's run configuration> asks the
-                         host to run it ("Run for jawata"), then attaches. The program is NOT
-                         held: it is already running, so reproduce the bug in it, then set
-                         breakpoints or probes. The person's configuration is never changed.
-                         A program the person started with Run > Run for jawata is listed by
-                         discover with its configuration and who started it; attach by pid.
-            - status   — one session, or all of them (omit sessionId).
-            - detach   — end a session. A JVM you LAUNCHED is killed; a JVM you
-                         ATTACHED to is released and keeps running — it was never
-                         yours.
-            - cancel   — alias for detach.
-
-            BREAKPOINTS (all need sessionId):
-            - breakpoint_set   — kind = line | method | conditional | hit_count |
-                                 exception | field_access | field_write.
-                                 Needs className; plus line (line/conditional/hit_count),
-                                 method (method), field (the two field kinds),
-                                 condition (conditional), hitCount (hit_count).
-                                 A class that is not loaded YET does not fail — the
-                                 breakpoint is deferred and reports `bound: false` with
-                                 the reason, and binds the moment the class loads.
-            - breakpoint_list / breakpoint_clear — as they read.
-
-            STOPPING AND LOOKING:
-            - wait     — BLOCK until the next breakpoint hit, and return it. Returns the
-                         instant it fires; if nothing fires, waits up to timeoutMillis
-                         (default 30s, max 240s) and then answers "nothing yet" — which is
-                         an answer, not an error.
-
-                         NOTHING IS EVER MISSED. A hit SUSPENDS the thread and leaves it
-                         suspended: the program stops and waits for you, indefinitely. So
-                         a wait that times out loses nothing — call again and the hit is
-                         still there. (This is why no push notification is needed, and why
-                         one would not help: an agent only ever runs on tool results.)
-
-                         WAITING FOR SOMETHING RARE — a condition that takes an hour, a
-                         bug that shows up on the ten-thousandth message? Hand the session
-                         to a SUBAGENT: it arms the breakpoints, starts the program, and
-                         loops `wait` in its own context while the main loop does other
-                         work. The sessionId is the whole handle it needs.
-            - threads  — every thread and what it is doing. A RUNNING thread reports NO
-                         stack and says why: a stack read from a running thread is a
-                         race, not a reading.
-            - snapshot — one SUSPENDED thread: stack, and one frame's arguments, locals
-                         and `this`, expanded to bounds you set (depth / maxItems /
-                         maxBytes). Every bound that bites is reported on the node it
-                         truncated — a silently truncated object graph reads like a
-                         complete one.
-            - evaluate — a Java expression in a suspended frame, INCLUDING calling
-                         methods on the target's own objects. An expression form this
-                         evaluator does not implement is refused BY NAME rather than
-                         quietly evaluated as something else.
-            - instances— live instances of a type, paged. Past the enumeration cap the
-                         exact count comes from the JVM's heap histogram — a cap
-                         reported as a count would be a lie with a number on it.
-
-            MOVING ON:
-            - step     — mode = in | over | out | to_line (to_line needs className+line).
-                         The thread runs; poll `wait` for where it lands.
-            - resume   — one thread (threadId), or every suspended thread.
-
-            TESTING A HYPOTHESIS — changing the running program to see what happens:
-            - set_value    — overwrite a local or a field. Needs threadId, name, expression
-                             ("what if this were 0?").
-            - force_return — abandon the current method and return a value to its caller NOW.
-                             The rest of the method does not run — side effects included.
-            - pop_frame    — put the thread back at the call site, about to make the call
-                             again. Rewinds the STACK, not the world: side effects the frame
-                             already had are still done.
-            - redefine     — replace a class's bytecode (needs className + classFile). Method
-                             BODIES only — adding or removing a method or field is refused,
-                             plainly. Methods already on the stack keep their old code until
-                             re-entered.
-            - mutations    — everything this session changed, in order.
-
-            WATCHING WITHOUT STOPPING — probes (this is what you use on a live simulation,
-            where suspending the world is exactly what you cannot do):
-            - probe_set   — kind = field_watch (every read and write of a field) |
-                            method_trace (entry and exit, with the RETURN VALUE) |
-                            logpoint (a line, optionally capturing expressions).
-                            The program KEEPS RUNNING at full speed. Optional budget
-                            (default 1000 events), after which the probe stops itself and
-                            says so — a probe on a hot path would otherwise stream forever.
-                            A class that is not loaded YET does not fail here either: the
-                            probe is deferred, reports `bound: false` with the reason, and
-                            attaches the moment the class loads — so a seam can be probed
-                            immediately after launch, before the program reaches it.
-            - probe_read  — the values it has streamed. They also land in `hitStream`, so a
-                            file monitor gets them as they happen.
-            - probe_list / probe_clear — as they read.
-
-            THE ONE HONEST CATCH: a JDI event carries only what the JVM puts in it. A field's
-            value and a method's return value are FREE — they ride in the event, and nothing
-            stops. But LOCALS can only be read from a stopped thread, so a logpoint with
-            `capture` DOES stop the thread on every pass, reads the frame, and lets it go.
-            Such a probe reports `perturbs: true`.
-
-            AND IT IS NOT CHEAP. Each captured expression is a round trip to the JVM, and an
-            expression that CALLS A METHOD costs a real method invocation in the target. On a
-            hot path the thread can end up stopped for a large fraction of its time — that is
-            not "a few microseconds", it is a different program. If you are hunting a race or
-            a timing bug, this will hide it or invent it: use field_watch or method_trace,
-            which stop nothing at all.
-
-            ONCE YOU MUTATE, IT IS NOT THE SAME PROGRAM. A conclusion drawn after a mutation
-            is a conclusion about a program you edited. `mutations` is how you (and whoever
-            reads your report) can tell which is which — so use it, and say what you changed.
-
-            REPLAY WITH AN INVARIANT — the one that finds the bug for you:
-            - replay — launch a program, declare what must ALWAYS be true, and stop at the
-                       FIRST moment it is not. Needs: mainClass, classpath, invariant (a
-                       boolean Java expression), className + line (where to check it).
-                       Optional: capture (expressions to record), args, timeoutMillis.
-
-                       The invariant is armed as its own negation, so the program runs at
-                       speed and stops only when it is actually broken. What comes back is
-                       the FIRST violation — stack, locals, and your captured expressions —
-                       stored as an artifact with its provenance. The thread is left
-                       SUSPENDED right there, so you can snapshot, evaluate and step from
-                       the exact moment things went wrong, not from the wreckage afterwards.
-
-                       If the invariant HELD for the whole run, it says so — which is an
-                       answer, not a failure.
-
-            ARTIFACTS: artifacts / artifact_delete — what a session left behind (replay
-            captures, dumps), with provenance and an expiry. Explicit delete, because
-            these get large.
-
-            CLOSING THE LOOP: a hit names the class and the method, and that IS the key the
-            static tools take — symbol="com.example.Foo#bar" goes straight into
-            get_call_hierarchy / find_references / analyze. Never search for something the
-            running program has just told you.
-
-            ────────────────────────────────────────────────────────────────────────────
-            WHAT THIS DOES TO THE TARGET — read this once.
-
-            1. A debug session SUSPENDS THREADS AND CHANGES STATE in the JVM it is attached
-               to. Breakpoints stop it; set_value, force_return, pop_frame and redefine
-               rewrite it. This is not observation — it is intervention.
-
-            2. It is meant for a DEVELOPMENT OR SIMULATION machine. That is not a
-               disclaimer, it is the design: a JVM can only be debugged if it was STARTED
-               with a debug agent, and one cannot be added later. A production JVM that was
-               not launched for debugging is not protected by policy — it is unreachable.
-
-            3. Where a JVM *is* debuggable — a test or staging box, say — pointing this at
-               it is YOUR PROFESSIONAL JUDGMENT, and jawata will not second-guess it. If
-               you do not know what suspending that JVM would do, that is the answer.
-            ────────────────────────────────────────────────────────────────────────────
-
-            The dev/sim launch preset is one host-controlled switch that prepares a
-            JVM for the whole toolkit: loopback debug port, continuous bounded flight
-            recording, local JMX, native-memory tracking, profiler readiness, and a
-            quiet console.
-
-            - preset_args — the preset as PASTE-READY blocks for a target the HOST starts
-              (suspend=n; the program is never held): a one-line java form and an
-              eclipse.ini block, each with instructions. Attach afterwards.
-            - launch also takes the ECLIPSE-RCP shape: launcherPath (the product's native
-              launcher; exclusive with mainClass/classpath) + optional iniPath /
-              configArea / workspaceArea / vmargsExtra — the command is built as
-              <launcher> [program args] --launcher.appendVmargs -vmargs <preset+extra>,
-              so the ini's own vmargs still apply and the preset appends. Point
-              configArea/workspaceArea at scratch dirs to leave the product's own
-              configuration untouched.
+            NOTHING IS EVER MISSED: a hit keeps the thread suspended. For a rare one, hand the sessionId to a
+            SUBAGENT to loop wait. A JVM started without a debug agent is unreachable; debugging any other JVM that
+            has one is your PROFESSIONAL JUDGMENT.
             """;
     }
 
@@ -352,115 +194,88 @@ public class DebugTool extends AbstractTool {
         Map<String, Object> action = new LinkedHashMap<>();
         action.put("type", "string");
         action.put("enum", ACTIONS);
-        action.put("description", "Which debug action to run.");
+        action.put("description", "See the tool description.");
         properties.put("action", action);
 
         properties.put("pid", Map.of("type", "integer",
-            "description", "attach: the JVM to attach to (from action=discover)."));
+            "description", "attach: from discover."));
         properties.put("sessionId", Map.of("type", "string",
-            "description", "status/detach/cancel: the session handle."));
+            "description", "Session id."));
         properties.put("mainClass", Map.of("type", "string",
-            "description", "launch: the class to run."));
+            "description", "launch/replay: class to run."));
         properties.put("classpath", Map.of("type", "string",
-            "description", "launch: the target's classpath."));
+            "description", "launch/replay."));
         properties.put("args", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "launch: program arguments."));
+            "description", "Program arguments."));
         properties.put("jvmArgs", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "launch: extra JVM flags, ON TOP of the dev/sim preset."));
+            "description", "Extra JVM flags."));
         properties.put("workingDirectory", Map.of("type", "string",
-            "description", "launch: the target's working directory."));
+            "description", "launch."));
 
         properties.put("configuration", Map.of("type", "string",
-            "description", "launch (a host that runs programs for jawata, such as Eclipse): the name of the person's run "
-                + "configuration to run with the debug agent, and attach to. Exclusive with mainClass/classpath/launcherPath. "
-                + "The program is not held at its start."));
+            "description", "launch: an IDE run configuration's name; exclusive with mainClass/classpath/launcherPath."));
         properties.put("launcherPath", Map.of("type", "string",
-            "description", "launch (eclipse-rcp shape): the product's NATIVE launcher "
-                + "executable. Exclusive with mainClass/classpath — the command becomes "
-                + "<launcher> [program args] --launcher.appendVmargs -vmargs <preset + "
-                + "vmargsExtra>, so the ini's own vmargs stay and the preset appends."));
+            "description", "launch Eclipse RCP: native launcher; exclusive with mainClass/classpath."));
         properties.put("iniPath", Map.of("type", "string",
-            "description", "launch (eclipse-rcp): optional explicit .ini "
-                + "(--launcher.ini); default = the launcher's sibling ini."));
+            "description", "RCP: .ini (default beside launcher)."));
         properties.put("vmargsExtra", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "launch (eclipse-rcp): extra VM args appended AFTER the preset "
-                + "in the -vmargs block."));
+            "description", "RCP: extra VM args."));
         properties.put("configArea", Map.of("type", "string",
-            "description", "launch (eclipse-rcp): -configuration area for the launched "
-                + "instance — point it at a scratch dir to leave the product's own "
-                + "configuration untouched."));
+            "description", "RCP: -configuration (use a scratch dir)."));
         properties.put("workspaceArea", Map.of("type", "string",
-            "description", "launch (eclipse-rcp): -data workspace for the launched "
-                + "instance — scratch dir for the same reason."));
+            "description", "RCP: -data (use a scratch dir)."));
 
         properties.put("kind", Map.of("type", "string", "enum", BREAKPOINT_KINDS,
-            "description", "breakpoint_set: which kind of breakpoint."));
+            "description", "breakpoint_set kind."));
         properties.put("className", Map.of("type", "string",
-            "description", "breakpoint_set / step(to_line) / instances: the fully-qualified "
-                + "class (a nested class is Outer$Inner). For kind=exception, the exception "
-                + "class."));
+            "description", "Class FQN (nested: Outer$Inner); for kind=exception, the exception."));
         properties.put("line", Map.of("type", "integer",
-            "description", "breakpoint_set (line/conditional/hit_count) and step(to_line): "
-                + "the source line."));
+            "description", "Source line."));
         properties.put("method", Map.of("type", "string",
-            "description", "breakpoint_set kind=method: the method to break on entry of."));
+            "description", "Method name."));
         properties.put("field", Map.of("type", "string",
-            "description", "breakpoint_set kind=field_access|field_write: the field to watch."));
+            "description", "Field name."));
         properties.put("condition", Map.of("type", "string",
-            "description", "breakpoint_set kind=conditional: a boolean Java expression, "
-                + "evaluated in the frame that hit. A condition that cannot be evaluated "
-                + "STOPS and reports the error — it is never silently treated as false."));
+            "description", "kind=conditional: boolean Java expression."));
         properties.put("hitCount", Map.of("type", "integer",
-            "description", "breakpoint_set kind=hit_count: stop on the Nth occurrence."));
+            "description", "kind=hit_count: Nth occurrence."));
         properties.put("breakpointId", Map.of("type", "string",
-            "description", "breakpoint_clear: which breakpoint."));
+            "description", "breakpoint_clear."));
         properties.put("threadId", Map.of("type", "integer",
-            "description", "snapshot/evaluate/step/resume: the suspended thread (from a hit "
-                + "or from action=threads). resume: omit to resume every suspended thread."));
+            "description", "Suspended thread; resume: omit for all."));
         properties.put("frameIndex", Map.of("type", "integer",
-            "description", "snapshot/evaluate: which stack frame (0 = the top, where it "
-                + "stopped). Default 0."));
+            "description", "Stack frame (default 0, top)."));
         properties.put("expression", Map.of("type", "string",
-            "description", "evaluate: the Java expression to evaluate in that frame."));
+            "description", "Java expression."));
         properties.put("mode", Map.of("type", "string",
             "enum", List.of("in", "over", "out", "to_line"),
-            "description", "step: which step."));
+            "description", "step."));
         properties.put("timeoutMillis", Map.of("type", "integer",
-            "description", "wait: how long to BLOCK waiting for a hit (default 30000, max "
-                + "240000). A timeout is a normal answer — 'nothing yet' — not an error, and "
-                + "nothing is lost: the hit keeps the thread suspended until you collect it. "
-                + "replay: how long to run before giving up (default 60000); there, 'no "
-                + "violation yet, still running' is NOT the same answer as 'the invariant "
-                + "held', and the response says which it is."));
+            "description", "wait: default 30000, max 240000. replay: default 60000."));
         properties.put("depth", Map.of("type", "integer",
-            "description", "snapshot/instances: how deep to expand objects (default 3)."));
+            "description", "Object expansion depth (default 3)."));
         properties.put("maxItems", Map.of("type", "integer",
-            "description", "snapshot: array elements / fields per level (default 20)."));
+            "description", "Per level (default 20)."));
         properties.put("maxBytes", Map.of("type", "integer",
-            "description", "snapshot: string clip length (default 4096)."));
+            "description", "String clip (default 4096)."));
         properties.put("offset", Map.of("type", "integer",
-            "description", "instances: page offset (default 0)."));
+            "description", "instances: page offset."));
         properties.put("limit", Map.of("type", "integer",
             "description", "instances: page size (default 10, max 50)."));
         properties.put("artifactId", Map.of("type", "string",
-            "description", "artifact_delete: which artifact to remove."));
+            "description", "artifact_delete."));
         properties.put("name", Map.of("type", "string",
-            "description", "set_value: the local or field to overwrite."));
+            "description", "set_value: local or field."));
         properties.put("classFile", Map.of("type", "string",
-            "description", "redefine: path to the compiled .class with the new method bodies."));
+            "description", "redefine: compiled .class path."));
         properties.put("probeId", Map.of("type", "string",
-            "description", "probe_clear / probe_read: which probe."));
+            "description", "probe_clear/probe_read."));
         properties.put("capture", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "probe_set kind=logpoint: expressions to evaluate at each pass. "
-                + "NOTE: capturing reads a frame, which STOPS the thread briefly — the probe "
-                + "reports perturbs:true. Without capture, nothing is stopped."));
+            "description", "Expressions to record; on a logpoint this stops the thread each pass (perturbs)."));
         properties.put("invariant", Map.of("type", "string",
-            "description", "replay: a boolean Java expression that must ALWAYS hold (e.g. "
-                + "\"balance >= 0\"). Armed as its own negation, so the program runs at speed "
-                + "and stops only where it is actually broken."));
+            "description", "replay: boolean expression that must always hold."));
         properties.put("budget", Map.of("type", "integer",
-            "description", "probe_set: stop after this many events (default 1000). The probe "
-                + "then disables itself and says so — what you have is the first N, not all."));
+            "description", "probe_set: max events (default 1000)."));
 
         schema.put("properties", properties);
         schema.put("required", List.of("action"));

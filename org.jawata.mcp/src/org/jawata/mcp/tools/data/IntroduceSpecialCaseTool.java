@@ -91,15 +91,8 @@ public class IntroduceSpecialCaseTool extends AbstractRefactoringTool implements
 
     @Override
     public String kindSummary() {
-        return """
-            introduce a special case for an absent value — Fowler's Null Object. Generates
-            a static nested subclass (Customer.NullCustomer) overriding every overridable
-            method with a neutral answer, plus one shared INSTANCE, so clients can stop
-            checking for absence. It does NOT rewrite the checks: which expression yields
-            the absent value cannot be inferred from a type, and that migration is a
-            decision per call site. Refuses a final class, an interface, a class with no
-            reachable constructor, and one that already declares the name. Each refusal
-            names which.""";
+        return "a null-object nested subclass with a shared INSTANCE (does NOT rewrite the checks): "
+            + "position in the class; specialCaseName optional.";
     }
 
     /** Structural: it adds a type to the parent's published surface. */
@@ -131,8 +124,7 @@ public class IntroduceSpecialCaseTool extends AbstractRefactoringTool implements
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column of that caret."));
         properties.put("specialCaseName", Map.of("type", "string",
-            "description", "Name for the generated subclass (default: Null + the type's own "
-                + "name). Every call site reads it, so it is worth choosing."));
+            "description", "special_case: subclass name (default Null<Type>)."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column"));
         return withAutoApply(withProjectKey(schema));

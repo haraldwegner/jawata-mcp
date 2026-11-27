@@ -69,19 +69,9 @@ public class MoveMethodTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            move a method to another type. Which engine runs is read off the
-            method's own modifiers, not asked of you.
-            An INSTANCE method moves onto a RECEIVER — one of its parameters
-            or fields — and every call site is rewritten to invoke it there.
-            Needs: the method's position (filePath, line, column) or its
-            symbol, plus `target`, the parameter/field whose type receives it.
-            `target` may be omitted when exactly one candidate exists; with
-            several, the call is refused and lists them.
-            A STATIC method has no receiver — its call sites name the owning
-            TYPE — so it needs `targetType` instead, the destination's
-            fully-qualified name, and JDT's Move Static Members repoints every
-            qualified reference across the workspace.
-            Optional keepDelegate leaves a forwarder behind on either path.""";
+            a method (position or symbol). INSTANCE: onto the type of a parameter/field named by `target`
+            (omit only if one candidate). STATIC: targetType. keepDelegate optional. Refuses a body that still
+            reaches the old type unless oldOwnerAccess=parameter.""";
     }
 
     /** Structural: the method's receiver changes, so every call site's shape changes. */
@@ -141,35 +131,20 @@ public class MoveMethodTool extends AbstractRefactoringTool
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column number on the line."));
         properties.put("target", Map.of("type", "string",
-            "description", "Name of the parameter/field whose type receives the method "
-                + "(optional when there is exactly one possible target)."));
+            "description", "Receiving parameter/field (instance method or instance field)."));
         properties.put("keepDelegate", Map.of("type", "boolean",
-            "description", "Leave a forwarding method on the original type (default false)."));
+            "description", "Leave a forwarder (default false)."));
         properties.put("targetType", Map.of("type", "string",
-            "description", "For a STATIC method: fully-qualified name of the existing class "
-                + "it moves to. A static method has no receiver, so `target` does not apply "
-                + "to it and this does."));
+            "description", "Existing destination class FQN (static method, or field)."));
         properties.put("oldOwnerAccess", Map.of(
             "type", "string",
             "enum", List.of("refuse", "parameter"),
-            "description", "Only consulted when the moved body STILL REACHES the type it came "
-                + "from, which the engine answers and this tool asks. Default 'refuse': the "
-                + "move is declined and names what it would cost, because JDT's own answer is "
-                + "to do it silently, and that silence sent eleven of Sprint 8's move edits to "
-                + "hand work. 'parameter' takes it deliberately — and MEASURED it costs TWO "
-                + "things rather than one: the old owner is added as a parameter, so the "
-                + "destination's package comes to depend on the owner's, AND the engine WIDENS "
-                + "the members the moved body reads, turning a private field public. The move "
-                + "opens the old owner's encapsulation as well as inverting the dependency."));
+            "description", "When the body still reaches the old type: refuse (default), or parameter "
+                + "(adds the old owner as parameter and WIDENS members read, e.g. private to public)."));
         properties.put("oldOwnerName", Map.of("type", "string",
-            "description", "With oldOwnerAccess=parameter: the name for the added parameter. "
-                + "Omit to take the engine's suggestion."));
+            "description", "Name of that parameter."));
         properties.put("forbiddenPackage", Map.of("type", "string",
-            "description", "A package prefix the DESTINATION must not come to depend on. With "
-                + "oldOwnerAccess=parameter, a move that would create exactly that dependency "
-                + "is refused before anything is written — the layering check applied to this "
-                + "tool's own result, which no detector can do beforehand because the edge "
-                + "does not exist yet."));
+            "description", "With oldOwnerAccess=parameter: refuse if the destination would depend on it."));
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
             "method to move"));
         schema.put("properties", properties);

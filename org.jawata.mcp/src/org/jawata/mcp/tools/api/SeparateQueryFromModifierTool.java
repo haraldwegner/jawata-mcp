@@ -138,15 +138,7 @@ public class SeparateQueryFromModifierTool extends AbstractApplyingRefactoringTo
 
     @Override
     public String getDescription() {
-        return """
-            Separate Query from Modifier — a method that both changes state and answers a
-            question becomes a void command plus a query, so it can be asked without causing.
-            Name the METHOD (symbol=pkg.Type#m, or a position). Performs the case where the
-            method RETURNS A FIELD IT WROTE: the return is removed, a query reading that field
-            is added (or an existing one reused), and every call site that used the value is
-            split into two adjacent statements. Optional: queryName. Refuses anything else —
-            notably a return computed from locals, because separating THAT needs the body run
-            twice and no tool can decide whether that is safe.""";
+        return "a method that RETURNS A FIELD IT WROTE becomes void plus a query: queryName optional.";
     }
 
     /** Structural: the signature changes and every call site with it. */
@@ -161,14 +153,14 @@ public class SeparateQueryFromModifierTool extends AbstractApplyingRefactoringTo
         schema.put("type", "object");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("filePath", Map.of("type", "string",
-            "description", "Source file declaring the method."));
+            "description", "Source file."));
         properties.put("line", Map.of("type", "integer",
-            "description", "Zero-based line of the method's declaration."));
+            "description", "Zero-based line."));
         properties.put("column", Map.of("type", "integer",
-            "description", "Zero-based column on that line."));
-        properties.put("symbol", FqnTarget.symbolSchemaProperty("method that commands AND asks"));
+            "description", "Zero-based column."));
+        properties.put("symbol", FqnTarget.symbolSchemaProperty("method"));
         properties.put("queryName", Map.of("type", "string",
-            "description", "Name for the query (optional; defaults to the field's own name)."));
+            "description", "separate_query_from_modifier: query name (default the field's)."));
         schema.put("properties", properties);
         schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));

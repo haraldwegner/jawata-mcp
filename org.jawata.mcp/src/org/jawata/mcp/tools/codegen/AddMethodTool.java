@@ -74,9 +74,8 @@ public class AddMethodTool extends AbstractTool
     /** The bullet a client reads under {@code generate}. */
     @Override
     public String kindSummary() {
-        return "a method on the type at the caret: on a class a stub whose body throws UnsupportedOperationException, so a test of its behaviour"
-            + " fails for the behaviour and not for a missing method; on an interface the bare signature. Needs: methodName."
-            + " Optional: returnType (default void), parameters[] ({name, type}), visibility (public by default).";
+        return "a stub (throws UnsupportedOperationException; bare signature on an interface): methodName; returnType, "
+            + "parameters[], visibility optional.";
     }
 
     @Override
@@ -97,9 +96,9 @@ public class AddMethodTool extends AbstractTool
         properties.put("filePath", Map.of("type", "string"));
         properties.put("line", Map.of("type", "integer"));
         properties.put("column", Map.of("type", "integer"));
-        properties.put("methodName", Map.of("type", "string", "description", "add_method: the new method's name."));
-        properties.put("returnType", Map.of("type", "string", "description", "add_method: the return type as written in source (default void)."));
-        properties.put("parameters", Map.of("type", "array", "description", "add_method: the parameters, in order, each {name, type}.",
+        properties.put("methodName", Map.of("type", "string", "description", "add_method: name."));
+        properties.put("returnType", Map.of("type", "string", "description", "add_method: default void."));
+        properties.put("parameters", Map.of("type", "array", "description", "add_method: each {name, type}.",
             "items", Map.of("type", "object", "properties", Map.of("name", Map.of("type", "string"), "type", Map.of("type", "string")))));
         properties.put("visibility", Map.of("type", "string", "enum", VISIBILITIES, "description", "constructor/getters_setters/add_method: member visibility (e.g. public)."));
         schema.put("properties", properties);

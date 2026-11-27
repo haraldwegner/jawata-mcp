@@ -200,17 +200,8 @@ public class RemoveSettingMethodTool extends AbstractRefactoringTool implements 
     @Override
     public String kindSummary() {
         return """
-            take away a field's setter so the value is settled at construction:
-            each of the declaring class's own constructors that called it assigns
-            the field directly instead, and the field becomes final when that is
-            provably safe. Point at the SETTER (position, or
-            symbol=pkg.Type#setX). Refuses a caller outside the declaring class's
-            constructors — that caller wants to change the value after
-            construction, which is the behaviour being removed — and names every
-            such site. Refuses a method that is not a plain one-parameter field
-            assignment, a static field, and a setter that overrides or is
-            overridden. The field is left non-final, with the reason, when
-            definite assignment is not provable here.""";
+            remove a setter (position, or symbol=pkg.Type#setX); constructors assign directly, field made final
+            when provably safe. Refuses callers outside the class's constructors, overriding setters.""";
     }
 
     /** Structural: it takes a method off the class's published surface. */

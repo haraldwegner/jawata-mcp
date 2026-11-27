@@ -74,17 +74,8 @@ public class CombineFunctionsIntoClassTool extends AbstractApplyingRefactoringTo
     @Override
     public String kindSummary() {
         return """
-            gather loose STATIC functions that all take the same type
-            as their FIRST parameter into a new class holding it; each becomes
-            an instance method taking whatever came after, and every call site
-            becomes `new Type(data).fn(rest)` (Fowler: Combine Functions into
-            Class). Needs: filePath, functions[], newTypeName (optional
-            fieldName). functions[] has no default for the same reason
-            kind=class's fields[] does not — WHICH functions belong together is
-            the decision this carries out. Refuses a non-static function
-            (it already has a receiver — that is move kind=method) and a
-            function whose first parameter is a different type, naming both
-            sides, since a guess at "the data" produces code that compiles.""";
+            STATIC functions sharing their first parameter's type become methods of a new class:
+            filePath, functions[] (2+), newTypeName; fieldName optional.""";
     }
 
     /** Structural: it introduces a TYPE and every call site becomes a call through it. */
@@ -119,9 +110,7 @@ public class CombineFunctionsIntoClassTool extends AbstractApplyingRefactoringTo
             "description", "Source file declaring the functions."));
         properties.put("functions", Map.of("type", "array",
             "items", Map.of("type", "string"),
-            "description", "Names of the static functions to combine. WHICH functions belong "
-                + "together is the design decision this carries out, so there is no default: "
-                + "at least two, all sharing the type of their first parameter."));
+            "description", "combine_functions: 2+ static function names."));
         properties.put("newTypeName", Map.of("type", "string",
             "description", "Name for the new class."));
         properties.put("fieldName", Map.of("type", "string",

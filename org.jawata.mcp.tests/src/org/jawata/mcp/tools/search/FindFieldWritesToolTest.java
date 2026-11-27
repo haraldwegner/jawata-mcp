@@ -148,15 +148,15 @@ class FindFieldWritesToolTest {
         assertEquals("userName", data.get("field"));
     }
 
-    @Test @DisplayName("Sprint 14 (bugs.md #12): schema description discloses the position-based contract + v1.8.0 FQN overload hint")
+    @Test @DisplayName("Sprint 14 (bugs.md #12): the description discloses the position-based contract and the FQN form")
     void schemaDescription_disclosesPositionContract() {
         String desc = tool.getDescription();
         assertTrue(desc.contains("filePath, line, column"),
             "description must spell out the (filePath, line, column) triple; got:\n" + desc);
         assertTrue(desc.contains("ZERO-BASED"),
             "description must keep the zero-based coordinate warning; got:\n" + desc);
-        assertTrue(desc.contains("v1.8.0"),
-            "description must flag the upcoming v1.8.0 FQN overload; got:\n" + desc);
+        assertTrue(desc.contains("symbol=\"pkg.Type#field\""),
+            "description must offer the FQN form; got:\n" + desc);
     }
 
     @Test @DisplayName("Sprint 14 Phase B.2 (bugs.md #12 capability half): FQN form via 'symbol' param resolves a field and runs the search")

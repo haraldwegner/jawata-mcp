@@ -116,8 +116,7 @@ public class RefactoringTool extends WorkspaceTool<LoadedWorkspace> implements F
 
     @Override
     public String preamble() {
-        return "Manage a refactoring: the single-change lifecycle and the multi-step plan"
-            + " lifecycle.";
+        return "Apply, preview or undo staged changes, and run multi-step refactoring plans.";
     }
 
     @Override
@@ -128,40 +127,19 @@ public class RefactoringTool extends WorkspaceTool<LoadedWorkspace> implements F
     @Override
     public String kindBlock() {
         return """
-            Single change (staged/auto_apply=false flows):
-            - apply   — perform a staged change. Needs: changeId.
-            - undo    — revert an applied change. Needs: undoChangeId.
-            - inspect — preview a staged change without applying. Needs: changeId.
-
-            Multi-step plan (behaviour-preserving, parity-gated orchestration):
-            - plan       — decompose a kind into an ordered, inspectable step list (no changes made).
-                           Needs: kind + filePath; kind params: line/column, plus newTypeName for
-                           replace_type_code_with_class and sections[] for compose_method.
-                           Returns a planId. The six plannable kinds:
-                             compose_method — a long method becomes a short sequence of
-                               intention-revealing calls.
-                             replace_type_code_with_class — a group of static-final type-code
-                               constants becomes a type-safe enum.
-                             inline_singleton — a singleton whose uniqueness no longer matters
-                               loses its static holder; call sites construct it directly.
-                             refactor_to_state — a method switching on an int state field becomes
-                               delegation to per-state classes.
-                             refactor_to_command_dispatcher — a switch over command codes becomes
-                               a dispatch table of command objects.
-                             form_template_method — sibling methods differing only in steps become
-                               one template with the steps overridden.
-            - apply_plan — run a planId step by step, parity-gated (compile 0/0 + a purity check)
-                           after each; rolls the whole plan back atomically on failure. Needs: planId.
-                           Returns the composed undoChangeId + any purity findings.
-            - inspect_plan — review a planId: its steps, which are applied vs pending. Needs: planId.
-            - undo_plan  — revert a fully-applied plan via its composed undo. Needs: planId.""";
+            - apply / inspect: perform / preview a staged change (changeId).
+            - undo: revert an applied change (undoChangeId).
+            - plan: ordered step list, no changes; returns planId. kind + filePath, line/column;
+              newTypeName for replace_type_code_with_class, sections[] for compose_method. Kinds:
+              compose_method, replace_type_code_with_class, inline_singleton, refactor_to_state,
+              refactor_to_command_dispatcher, form_template_method.
+            - apply_plan: run planId, checked after each step, rolled back on failure.
+            - inspect_plan / undo_plan: review / revert planId.""";
     }
 
     @Override
     public String footer() {
-        return """
-            Requires load_project to be called first.
-            """;
+        return "";
     }
 
     @Override
@@ -172,20 +150,20 @@ public class RefactoringTool extends WorkspaceTool<LoadedWorkspace> implements F
         Map<String, Object> action = new LinkedHashMap<>();
         action.put("type", "string");
         action.put("enum", ACTIONS);
-        action.put("description", "Which lifecycle action to run.");
+        action.put("description", "What to do.");
         properties.put("action", action);
-        properties.put("changeId", Map.of("type", "string", "description", "apply/inspect: the staged change id."));
-        properties.put("undoChangeId", Map.of("type", "string", "description", "undo: the undo handle id."));
+        properties.put("changeId", Map.of("type", "string", "description", "apply/inspect: staged change id."));
+        properties.put("undoChangeId", Map.of("type", "string", "description", "undo: undo handle."));
         properties.put("kind", Map.of("type", "string", "enum", PlanLifecycle.KINDS,
-            "description", "plan: which multi-step refactoring to plan."));
-        properties.put("target", Map.of("type", "string", "description", "plan: optional symbol/label for advice + display."));
-        properties.put("filePath", Map.of("type", "string", "description", "plan: source file of the refactoring target."));
-        properties.put("line", Map.of("type", "integer", "description", "plan: zero-based caret line."));
-        properties.put("column", Map.of("type", "integer", "description", "plan: zero-based caret column."));
-        properties.put("newTypeName", Map.of("type", "string", "description", "plan (replace_type_code_with_class): name for the generated type."));
+            "description", "plan: what to plan."));
+        properties.put("target", Map.of("type", "string", "description", "plan: label (optional)."));
+        properties.put("filePath", Map.of("type", "string", "description", "plan: source file."));
+        properties.put("line", Map.of("type", "integer", "description", "plan: zero-based."));
+        properties.put("column", Map.of("type", "integer", "description", "plan: zero-based."));
+        properties.put("newTypeName", Map.of("type", "string", "description", "plan replace_type_code_with_class: type name."));
         properties.put("sections", Map.of("type", "array", "items", Map.of("type", "object"),
-            "description", "plan (compose_method): statement ranges to extract, each {startLine,startColumn,endLine,endColumn,methodName} (0-based)."));
-        properties.put("planId", Map.of("type", "string", "description", "apply_plan/inspect_plan/undo_plan: the plan id from `plan`."));
+            "description", "plan compose_method: {startLine,startColumn,endLine,endColumn,methodName}, zero-based."));
+        properties.put("planId", Map.of("type", "string", "description", "Plan id from plan."));
         schema.put("properties", properties);
         schema.put("required", List.of("action"));
         return withProjectKey(schema);

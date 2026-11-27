@@ -74,14 +74,8 @@ public class ExtractClassTool extends AbstractApplyingRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            extract a group of FIELDS into a new class; the original keeps a
-            reference and every access is rewritten through it. Needs: line,
-            column, newTypeName, fields[] (optional fieldName, createTopLevel,
-            createGetterSetter). fields[] has no default on purpose — WHICH
-            state travels together is the design decision this carries out.
-            Move Field ships INSIDE this rather than beside it: it is the
-            constituent atom, and moving a field needs a target that already
-            owns state, so the move and the class creation must be atomic.""";
+            move FIELDS into a new class and rewrite accesses: line, column (or typeName),
+            newTypeName, fields[] (no default); fieldName, createTopLevel, createGetterSetter optional.""";
     }
 
     /** Structural: it introduces a TYPE and rewrites every access through it. */
@@ -121,20 +115,15 @@ public class ExtractClassTool extends AbstractApplyingRefactoringTool
         properties.put("column", Map.of("type", "integer",
             "description", "Zero-based column on that class."));
         properties.put("newTypeName", Map.of("type", "string",
-            "description", "Name for the extracted class."));
+            "description", "New class name."));
         properties.put("fields", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "Names of the fields to MOVE into the new class. Required: the "
-                + "operation's whole point is which state travels together, and guessing that "
-                + "is a design decision no default can make."));
+            "description", "class: field names to move."));
         properties.put("fieldName", Map.of("type", "string",
-            "description", "Optional: name of the reference field the original class keeps. "
-                + "Defaults to the new type's name, first letter lowercased."));
+            "description", "class/combine_functions: name of the holding field."));
         properties.put("createTopLevel", Map.of("type", "boolean",
-            "description", "Optional, default true: create the extracted class as its own "
-                + "top-level file. False nests it inside the original."));
+            "description", "class: own file (default true), else nested."));
         properties.put("createGetterSetter", Map.of("type", "boolean",
-            "description", "Optional, default true: generate accessors on the extracted class "
-                + "rather than exposing its fields."));
+            "description", "class: generate accessors (default true)."));
         schema.put("properties", properties);
         schema.put("required", List.of("filePath", "line", "column", "newTypeName", "fields"));
         return withAutoApply(withProjectKey(schema));

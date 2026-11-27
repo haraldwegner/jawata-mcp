@@ -70,15 +70,7 @@ public final class ControlFlagToBreakRule implements CleanupRule {
 
     @Override
     public String kindSummary() {
-        return """
-            Replace Control Flag with Break: `boolean done = false;
-            while (!done) { ...; done = true; }` becomes
-            `while (true) { ...; break; }` and the flag goes. Requires
-            all four: the condition is exactly !flag, the flag is a
-            local initialised false directly above the loop, the
-            assignment is the body's LAST statement, and nothing
-            outside the loop reads it. A flag that is read afterwards
-            is carrying an answer, not just an exit.""";
+        return "replace a loop's `!done` control flag (set last in the body, unread after) with break.";
     }
 
     @Override

@@ -105,15 +105,8 @@ public class ParameterizeFunctionTool extends AbstractApplyingRefactoringTool
 
     @Override
     public String getDescription() {
-        return """
-            Parameterize Function — a constant buried in a method becomes a parameter, so two
-            methods differing only by that constant can become one. Name the METHOD
-            (symbol=pkg.Type#m, or a position) and the LITERAL's own source text (literal=1.1);
-            the range is derived, because a finding names symbols and never a character offset.
-            Every existing call site is rewritten to pass the constant, so behaviour is
-            unchanged. Folding the now-redundant sibling method in afterwards is
-            kind=change_signature with retargetCallsTo, on this same door. Optional:
-            parameterName. Refuses a literal that occurs zero times, or more than once.""";
+        return "a literal in the body becomes a parameter: literal REQUIRED (source text, occurring once); "
+            + "parameterName optional.";
     }
 
     /** Structural: the signature changes and every call site with it. */
@@ -135,10 +128,9 @@ public class ParameterizeFunctionTool extends AbstractApplyingRefactoringTool
             "description", "Zero-based column on that line."));
         properties.put("symbol", FqnTarget.symbolSchemaProperty("method holding the constant"));
         properties.put("literal", Map.of("type", "string",
-            "description", "REQUIRED. The constant's own source text, exactly as written — "
-                + "1.1, 42, \\\"paid\\\", true. Refused if it occurs zero times or more than once."));
+            "description", "parameterize_function REQUIRED: literal as written, e.g. 1.1 or \\\"paid\\\"."));
         properties.put("parameterName", Map.of("type", "string",
-            "description", "Name for the new parameter (optional; JDT derives one)."));
+            "description", "Name of the new parameter (optional)."));
         schema.put("properties", properties);
         schema.put("required", List.of());
         return withAutoApply(withProjectKey(schema));

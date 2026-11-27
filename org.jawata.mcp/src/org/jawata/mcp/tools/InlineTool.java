@@ -137,9 +137,7 @@ public class InlineTool extends AbstractTool implements KindedTool {
 
     @Override
     public String preamble() {
-        return """
-            Inline a method, a local variable, a whole class, a subclass into its
-            parent, or a middle man's forwarding (behaviour-preserving, reversible).""";
+        return "Inline or fold away code (behaviour-preserving, undoable). ZERO-BASED coordinates.";
     }
 
     @Override
@@ -161,12 +159,7 @@ public class InlineTool extends AbstractTool implements KindedTool {
 
     @Override
     public String footer() {
-        return """
-            IMPORTANT: ZERO-BASED coordinates. Applies by default; returns
-            filesModified/diff/undoChangeId/summary. Pass auto_apply=false to stage only.
-
-            Requires load_project to be called first.
-            """;
+        return "";
     }
 
     @Override
@@ -178,13 +171,10 @@ public class InlineTool extends AbstractTool implements KindedTool {
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", publishedKinds());
-        kind.put("description", "Inline a method, a local variable, a whole class, a"
-            + " subclass into its parent, a middle man's forwarding, or a non-private member"
-            + " nothing references — the n=0 case, where there is no user to fold into and"
-            + " only the deletion remains.");
+        kind.put("description", "What to inline or delete.");
         properties.put("kind", kind);
-        properties.put("filePath", Map.of("type", "string", "description", "Path to source file."));
-        properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the symbol to inline."));
+        properties.put("filePath", Map.of("type", "string", "description", "Source file."));
+        properties.put("line", Map.of("type", "integer", "description", "Zero-based line of the symbol."));
         properties.put("column", Map.of("type", "integer", "description", "Zero-based column."));
 
         // The name form reaches every kind whose target HAS a name, and after Stage 6 that
@@ -192,16 +182,11 @@ public class InlineTool extends AbstractTool implements KindedTool {
         // this door had two kinds and became false the moment it took three type-targeted
         // ones — a published sentence telling clients a form does not apply where it does.
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-            "target to inline: pkg.Type#method for kind=method, pkg.Type for kind=class, "
-                + "subclass and middle_man, pkg.Type#member for kind=unreferenced_member. "
-                + "kind=variable is POSITIONAL only — a local has no name to address it by"));
+            "method, type (class, subclass, middle_man) or member; variable is positional only"));
         properties.put("accessorName", Map.of("type", "string",
-            "description", "kind=middle_man: name for the accessor that exposes the delegate "
-                + "(default: the field's own name). Every rewritten call site reads it."));
+            "description", "middle_man: accessor name (default: the field's name)."));
         properties.put("delegateField", Map.of("type", "string",
-            "description", "kind=middle_man: which field to stop forwarding to, when the "
-                + "class forwards to more than one. Required only then, and the refusal "
-                + "lists the candidates."));
+            "description", "middle_man: field to stop forwarding to; required if several."));
         // THE BACKSTOP, which this door did NOT have. Four others each wrote the loop out
         // and this one did not, and the cost is on the record: row 36's accessorName above
         // reached the delegate's schema and never this one, so it ran for anyone who knew

@@ -99,17 +99,9 @@ public class ReplaceSubclassWithDelegateTool extends AbstractApplyingRefactoring
     @Override
     public String getDescription() {
         return """
-            Replace Subclass with Delegate — a subclass that exists to vary ONE thing has spent
-            the single inheritance slot on it; the variation becomes an object instead, so a
-            second axis stays possible. Point at the SUBCLASS (typeName=pkg.Type, or a position);
-            delegateName names the generated class, defaulting to <Subclass>Behaviour.
-            CONSERVATIVE, on the same terms as replace_type_code_with_subclasses: it generates
-            the behaviour class carrying the subclass's own method bodies VERBATIM and reports
-            what moved. It does NOT delete the subclass, add the field, or introduce a factory —
-            those three must happen together and need a human to choose the seam.
-            REFUSES a subclass that overrides nothing (that is
-            replace_superclass_with_delegate's case, and the refusal says so) and one that
-            declares state of its own, which would have to travel with the behaviour.""";
+            Generate a behaviour class from a subclass's overrides: typeName or position; delegateName optional.
+            It does NOT delete the subclass, add the field or a factory. Refuses a subclass that overrides
+            nothing or declares state.""";
     }
 
     /** Structural: it introduces a type that is meant to take a subclass's place. */
@@ -124,16 +116,15 @@ public class ReplaceSubclassWithDelegateTool extends AbstractApplyingRefactoring
         schema.put("type", "object");
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("filePath", Map.of("type", "string",
-            "description", "Source file declaring the subclass."));
+            "description", "Source file."));
         properties.put("line", Map.of("type", "integer",
-            "description", "Zero-based line of the class declaration."));
+            "description", "Zero-based line."));
         properties.put("column", Map.of("type", "integer",
-            "description", "Zero-based column on that line."));
+            "description", "Zero-based column."));
         properties.put("typeName", Map.of("type", "string",
-            "description", "Fully-qualified class name, as an alternative to a position."));
+            "description", "Class FQN instead of a position."));
         properties.put("delegateName", Map.of("type", "string",
-            "description", "Name for the generated behaviour class. Default:"
-                + " <Subclass>Behaviour."));
+            "description", "replace_subclass_with_delegate: class name (default <Subclass>Behaviour)."));
         schema.put("properties", properties);
         return withAutoApply(withProjectKey(schema));
     }

@@ -94,16 +94,8 @@ public class RemoveSubclassTool extends AbstractRefactoringTool
     @Override
     public String kindSummary() {
         return """
-            fold a subclass that carries NO DISTINCTION into its parent:
-            its members move up, every reference to it becomes a reference
-            to the parent, and it is deleted. Refuses when the subclass
-            actually distinguishes something — it overrides a parent
-            method, an instanceof or a cast names its type, or its
-            constructor fixes an argument instead of forwarding — because
-            replacing a distinction with a field is a design decision.
-            Also refuses a subclass with subtypes (that is Collapse
-            Hierarchy), an abstract parent, a parent outside this
-            workspace, and a colliding member name.""";
+            fold a subclass with no distinction into its parent: line, column or symbol=pkg.Type. Refuses
+            overrides, instanceof/casts on it, a constructor fixing arguments, subtypes, abstract/external parent.""";
     }
 
     /**

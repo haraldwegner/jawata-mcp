@@ -113,16 +113,10 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
             new java.util.LinkedHashMap<>();
         for (org.jawata.mcp.tools.statements.CleanupRule rule : java.util.List.of(
                 new org.jawata.mcp.tools.statements.JdtCleanupRule("add_final",
-                    """
-                    mark parameters and local variables `final` when never
-                    reassigned (binding-checked, so it never breaks
-                    compilation).""",
+                    "mark never-reassigned parameters and locals `final`.",
                     ApplyCleanupTool::addFinalEdit),
                 new org.jawata.mcp.tools.statements.JdtCleanupRule("redundant_modifiers",
-                    """
-                    remove modifiers that are implicit on interface members
-                    (public/abstract methods, public/static/final
-                    fields, public/static nested types).""",
+                    "remove implicit modifiers on interface members.",
                     ApplyCleanupTool::redundantModifiersEdit),
                 new org.jawata.mcp.tools.statements.GuardClausesRule(),
                 new org.jawata.mcp.tools.statements.ConsolidateConditionalRule(),
@@ -186,11 +180,7 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
 
     @Override
     public String preamble() {
-        return """
-            Apply a safe, mechanical source clean-up across a file or project.
-            Auto-applies by default and returns
-            { filesModified, diff, undoChangeId, summary }; pass auto_apply:false
-            to stage instead. A no-op returns hasChanges:false.""";
+        return "Safe, mechanical source clean-ups across a file or project (undoable).";
     }
 
     /**
@@ -211,13 +201,8 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
             + "       apply_cleanup(kind=\"<kind>\", filePath=\"path/to/File.java\")\n"
             + "       apply_cleanup(kind=\"<kind>\", filePath=..., line=N, column=M)\n"
             + "       apply_cleanup(kind=\"<kind>\", symbol=\"pkg.Type#member\")\n"
-            + "              — just the member named, which is how a finding about ONE\n"
-            + "                method is answered without rewriting the whole file around\n"
-            + "                it. The symbol form resolves to the same position.\n"
-            + "                REFUSED for a rewrite that MOVES code past that member —\n"
-            + "                a move is a linked pair of edits and half of one is not a\n"
-            + "                smaller change, so the refusal says so instead. The kinds\n"
-            + "                that do: " + String.join(", ", POSITION_REFUSING_KINDS) + ".";
+            + "       The last two narrow to one member (ZERO-BASED); refused for kinds that move code, "
+            + "that do: " + String.join(", ", POSITION_REFUSING_KINDS) + ".";
     }
 
     @Override
@@ -227,11 +212,7 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
 
     @Override
     public String footer() {
-        return """
-            This catalog is intentionally non-overlapping with organize_imports,
-            format, quick_fix(action=apply) and find_modernization. Optional: projectKey
-            to scope a project-wide sweep. Requires load_project first.
-            """;
+        return "A no-op returns hasChanges: false. Imports and formatting: organize_imports, format.";
     }
 
     @Override
@@ -242,20 +223,18 @@ public class ApplyCleanupTool extends AbstractApplyingRefactoringTool
         Map<String, Object> kind = new LinkedHashMap<>();
         kind.put("type", "string");
         kind.put("enum", publishedKinds());
-        kind.put("description", "Which clean-up to apply. See the tool description.");
+        kind.put("description", "Which clean-up; see the tool description.");
         properties.put("kind", kind);
         Map<String, Object> filePath = new LinkedHashMap<>();
         filePath.put("type", "string");
-        filePath.put("description", "Optional. Restrict to one file; omit to sweep the whole project.");
+        filePath.put("description", "One file; omit for the whole project.");
         properties.put("filePath", filePath);
         properties.put("line", Map.of("type", "integer",
-            "description", "Optional, ZERO-BASED. Restrict the rewrite to the member at this "
-                + "position — the way a finding names one method. Needs filePath."));
+            "description", "Zero-based: only the member there (needs filePath)."));
         properties.put("column", Map.of("type", "integer",
-            "description", "Optional, ZERO-BASED column of that position (default 0)."));
+            "description", "Zero-based (default 0)."));
         properties.put("symbol", org.jawata.mcp.tools.shared.FqnTarget.symbolSchemaProperty(
-            "the member to clean up — the same narrowing as line/column, addressed the way "
-                + "a finding names it"));
+            "member to clean up"));
         // The backstop, for uniformity rather than for an outstanding gap: a CleanupRule's
         // parameterSchema() is empty and truthfully so — apply_cleanup is a sweep and no
         // rule adds a parameter of its own, which is exactly why row 8 could not live here.

@@ -88,41 +88,8 @@ public class FindDuplicateCodeTool extends AbstractTool {
     @Override
     public String getDescription() {
         return """
-            Find clone groups of structurally-similar methods across the
-            workspace via JDT-token-stream normalization. Catches the
-            IntelliJ-CPD-style "same code shape, different identifier names"
-            pattern that text search and grep miss.
-
-            USAGE:
-              find_duplicate_code()
-              find_duplicate_code(projectKey="core")
-              find_duplicate_code(minTokens=80)
-              find_duplicate_code(crossProject=false)
-
-            Inputs:
-            - projectKey — optional. Restrict to a single loaded project.
-            - minTokens — default 50. A method must produce at least this
-              many normalized tokens to be considered. Filters out
-              one-liner setters/getters that match trivially.
-            - threshold — default 1.0. v1.8.0 honours 1.0 only (exact
-              normalized-token-sequence match). Fuzzy n-gram Jaccard
-              matching (≥0.85 similarity) is reserved for v1.8.1.
-            - crossProject — default true. When false, clones are only
-              grouped within a single project (cross-project clones not
-              surfaced).
-
-            Normalization:
-            - Identifiers (locals, params, fields, methods, types) → ID
-            - String literals → STR, ints → INT, floats → FLT,
-              chars → CHAR, null → NULL, true/false → BOOL
-            - Operators / keywords / punctuation kept verbatim
-            - Whitespace + comments dropped
-
-            Output groups contain ≥2 method instances with identical
-            normalized token sequence (similarity 1.0) plus a stable groupId
-            (hash of the clone shape) — pass it to extract(kind=replace_inline_code) with
-            the SAME parameters to delegate same-type clones to a canonical
-            method. Empty groups list means no clones above minTokens.
+            Find clone groups of methods that match exactly after identifiers and literals are normalized. Pass a
+            group's groupId to extract(kind=replace_inline_code) with the SAME minTokens/projectKey/crossProject.
             """;
     }
 
@@ -133,22 +100,22 @@ public class FindDuplicateCodeTool extends AbstractTool {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("minTokens", Map.of(
             "type", "integer",
-            "description", "Minimum normalized-token count per method (default 50)."));
+            "description", "Min tokens per method (default 50)."));
         properties.put("threshold", Map.of(
             "type", "number",
-            "description", "Match threshold; v1.8.0 honours 1.0 only (exact match). Default 1.0."));
+            "description", "Only 1.0 (exact) is honoured."));
         properties.put("crossProject", Map.of(
             "type", "boolean",
-            "description", "When false, group clones only within a single project. Default true."));
+            "description", "Group across projects (default true)."));
         properties.put("limit", Map.of(
             "type", "integer",
-            "description", "Max clone groups returned (default 20); groupCount always reflects the full set (v2.8.1)."));
+            "description", "Max groups (default 20)."));
         properties.put("offset", Map.of(
             "type", "integer",
-            "description", "Skip the first N groups (pagination; default 0) (v2.8.1)."));
+            "description", "Skip N groups."));
         properties.put("summary", Map.of(
             "type", "boolean",
-            "description", "Counts only (groupCount/instanceCount), NO groups array — for large workspaces (v2.8.1). Default false."));
+            "description", "Counts only."));
         schema.put("properties", properties);
         return withProjectKey(schema);
     }
