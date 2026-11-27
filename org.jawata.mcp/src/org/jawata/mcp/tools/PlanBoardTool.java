@@ -108,14 +108,16 @@ public final class PlanBoardTool implements Tool {
         board.append("| plan | state | passed | steps |\n|---|---|---|---|\n");
         for (PlanLedger.PlanView plan : view) {
             StringBuilder steps = new StringBuilder();
+            // 28h z23: an open plan no hire is running is nobody's work, so its steps are not drawn as waiting.
+            boolean idle = !plan.closed() && !org.jawata.mcp.execution.HireRegistry.shared().isRunningPlan(plan.id().toString());
             for (GatedStep step : plan.steps()) {
                 if (steps.length() > 0) {
                     steps.append("; ");
                 }
-                String state = step.index() <= plan.passedStep() ? "passed" : plan.closed() ? "not reached" : "waiting";
+                String state = step.index() <= plan.passedStep() ? "passed" : plan.closed() ? "not reached" : idle ? "not run" : "waiting";
                 steps.append(step.index()).append(' ').append(step.tool()).append(": ").append(state);
             }
-            board.append("| ").append(plan.id()).append(" | ").append(plan.closed() ? "closed" : "open").append(" | ")
+            board.append("| ").append(plan.id()).append(" | ").append(plan.closed() ? "closed" : idle ? "open, no hire running" : "open").append(" | ")
                 .append(plan.passedStep() + 1).append(" of ").append(plan.steps().size()).append(" | ").append(steps).append(" |\n");
         }
         return board.toString();

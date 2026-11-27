@@ -77,7 +77,12 @@ class PlanBoardToolTest {
         ledger.close(closed);
         Path file = planFile("s-plan.md", FRAME);
 
-        ToolResponse response = draw(file);
+        // The open plan is one a hire is running now; an open plan nobody runs is drawn otherwise (28h z23).
+        ToolResponse response;
+        try (org.jawata.mcp.execution.HireRegistry.Registration running = org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "z23 board", "")) {
+            org.jawata.mcp.execution.HireRegistry.shared().planOpened(open.toString());
+            response = draw(file);
+        }
 
         String text = Files.readString(file, StandardCharsets.UTF_8);
         assertTrue(response.isSuccess(), String.valueOf(response));
@@ -98,11 +103,23 @@ class PlanBoardToolTest {
 
         assertEquals(false, JSON.valueToTree(draw(file).getData()).path("rewritten").asBoolean(), "an unchanged board was rewritten");
 
-        Files.writeString(file, drawn.replace("waiting", "ALL DONE"), StandardCharsets.UTF_8);
+        Files.writeString(file, drawn.replace("compile_workspace", "ALL DONE"), StandardCharsets.UTF_8);
         JsonNode second = JSON.valueToTree(draw(file).getData());
 
         assertEquals(true, second.path("rewritten").asBoolean());
         assertEquals(drawn, Files.readString(file, StandardCharsets.UTF_8), "the hand edit inside the markers survived");
+    }
+
+    @Test
+    @DisplayName("28h z23: an open plan that no hire is running is drawn as such, and its steps are not drawn as waiting")
+    void anOpenPlanNobodyRunsIsDrawnAsSuch() throws IOException {
+        PlanId idle = openPlan();
+        Path file = planFile("s-plan.md", FRAME);
+
+        assertTrue(draw(file).isSuccess());
+
+        String text = Files.readString(file, StandardCharsets.UTF_8);
+        assertTrue(text.contains("| " + idle + " | open, no hire running | 0 of 2 | 0 compile_workspace: not run; 1 run_tests: not run |"), text);
     }
 
     @Test
