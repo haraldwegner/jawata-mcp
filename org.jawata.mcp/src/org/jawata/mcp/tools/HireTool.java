@@ -395,6 +395,14 @@ public class HireTool extends NeutralTool {
      * tell a stall from a person's stop; a person's stop is answered as before.
      */
     static ToolResponse stoppedAnswer(HireRegistry.Registration stopped) {
+        // 28h D58 (c): a hire that ran on past its context limit was stopped by the engine; its lead gets its progress lines and hires a successor.
+        java.util.OptionalLong cut = stopped.cutAt();
+        if (cut.isPresent()) {
+            return ToolResponse.error("HIRE_AT_LIMIT",
+                "the hire was stopped by the engine: its context reached " + cut.getAsLong() + " tokens, a quarter past the size at which its role"
+                    + " is replaced, and it had not ended. Its progress lines: " + String.join(" | ", stopped.progressLines()),
+                "check what it changed, keep what passes, and hire a new one for what is left; the task stays open until its checks pass");
+        }
         java.util.OptionalLong quiet = stopped.stalledFor();
         if (quiet.isPresent()) {
             return ToolResponse.error("HIRE_STALLED",
@@ -862,6 +870,8 @@ public class HireTool extends NeutralTool {
         // registering gives it its first name (Stage 24, D55), which the run writes into its journal row.
         HireRegistry.Registration running = HireRegistry.shared().begin(hired, brief,
             call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""));
+        // 28h D58 (c): the context size at which this hire is told to finish and report, from its seat.
+        running.replaceAt(seat.replaceAtTokens());
         // THE CLAIM (Stage 24, M13): the packages this hire will work in, taken before anything starts. An overlap with another running agent's
         // claim is refused with who holds it, and nothing has been spent; the claim is released when the registration closes, however the hire ends.
         List<String> claimed = new ArrayList<>();
@@ -1087,6 +1097,9 @@ public class HireTool extends NeutralTool {
             data.put("stderrTail", ran.hire.getProposal().outcome().stderrTail());
         }
         data.put("toolSteps", ran.hire.getProposal().outcome().toolSteps());
+        // 28h D58 (c): a hire that reached its role's context limit says so, so its lead hires a successor for what it left.
+        ran.hire.getRunning().limitReachedAt().ifPresent(at -> data.put("replacement", "this hire's context reached " + at
+            + " tokens, the size at which its role is replaced; hire a new one for what is left, and keep the task open until its checks pass"));
         // M11: WHICH calls, classified by the ENGINE's own flag. A count of calls says nothing
         // about whether any of them changed code; the names do, and the three lists that are not
         // "changed code" are reported beside the zero because a zero that hides a shell call, an

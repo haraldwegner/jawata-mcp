@@ -69,7 +69,7 @@ import org.jawata.mcp.access.LookupDriver;
  */
 public record SeatHire(String seat, Brain brain, String model, List<String> tools,
                        HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script,
-                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command, String launchModel, String effort) {
+                       boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command, String launchModel, String effort, long replaceAtTokens) {
 
     /**
      * The brains this product has a dialect for, each with the facts of its program (28h step 13): what a person calls it, how it is started
@@ -308,7 +308,26 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
             Frontmatter.emptyToNull(front.get("command")),
             null,
             // 28h z96: how hard the seat's brain reasons, passed to a brain that takes it.
-            effortOf(front.get("effort")));
+            effortOf(front.get("effort")),
+            replaceAtOf(front.get("replace_at")));
+    }
+
+    /**
+     * The context size at which a hire of this seat is told to finish and report (28h D58 (c)), from its {@code replace_at} line: 256k, 512k
+     * (also when there is no line) or 768k, and none for no limit, which is zero. Any other value is refused.
+     */
+    private static long replaceAtOf(String written) {
+        String at = Frontmatter.emptyToNull(written);
+        if (at == null) {
+            return 512_000L;
+        }
+        return switch (at) {
+            case "256k" -> 256_000L;
+            case "512k" -> 512_000L;
+            case "768k" -> 768_000L;
+            case "none" -> 0L;
+            default -> throw new IllegalArgumentException("seat declares replace_at '" + at + "'; it is one of 256k, 512k, 768k, none");
+        };
     }
 
     /** The seat's effort line as the brains name it, or null for none; a word no brain takes is refused rather than ignored. */
@@ -413,7 +432,7 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
         // to write accepts_uncontained_writes into the seat file when a person chose such a brain, and a seat file is no longer where the brain
         // is chosen. Without this, a person who chose Cursor for a seat was refused at the hire, by a rule they had just answered.
         return new SeatHire(seat, picked, shown, tools, ceilings, stance, answerGates, enabled, script, true,
-            changesCode, readsFiles, activities, writesStore, command, launched, effort);
+            changesCode, readsFiles, activities, writesStore, command, launched, effort, replaceAtTokens);
     }
 
     /**
@@ -477,5 +496,9 @@ public record SeatHire(String seat, Brain brain, String model, List<String> tool
 
     public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command, String launchModel) {
         this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, activities, writesStore, command, launchModel, null);
+    }
+
+    public SeatHire(String seat, Brain brain, String model, List<String> tools, HiredBrain.Ceilings ceilings, String stance, List<String> answerGates, boolean enabled, String script, boolean acceptsUncontainedWrites, boolean changesCode, boolean readsFiles, List<String> activities, boolean writesStore, String command, String launchModel, String effort) {
+        this(seat, brain, model, tools, ceilings, stance, answerGates, enabled, script, acceptsUncontainedWrites, changesCode, readsFiles, activities, writesStore, command, launchModel, effort, 0L);
     }
 }

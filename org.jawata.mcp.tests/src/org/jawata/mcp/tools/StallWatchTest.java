@@ -73,6 +73,35 @@ class StallWatchTest {
     }
 
     @Test
+    @DisplayName("28h D58 (c): a hire stopped for running past its context limit answers with that, its progress lines and a successor for the rest; the lead's report says when a hire reached its limit")
+    void aHireStoppedAtItsLimitSaysSo() throws Exception {
+        HireRegistry hires = HireRegistry.shared();
+        ToolResponse[] answered = new ToolResponse[1];
+        Thread hire = new Thread(() -> {
+            try (HireRegistry.Registration running = hires.begin("developer", "d58c cut answer", "")) {
+                hires.planOpened("plan-d58c-cut-answer");
+                running.replaceAt(1_000);
+                hires.noteText("STEP: wrote the first file\n");
+                hires.noteUsage(java.util.OptionalLong.of(1_300), java.util.OptionalDouble.empty());
+                answered[0] = HireTool.stoppedAnswer(running);
+            }
+        });
+        hire.start();
+        hire.join(10_000);
+
+        com.fasterxml.jackson.databind.node.ObjectNode ended = new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode();
+        ended.put("replacement", "this hire reached its limit");
+        String report = org.jawata.mcp.execution.HireReport.of(
+            new HireRegistry.Event("ended", "plan-d58c-cut-answer", "Ada", "developer", "d58c", "", ended, true), List.of());
+
+        assertAll(
+            () -> assertEquals("HIRE_AT_LIMIT", answered[0].getError().getCode()),
+            () -> assertTrue(answered[0].getError().getMessage().contains("1300"), answered[0].getError().getMessage()),
+            () -> assertTrue(answered[0].getError().getMessage().contains("wrote the first file"), answered[0].getError().getMessage()),
+            () -> assertTrue(report.contains("Context limit: this hire reached its limit"), report));
+    }
+
+    @Test
     @DisplayName("28h z28: a hire stopped by the person is answered as the person's stop, not as a stall")
     void aPersonsStopIsStillThePersons() throws Exception {
         HireRegistry hires = HireRegistry.shared();

@@ -766,7 +766,7 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
             }
             if (forbidden.isPresent()) {
                 return stamped(name, arguments, ToolResponse.error("ACCESS_DENIED", forbidden.get(),
-                    "Name only places the access policy allows; the person changes the policy file, or approves the call."));
+                    "Name only places the access policy allows; the person changes the policy file, or approves the call."), caller);
             }
         }
 
@@ -780,7 +780,7 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         boolean editor = caller.origin() == CallerIdentity.Origin.EDITOR;
         ToolResponse unpaid = editor ? null : precedentCharge(caller, name, arguments);
         if (unpaid != null) {
-            return stamped(name, arguments, unpaid);
+            return stamped(name, arguments, unpaid, caller);
         }
         // A paid override is a meta-argument of the CHOKE, not of the tool.
         arguments = withoutOverride(arguments);
@@ -800,7 +800,7 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
             ToolResponse refused = serverChecks.acceptance(caller, name, arguments,
                 eventTap.ledger());
             if (refused != null) {
-                return stamped(name, arguments, refused);
+                return stamped(name, arguments, refused, caller);
             }
         }
 
@@ -910,12 +910,12 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
                     log.error("Store-notice supplier failed after {}", name, e);
                 }
             }
-            return stamped(name, arguments, response);
+            return stamped(name, arguments, response, caller);
         } catch (Exception e) {
             log.error("Tool {} failed with exception", name, e);
             ToolResponse error = ToolResponse.internalError(e);
             tap(caller, name, arguments, error, System.currentTimeMillis() - startTime);
-            return stamped(name, arguments, error);
+            return stamped(name, arguments, error, caller);
         } catch (Error err) {
             // v2.7.1 (dogfood 2026-07-10): a JVM Error (StackOverflowError from a
             // pathological scan) escaped every catch(Exception), killed the
@@ -925,7 +925,7 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
             log.error("Tool {} failed with a JVM Error — returning a structured error instead of dropping the connection", name, err);
             ToolResponse error = ToolResponse.internalError(err);
             tap(caller, name, arguments, error, System.currentTimeMillis() - startTime);
-            return stamped(name, arguments, error);
+            return stamped(name, arguments, error, caller);
         } finally {
             // mcp#42: the call came back, however it came back. In a finally rather than
             // beside each return, because a ticket left behind by a path someone forgot is
@@ -963,12 +963,14 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
      * @param name the tool that was called, for the prior-work target derivation
      * @param arguments that call's arguments, from which the target is derived
      */
-    private ToolResponse stamped(String name, JsonNode arguments, ToolResponse response) {
+    private ToolResponse stamped(String name, JsonNode arguments, ToolResponse response, CallerIdentity caller) {
         if (response != null) {
             // BEFORE the degradation stamp, so a degraded resident's warning is the LAST
             // thing appended and stays the first thing read.
             priorWork(name, arguments, response);
             rulesOnTool(name, response);
+            // 28h D58 (c): a hire whose context reached its role's limit is told so with every answer until it ends.
+            org.jawata.mcp.execution.HireRegistry.shared().replacementNotice(caller.id()).ifPresent(response::appendStoreAnswer);
             response.stampDegradation(ResidentDegradation.stamp());
         }
         return response;

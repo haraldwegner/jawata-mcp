@@ -34,7 +34,8 @@ public final class HireReport {
     /** The keys of a hire's answer a lead is told as they are (28h z52); every other key stays with the record. */
     private static final List<String> SENT_UP = List.of("hirer", "hired", "name", "fixes", "plan", "brain", "complete", "cleanExit",
         "stoppedBy", "timedOut", "exitCode", "stepsPassed", "stepsDeclared", "gates", "changedFileCount", "verdict", "fullRunReasons",
-        "instructionScore", "ownWrites", "ownCodePutBack", "attempt", "escalatesTo", "record", "error", "below", "orphanOf", "progressLines");
+        "instructionScore", "ownWrites", "ownCodePutBack", "attempt", "escalatesTo", "record", "error", "below", "orphanOf", "progressLines",
+        "replacement");
 
     /** The line that opens a brain's own summary: REPORT: or a heading of that word. */
     private static final Pattern REPORT_HEADING = Pattern.compile(
@@ -88,6 +89,11 @@ public final class HireReport {
             }
             progress.forEach(line -> text.append("Progress: ").append(line.asText()).append("\n"));
             text.append("Report: ").append(told.path("report").asText()).append("\n");
+            // 28h D58 (c): the lead hires a successor for what a hire at its context limit left.
+            String replacement = textOf(told.path("replacement"));
+            if (!replacement.isBlank()) {
+                text.append("Context limit: ").append(replacement).append("\n");
+            }
             String error = textOf(told.path("error"));
             if (!error.isBlank()) {
                 text.append("Error: ").append(error).append("\n");

@@ -622,4 +622,20 @@ class SeatHireTest {
             () -> assertTrue(SeatHire.read("---\nname: x\nbrain: claude-code\naccepts_uncontained_writes: true\n---\nb")
                 .acceptsUncontainedWrites(), "and true is true"));
     }
+
+    @Test
+    @DisplayName("28h D58 (c): a seat's replace_at line sets the context size at which its hire is replaced; 512k when it says nothing, none for no limit, kept by the stored choice")
+    void theReplaceAtLineSetsTheLimit() {
+        String seat = "---\nname: x\nbrain: claude-code\n%s---\nbody";
+        java.util.function.Function<String, Long> at = line -> SeatHire.read(String.format(seat, line)).replaceAtTokens();
+
+        assertAll(
+            () -> assertEquals(512_000L, at.apply(""), "no line"),
+            () -> assertEquals(256_000L, at.apply("replace_at: 256k\n")),
+            () -> assertEquals(768_000L, at.apply("replace_at: 768k\n")),
+            () -> assertEquals(0L, at.apply("replace_at: none\n"), "no limit"),
+            () -> assertThrows(IllegalArgumentException.class, () -> at.apply("replace_at: 128k\n"), "below the smallest size"),
+            () -> assertEquals(256_000L, SeatHire.read(String.format(seat, "replace_at: 256k\n"))
+                .apply(SeatHire.Brain.CLAUDE_CODE, "m", "m").replaceAtTokens(), "the stored choice dropped the limit"));
+    }
 }

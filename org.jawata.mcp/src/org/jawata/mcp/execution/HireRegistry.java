@@ -51,6 +51,12 @@ public final class HireRegistry {
         volatile long lastActivityMs = System.currentTimeMillis();
         /** How many seconds this hire had been quiet when the engine stopped it for that (28h Stage 27, z28, the second ceiling); negative while it was not. */
         volatile long stalledForSeconds = -1;
+        /** The context size at which this hire is told to finish and report (28h D58 (c)); zero is no limit. */
+        volatile long replaceAtTokens;
+        /** The context size at which this hire reached that limit; negative while it has not. */
+        volatile long limitReachedAt = -1;
+        /** The context size at which the engine stopped it for running on past its limit; negative while it was not. */
+        volatile long cutAt = -1;
         /** The caller id of the hirer that stopped this hire (28h z136); {@code null} when no hirer did. */
         volatile String stoppedByHirer;
         /** The sign-of-life time at which the subscribers were told this hire had gone quiet, so one stretch of quiet is told once; 0 until told. */
@@ -139,6 +145,21 @@ public final class HireRegistry {
             }
             // Told outside the lock, now that this hire no longer runs: the reports its brain never read go to its chat.
             handed.forEach(HireRegistry.this::retell);
+        }
+
+        /** Sets the context size at which this hire is told to finish and report; zero is no limit (28h D58 (c)). */
+        public void replaceAt(long tokens) {
+            hire.replaceAtTokens = tokens;
+        }
+
+        /** The context size at which this hire reached its limit; none while it has not. */
+        public OptionalLong limitReachedAt() {
+            return hire.limitReachedAt < 0 ? OptionalLong.empty() : OptionalLong.of(hire.limitReachedAt);
+        }
+
+        /** The context size at which the engine stopped this hire for running on past its limit; none when it did not. */
+        public OptionalLong cutAt() {
+            return hire.cutAt < 0 ? OptionalLong.empty() : OptionalLong.of(hire.cutAt);
         }
 
         /** How many seconds this hire had been quiet when the engine stopped it for that (28h Stage 27, z28); none when it was not stopped as a stall. */
@@ -295,8 +316,47 @@ public final class HireRegistry {
                 hire.progress = new Progress(seen.toolSteps(), contextTokens.isPresent() ? contextTokens : seen.contextTokens(),
                     costUsd.isPresent() ? costUsd : seen.costUsd(), seen.calls());
                 hire.lastActivityMs = System.currentTimeMillis();
+                contextTokens.ifPresent(context -> heldToItsLimit(hire, context));
             }
         }
+    }
+
+    /**
+     * What a hire's context size does at its limit (28h D58 (c)): reaching it is noted, which its next tool answer tells it, and a quarter past
+     * it the hire is stopped as a person's stop ends it, unless hires of its own still run, whose reports it waits for.
+     */
+    private void heldToItsLimit(Running hire, long context) {
+        if (hire.replaceAtTokens <= 0 || context < hire.replaceAtTokens) {
+            return;
+        }
+        if (hire.limitReachedAt < 0) {
+            hire.limitReachedAt = context;
+        }
+        if (hire.cutAt < 0 && context >= hire.replaceAtTokens + hire.replaceAtTokens / 4
+            && (hire.planId.isEmpty() || runningNamesFor(hire.planId).isEmpty())) {
+            synchronized (this) {
+                hire.cutAt = context;
+                stopped.add(hire.thread);
+                hire.onStop.forEach(Runnable::run);
+                hire.thread.interrupt();
+            }
+        }
+    }
+
+    /** What the hire with this plan id is told with each tool answer once its context reached its limit; none before that (28h D58 (c)). */
+    public Optional<String> replacementNotice(String callerId) {
+        if (callerId == null || callerId.isEmpty()) {
+            return Optional.empty();
+        }
+        for (Running hire : running) {
+            if (callerId.equals(hire.planId) && hire.limitReachedAt >= 0) {
+                String waits = runningNamesFor(hire.planId).isEmpty() ? "" : "Wait for the reports of your own hires first. ";
+                return Optional.of("Your context reached " + hire.limitReachedAt + " tokens; your role is replaced at " + hire.replaceAtTokens
+                    + ". " + waits + "Finish the step you are on, start nothing new, and end with your report: what is done, what is left, what you "
+                    + "changed and what failed. Your lead hires a successor for what is left.");
+            }
+        }
+        return Optional.empty();
     }
 
     /** Records that the brain of the hire running on the current thread began or ended compacting its context; a thread running no hire is ignored. */
