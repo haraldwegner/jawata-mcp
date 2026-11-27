@@ -69,24 +69,13 @@ public final class HireRegistry {
          * chat (28h-C27-18). Read and written only under the registry's lock, which closing this hire holds too, so none is added after the drain.
          */
         final List<Event> handedUp = new java.util.ArrayList<>();
-        /** What this hire's brain has written to its caller so far, from which its progress lines are read (28h z85); guarded by itself. */
-        final StringBuilder written = new StringBuilder();
+        /** The progress lines this hire's brain has written so far (28h z85). */
+        final StepLines steps = new StepLines();
 
-        /** The lines it wrote that start STEP:, without the mark, in the order written; a line still being written is included. */
-        List<String> progressLines() {
-            synchronized (written) {
-                return stepLines(written.toString());
-            }
-        }
-
-        /** How many STEP: lines it has finished writing; guarded by {@link #written}. */
-        int finishedStepLines() {
-            return stepLines(written.substring(0, written.lastIndexOf("\n") + 1)).size();
-        }
-
-        private static List<String> stepLines(String text) {
-            return text.lines().map(String::strip).filter(line -> line.startsWith("STEP:"))
-                .map(line -> line.substring("STEP:".length()).strip()).filter(line -> !line.isEmpty()).toList();
+        /** The event that tells subscribers this hire has finished a progress line; none before its plan is open. */
+        Optional<Event> steppedEvent() {
+            return planId.isEmpty() ? Optional.empty()
+                : Optional.of(new Event("step", planId, name, seat, brief, leadId, null, background));
         }
 
         Running(String seat, String brief, String name, String leadId, Thread thread) {
@@ -121,7 +110,7 @@ public final class HireRegistry {
 
         /** The progress lines this hire has written for its lead (28h z85). */
         public List<String> progressLines() {
-            return hire.progressLines();
+            return hire.steps.all();
         }
 
         /** Whether the person stopped this hire; true once, then the mark is gone. */
@@ -266,6 +255,7 @@ public final class HireRegistry {
      * @param title the call's title as the brain streamed it; a blank one is counted and not kept
      */
     public void noteToolCall(String title) {
+        List<Event> told = new java.util.ArrayList<>();
         for (Running hire : running) {
             if (hire.thread == Thread.currentThread()) {
                 Progress seen = hire.progress;
@@ -273,8 +263,13 @@ public final class HireRegistry {
                     : java.util.stream.Stream.concat(seen.calls().stream(), java.util.stream.Stream.of(title)).toList();
                 hire.progress = new Progress(seen.toolSteps() + 1, seen.contextTokens(), seen.costUsd(), calls);
                 hire.lastActivityMs = System.currentTimeMillis();
+                // 28h z166: the call ends the line being written, whether or not the brain sent a newline first
+                if (hire.steps.endLine()) {
+                    hire.steppedEvent().ifPresent(told::add);
+                }
             }
         }
+        told.forEach(this::tell);
     }
 
     /**
@@ -342,7 +337,17 @@ public final class HireRegistry {
     public Optional<SoFar> soFarOfPlan(String planId) {
         for (Running hire : running) {
             if (hire.planId.equals(planId)) {
-                return Optional.of(new SoFar(hire.progress, (System.currentTimeMillis() - hire.startedAtMs) / 1000, hire.progressLines()));
+                return Optional.of(new SoFar(hire.progress, (System.currentTimeMillis() - hire.startedAtMs) / 1000, hire.steps.all()));
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** The last progress line the running hire of this plan has finished (28h z85); none when it has finished none or no such hire runs. */
+    public Optional<String> latestStepOfPlan(String planId) {
+        for (Running hire : running) {
+            if (hire.planId.equals(planId)) {
+                return hire.steps.latest();
             }
         }
         return Optional.empty();
@@ -1243,12 +1248,8 @@ public final class HireRegistry {
         List<Event> told = new java.util.ArrayList<>();
         for (Running hire : running) {
             if (hire.thread == Thread.currentThread()) {
-                synchronized (hire.written) {
-                    int before = hire.finishedStepLines();
-                    hire.written.append(chunk);
-                    if (!hire.planId.isEmpty() && hire.finishedStepLines() > before) {
-                        told.add(new Event("step", hire.planId, hire.name, hire.seat, hire.brief, hire.leadId, null, hire.background));
-                    }
+                if (hire.steps.add(chunk)) {
+                    hire.steppedEvent().ifPresent(told::add);
                 }
                 hire.lastActivityMs = System.currentTimeMillis();
             }

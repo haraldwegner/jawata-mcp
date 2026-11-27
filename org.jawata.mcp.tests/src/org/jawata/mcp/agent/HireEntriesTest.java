@@ -362,6 +362,18 @@ class HireEntriesTest {
             assertEquals("renaming it", watch.entry("t1").orElseThrow().toMeta().path("step").asText(), "the card does not say what the agent is doing");
             // the panel is sent a card only when the registry tells of the hire, so each finished line is told, once, and other text is not
             assertEquals(2, java.util.Collections.frequency(told, "step plan-z85-card"), "the card subscribers were not told of each line: " + told);
+
+            // 28h z166: a line still being written is not shown, and a tool call ends it, whether or not the brain sent a newline first
+            org.jawata.mcp.execution.HireRegistry.shared().noteText("STEP: chec");
+            assertEquals("renaming it", watch.entry("t1").orElseThrow().toMeta().path("step").asText(), "the card shows half a line");
+            org.jawata.mcp.execution.HireRegistry.shared().noteText("king");
+            org.jawata.mcp.execution.HireRegistry.shared().noteToolCall("Edit Foo");
+            org.jawata.mcp.execution.HireRegistry.shared().noteText("STEP: done\n");
+
+            assertEquals(java.util.List.of("reading the class", "renaming it", "checking", "done"),
+                org.jawata.mcp.execution.HireRegistry.shared().soFarOfPlan("plan-z85-card").orElseThrow().progressLines(),
+                "text before a tool call and text after it were read as one line");
+            assertEquals(4, java.util.Collections.frequency(told, "step plan-z85-card"), told::toString);
         } finally {
             unsubscribe.run();
         }
