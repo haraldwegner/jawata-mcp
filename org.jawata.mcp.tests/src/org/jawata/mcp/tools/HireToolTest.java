@@ -2908,7 +2908,7 @@ class HireToolTest {
         Thread holder = new Thread(() -> {
             try (org.jawata.mcp.execution.HireRegistry.Registration registration =
                      org.jawata.mcp.execution.HireRegistry.shared().begin("developer", "m13 tool holder", "m13-tool-chat")) {
-                registration.claim(List.of("org.m13.tool.held"));
+                registration.claim(List.of(dir.toAbsolutePath().normalize().resolve("src/Held.java").toString().replace('\\', '/')));
                 org.jawata.mcp.execution.HireRegistry.shared().planOpened("m13-tool-holder-plan");
                 held.countDown();
                 release.await();
@@ -2921,10 +2921,17 @@ class HireToolTest {
         try {
             assertTrue(held.await(5, java.util.concurrent.TimeUnit.SECONDS), "the holder did not start");
             ObjectNode overlapping = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
-            overlapping.putArray("claims").add("org.m13.tool.held.sub");
+            // 28h Stage 28 item 10 rule 5: a relative path is read from the hire's working directory
+            overlapping.putArray("claims").add("src/Held.java");
             ObjectNode apart = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
-            apart.putArray("claims").add("org.m13.tool.other");
+            apart.putArray("claims").add("src/Other.java");
+            ObjectNode aPackageName = (ObjectNode) hireArgs(seatFile(CATALOGUER_SEAT));
+            aPackageName.putArray("claims").add("org.m13.tool.held");
 
+            ToolResponse notAPath = toolWith(aHostThatMustNotSpawn(), events, aRegistryWithACleanGate()).execute(aPackageName);
+            assertFalse(notAPath.isSuccess(), "a package name was taken as a claim, which would hold nothing");
+            assertTrue(String.valueOf(notAPath.getError()).contains("org.m13.tool.held") && String.valueOf(notAPath.getError()).contains("path"),
+                "the refusal does not say that a claim is a path: " + notAPath.getError());
             ToolResponse refused = toolWith(aHostThatMustNotSpawn(), events, aRegistryWithACleanGate()).execute(overlapping);
             ToolResponse ran = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate()).execute(apart);
 

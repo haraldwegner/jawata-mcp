@@ -107,8 +107,9 @@ public final class HireRegistry {
         }
 
         /**
-         * Claims these packages for this hire (Stage 24, M13). The answer is a refusal naming the holder when another running hire that is not an
-         * ancestor of this one holds an overlapping package, and empty when the claim is made; a claim lasts until this hire ends.
+         * Claims these files or folders for this hire (Stage 24, M13; by file since 28h Stage 28 item 10). The answer is a refusal naming the holder
+         * when another running hire that is not an ancestor of this one holds an overlapping one, and empty when the claim is made; a claim lasts
+         * until this hire ends.
          */
         public Optional<String> claim(java.util.Collection<String> packages) {
             return HireRegistry.this.claim(hire, packages);
@@ -861,8 +862,9 @@ public final class HireRegistry {
             }
             for (String held : holder.claims) {
                 for (String asked : wanted) {
-                    if (held.equals(asked) || held.startsWith(asked + ".") || asked.startsWith(held + ".")) {
-                        return Optional.of("package " + asked + " overlaps " + held + ", which is held by " + holder.name + " · " + holder.seat
+                    // 28h Stage 28 item 10 rule 5: claims are paths; the same file, or a folder over a file, overlaps
+                    if (held.equals(asked) || held.startsWith(asked + "/") || asked.startsWith(held + "/")) {
+                        return Optional.of("claim " + asked + " overlaps " + held + ", which is held by " + holder.name + " · " + holder.seat
                             + (holder.planId.isEmpty() ? "" : " (hire " + holder.planId + ")") + " since "
                             + java.time.LocalTime.ofInstant(java.time.Instant.ofEpochMilli(holder.claimedAtMs), java.time.ZoneId.systemDefault())
                                 .truncatedTo(java.time.temporal.ChronoUnit.MINUTES)
@@ -1177,11 +1179,25 @@ public final class HireRegistry {
 
     /**
      * The claim a pm takes for the sprint whose plan file is {@code boardFile} (28h Stage 27, z26): one pm runs a sprint, and a second is refused by
-     * the same admission that refuses two hires in one package, naming the pm that holds it. The sprint is the plan file because no sprint id is
-     * on the hire call; the key cannot overlap a package name, so it never clashes with a package claim.
+     * the same admission that refuses two hires on one file, naming the pm that holds it. The sprint is the plan file because no sprint id is
+     * on the hire call; the key starts with {@code sprint:} and no file claim does, so it never clashes with one.
      */
     public String sprintClaim(String boardFile) {
         return "sprint:" + java.nio.file.Path.of(boardFile).toAbsolutePath().normalize();
+    }
+
+    /**
+     * The claim for a file or folder a hire changes (28h Stage 28 item 10, rule 5): its absolute path with forward slashes, a relative one read
+     * from the hire's working directory. None when {@code named} is no path, having no slash and no such file there: a package name taken as a
+     * file nobody changes would hold nothing.
+     */
+    public Optional<String> fileClaim(java.nio.file.Path workingDirectory, String named) {
+        String text = named.strip().replace('\\', '/');
+        java.nio.file.Path file = workingDirectory.resolve(text).toAbsolutePath().normalize();
+        if (text.indexOf('/') < 0 && !java.nio.file.Files.exists(file)) {
+            return Optional.empty();
+        }
+        return Optional.of(file.toString().replace('\\', '/'));
     }
 
     /**

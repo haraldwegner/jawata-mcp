@@ -2849,7 +2849,7 @@
      "type": "string"
     },
     "claims": {
-     "description": "Packages this hire works in.",
+     "description": "Paths of the files or folders this hire changes.",
      "items": {
       "type": "string"
      },

@@ -69,28 +69,28 @@ class HireClaimsTest {
     }
 
     @Test
-    @DisplayName("T5: an overlapping claim is refused naming the agent that holds the package, a claim that does not overlap is made, and a package under a held one overlaps it")
+    @DisplayName("28h Stage 28 item 10 rule 5: claims are by file: the same file is refused naming its holder, a folder over a held file is refused, and another file in the same folder is free")
     void anOverlapIsRefusedWithTheHolder() throws Exception {
-        Running first = aHire("developer", "m13 first", "m13-chat", "m13-plan-first", "org.m13.alpha.beta");
-        Running same = aHire("developer", "m13 same", "m13-chat", "m13-plan-same", "org.m13.alpha.beta");
-        Running above = aHire("developer", "m13 above", "m13-chat", "m13-plan-above", "org.m13.alpha");
-        Running apart = aHire("developer", "m13 apart", "m13-chat", "m13-plan-apart", "org.m13.gamma");
+        Running first = aHire("developer", "m13 first", "m13-chat", "m13-plan-first", "/m13/alpha/beta/One.java");
+        Running same = aHire("developer", "m13 same", "m13-chat", "m13-plan-same", "/m13/alpha/beta/One.java");
+        Running above = aHire("developer", "m13 above", "m13-chat", "m13-plan-above", "/m13/alpha");
+        Running neighbour = aHire("developer", "m13 neighbour", "m13-chat", "m13-plan-neighbour", "/m13/alpha/beta/Two.java");
 
         assertAll(
             () -> assertTrue(first.claimed.get().isEmpty(), "the first claim was refused: " + first.claimed.get()),
-            () -> assertTrue(same.claimed.get().isPresent(), "the same package was claimed twice"),
+            () -> assertTrue(same.claimed.get().isPresent(), "the same file was claimed twice"),
             () -> assertTrue(same.claimed.get().orElse("").contains("developer") && same.claimed.get().orElse("").contains("m13-plan-first"),
-                "the refusal does not name who holds the package: " + same.claimed.get()),
-            () -> assertTrue(above.claimed.get().isPresent(), "a package above a held one was claimed"),
-            () -> assertTrue(apart.claimed.get().isEmpty(), "the control: a package that overlaps nothing was refused: " + apart.claimed.get()));
+                "the refusal does not name who holds the file: " + same.claimed.get()),
+            () -> assertTrue(above.claimed.get().isPresent(), "a folder over a held file was claimed"),
+            () -> assertTrue(neighbour.claimed.get().isEmpty(), "another file in the same folder was refused: " + neighbour.claimed.get()));
     }
 
     @Test
     @DisplayName("T5: a claim an agent above holds admits the hires it issued, and a stranger is still refused")
     void anAncestorsClaimAdmitsItsHires() throws Exception {
-        Running lead = aHire("pm", "m13 the sprint", "m13-chat", "m13-plan-lead", "org.m13.delta");
-        Running child = aHire("chief-engineer", "m13 build", "m13-plan-lead", "m13-plan-child", "org.m13.delta.inner");
-        Running stranger = aHire("developer", "m13 stranger", "m13-chat", "m13-plan-stranger", "org.m13.delta.inner");
+        Running lead = aHire("pm", "m13 the sprint", "m13-chat", "m13-plan-lead", "/m13/delta");
+        Running child = aHire("chief-engineer", "m13 build", "m13-plan-lead", "m13-plan-child", "/m13/delta/Inner.java");
+        Running stranger = aHire("developer", "m13 stranger", "m13-chat", "m13-plan-stranger", "/m13/delta/Inner.java");
 
         assertAll(
             () -> assertTrue(lead.claimed.get().isEmpty(), "the lead's own claim was refused: " + lead.claimed.get()),

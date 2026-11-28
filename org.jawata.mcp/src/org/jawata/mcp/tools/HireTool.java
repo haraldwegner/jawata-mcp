@@ -283,7 +283,7 @@ public class HireTool extends NeutralTool {
         properties.put("boardFile", Map.of("type", "string",
             "description", "Sprint ...-plan.md whose plan board is redrawn."));
         properties.put("claims", Map.of("type", "array", "items", Map.of("type", "string"),
-            "description", "Packages this hire works in."));
+            "description", "Paths of the files or folders this hire changes."));
         properties.put("workingDirectory", Map.of("type", "string",
             "description", "Where the brain runs, reads and may write. REQUIRED."));
         return Map.of(
@@ -860,10 +860,22 @@ public class HireTool extends NeutralTool {
             call.getServing().map(org.jawata.mcp.models.CallerIdentity::id).orElse(""));
         // 28h D58 (c): the context size at which this hire is told to finish and report, from its seat.
         running.replaceAt(seat.replaceAtTokens());
-        // THE CLAIM (Stage 24, M13): the packages this hire will work in, taken before anything starts. An overlap with another running agent's
+        // THE CLAIM (Stage 24, M13): the files this hire will change, taken before anything starts. An overlap with another running agent's
         // claim is refused with who holds it, and nothing has been spent; the claim is released when the registration closes, however the hire ends.
         List<String> claimed = new ArrayList<>();
-        call.getArguments().path("claims").forEach(claim -> claimed.add(claim.asText()));
+        Path claimsFrom = Path.of(getStringParam(call.getArguments(), "workingDirectory"));
+        for (JsonNode claim : call.getArguments().path("claims")) {
+            if (claim.asText().isBlank()) {
+                continue;
+            }
+            Optional<String> file = HireRegistry.shared().fileClaim(claimsFrom, claim.asText());
+            if (file.isEmpty()) {
+                running.close();
+                return ToolResponse.invalidParameter("claims", "a claim is the path of a file or folder this hire changes, relative to "
+                    + "workingDirectory or absolute; '" + claim.asText() + "' is no path to one");
+            }
+            claimed.add(file.get());
+        }
         // 28h Stage 27 (z26): one pm runs a sprint. The sprint is the plan file the hire names (no sprint id is on the call), and a pm that names one
         // takes it as a claim through this same admission, so a second pm for it is refused naming the first.
         String sprintFile = getStringParam(call.getArguments(), "boardFile");
@@ -875,7 +887,7 @@ public class HireTool extends NeutralTool {
             if (refused.isPresent()) {
                 running.close();
                 return ToolResponse.error("CLAIM_REFUSED", "refused: " + refused.get(),
-                    "wait for that agent to end, which releases its claim, or claim a package that does not overlap");
+                    "wait for that agent to end, which releases its claim, or claim files that do not overlap");
             }
         }
         HiredRun run = new HiredRun(host, artifacts, plans, landsIn, endpoint, rules, area)
