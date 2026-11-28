@@ -336,7 +336,9 @@ public final class AcpBrainSession {
             // 28h z142: summed over the turns, and absent once any turn reports none, since a partial sum would read as a cheaper run.
             Optional<TokenUsage> spentTokens = last.tokens();
             int passedWhenLastTold = -1;
-            while (last.stoppedBy().isEmpty() && !conversation.lost()) {
+            // A turn the wall-clock watchdog reaped sets no stoppedBy (only the tool-step and cost ceilings do), and lost() cannot tell a reaped brain
+            // from a living one until the JDK marks its process dead; the outcome's timedOut() says the clock ended the turn, so no further turn is sent.
+            while (last.stoppedBy().isEmpty() && !last.timedOut() && !conversation.lost()) {
                 List<HireRegistry.Event> reports = List.of();
                 String next;
                 if (inbox.outstanding() > 0 || !inbox.isEmpty()) {

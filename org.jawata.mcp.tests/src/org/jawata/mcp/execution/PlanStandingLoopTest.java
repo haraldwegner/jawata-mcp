@@ -165,8 +165,6 @@ class PlanStandingLoopTest {
     }
 
     @Test
-    @org.junit.jupiter.api.Disabled("not yet made to run: against the stand-in agent a wall-clock stop of runAsLead (prompts HANG and WAITCANCEL, 1 s) ends in "
-        + "java.io.IOException: Stream closed instead of an outcome with stoppedBy; the cause is not found, so the stop case is not proved by this test")
     @DisplayName("28h Stage 28 (i) M3: a lead whose turn the engine stopped at its wall-clock ceiling is never asked what its plan leaves open")
     void aLeadWhoseTurnWasStoppedIsNeverAskedAboutItsPlan() throws Exception {
         String lead = "m3-loop-stopped";
@@ -179,7 +177,7 @@ class PlanStandingLoopTest {
         });
 
         assertAll(
-            () -> assertTrue(stopped.stoppedBy().isPresent(), "CONTROL: the turn was not stopped by the ceiling: " + stopped.text()),
+            () -> assertTrue(stopped.timedOut(), "CONTROL: the turn was not stopped by the wall-clock ceiling: " + stopped.text()),
             () -> assertEquals(0, asked[0], "the engine asked about the plan of a lead whose turn it had stopped"));
     }
 }

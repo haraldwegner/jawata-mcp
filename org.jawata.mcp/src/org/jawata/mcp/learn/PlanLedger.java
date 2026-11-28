@@ -740,7 +740,7 @@ public final class PlanLedger {
      * left for the person.
      *
      * @param ownerPlanId the owner id the plan was recorded under by {@link #ownedBy}
-     * @return the standing, or empty when no plan is owned by that id
+     * @return the standing, or empty when no plan is owned by that id, or when the owner has only plans without sprint marks (plans a hire opened, not entered with plan_steps enter)
      */
     public synchronized Optional<Standing> standingOf(String ownerPlanId) {
         if (ownerPlanId == null || ownerPlanId.isBlank()) {
