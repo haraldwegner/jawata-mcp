@@ -3891,6 +3891,34 @@
  {
   "inputSchema": {
    "properties": {
+    "command": {
+     "description": "The command line.",
+     "type": "string"
+    },
+    "folder": {
+     "description": "Absolute folder it runs in.",
+     "type": "string"
+    },
+    "precedentOverride": {
+     "description": "One line why to call despite a surfaced past failure; logged.",
+     "type": "string"
+    },
+    "timeoutSeconds": {
+     "description": "Time limit, default 120, at most 600.",
+     "type": "integer"
+    }
+   },
+   "required": [
+    "command",
+    "folder"
+   ],
+   "type": "object"
+  },
+  "name": "shell"
+ },
+ {
+  "inputSchema": {
+   "properties": {
     "action": {
      "description": "What to ask (default models).",
      "enum": [

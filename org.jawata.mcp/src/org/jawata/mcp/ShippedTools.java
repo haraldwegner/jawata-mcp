@@ -221,6 +221,8 @@ public final class ShippedTools {
         // on the person's word (main), reading the same plan ledger the hire path opens (28h D57 (j)).
         tools.add(new LookupTool());
         tools.add(new GitTool(planLedger, w.registry()));
+        // a hired worker has no shell of its own: it hands the command to this one, so jawata sees who runs what (28h z31)
+        tools.add(new org.jawata.mcp.tools.ShellTool());
         // brains answers a host outside this process, the studio, about the agent programs: each chat brain's models from the one catalogue,
         // which programs this machine has, and the one-word test run, so the studio checks no program itself (28h D57 (c), the C26 review).
         tools.add(new BrainsTool(() -> org.jawata.mcp.execution.SeatSettingsService.forEngine(w.settings().get(), w.registry().get())));

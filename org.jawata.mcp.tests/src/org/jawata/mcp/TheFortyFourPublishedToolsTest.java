@@ -92,7 +92,7 @@ class TheFortyFourPublishedToolsTest {
     void thePublishedListIsTheGolden() {
         List<Map<String, Object>> published = published();
 
-        assertEquals(51, published.size(), "the product ships the 44 of the split plus plan_steps (S8), plan_board (S10), files, lookup and git (28h D57 (j)), models (28h D57 (c)) and hire_wait (28h z30)");
+        assertEquals(52, published.size(), "the product ships the 44 of the split plus plan_steps (S8), plan_board (S10), files, lookup and git (28h D57 (j)), models (28h D57 (c)), hire_wait (28h z30) and shell (28h z31)");
         assertEquals("", difference(published, golden()));
     }
 

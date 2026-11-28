@@ -17,7 +17,32 @@ final class Shell {
     private Shell() {
     }
 
+    /** Where one command of a line ends and the next begins; no real word is this. */
+    private static final String END = "\0";
+
     static List<String> words(String command) {
+        return read(command).stream().filter(word -> !END.equals(word)).toList();
+    }
+
+    /** The words of each command the line holds, in order: {@code ; | & ( )} and a new line end a command (28h z31). */
+    static List<List<String>> commands(String command) {
+        List<List<String>> commands = new ArrayList<>();
+        List<String> current = new ArrayList<>();
+        for (String word : read(command)) {
+            if (!END.equals(word)) {
+                current.add(word);
+            } else if (!current.isEmpty()) {
+                commands.add(current);
+                current = new ArrayList<>();
+            }
+        }
+        if (!current.isEmpty()) {
+            commands.add(current);
+        }
+        return commands;
+    }
+
+    private static List<String> read(String command) {
         List<String> words = new ArrayList<>();
         List<String> heredocs = new ArrayList<>();
         StringBuilder word = new StringBuilder();
@@ -78,6 +103,7 @@ final class Shell {
                     word.setLength(0);
                     inWord = false;
                 }
+                words.add(END);
                 i = skipBodies(command, i + 1, heredocs);
                 heredocs.clear();
             } else if (Character.isWhitespace(c) || ";|&<>()".indexOf(c) >= 0) {
@@ -85,6 +111,9 @@ final class Shell {
                     words.add(word.toString());
                     word.setLength(0);
                     inWord = false;
+                }
+                if (";|&()\n".indexOf(c) >= 0) {
+                    words.add(END);
                 }
                 i++;
             } else {
