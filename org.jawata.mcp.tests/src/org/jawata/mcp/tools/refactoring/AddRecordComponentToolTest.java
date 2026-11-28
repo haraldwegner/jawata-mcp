@@ -40,14 +40,16 @@ class AddRecordComponentToolTest {
     TestProjectHelper helper = new TestProjectHelper();
 
     private DataTool tool;
+    private JdtServiceImpl service;
+    private Path pkg;
     private Path targets;
     private Path desk;
 
     @BeforeEach
     void setUp() throws Exception {
-        JdtServiceImpl service = helper.loadProjectCopy("simple-maven");
+        service = helper.loadProjectCopy("simple-maven");
         tool = new DataTool(() -> service, new org.jawata.mcp.change.RefactoringChangeCache());
-        Path pkg = service.getProjectRoot().resolve("src/main/java/com/example");
+        pkg = service.getProjectRoot().resolve("src/main/java/com/example");
         targets = pkg.resolve("RecordComponentTargets.java");
         desk = pkg.resolve("RecordComponentDesk.java");
     }
@@ -172,5 +174,73 @@ class AddRecordComponentToolTest {
             () -> "a record with no construction owes no default, got " + detail(unbuilt));
         assertTrue(read(targets).contains("record Unbuilt(String only, int count)"),
             "and it still gains the component: " + read(targets));
+    }
+
+    /** Writes a new source file into the loaded project copy and makes the service see it. */
+    private Path writeNewSource(String fileName, String source) throws Exception {
+        Path file = pkg.resolve(fileName);
+        Files.writeString(file, source, StandardCharsets.UTF_8);
+        ToolResponse refreshed = new org.jawata.mcp.tools.RefreshWorkspaceTool(() -> service,
+            () -> new org.jawata.mcp.java.JavaBuildVerdict(service),
+            () -> new org.jawata.resident.workspace.OwnedReconciler(() -> service))
+            .execute(new ObjectMapper().createObjectNode());
+        assertTrue(refreshed.isSuccess(), () -> "refresh must succeed, got " + detail(refreshed));
+        return file;
+    }
+
+    @Test
+    @DisplayName("28h z193: a record's own this(...) delegation to its canonical constructor receives the default")
+    void theRecordsOwnCanonicalDelegationReceivesTheDefault() throws Exception {
+        Path source = writeNewSource("OwnDelegation.java", """
+            package com.example;
+
+            public record OwnDelegation(String a, int b) {
+                public OwnDelegation(String a) {
+                    this(a, 0);
+                }
+            }
+            """);
+
+        ToolResponse response = tool.execute(
+            args("com.example.OwnDelegation", "long", "stamp", "5L"));
+        assertTrue(response.isSuccess(), () -> "expected success, got " + detail(response));
+
+        String text = read(source);
+        assertAll(
+            () -> assertTrue(text.contains("record OwnDelegation(String a, int b, long stamp)"),
+                "the header gains the component, and the change stays applied: " + text),
+            () -> assertTrue(text.contains("this(a, 0, 5L)"),
+                "the delegation passes the default: " + text));
+    }
+
+    @Test
+    @DisplayName("28h z193: a this(...) that delegates to another secondary constructor is left as written")
+    void aDelegationToAnotherSecondaryConstructorIsLeftAlone() throws Exception {
+        Path source = writeNewSource("TwoDelegations.java", """
+            package com.example;
+
+            public record TwoDelegations(String a, int b, long c) {
+                public TwoDelegations(String a, int b) {
+                    this(a, b, 0);
+                }
+
+                public TwoDelegations(String a) {
+                    this(a, 0);
+                }
+            }
+            """);
+
+        ToolResponse response = tool.execute(
+            args("com.example.TwoDelegations", "String", "tag", "\"x\""));
+        assertTrue(response.isSuccess(), () -> "expected success, got " + detail(response));
+
+        String text = read(source);
+        assertAll(
+            () -> assertTrue(text.contains("record TwoDelegations(String a, int b, long c, String tag)"),
+                "the header gains the component: " + text),
+            () -> assertTrue(text.contains("this(a, b, 0, \"x\")"),
+                "the canonical delegation gets the default: " + text),
+            () -> assertTrue(text.contains("this(a, 0);"),
+                "the delegation to the other secondary constructor is exactly as written: " + text));
     }
 }

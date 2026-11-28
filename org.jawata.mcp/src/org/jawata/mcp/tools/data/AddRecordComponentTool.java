@@ -19,6 +19,8 @@ import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.ClassInstanceCreation;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.core.dom.ConstructorInvocation;
+import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
 import org.eclipse.jdt.core.dom.RecordDeclaration;
@@ -274,10 +276,10 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
                 }
             }
 
-            Map<ICompilationUnit, List<ClassInstanceCreation>> sites = new LinkedHashMap<>();
+            Map<ICompilationUnit, List<ASTNode>> sites = new LinkedHashMap<>();
             int constructions = 0;
             for (ICompilationUnit referencing : units) {
-                List<ClassInstanceCreation> found =
+                List<ASTNode> found =
                     constructionsOf(parsed.get(referencing), fqn);
                 if (!found.isEmpty()) {
                     sites.put(referencing, found);
@@ -348,11 +350,13 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
                 }
                 // viaOverload is the WHOLE point: the old call sites keep their old
                 // signature, so nothing is rewritten at them.
-                for (ClassInstanceCreation site :
-                        viaOverload ? List.<ClassInstanceCreation>of()
+                for (ASTNode site :
+                        viaOverload ? List.<ASTNode>of()
                                     : sites.getOrDefault(referencing, List.of())) {
                     ListRewrite arguments2 = rewrite.getListRewrite(site,
-                        ClassInstanceCreation.ARGUMENTS_PROPERTY);
+                        site instanceof ConstructorInvocation
+                            ? ConstructorInvocation.ARGUMENTS_PROPERTY
+                            : ClassInstanceCreation.ARGUMENTS_PROPERTY);
                     arguments2.insertLast(rewrite.createStringPlaceholder(
                         defaultValue, ASTNode.SIMPLE_NAME), null);
                     touched = true;
@@ -551,10 +555,31 @@ public final class AddRecordComponentTool extends AbstractRefactoringTool
             + "}";
     }
 
-    /** Every {@code new <record>(...)} in this unit. */
-    private static List<ClassInstanceCreation> constructionsOf(CompilationUnit ast, String fqn) {
-        List<ClassInstanceCreation> found = new ArrayList<>();
+    /**
+     * Every {@code new <record>(...)} in this unit, and also every explicit constructor
+     * invocation {@code this(...)} inside the record's own declaration that delegates to the
+     * record's CANONICAL constructor.
+     *
+     * <p>That second kind is a construction too: once the header gains a component, a
+     * delegation to the canonical constructor has one argument too few, so the change would
+     * not compile and would be undone. A {@code this(...)} that delegates to another secondary
+     * constructor is NOT collected — that constructor's parameter list does not change. The
+     * canonical constructor is told by the compiler's own binding, never by parameter count:
+     * a secondary constructor of the same arity with other types is not canonical.</p>
+     */
+    private static List<ASTNode> constructionsOf(CompilationUnit ast, String fqn) {
+        List<ASTNode> found = new ArrayList<>();
         ast.accept(new ASTVisitor() {
+            @Override
+            public boolean visit(ConstructorInvocation node) {
+                IMethodBinding constructor = node.resolveConstructorBinding();
+                if (constructor != null && constructor.isCanonicalConstructor()
+                        && fqn.equals(constructor.getDeclaringClass().getQualifiedName())) {
+                    found.add(node);
+                }
+                return true;
+            }
+
             @Override
             public boolean visit(ClassInstanceCreation node) {
                 ITypeBinding binding = node.resolveTypeBinding();
