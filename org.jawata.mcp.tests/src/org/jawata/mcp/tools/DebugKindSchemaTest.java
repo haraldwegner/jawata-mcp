@@ -93,13 +93,20 @@ class DebugKindSchemaTest {
     void everyPublishedKindIsTakenByOneAction() throws Exception {
         DebugTool tool = tool();
 
-        for (String kind : publishedKinds(tool)) {
-            ToolResponse asBreakpoint = call(tool, "breakpoint_set", kind);
-            if (refusedAsUnknownKind(asBreakpoint)) {
+        java.util.List<String> published = new java.util.ArrayList<>();
+        publishedKinds(tool).forEach(published::add);
+        java.util.List<String> takenByNone = new java.util.ArrayList<>();
+        for (String kind : published) {
+            if (refusedAsUnknownKind(call(tool, "breakpoint_set", kind))) {
                 ToolResponse asProbe = call(tool, "probe_set", kind);
-                assertFalse(refusedAsUnknownKind(asProbe), "the schema publishes " + kind + " but neither breakpoint_set nor probe_set takes it");
-                assertEquals("SESSION_REQUIRED", asProbe.getError().getCode(), "probe_set kind=" + kind + " is refused for the session only");
+                // a probe kind is refused here for the missing session only
+                if (asProbe.isSuccess() || !"SESSION_REQUIRED".equals(asProbe.getError().getCode())) {
+                    takenByNone.add(kind);
+                }
             }
         }
+
+        assertFalse(published.isEmpty(), "the schema publishes no kind, so nothing was checked");
+        assertEquals(java.util.List.of(), takenByNone, "the schema publishes kinds that neither breakpoint_set nor probe_set takes");
     }
 }
