@@ -2,6 +2,8 @@ package org.jawata.mcp.agent;
 
 import java.util.List;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 /**
  * What happens when a brain ends its turn (Sprint 28h, S8, D18, D19). The brain's end of turn is a message on the brain channel; the
  * agent passes it on to the host only when no step is waiting for its gate. Not passing it on is how the loop refuses to advance, and
@@ -36,9 +38,21 @@ public final class TurnBoundary {
     private final StepLedger steps;
     private final AttemptLedger attempts;
 
+    private final java.util.function.Predicate<PrincipalSession> ownHireRuns;
+
+    /** A boundary that knows of no hire running: the two-argument form means that nothing of the session's own is out. */
     public TurnBoundary(StepLedger steps, AttemptLedger attempts) {
+        this(steps, attempts, session -> false);
+    }
+
+    /**
+     * @param ownHireRuns whether a hire of the session's own is running right now; while one is, and the plan has nothing else that holds the
+     *                    lead, the turn is forwarded and nobody is sent back
+     */
+    public TurnBoundary(StepLedger steps, AttemptLedger attempts, java.util.function.Predicate<PrincipalSession> ownHireRuns) {
         this.steps = steps;
         this.attempts = attempts;
+        this.ownHireRuns = ownHireRuns;
     }
 
     /** A boundary that never finds a step pending, for a face with no step state behind it. */
@@ -101,6 +115,19 @@ public final class TurnBoundary {
         if (!session.autonomy()) {
             return new Verdict(Kind.REPORT, "The turn ended with " + named + " still waiting. Nobody resumes it while you are at the"
                 + " keyboard: say so to continue it, or run " + step.gateTool() + " yourself.");
+        }
+        // The plan main entered answers for itself (28h Stage 28 (i), M1, M2): a checkpoint reached or a step of the person next shows the person
+        // where the plan stands and spends no try; while one of main's own hires runs nobody is sent back. A ledger that knows no own plan goes on as before.
+        java.util.Optional<StepLedger.OwnPlan> own = steps.ownPlan(session);
+        if (own.isPresent() && !own.get().goOn()) {
+            JsonNode standing = own.get().planStanding();
+            String holds = standing.path("reachedCheckpoint").isTextual()
+                ? "Checkpoint reached: " + standing.path("reachedCheckpoint").asText() + "."
+                : "Your step: " + standing.path("personStep").asText() + ".";
+            return new Verdict(Kind.REPORT, org.jawata.mcp.execution.HireReport.standingLine(standing) + " " + holds);
+        }
+        if (own.isPresent() && ownHireRuns.test(session)) {
+            return Verdict.FORWARD;
         }
         int used = attempts.admit(session.id(), step.planId() + "#" + step.index());
         return new Verdict(Kind.RESUME, "[jawata] " + named + " has not passed. Carry on until it does, and run " + step.gateTool()

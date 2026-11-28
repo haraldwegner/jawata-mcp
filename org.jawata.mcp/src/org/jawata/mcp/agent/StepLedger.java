@@ -33,4 +33,20 @@ public interface StepLedger {
     default boolean planKnown(PrincipalSession session) {
         return true;
     }
+
+    /**
+     * Where the sprint plan {@code session} entered stands, as the engine answered it (28h Stage 28 (i), M1, M2).
+     *
+     * @param goOn         whether nothing of the plan's own holds the lead: a step is open, no checkpoint was just reached and no step of the
+     *                     person stands next
+     * @param planStanding the plan's standing as the engine answered it: passed, total, next, nextCheckpoint, forPerson, open,
+     *                     checkpointReached, personNext, reachedCheckpoint and personStep
+     */
+    record OwnPlan(boolean goOn, com.fasterxml.jackson.databind.JsonNode planStanding) {
+    }
+
+    /** The caller's own sprint plan with its standing; empty when it has none or the ledger cannot say, which is every ledger that knows no marks. */
+    default java.util.Optional<OwnPlan> ownPlan(PrincipalSession session) {
+        return java.util.Optional.empty();
+    }
 }

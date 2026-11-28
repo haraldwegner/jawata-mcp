@@ -16,9 +16,20 @@ import java.util.Optional;
  * @param checkpointReached whether the last chain step that passed is marked as a checkpoint; false when nothing has passed
  * @param personNext        whether a person's step stands immediately before the next chain step; false when nothing remains to do
  * @param open              whether a chain step remains to pass
+ * @param reachedCheckpoint the title of the chain step that just passed when it is marked a checkpoint; empty otherwise
+ * @param personStep        the title of the person's step that stands immediately before the next chain step; empty when none does
  */
 public record Standing(int passed, int total, Optional<Next> next, Optional<NextCheckpoint> nextCheckpoint, List<String> forPerson,
-        boolean checkpointReached, boolean personNext, boolean open) {
+        boolean checkpointReached, boolean personNext, boolean open, Optional<String> reachedCheckpoint, Optional<String> personStep) {
+
+    /**
+     * Whether a lead may go on with the plan on its own: a chain step is open, no checkpoint was just reached and no step of the person stands next.
+     *
+     * @return true when the plan has an open step and nothing of the plan's own holds the lead
+     */
+    public boolean canGoOn() {
+        return open && !checkpointReached && !personNext;
+    }
 
     /**
      * The next chain step.
@@ -39,7 +50,7 @@ public record Standing(int passed, int total, Optional<Next> next, Optional<Next
     public record NextCheckpoint(int index, String title) {
     }
 
-    /** This standing as a map for an answer: passed, total, next, nextCheckpoint, forPerson, open, checkpointReached, personNext, in that order. */
+    /** This standing as a map for an answer: passed, total, next, nextCheckpoint, forPerson, open, checkpointReached, personNext, reachedCheckpoint, personStep, in that order. */
     public Map<String, Object> asMap() {
         Map<String, Object> map = new java.util.LinkedHashMap<>();
         map.put("passed", passed);
@@ -61,6 +72,8 @@ public record Standing(int passed, int total, Optional<Next> next, Optional<Next
         map.put("open", open);
         map.put("checkpointReached", checkpointReached);
         map.put("personNext", personNext);
+        map.put("reachedCheckpoint", reachedCheckpoint.orElse(null));
+        map.put("personStep", personStep.orElse(null));
         return map;
     }
 }

@@ -29,9 +29,7 @@ public final class PlanStandingSendBack {
      */
     public static Optional<AcpBrainSession.OpenCheck> of(PlanLedger plans, HireRegistry hires, String leadPlanId) {
         return plans.standingOf(leadPlanId)
-            .filter(standing -> standing.open())
-            .filter(standing -> !standing.checkpointReached())
-            .filter(standing -> !standing.personNext())
+            .filter(org.jawata.mcp.learn.Standing::canGoOn)
             .filter(standing -> hires.runningNamesFor(leadPlanId).isEmpty())
             .filter(standing -> hires.replacementNotice(leadPlanId).isEmpty())
             .map(standing -> new AcpBrainSession.OpenCheck(standing.passed(),

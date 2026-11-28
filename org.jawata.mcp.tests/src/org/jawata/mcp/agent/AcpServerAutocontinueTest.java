@@ -40,6 +40,9 @@ class AcpServerAutocontinueTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
+    /** What the chat is told when autonomy is switched on and no plan is entered (28h Stage 28 (i), M5). */
+    private static final String NO_PLAN_SAID = "Autonomy is on, but no plan is entered, so nothing was started.";
+
     private final List<Wire> opened = new ArrayList<>();
 
     @AfterEach
@@ -305,23 +308,23 @@ class AcpServerAutocontinueTest {
     }
 
     @Test
-    @DisplayName("z99 (f): switching on when no plan is known starts one turn that asks which plan, once, and does not go on asking")
-    void switchingOnWithNoPlanKnownAsksWhichPlanOnce() {
+    @DisplayName("28h Stage 28 (i) M5: switching on when no plan is known says so in the chat, starts no turn, and keeps autonomy on")
+    void switchingOnWithNoPlanKnownSaysSoAndStartsNothing() {
         Wire wire = new Wire();
         wire.plan.known = false;
         wire.plan.open = List.of();
 
         wire.setAutonomy("on");
 
-        assertTrue(wire.waitFor(() -> !wire.brain.prompts.isEmpty(), 3_000), "no turn started to ask which plan");
-        pause(600);
-        assertEquals(1, wire.brain.prompts.size(), "the question about the plan was put more than once: " + wire.brain.prompts);
-        assertTrue(wire.brain.prompts.get(0).toLowerCase().contains("which plan"), wire.brain.prompts.get(0));
+        assertFalse(wire.waitFor(() -> !wire.brain.prompts.isEmpty(), 600), "a turn started with no plan entered: " + wire.brain.prompts);
+        assertTrue(wire.agentSaid().contains(NO_PLAN_SAID), "the chat was not told that no plan is entered: [" + wire.agentSaid() + "]");
+        assertEquals("on", wire.autonomyNow(), "autonomy was switched off with no plan entered");
+        assertEquals(0, wire.brain.toldOff(), "the brain was told autonomy ended: " + wire.brain.autonomyTold);
     }
 
     @Test
-    @DisplayName("z99 (h): over the production step ledger and a real plan_steps tool on an empty plan ledger, switching on starts one turn that asks which plan, and does not switch autonomy off")
-    void anEmptyPlanLedgerAsksWhichPlanAndKeepsAutonomyOn() {
+    @DisplayName("28h Stage 28 (i) M5: over the production step ledger and a real plan_steps tool on an empty plan ledger, switching on says so in the chat, starts no turn, and does not switch autonomy off")
+    void anEmptyPlanLedgerSaysSoAndStartsNothing() {
         PlanStepsTool steps = new PlanStepsTool(new PlanLedger());
         ToolCalls calls = new ToolCalls() {
             @Override public ToolResponse callTool(String name, JsonNode arguments, CallerIdentity caller) {
@@ -335,10 +338,8 @@ class AcpServerAutocontinueTest {
 
         wire.setAutonomy("on");
 
-        assertTrue(wire.waitFor(() -> !wire.brain.prompts.isEmpty(), 3_000), "no turn started to ask which plan: " + wire.agentSaid());
-        pause(600);
-        assertEquals(1, wire.brain.prompts.size(), "the question about the plan was put more than once: " + wire.brain.prompts);
-        assertTrue(wire.brain.prompts.get(0).toLowerCase().contains("which plan"), wire.brain.prompts.get(0));
+        assertFalse(wire.waitFor(() -> !wire.brain.prompts.isEmpty(), 600), "a turn started over an empty plan ledger: " + wire.brain.prompts);
+        assertTrue(wire.agentSaid().contains(NO_PLAN_SAID), "the chat was not told that no plan is entered: [" + wire.agentSaid() + "]");
         assertEquals("on", wire.autonomyNow(), "autonomy was switched off by an empty ledger: " + wire.agentSaid());
         assertEquals(0, wire.brain.toldOff(), "the brain was told autonomy ended: " + wire.brain.autonomyTold);
     }

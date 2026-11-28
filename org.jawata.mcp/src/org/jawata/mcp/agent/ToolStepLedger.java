@@ -57,6 +57,14 @@ public final class ToolStepLedger implements StepLedger {
         return ask(session).map(data -> data.path("planCount")).filter(JsonNode::isNumber).map(count -> count.asInt() != 0).orElse(true);
     }
 
+    /** The caller's own plan only when {@code plan_steps} answered an object planStanding and a boolean goOn; every other case is empty. */
+    @Override
+    public java.util.Optional<OwnPlan> ownPlan(PrincipalSession session) {
+        return ask(session)
+            .filter(data -> data.path("planStanding").isObject() && data.path("goOn").isBoolean())
+            .map(data -> new OwnPlan(data.get("goOn").asBoolean(), data.get("planStanding")));
+    }
+
     @Override
     public List<Pending> pending(PrincipalSession session) {
         java.util.Optional<JsonNode> data = ask(session);

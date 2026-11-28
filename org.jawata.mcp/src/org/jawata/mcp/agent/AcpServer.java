@@ -834,7 +834,7 @@ public final class AcpServer {
      * Autonomy has just been switched on (28h z99): a turn starts by itself, with no message of the person's, telling the brain to take the next
      * open step of the plan. It is built the way {@link #deliver} builds a report's turn. A turn that is already running starts no second one: it
      * carries on at its own end, as autonomy always did. The plan is read when the turn is taken, so a step that was cleared while the turn waited
-     * is not asked for: with no step open the chat is told and autonomy ends, and with no plan known the turn asks the person which plan, once.
+     * is not asked for: with no step open the chat is told and autonomy ends, and with no plan entered the chat is told so and no turn starts.
      */
     private void startATurnByItself(PrincipalSession session) {
         java.util.concurrent.locks.ReentrantLock turn = turnLocks.computeIfAbsent(session.id(), key -> new java.util.concurrent.locks.ReentrantLock());
@@ -862,11 +862,14 @@ public final class AcpServer {
                         "Autonomy on: waiting for " + who + " to finish step " + step.index() + " of plan " + step.planId() + ".\n\n", messageId));
                     return;
                 }
-                String text = opening.standing() == TurnBoundary.Standing.NO_PLAN
-                    ? "[jawata] autonomy: on\nNo sprint plan is known to the engine. Ask the person which plan to work, once, and wait for their answer."
-                    : "[jawata] autonomy: on\nTake the next open step of the sprint plan: step " + opening.step().index() + " of plan "
-                        + opening.step().planId() + " (its gate is " + opening.step().gateTool() + "). Carry on until it passes, and run "
-                        + opening.step().gateTool() + " to show that it has.";
+                if (opening.standing() == TurnBoundary.Standing.NO_PLAN) {
+                    // No plan is entered (28h Stage 28 (i), M5): nothing is started, no brain is asked, and autonomy stays on.
+                    update(session.id(), messageChunk("agent_message_chunk", "Autonomy is on, but no plan is entered, so nothing was started.\n\n", messageId));
+                    return;
+                }
+                String text = "[jawata] autonomy: on\nTake the next open step of the sprint plan: step " + opening.step().index() + " of plan "
+                    + opening.step().planId() + " (its gate is " + opening.step().gateTool() + "). Carry on until it passes, and run "
+                    + opening.step().gateTool() + " to show that it has.";
                 conductTurn(JSON.createObjectNode(), session, messageId, "[autonomy: on]", text);
             } catch (RuntimeException failed) {
                 java.util.logging.Logger.getLogger(AcpServer.class.getName()).log(java.util.logging.Level.WARNING, "the turn autonomy starts could not be conducted", failed);

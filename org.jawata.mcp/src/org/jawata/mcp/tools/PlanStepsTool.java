@@ -55,6 +55,8 @@ public final class PlanStepsTool implements Tool {
             list means no step is waiting, and a listed plan names the gate tool that would move it.
 
             planCount is how many plans the ledger holds, so an empty pending list can be told apart from no plan at all.
+
+            A caller that entered a sprint plan is also answered planStanding (where its newest plan stands) and goOn (true when a step is open and neither a checkpoint just reached nor a step of the person holds it); a caller with no such plan, a call with no caller and all=true get neither key.
             """;
     }
 
@@ -135,6 +137,14 @@ public final class PlanStepsTool implements Tool {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("pending", pending);
         data.put("planCount", plans.planCount());
+        // Where the caller's own newest sprint plan stands and whether it may go on, so a lead's turn loop reads the one standing (28h Stage 28 (i), M1, M2).
+        // A call with no caller, or one that asked for every session's plans, has no plan of its own to answer for.
+        if (!everyones) {
+            org.jawata.mcp.models.CallerIdentity.serving().flatMap(caller -> plans.standingOf(caller.id())).ifPresent(standing -> {
+                data.put("planStanding", standing.asMap());
+                data.put("goOn", standing.canGoOn());
+            });
+        }
         return ToolResponse.success(data);
     }
 

@@ -208,8 +208,8 @@ class PlanLedgerStandingTest {
 
         java.util.Map<String, Object> map = ledger.standingOf("pm-1").orElseThrow().asMap();
 
-        assertEquals(List.of("passed", "total", "next", "nextCheckpoint", "forPerson", "open", "checkpointReached", "personNext"),
-            List.copyOf(map.keySet()));
+        assertEquals(List.of("passed", "total", "next", "nextCheckpoint", "forPerson", "open", "checkpointReached", "personNext",
+            "reachedCheckpoint", "personStep"), List.copyOf(map.keySet()));
         assertEquals(0, map.get("passed"));
         assertEquals(3, map.get("total"));
         assertEquals(java.util.Map.of("index", 0, "title", "A", "tool", "compile_workspace"), map.get("next"));
@@ -258,5 +258,75 @@ class PlanLedgerStandingTest {
 
         assertEquals(2, standing.total());
         assertEquals(Optional.of(new Standing.Next(0, "A", "compile_workspace")), standing.next());
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M1: a plan whose last passed step is a checkpoint reports that step's title as reachedCheckpoint and canGoOn is false")
+    void aReachedCheckpointIsNamedAndHoldsTheLead() {
+        PlanId id = ledger.openSprint("sprint", List.of(
+            checked("A", "compile_workspace"), checkpointed("Checkpoint B", "get_diagnostics"), checked("C", "run_tests")));
+        ledger.ownedBy(id, "pm-1");
+        pass(id, "compile_workspace");
+        pass(id, "get_diagnostics");
+
+        Standing standing = ledger.standingOf("pm-1").orElseThrow();
+
+        assertEquals(Optional.of("Checkpoint B"), standing.reachedCheckpoint());
+        assertEquals(false, standing.canGoOn());
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M1: a plan with a person's step standing before the next step reports its title as personStep and canGoOn is false")
+    void aStepOfThePersonIsNamedAndHoldsTheLead() {
+        PlanId id = ledger.openSprint("sprint", List.of(
+            checked("A", "compile_workspace"), person("Sign the release"), checked("B", "get_diagnostics")));
+        ledger.ownedBy(id, "pm-1");
+        pass(id, "compile_workspace");
+
+        Standing standing = ledger.standingOf("pm-1").orElseThrow();
+
+        assertEquals(Optional.of("Sign the release"), standing.personStep());
+        assertEquals(false, standing.canGoOn());
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M1: an open plan with no checkpoint reached and no step of the person next has both names empty and canGoOn is true")
+    void anOpenPlanWithNothingHoldingItCanGoOn() {
+        PlanId id = ledger.openSprint("sprint", List.of(
+            checked("A", "compile_workspace"), checkpointed("B", "get_diagnostics"), checked("C", "run_tests")));
+        ledger.ownedBy(id, "pm-1");
+        pass(id, "compile_workspace");
+
+        Standing standing = ledger.standingOf("pm-1").orElseThrow();
+
+        assertEquals(Optional.empty(), standing.reachedCheckpoint());
+        assertEquals(Optional.empty(), standing.personStep());
+        assertEquals(true, standing.canGoOn());
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M1: a plan with nothing open cannot go on")
+    void aPlanWithNothingOpenCannotGoOn() {
+        PlanId id = ledger.openSprint("sprint", List.of(checked("A", "compile_workspace")));
+        ledger.ownedBy(id, "pm-1");
+        pass(id, "compile_workspace");
+
+        assertEquals(false, ledger.standingOf("pm-1").orElseThrow().canGoOn());
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M1: asMap ends with reachedCheckpoint and personStep, the title or null")
+    void asMapEndsWithTheTwoNames() {
+        PlanId id = ledger.openSprint("sprint", List.of(
+            checkpointed("Checkpoint A", "compile_workspace"), person("Sign"), checked("B", "get_diagnostics")));
+        ledger.ownedBy(id, "pm-1");
+        pass(id, "compile_workspace");
+
+        java.util.Map<String, Object> map = ledger.standingOf("pm-1").orElseThrow().asMap();
+
+        assertEquals(List.of("passed", "total", "next", "nextCheckpoint", "forPerson", "open", "checkpointReached", "personNext",
+            "reachedCheckpoint", "personStep"), List.copyOf(map.keySet()));
+        assertEquals("Checkpoint A", map.get("reachedCheckpoint"));
+        assertEquals("Sign", map.get("personStep"));
     }
 }

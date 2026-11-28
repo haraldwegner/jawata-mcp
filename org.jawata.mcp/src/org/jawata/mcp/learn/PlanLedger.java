@@ -771,10 +771,16 @@ public final class PlanLedger {
         boolean checkpointReached = newest.marks.checkpoints().contains(newest.currentStep);
         List<String> forPerson = new ArrayList<>();
         boolean personNext = false;
+        Optional<String> personStep = Optional.empty();
         for (PlanMarks.Reserved reserved : newest.marks.reserved()) {
             forPerson.add(reserved.title());
             personNext |= open && reserved.after() == passed;
+            if (personStep.isEmpty() && open && reserved.after() == passed) {
+                personStep = Optional.of(reserved.title());
+            }
         }
-        return Optional.of(new Standing(passed, total, next, nextCheckpoint, List.copyOf(forPerson), checkpointReached, personNext, open));
+        Optional<String> reachedCheckpoint = checkpointReached ? Optional.of(newest.marks.titles().get(newest.currentStep)) : Optional.empty();
+        return Optional.of(new Standing(passed, total, next, nextCheckpoint, List.copyOf(forPerson), checkpointReached, personNext, open,
+            reachedCheckpoint, personStep));
     }
 }

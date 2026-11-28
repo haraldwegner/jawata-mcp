@@ -195,7 +195,8 @@ public final class AgentFace implements RoutedFace {
         if (attached == null) {
             throw new IllegalStateException("the agent face is not attached to an engine");
         }
-        TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools(), brain.toolSessionKey()), new AttemptLedger());
+        TurnBoundary boundary = new TurnBoundary(new ToolStepLedger(attached.tools(), brain.toolSessionKey()), new AttemptLedger(),
+            session -> ownHireRuns(brain.toolSessionKey(), session));
         String recording = attached.settings() == null ? null : attached.settings().get(AgentRecorder.SETTING).orElse(null);
         AgentRecorder recorder = new AgentRecorder(attached.tools(), AgentRecorder.Depth.of(recording));
         Supplier<List<AdvertisedCommand>> advertised = commands != null ? commands : () -> servedSeats(attached);
@@ -210,6 +211,20 @@ public final class AgentFace implements RoutedFace {
         server.offerModelChoices(brainName -> modelsOfferedBy(attached, brainName));
         server.offerCommandTexts(name -> commandText(attached, name));
         return server;
+    }
+
+    /**
+     * Whether a hire of this session's own runs now. A hire the brain starts is first recorded under the brain's tool-session key and only later
+     * bound to the chat session id, so both are asked.
+     *
+     * @param brainKey the key the brain's own tool calls carry, when it has one
+     * @param session  the chat session
+     * @return true when a hire runs under the session id or under the brain's key
+     */
+    static boolean ownHireRuns(java.util.Optional<String> brainKey, PrincipalSession session) {
+        org.jawata.mcp.execution.HireRegistry hires = org.jawata.mcp.execution.HireRegistry.shared();
+        return !hires.runningNamesFor(session.id()).isEmpty()
+            || brainKey.map(key -> !hires.runningNamesFor(key).isEmpty()).orElse(false);
     }
 
     static List<Model> modelsOfferedBy(EngineApi attached, String brainName) {
