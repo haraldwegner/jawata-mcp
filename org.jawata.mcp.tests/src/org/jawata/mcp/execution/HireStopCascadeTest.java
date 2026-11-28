@@ -106,7 +106,7 @@ class HireStopCascadeTest {
         Hire lead = aHire("pm", "z130 the sprint", "z130-chat", "z130-plan-lead");
         Hire developer = aHire("developer", "z130 write", "z130-plan-lead", "z130-plan-developer");
 
-        int stopped = HireRegistry.shared().stop("pm", "z130 the sprint");
+        int stopped = HireRegistry.shared().stopNaming("pm", "z130 the sprint").size();
         lead.thread.join(5_000);
         developer.thread.join(5_000);
 

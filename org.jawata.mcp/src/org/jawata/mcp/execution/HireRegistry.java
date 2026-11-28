@@ -1070,15 +1070,6 @@ public final class HireRegistry {
         return Optional.empty();
     }
 
-    /**
-     * Stops every running hire of this seat for this brief, each with every hire below it as {@link #stopTree} does (28h z130: this stop,
-     * used when a card knows no plan id, left a lead's developer running), and answers how many were stopped. A hire with no plan open yet
-     * has nothing below it.
-     */
-    public synchronized int stop(String seat, String brief) {
-        return stopNaming(seat, brief).size();
-    }
-
     /** How many finished answers are kept. */
     static final int KEPT = 200;
 
@@ -1381,7 +1372,11 @@ public final class HireRegistry {
         noteToolCall(kept ? new ToolCall(title, input).line(title) : title);
     }
 
-    /** As {@link #stop(String, String)}, answering each stopped agent as first name and seat (28h z167), so the answer can say who. */
+    /**
+     * Stops every running hire of this seat for this brief, each with every hire below it as {@link #stopTree} does (28h z130: this stop,
+     * used when a card knows no plan id, left a lead's developer running). A hire with no plan open yet has nothing below it. Answers each
+     * stopped agent as first name and seat (28h z167), so the answer can say who.
+     */
     public synchronized java.util.List<String> stopNaming(String seat, String brief) {
         java.util.List<String> names = new java.util.ArrayList<>();
         for (Running hire : running) {

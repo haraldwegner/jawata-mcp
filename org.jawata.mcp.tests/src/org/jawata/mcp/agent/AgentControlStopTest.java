@@ -112,7 +112,7 @@ class AgentControlStopTest {
         worker.start();
         assertTrue(registered.await(5, TimeUnit.SECONDS), "the hire did not register as running");
 
-        assertEquals(1, HireRegistry.shared().stop(SEAT, BRIEF));
+        assertEquals(1, HireRegistry.shared().stopNaming(SEAT, BRIEF).size());
 
         assertTrue(ended.await(5, TimeUnit.SECONDS), "a process started after the stop was never ended");
         worker.join(5_000);

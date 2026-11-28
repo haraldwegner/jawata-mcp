@@ -127,7 +127,7 @@ class HireToolTest {
             Thread.sleep(20);
         }
         if (HireRegistry.shared().nameOf("cataloguer", PANEL_BRIEF).isPresent()) {
-            HireRegistry.shared().stop("cataloguer", PANEL_BRIEF);
+            HireRegistry.shared().stopNaming("cataloguer", PANEL_BRIEF);
             until = System.nanoTime() + 3_000_000_000L;
             while (System.nanoTime() < until && HireRegistry.shared().nameOf("cataloguer", PANEL_BRIEF).isPresent()) {
                 Thread.sleep(20);
@@ -3696,14 +3696,14 @@ class HireToolTest {
             }
             assertTrue(Files.exists(started), "the brain never started");
 
-            int stopped = running.stop("cataloguer", "Describe every member of org.jawata.mcp.execution.");
+            int stopped = running.stopNaming("cataloguer", "Describe every member of org.jawata.mcp.execution.").size();
             ToolResponse answer = response.get(20, java.util.concurrent.TimeUnit.SECONDS);
 
             assertAll(
                 () -> assertEquals(1, stopped),
                 () -> assertFalse(answer.isSuccess(), "a stopped hire was answered as a success"),
                 () -> assertTrue(String.valueOf(answer.getError()).contains("stopped from the Agent Control panel"), String.valueOf(answer.getError())),
-                () -> assertEquals(0, running.stop("cataloguer", "Describe every member of org.jawata.mcp.execution."),
+                () -> assertEquals(0, running.stopNaming("cataloguer", "Describe every member of org.jawata.mcp.execution.").size(),
                     "the stopped hire is still listed as running"),
                 () -> assertFalse(leftInterrupted[0], "the thread that carried the stopped hire was left interrupted for the next request"));
         } finally {
