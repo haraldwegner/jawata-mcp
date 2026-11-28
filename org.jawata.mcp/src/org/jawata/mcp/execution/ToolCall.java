@@ -65,6 +65,6 @@ public record ToolCall(String name, JsonNode arguments) {
      */
     public boolean changesCode(Function<String, Optional<Boolean>> jawataChanges) {
         String bare = bareName();
-        return jawataChanges.apply(bare).orElse(false) || RunEffects.isCliEditor(bare);
+        return !RunEffects.isCliShell(bare) && jawataChanges.apply(bare).orElse(false) || RunEffects.isCliEditor(bare);
     }
 }

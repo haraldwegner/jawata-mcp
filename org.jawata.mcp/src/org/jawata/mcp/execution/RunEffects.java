@@ -159,7 +159,8 @@ public final class RunEffects {
                 continue;
             }
             String bare = bareName(name);
-            Optional<Boolean> engine = name.isEmpty() ? Optional.empty() : jawataChanges.apply(bare);
+            // a shell is a shell whoever offers it, jawata's own too (28h z215): what a command did is not in the tool's name
+            Optional<Boolean> engine = name.isEmpty() || CLI_SHELLS.contains(bare) ? Optional.empty() : jawataChanges.apply(bare);
             if (engine.isPresent()) {
                 (engine.get() ? changes : readOnly).add(name);
             } else if (CLI_EDITORS.contains(bare)) {

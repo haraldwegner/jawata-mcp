@@ -64,7 +64,7 @@ public record ToolUse(boolean observed, int jawata, int other, List<ShellOnJava>
         List<ShellOnJava> shell = new ArrayList<>();
         for (ToolCall call : calls) {
             String bare = call.bareName();
-            if (isJawata(call.name(), bare, isJawataTool)) {
+            if (!RunEffects.isCliShell(bare) && isJawata(call.name(), bare, isJawataTool)) {
                 jawata++;
             } else if (RunEffects.isCliShell(bare) && JAVA_FILE.matcher(commandOf(call.arguments())).find()) {
                 shell.add(shellOnJava(commandOf(call.arguments())));

@@ -118,7 +118,8 @@ public final class TestFirst {
      */
     public static List<String> unseenWrites(List<ToolCall> made, Optional<List<String>> changed,
             Function<String, Optional<Boolean>> changesCode, Function<String, Optional<Boolean>> modelSaysTest) {
-        if (changed.isEmpty() || made.stream().anyMatch(call -> changesCode.apply(call.bareName()).orElse(false))) {
+        if (changed.isEmpty() || made.stream().anyMatch(call -> !RunEffects.isCliShell(call.bareName())
+                && changesCode.apply(call.bareName()).orElse(false))) {
             return List.of();
         }
         boolean unreadable = made.stream().anyMatch(call -> RunEffects.isCliShell(call.bareName())
