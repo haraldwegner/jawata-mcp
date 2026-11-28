@@ -214,6 +214,32 @@ class HireReportTest {
     }
 
     @Test
+    @DisplayName("28h Stage 28 (f): a report carries each warning of the hire as its own 'Warning: ' line, after the Tokens line")
+    void aReportCarriesTheWarningsOfAHire() throws Exception {
+        List<String> one = reportOf("{\"cleanExit\":true,\"answer\":\"REPORT: done\",\"warnings\":[\"w1\"]}").lines().toList();
+        List<String> two = reportOf("{\"cleanExit\":true,\"answer\":\"REPORT: done\",\"warnings\":[\"w1\",\"w2\"]}").lines().toList();
+
+        assertAll(
+            () -> assertTrue(one.contains("Warning: w1"), "no 'Warning: w1' line: " + one),
+            () -> assertTrue(one.indexOf("Warning: w1") > one.indexOf(one.stream().filter(l -> l.startsWith("Tokens: ")).findFirst().orElseThrow()),
+                "the warning does not come after the Tokens line: " + one),
+            () -> assertTrue(two.contains("Warning: w1") && two.contains("Warning: w2"), "both warnings are lines: " + two));
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (f): a report of a hire with no warnings, or an empty list of them, has no 'Warning:' line")
+    void aReportOfAHireWithNoWarningsHasNoWarningLine() throws Exception {
+        String absent = reportOf("{\"cleanExit\":true,\"answer\":\"REPORT: done\"}");
+        String empty = reportOf("{\"cleanExit\":true,\"answer\":\"REPORT: done\",\"warnings\":[]}");
+        String withOne = reportOf("{\"cleanExit\":true,\"answer\":\"REPORT: done\",\"warnings\":[\"w1\"]}");
+
+        assertAll(
+            () -> assertTrue(withOne.contains("Warning: w1"), "the report does not carry a warning it was given: " + withOne),
+            () -> assertFalse(absent.contains("Warning:"), absent),
+            () -> assertFalse(empty.contains("Warning:"), empty));
+    }
+
+    @Test
     @DisplayName("28h Stage 28 (h): a report names the files the hire changed, with their count, and never the changed text")
     void aReportNamesTheFilesTheHireChanged() throws Exception {
         String report = reportOf("""

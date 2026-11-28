@@ -85,7 +85,7 @@ class HireToolTest {
         """;
 
     /** The same seat, switched to the brain that CANNOT be told which tools to attach. */
-    /** A brain whose writes are held only by an instruction: refused unless the seat opts in. */
+    /** A brain whose writes are held only by an instruction: the hire runs and its answer carries a warning. */
     private static final String CURSOR_SEAT_WITHOUT_OPT_IN = CATALOGUER_SEAT
         .replace("brain: claude-code", "brain: cursor");
 
@@ -1407,6 +1407,42 @@ class HireToolTest {
             CATALOGUER_SEAT.replace("brain: claude-code", "brain: codex")))));
 
         assertEquals("MECHANISM", data.get("writeContainmentBasis"));
+    }
+
+    /** The one warning a hire of this seat's brain must carry when its writes are not refused by a mechanism, built from the brain's real dialect. */
+    private static String theWarningFor(String seatText) {
+        org.jawata.mcp.execution.BrainDialect dialect = org.jawata.mcp.execution.SeatHire.read(seatText).dialect(null, List.of());
+        return "writes are not refused by a mechanism on " + dialect.name() + ": " + dialect.writeContainment().report()
+            + "; the hire runs and the files it changed are listed in changedFiles";
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (f): a hire on Cursor answers with exactly one warning that its writes are not refused by a mechanism; a hire on a contained brain answers with none")
+    void aHireOnCursorAnswersWithOneWarningThatItsWritesAreNotRefused() throws Exception {
+        Map<String, Object> cursor = dataOf(toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate())
+            .execute(hireArgs(seatFile(CURSOR_SEAT))));
+        Map<String, Object> contained = dataOf(toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate())
+            .execute(hireArgs(seatFile(CATALOGUER_SEAT.replace("brain: claude-code", "brain: codex")))));
+
+        assertAll(
+            () -> assertEquals(List.of(theWarningFor(CURSOR_SEAT)), cursor.get("warnings"), "the answer: " + cursor),
+            () -> assertFalse(contained.containsKey("warnings"), "a contained brain was warned about: " + contained));
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (f): a hire on Antigravity answers with exactly one warning, and a hire on Claude Code answers with none")
+    void aHireOnAntigravityAnswersWithOneWarningAndAHireOnClaudeCodeAnswersWithNone() throws Exception {
+        String agy = CATALOGUER_SEAT.replace("brain: claude-code", "brain: antigravity");
+        ToolResponse refusedOrRan = toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate())
+            .execute(hireArgs(seatFile(agy)));
+        Map<String, Object> antigravity = refusedOrRan.isSuccess() ? dataOf(refusedOrRan) : Map.of();
+        Map<String, Object> claude = dataOf(toolWith(new StandsIn(host, aBrainThatAnswers()), events, aRegistryWithACleanGate())
+            .execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertTrue(refusedOrRan.isSuccess(), "the hire on antigravity was refused: " + refusedOrRan.getError()),
+            () -> assertEquals(List.of(theWarningFor(agy)), antigravity.get("warnings"), "the answer: " + antigravity),
+            () -> assertFalse(claude.containsKey("warnings"), "a contained brain was warned about: " + claude));
     }
 
     @Test
@@ -2944,7 +2980,7 @@ class HireToolTest {
         + "observer=claude-code/claude-sonnet-5;chief-engineer=claude-code/claude-sonnet-5;senior-developer=claude-code/claude-sonnet-5";
     private static final String FIXTURE_REGISTRY = "{\"claude-code\":{\"vendor\":\"anthropic\",\"model\":\"claude-sonnet-5\"},"
         + "\"cursor\":{\"vendor\":\"cursor\",\"model\":\"Sonnet\"},\"codex\":{\"vendor\":\"openai\",\"model\":\"codex\"},"
-        + "\"copilot\":{\"vendor\":\"github\",\"model\":\"copilot\"}}";
+        + "\"copilot\":{\"vendor\":\"github\",\"model\":\"copilot\"},\"antigravity\":{\"vendor\":\"google\",\"model\":\"gemini\"}}";
 
     /** The choice for the seat this thread is hiring, taken from the seat file the test named, so a cursor fixture is stored as cursor. */
     private static final ThreadLocal<String> FILE_CHOICE = new ThreadLocal<>();

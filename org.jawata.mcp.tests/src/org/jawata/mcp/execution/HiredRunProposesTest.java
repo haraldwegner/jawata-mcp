@@ -162,29 +162,31 @@ class HiredRunProposesTest {
     }
 
     @Test
-    @DisplayName("S16-38: the HIRE refuses a seat whose brain is not contained by a mechanism, whichever caller hands it a SeatHire")
-    void theHireItselfRefusesAnUncontainedBrainWithoutTheSeatsOptIn() throws Exception {
-        // The hire tool checks this first, with a friendlier answer. The scheduler (and any caller
-        // after it) reaches HiredRun without passing the tool, so the check has to live where every
-        // path passes. Nothing may be spawned, planned, artifacted or journalled on a refusal.
+    @DisplayName("28h Stage 28 (f): the HIRE runs a seat whose brain is not contained by a mechanism, without the seat's opt-in, and its manifest carries the one warning; a contained brain's manifest carries none")
+    void theHireItselfRunsAnUncontainedBrainAndItsManifestWarns() throws Exception {
+        // Whichever caller hands HiredRun a SeatHire (the tool, the scheduler) reaches this one place, so
+        // the warning is made here and lands in the run's manifest, which every caller can read.
         HostCommand standIn = brain("echo '{\"type\":\"result\",\"result\":\"done\"}'");
         RecordsTheArgv spy = new RecordsTheArgv(host, standIn);
         HiredRun run = new HiredRun(spy, artifacts, plans, events);
         SeatHire cursor = SeatHire.read("---\nname: pm\nbrain: cursor\nttl_secs: 30\n---\n\nbody\n");
+        BrainDialect dialect = cursor.dialect(null, List.of());
+        String expected = "writes are not refused by a mechanism on " + dialect.name() + ": " + dialect.writeContainment().report()
+            + "; the hire runs and the files it changed are listed in changedFiles";
 
-        IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(
-            IllegalArgumentException.class,
-            () -> run.issue(cursor, site(standIn), "Do it.", twoSteps(), HiredRunProposesTest::passed,
-                List.of()));
+        HiredRun.Proposal proposal = run.issue(cursor, site(standIn), "Do it.", twoSteps(), HiredRunProposesTest::passed, List.of());
+        Map<String, Object> manifest = artifacts.readManifest(proposal.artifactId()).orElseThrow();
+
+        SeatHire contained = SeatHire.read("---\nname: pm\nbrain: claude-code\naccepts_uncontained_writes: true\nttl_secs: 30\n---\n\nbody\n");
+        HostCommand sends = brain("echo '{\"type\":\"result\",\"result\":\"done\",\"total_cost_usd\":0.03}'");
+        HiredRun.Proposal ran = new HiredRun(new RecordsTheArgv(host, sends), artifacts, plans, events, new SelfEndpoint("http://127.0.0.1:41234/mcp", "tok-123"))
+            .issue(contained, site(sends), "Do it.", twoSteps(), HiredRunProposesTest::passed, List.of());
+        Map<String, Object> containedManifest = artifacts.readManifest(ran.artifactId()).orElseThrow();
 
         assertAll(
-            () -> assertTrue(refused.getMessage().contains("accepts_uncontained_writes"),
-                "the way out is named: " + refused.getMessage()),
-            () -> assertTrue(refused.getMessage().contains("INSTRUCTION"), refused.getMessage()),
-            () -> assertEquals(List.of(), spy.asked(), "and no process was started"),
-            () -> assertEquals(List.of(), artifacts.list(), "no artifact was made"),
-            () -> assertEquals(0L, events.countByKind().getOrDefault(LearnerEvent.KIND_HIRED_RUN, 0L),
-                "and nothing was journalled, because nothing ran"));
+            () -> assertFalse(spy.asked().isEmpty(), "the stand-in was not started"),
+            () -> assertEquals(List.of(expected), manifest.get("warnings"), "the manifest: " + manifest),
+            () -> assertFalse(containedManifest.containsKey("warnings"), "a contained brain was warned about: " + containedManifest));
     }
 
     @Test
