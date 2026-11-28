@@ -90,7 +90,7 @@ public class ApplyRefactoringTool extends WorkspaceTool<LoadedWorkspace> {
         // ones it mattered most for: they wrap them in PreparedRefactoring, which answers
         // OK to both LTK condition checks on purpose.
         org.jawata.mcp.change.GatedApply.Result gated =
-            org.jawata.mcp.change.GatedApply.perform(entry.get().change(), changes.get(), org.jawata.mcp.change.GatedApply.Mode.UNDO);
+            org.jawata.mcp.change.GatedApply.perform(entry.get().change(), changes.get(), entry.get().gateMode());
         ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(
@@ -124,9 +124,21 @@ public class ApplyRefactoringTool extends WorkspaceTool<LoadedWorkspace> {
         data.put("filesModified", outcome.modifiedFilePaths());
         data.put("undoChangeId", undoChangeId);
         data.put("summary", entry.get().summary());
+        List<String> introduced = gated.introduced();
+        data.put("compileVerified", introduced.isEmpty());
+        if (!introduced.isEmpty()) {
+            // REPORT mode: the change stands, and the follow-up work it created is named in
+            // the response, as the direct path does.
+            data.put("introducedErrors", introduced);
+        }
         return ToolResponse.success(data, ResponseMeta.builder()
             .totalCount(outcome.modifiedFilePaths().size())
             .returnedCount(outcome.modifiedFilePaths().size())
+            .steering(introduced.isEmpty() ? null
+                : "APPLIED, but the change leaves " + introduced.size() + " compiler error(s) "
+                    + "to fix (see introducedErrors) — that is this refactoring's contract "
+                    + "(bodies/call sites adapt AFTER a signature change). Fix them NOW or "
+                    + "refactoring(action=undo); do not leave the workspace red.")
             .suggestedNextTools(List.of(
                 "compile_workspace to verify the refactoring",
                 "refactoring(action=undo) with the undoChangeId if verification fails"))

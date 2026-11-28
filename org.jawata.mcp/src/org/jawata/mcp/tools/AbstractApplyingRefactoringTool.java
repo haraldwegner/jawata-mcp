@@ -158,6 +158,18 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
         return GateMode.STRICT;
     }
 
+    /**
+     * The gate mode this tool's {@link #compileGateMode()} stands for: REPORT for
+     * {@link GateMode#REPORT}, otherwise UNDO. Used where the change is applied directly and
+     * where it is staged, so a staged change is later applied under the mode the direct path
+     * uses.
+     */
+    private org.jawata.mcp.change.GatedApply.Mode gateMode() {
+        return compileGateMode() == GateMode.REPORT
+            ? org.jawata.mcp.change.GatedApply.Mode.REPORT
+            : org.jawata.mcp.change.GatedApply.Mode.UNDO;
+    }
+
     @Override
     protected ToolResponse executeWithService(IJdtService service, JsonNode arguments) {
         // THE GUARD. A refactoring rewrites references, and it finds them through the Java
@@ -213,7 +225,8 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
                 // An editor applies these to its own buffers, so nothing is kept for a later apply.
                 data.put("edits", org.jawata.mcp.tools.shared.StagedEdits.of(change, org.jawata.mcp.java.JavaChange.contextFor(service)));
             } else {
-                data.put("changeId", changeCache.put(RefactoringChangeCache.Kind.STAGED, change, summary, diff, files));
+                data.put("changeId", changeCache.put(RefactoringChangeCache.Kind.STAGED, change, summary, diff, files,
+                    gateMode()));
             }
             view.putInto(data);
             view.putUnshownInto(data, files);
@@ -239,7 +252,7 @@ public abstract class AbstractApplyingRefactoringTool extends AbstractTool {
         // which base its author extended — and Stage 6 put six multi-file operations on
         // the other one. See GatedApply.
         org.jawata.mcp.change.GatedApply.Result gated =
-            org.jawata.mcp.change.GatedApply.perform(change, org.jawata.mcp.java.JavaChange.contextFor(service), compileGateMode() == GateMode.REPORT ? org.jawata.mcp.change.GatedApply.Mode.REPORT : org.jawata.mcp.change.GatedApply.Mode.UNDO);
+            org.jawata.mcp.change.GatedApply.perform(change, org.jawata.mcp.java.JavaChange.contextFor(service), gateMode());
         ChangeEngine.ApplyOutcome outcome = gated.outcome();
         if (outcome.validationError() != null) {
             return ToolResponse.error(

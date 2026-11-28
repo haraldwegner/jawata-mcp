@@ -49,7 +49,7 @@ public final class RefactoringChangeCache {
         String summary,
         String diff,
         List<String> filePaths,
-        long insertedAtMillis
+        long insertedAtMillis, GatedApply.Mode gateMode
     ) {}
 
     /** Access-ordered for LRU semantics: get() refreshes recency. */
@@ -70,14 +70,27 @@ public final class RefactoringChangeCache {
     }
 
     /** Stores the change and returns its freshly minted id. */
+    public String put(Kind kind, Change change, String summary,
+                      String diff, List<String> filePaths) {
+        return put(kind, change, summary, diff, filePaths, GatedApply.Mode.UNDO);
+    }
+
+    /**
+     * Stores the change with the gate mode it is to be applied under and returns its freshly
+     * minted id. A staged change keeps the mode its tool applies directly under, so applying
+     * it later behaves as the direct path does: {@link GatedApply.Mode#REPORT} keeps a
+     * coupled change and names its compiler errors, {@link GatedApply.Mode#UNDO} refuses and
+     * undoes a change that breaks the build.
+     */
     public synchronized String put(Kind kind, Change change, String summary,
-                                   String diff, List<String> filePaths) {
+                                   String diff, List<String> filePaths,
+                                   GatedApply.Mode gateMode) {
         evictExpired();
         String id = UUID.randomUUID().toString();
         entries.put(id, new Entry(id, kind, change, summary,
             diff == null ? "" : diff,
             filePaths == null ? List.of() : List.copyOf(filePaths),
-            clock.getAsLong()));
+            clock.getAsLong(), gateMode));
         evictOverflow();
         return id;
     }
