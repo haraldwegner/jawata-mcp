@@ -169,8 +169,8 @@ class LanguagePublisherTest {
         JavaProvider java = InertShippedTools.javaProvider();
         board.bindProvider(java);
 
-        assertEquals(InertShippedTools.names(), names(latest()), "the same 51 tools the product ships");
-        assertEquals(51, latest().tools().size());
+        assertEquals(InertShippedTools.names(), names(latest()), "the same 52 tools the product ships");
+        assertEquals(52, latest().tools().size());
         assertEquals(1, surfaceChecks.get(), "checked once, after the Java tools were published");
         assertNotEquals(ProjectLoadingState.LOADING, state.loading(), "bound: no longer loading");
         assertNotNull(latest().quality(), "the quality tool the watch engine binds to arrives with the Java tools");

@@ -119,7 +119,7 @@ public final class ShellTool implements Tool {
     }
 
     private static ToolResponse run(String command, Path folder, int seconds) {
-        boolean windows = System.getProperty("os.name", "").toLowerCase().startsWith("windows");
+        boolean windows = org.jawata.core.host.HostOS.current().isWindows();
         // a login shell, so the build tools the person's shell finds are found (z21)
         List<String> argv = windows ? List.of("cmd.exe", "/c", command) : List.of("bash", "-lc", command);
         long started = System.nanoTime();
