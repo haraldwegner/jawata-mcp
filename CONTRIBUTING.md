@@ -24,6 +24,9 @@ git commit -s -m "feat(scope): your change"
 
 This certifies you wrote the change, or have the right to submit it.
 
+Sign off with your real name. `git commit -s` takes the name from your git `user.name`, so set
+that to your full name, not a handle or pseudonym.
+
 ## Attribution policy
 
 Commits are attributed to their **human author only**. Do **not** add co-author or
