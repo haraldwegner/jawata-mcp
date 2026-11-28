@@ -150,7 +150,7 @@ class ShellToolTest {
     @Test
     @DisplayName("28h z31 piece 4: a hired worker's command that writes a Java file is refused unless it carries jawata-author:; other writes run")
     void aWriteToJavaIsRefused() throws Exception {
-        org.junit.jupiter.api.Assumptions.assumeFalse(WINDOWS, "the commands are written for a POSIX shell");
+        org.junit.jupiter.api.Assumptions.assumeFalse(WINDOWS, "the fixture is a POSIX shell; the Windows path has no equivalent one-liner");
         running("developer", "plan-z31a-developer");
 
         ToolResponse redirect = asCaller("plan-z31a-developer", command("echo x > Foo.java"));

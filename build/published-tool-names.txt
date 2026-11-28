@@ -114,6 +114,7 @@ rename_symbol	live	v1.0.0	next
 replace_duplicates	retired	v1.0.0	v4.0.3
 run_tests	live	v1.0.0	next
 search_symbols	live	v1.0.0	next
+shell	live	next	next
 suggest_imports	retired	v1.0.0	v1.1.0
 undo_refactoring	retired	v1.0.0	v1.1.0
 update_dependency	retired	v1.0.0	v1.1.0
