@@ -198,19 +198,6 @@ public final class HiredRun {
      */
     public Proposal issue(SeatHire seat, HireSite base, String brief, List<GatedStep> steps,
             GateRunner gates, List<String> hiddenTools, Optional<Program> acp) throws IOException, InterruptedException {
-        BrainDialect dialect = seat.dialect(self, hiddenTools);
-        WriteContainment containment = dialect.writeContainment();
-        if (!containment.isContained() && !seat.acceptsUncontainedWrites()) {
-            // S16-38. The hire tool refuses this first, with a friendlier answer; this is the
-            // check every path that hands the hire a SEAT passes (a scheduler firing a seat), so
-            // such a run cannot hire a brain held only by an instruction without the seat saying
-            // it may. The overload taking a bare BrainDialect has no seat to ask and is NOT
-            // covered: a caller choosing a dialect by hand is choosing its containment by hand.
-            throw new IllegalArgumentException("seat '" + seat.seat() + "' would run on "
-                + dialect.name() + ", whose writes are not refused by a mechanism — "
-                + containment.report() + ". Add accepts_uncontained_writes: true to the seat's"
-                + " frontmatter to say it may run on this brain as it is");
-        }
         // D45: the accepted rules that bind THIS seat, read now, so one recorded after the build is
         // in this hire's text. A resident with no store, or a store that cannot be read, hires the
         // seat as before — a rule is guidance, and its absence must not stop a hire.
@@ -218,7 +205,7 @@ public final class HiredRun {
         // THE BRAIN IS GIVEN THE RESIDENT UNDER THIS HIRE'S OWN SESSION ID (Sprint 28h, S3, D30): its plan's identity, which only exists once
         // the plan is open, so the plan is opened before the brain's command line is built. The resident then keeps this brain's calls in
         // a history of their own instead of the one every caller that sends no session id shares, and a check of "this session" is about
-        // this brain and no other agent. The first dialect above only answered the containment question, which does not depend on it.
+        // this brain and no other agent. The dialect is therefore built below, inside the try, once the plan is open.
         List<GatedStep> planned = withAnswerGates(steps, seat.answerGates());
         PlanId plan = openPlan(seat, planned);
         // S13 (the audit of C6, finding F2): the seat's tool list is kept where the choke reads it, from the moment the plan opens, so a brain
@@ -789,6 +776,10 @@ public final class HiredRun {
         writes.put("boundedInstead", containment.boundedInstead());
         p.put("writeContainment", writes);
         p.put("writeContainmentWitnessed", writeWitness(containment, outcome.toolsOffered()));
+        List<String> warnings = writeWarnings(dialect.name(), containment);
+        if (!warnings.isEmpty()) {
+            p.put("warnings", warnings);
+        }
         p.put("stepsPassed", passed);
         p.put("ofSteps", steps.size());
         p.put("toolSteps", outcome.toolSteps());
@@ -897,6 +888,19 @@ public final class HiredRun {
         }
         return "WITNESSED: the run's own init list of " + offered.get().size()
             + " tool(s) offered no editor";
+    }
+
+    /**
+     * What a hire of this brain must tell whoever reads its answer or its manifest: nothing for a brain whose writes a mechanism refuses,
+     * and for any other the one warning that its writes are not refused and that the files it changed are listed. The hire tool and a
+     * scheduler-started hire both read it here, so the two say the same words.
+     */
+    public static List<String> writeWarnings(String dialectName, WriteContainment containment) {
+        if (containment.isContained()) {
+            return List.of();
+        }
+        return List.of("writes are not refused by a mechanism on " + dialectName + ": " + containment.report()
+            + "; the hire runs and the files it changed are listed in changedFiles");
     }
 
     private static String render(String brief, BrainDialect dialect, HiredBrain.Outcome outcome,

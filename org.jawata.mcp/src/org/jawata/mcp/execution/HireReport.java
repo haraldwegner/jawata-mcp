@@ -35,7 +35,7 @@ public final class HireReport {
     private static final List<String> SENT_UP = List.of("hirer", "hired", "name", "fixes", "plan", "brain", "complete", "cleanExit",
         "stoppedBy", "timedOut", "exitCode", "stepsPassed", "stepsDeclared", "gates", "changedFileCount", "changedFiles", "verdict", "fullRunReasons",
         "instructionScore", "ownWrites", "ownCodePutBack", "attempt", "escalatesTo", "record", "error", "below", "orphanOf", "progressLines",
-        "replacement");
+        "replacement", "warnings");
 
     /** The line that opens a brain's own summary: REPORT: or a heading of that word. */
     private static final Pattern REPORT_HEADING = Pattern.compile(
@@ -75,6 +75,7 @@ public final class HireReport {
                 text.append("If its returns stay useless, the work goes to: ").append(nextSeat).append("\n");
             }
             appendFigures(text, told);
+            told.path("warnings").forEach(warning -> text.append("Warning: ").append(warning.asText()).append("\n"));
             if (told.hasNonNull("verdict")) {
                 text.append("Verdict: ").append(told.path("verdict").asText(told.path("verdict").toString())).append("\n");
             }

@@ -828,18 +828,6 @@ public class HireTool extends NeutralTool {
                 "install the agent protocol program of " + productName + " and deploy again from the studio, or give the seat a brain that has one");
         }
         WriteContainment containment = dialect.writeContainment();
-        if (!containment.isContained() && !seat.acceptsUncontainedWrites()) {
-            // THE ARCHITECT'S F1, option A. A brain whose writes are held only by an instruction to
-            // the model (cursor: breached in 5 of 15 runs) or by nothing is refused BEFORE anything
-            // spawns, unless the seat's own file says it accepts that. An unbounded hire reported
-            // afterwards costs the run it could not stop; refusing costs a line in the seat.
-            return ToolResponse.error("PRECONDITION_NOT_MET",
-                "seat '" + seat.seat() + "' would run on " + dialect.name() + ", whose writes are"
-                    + " not refused by a mechanism — " + containment.report(),
-                "give the seat a brain that is contained (claude with this resident's endpoint,"
-                    + " codex or copilot), or add accepts_uncontained_writes: true to the seat's"
-                    + " frontmatter to say it may run on this brain as it is");
-        }
         // REQUIRED, and that is the other half of the fix above. Defaulting it meant the brain ran
         // in the RESIDENT's own directory — which is how a real claude came to run in the
         // developer's repository with the store attached. A hire that does not say where the brain
@@ -1231,6 +1219,11 @@ public class HireTool extends NeutralTool {
         data.put("writeContainmentWitnessed",
             HiredRun.writeWitness(ran.containment, ran.hire.getProposal().outcome().toolsOffered()));
         data.put("toolsSettableByTheHirer", ran.dialect.toolAttachment().settableByTheHirer());
+        // A brain whose writes no mechanism refuses is hired, and the answer says so, in the words the run's own manifest carries.
+        List<String> writeWarnings = HiredRun.writeWarnings(ran.dialect.name(), ran.containment);
+        if (!writeWarnings.isEmpty()) {
+            data.put("warnings", writeWarnings);
+        }
         // 28h z137: where this seat's work goes when its returns stay useless (a developer's to the senior developer). The lead judges the return
         // and makes that hire; the engine hires nobody by itself.
         ran.deciding.escalateTo(ran.hire.getHired()).ifPresent(next -> data.put("escalatesTo", next));
