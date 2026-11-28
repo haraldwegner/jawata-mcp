@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import org.jawata.core.IJdtService;
 import org.jawata.mcp.models.ResponseMeta;
@@ -225,8 +226,9 @@ public class DebugTool extends AbstractTool {
         properties.put("workspaceArea", Map.of("type", "string",
             "description", "RCP: -data (use a scratch dir)."));
 
-        properties.put("kind", Map.of("type", "string", "enum", BREAKPOINT_KINDS,
-            "description", "breakpoint_set kind."));
+        properties.put("kind", Map.of("type", "string",
+            "enum", Stream.concat(BREAKPOINT_KINDS.stream(), PROBE_KINDS.stream()).toList(),
+            "description", "breakpoint_set or probe_set kind."));
         properties.put("className", Map.of("type", "string",
             "description", "Class FQN (nested: Outer$Inner); for kind=exception, the exception."));
         properties.put("line", Map.of("type", "integer",

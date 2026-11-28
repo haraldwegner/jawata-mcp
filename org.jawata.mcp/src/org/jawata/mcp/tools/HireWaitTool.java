@@ -36,8 +36,11 @@ public final class HireWaitTool implements Tool {
         return "hire_wait";
     }
 
-    /** The longest one call waits, kept under the shortest client timeout known (Cursor gave up on a 109 s tool call). */
-    static final int MAX_WAIT_SECONDS = 50;
+    /**
+     * The longest one call waits, 600 seconds, as the person decided (28h z211): each call by a client that cannot be sent the report as a new turn
+     * costs its whole conversation, so one long call replaces many short ones. A larger value is refused, not clamped.
+     */
+    static final int MAX_WAIT_SECONDS = 600;
 
     @Override
     public String getDescription() {
@@ -45,8 +48,8 @@ public final class HireWaitTool implements Tool {
             State of a hire and, once finished, its report: call after hire unless your client gets the report as a
             new turn (only the jawata chat does).
 
-            hire_wait(hireId, waitSeconds=0..50): running (idleSeconds, stalled, soFar), finished (report, record,
-            newToYou) or unknown. While running, call again.
+            hire_wait(hireId, waitSeconds=0..600): running (idleSeconds, stalled, soFar), finished (report, record,
+            newToYou) or unknown. The call returns as soon as the hire finishes. While running, call again.
             action="stop" ends a hire you started and every hire under it.
             """;
     }
@@ -56,7 +59,7 @@ public final class HireWaitTool implements Tool {
         return Map.of("type", "object",
             "properties", Map.of(
                 "hireId", Map.of("type", "string", "description", "From hire."),
-                "waitSeconds", Map.of("type", "integer", "description", "0 to " + MAX_WAIT_SECONDS + " (default 0)."),
+                "waitSeconds", Map.of("type", "integer", "description", "0 to " + MAX_WAIT_SECONDS + " (default 0); the call returns the moment the hire finishes."),
                 "action", Map.of("type", "string", "enum", List.of("wait", "stop"),
                     "description", "wait (default) or stop.")),
             "required", List.of("hireId"));
@@ -70,6 +73,11 @@ public final class HireWaitTool implements Tool {
         }
         if ("stop".equals(arguments.path("action").asText("wait"))) {
             return stop(hireId);
+        }
+        // 28h z211: a wait above the largest is refused, not clamped, and before anything else the wait does.
+        if (arguments.path("waitSeconds").asInt(0) > MAX_WAIT_SECONDS) {
+            return ToolResponse.invalidParameter("waitSeconds", "the largest wait is " + MAX_WAIT_SECONDS + " seconds; ask for " + MAX_WAIT_SECONDS
+                + " or less and call again if the hire is still running");
         }
         // The principal of the jawata chat has a turn its hire's report comes back in (28h z62): it never waits here, and the call answers at once, so
         // the person's next message is not queued behind a poll of minutes.

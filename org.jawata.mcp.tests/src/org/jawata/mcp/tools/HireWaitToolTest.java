@@ -305,4 +305,165 @@ class HireWaitToolTest {
             child.join(5_000);
         }
     }
+
+    /** A hire of this lead, held running until released or stopped; its registration is handed out so the test can claim through it. */
+    private Thread heldRegistered(String role, String leadPlan, String planId, CountDownLatch end,
+            java.util.concurrent.atomic.AtomicReference<HireRegistry.Registration> registration) throws InterruptedException {
+        CountDownLatch registered = new CountDownLatch(1);
+        Thread thread = new Thread(() -> {
+            try (HireRegistry.Registration hire = hires.begin(role, "z207 " + planId, leadPlan)) {
+                hires.planOpened(planId);
+                registration.set(hire);
+                registered.countDown();
+                try {
+                    end.await();
+                } catch (InterruptedException stopped) {
+                    // stopped by its hirer: the registration closes below, as when a hire's own run ends
+                }
+            }
+        });
+        thread.setDaemon(true);
+        thread.start();
+        assertTrue(registered.await(5, TimeUnit.SECONDS), "the hire did not register as running: " + planId);
+        return thread;
+    }
+
+    @Test
+    @DisplayName("28h z207: a grandparent stops a developer whose own lead has already ended, because who hired whom is kept after a hire ends; the package it held is then free for the successor's developer")
+    void aGrandparentStopsADeveloperWhoseLeadHasEnded() throws Exception {
+        String pm = "plan-z207-pm";
+        List<String> held = List.of("org.z207.held");
+        CountDownLatch endCe = new CountDownLatch(1);
+        CountDownLatch endDev = new CountDownLatch(1);
+        CountDownLatch endCe2 = new CountDownLatch(1);
+        CountDownLatch endDev2 = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicReference<HireRegistry.Registration> ceHire = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<HireRegistry.Registration> devHire = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<HireRegistry.Registration> ce2Hire = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicReference<HireRegistry.Registration> dev2Hire = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread ce = heldRegistered("chief-engineer", pm, "plan-z207-ce", endCe, ceHire);
+        Thread dev = heldRegistered("developer", "plan-z207-ce", "plan-z207-dev", endDev, devHire);
+        Thread ce2 = null;
+        Thread dev2 = null;
+        try {
+            java.util.Optional<String> first = devHire.get().claim(held);
+            // The chief engineer's hire ends; its developer keeps running.
+            endCe.countDown();
+            ce.join(5_000);
+            boolean leadEnded = !hires.isRunningPlan("plan-z207-ce");
+            boolean devRunsOn = hires.isRunningPlan("plan-z207-dev");
+
+            ce2 = heldRegistered("chief-engineer", pm, "plan-z207-ce2", endCe2, ce2Hire);
+            dev2 = heldRegistered("developer", "plan-z207-ce2", "plan-z207-dev2", endDev2, dev2Hire);
+            java.util.Optional<String> refusedBefore = dev2Hire.get().claim(held);
+
+            ToolResponse stopped = stopAs(pm, "plan-z207-dev");
+            dev.join(5_000);
+            boolean devStillRunning = hires.isRunningPlan("plan-z207-dev");
+            java.util.Optional<String> afterStop = dev2Hire.get().claim(held);
+
+            assertAll(
+                () -> assertTrue(first.isEmpty(), "CONTROL: the first developer's claim was refused: " + first),
+                () -> assertTrue(leadEnded && devRunsOn, "CONTROL: the lead did not end alone, or the developer did not go on: " + leadEnded + " " + devRunsOn),
+                () -> assertTrue(refusedBefore.isPresent() && refusedBefore.get().contains("plan-z207-dev"),
+                    "the successor's claim on a held package was not refused naming its holder: " + refusedBefore),
+                () -> assertEquals("stopping", dataOf(stopped).get("state"), String.valueOf(stopped.getData())),
+                () -> assertEquals(1, dataOf(stopped).get("count"), "how many were stopped is not said: " + stopped.getData()),
+                () -> assertTrue(!devStillRunning, "the developer its grandparent stopped is still running"),
+                () -> assertTrue(afterStop.isEmpty(), "the package the stopped developer held was not freed: " + afterStop));
+        } finally {
+            endCe.countDown();
+            endDev.countDown();
+            endCe2.countDown();
+            endDev2.countDown();
+            dev.join(5_000);
+            if (dev2 != null) {
+                dev2.join(5_000);
+            }
+            if (ce2 != null) {
+                ce2.join(5_000);
+            }
+        }
+    }
+
+    @Test
+    @DisplayName("28h z211: a call that may wait 120 seconds returns the moment the hire finishes, after about 2 seconds, with the hire's report")
+    void aLongWaitReturnsTheMomentTheHireFinishes() throws Exception {
+        String plan = "plan-z211-finishes";
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch registered = new CountDownLatch(1);
+        Thread hire = new Thread(() -> {
+            hires.nextHireIsBackground();
+            try (HireRegistry.Registration running = hires.begin("developer", "z211 finishes", "")) {
+                hires.planOpened(plan);
+                registered.countDown();
+                release.await();
+                // Recorded before the registration closes, so the instant the hire stops running its report is already there.
+                hires.record("developer", "z211 finishes", JSON.createObjectNode().put("plan", plan).put("name", "Zed")
+                    .put("record", "/tmp/records/z/proposal.md").put("answer", "worked on it\nREPORT: Done. Open: nothing."));
+            } catch (InterruptedException ended) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        hire.setDaemon(true);
+        hire.start();
+        assertTrue(registered.await(5, TimeUnit.SECONDS), "the hire did not register as running");
+        Thread releaser = new Thread(() -> {
+            try {
+                Thread.sleep(2_000);
+            } catch (InterruptedException ended) {
+                Thread.currentThread().interrupt();
+            }
+            release.countDown();
+        });
+        releaser.setDaemon(true);
+        releaser.start();
+        try {
+            long startedAt = System.nanoTime();
+            Map<String, Object> answer = dataOf(ask(plan, 120));
+            long tookMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+
+            assertAll(
+                () -> assertEquals("finished", answer.get("state"), String.valueOf(answer)),
+                () -> assertTrue(tookMs >= 1_000, "the call did not wait for the hire: " + tookMs + " ms"),
+                () -> assertTrue(tookMs < 20_000, "the call went on waiting after the hire had finished: " + tookMs + " ms of a 120000 ms wait"),
+                () -> assertEquals("Done. Open: nothing.", JSON.valueToTree(answer.get("report")).path("report").asText(), String.valueOf(answer)));
+        } finally {
+            release.countDown();
+            hire.join(5_000);
+            releaser.join(5_000);
+        }
+    }
+
+    @Test
+    @DisplayName("28h z211: a wait of 601 seconds is refused with invalid_parameter, not clamped to the largest wait and answered as if it had been asked")
+    void aWaitAbove600IsRefusedNotClamped() throws Exception {
+        ToolResponse over = ask("plan-z211-over", 601);
+
+        assertAll(
+            () -> assertTrue(!over.isSuccess(), "601 was answered as a success, as if it had been clamped: " + over.getData()),
+            () -> assertEquals(org.jawata.mcp.models.ErrorInfo.INVALID_PARAMETER, over.getError().getCode(), String.valueOf(over.getError())),
+            () -> assertTrue(over.getError().getMessage().contains("waitSeconds") && over.getError().getMessage().contains("600"),
+                "the refusal does not name waitSeconds and the largest value: " + over.getError().getMessage()));
+    }
+
+    @Test
+    @DisplayName("28h z211: a wait of exactly 600 seconds is accepted, and on a hire that has already finished it answers finished at once")
+    void aWaitOf600OnAFinishedHireAnswersAtOnce() throws Exception {
+        String plan = "plan-z211-boundary";
+        hires.nextHireIsBackground();
+        try (HireRegistry.Registration hire = hires.begin("developer", "z211 boundary", "")) {
+            hires.planOpened(plan);
+        }
+        hires.record("developer", "z211 boundary", JSON.createObjectNode().put("plan", plan).put("name", "Yan")
+            .put("record", "/tmp/records/y/proposal.md").put("answer", "went through it\nREPORT: Done at the boundary. Open: nothing."));
+
+        long startedAt = System.nanoTime();
+        Map<String, Object> answer = dataOf(ask(plan, 600));
+        long tookMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedAt);
+
+        assertAll(
+            () -> assertEquals("finished", answer.get("state"), String.valueOf(answer)),
+            () -> assertTrue(tookMs < 2_000, "a finished hire was waited for: " + tookMs + " ms"));
+    }
 }

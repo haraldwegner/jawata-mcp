@@ -2569,7 +2569,7 @@
      "type": "array"
     },
     "kind": {
-     "description": "breakpoint_set kind.",
+     "description": "breakpoint_set or probe_set kind.",
      "enum": [
       "line",
       "method",
@@ -2577,7 +2577,10 @@
       "hit_count",
       "exception",
       "field_access",
-      "field_write"
+      "field_write",
+      "field_watch",
+      "method_trace",
+      "logpoint"
      ],
      "type": "string"
     },
@@ -3688,7 +3691,7 @@
      "type": "string"
     },
     "waitSeconds": {
-     "description": "0 to 50 (default 0).",
+     "description": "0 to 600 (default 0); the call returns the moment the hire finishes.",
      "type": "integer"
     }
    },
