@@ -81,7 +81,9 @@ class AcpBrainSessionTest {
         for (String tool : List.of("Edit", "Write", "MultiEdit", "NotebookEdit", "Bash")) {
             assertTrue(withheld.contains("\"" + tool + "\""), tool + " was not withheld: " + withheld);
         }
-        assertEquals("none", converse("WITHHELD", List.of(), AcpBrainSession.OwnTools.KEPT), "CONTROL: a brain keeping its tools was asked to drop them");
+        // 28h z31: a worker keeps its editors and not its shell; it hands its commands to jawata's shell
+        String kept = converse("WITHHELD", List.of(), AcpBrainSession.OwnTools.KEPT);
+        assertTrue(kept.contains("\"Bash\"") && !kept.contains("\"Edit\""), "a worker's brain was not asked to drop its shell and keep its editors: " + kept);
     }
 
     @Test
@@ -122,8 +124,7 @@ class AcpBrainSessionTest {
     @DisplayName("28h D57 (j): a brain whose own tools are withheld is refused its shell even where the allowlist names it")
     void aWithheldBrainIsRefusedItsShellWhateverTheAllowlist() throws Exception {
         assertEquals("permission:reject_once", converse("SHELL:ls", List.of("Bash"), AcpBrainSession.OwnTools.WITHHELD));
-        assertEquals("permission:allow_once", converse("SHELL:ls", List.of("Bash"), AcpBrainSession.OwnTools.KEPT),
-            "CONTROL: the allowlist no longer allows the shell of a brain that keeps it");
+        assertEquals("permission:reject_once", converse("SHELL:ls", List.of("Bash"), AcpBrainSession.OwnTools.KEPT), "28h z31: a worker's own shell was allowed");
     }
 
     @Test
@@ -294,7 +295,7 @@ class AcpBrainSessionTest {
     }
 
     @Test
-    @DisplayName("D22, the loop for lookups: a seat that may use the shell is refused a text search over Java source, and is allowed a build and a declared fallback")
+    @DisplayName("28h z31: a hired worker's own shell is refused whatever it would run, a Java search, a build or a declared one; the Java-search rule holds in jawata's shell")
     void aShellSearchOverJavaSourceIsRefusedAtThePermissionRequest() throws Exception {
         HiredBrain.Ceilings ceilings = HiredBrain.Ceilings.of(Duration.ofSeconds(60));
         List<String> shellSeat = List.of("Bash");
@@ -302,12 +303,10 @@ class AcpBrainSessionTest {
         HiredBrain.Outcome search = hire("SHELL:grep -rn 'Foo' src/Foo.java", shellSeat, Optional.empty(), ceilings, null);
         HiredBrain.Outcome build = hire("SHELL:mvn -q -Dtest=FooTest test", shellSeat, Optional.empty(), ceilings, null);
         HiredBrain.Outcome declared = hire("SHELL:grep -rn 'Foo' src/Foo.java # jawata-fallback: inside a comment", shellSeat, Optional.empty(), ceilings, null);
-        HiredBrain.Outcome notListed = hire("SHELL:mvn -q test", List.of(), Optional.empty(), ceilings, null);
 
         assertEquals("permission:reject_once", search.text(), "a shell search over Java source was allowed");
-        assertEquals("permission:allow_once", build.text(), "CONTROL: a build was refused by the lookup driver");
-        assertEquals("permission:allow_once", declared.text(), "CONTROL: a search that declares its fallback was refused");
-        assertEquals("permission:reject_once", notListed.text(), "CONTROL: the allowlist still refuses what it does not list");
+        assertEquals("permission:reject_once", build.text(), "a worker's own shell was allowed a build");
+        assertEquals("permission:reject_once", declared.text(), "a worker's own shell was allowed a declared search");
     }
 
     @Test

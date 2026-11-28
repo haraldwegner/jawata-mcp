@@ -242,7 +242,10 @@ public final class AcpBrainSession {
      * with its own editor outside the documents is read from its stream and flagged afterwards ({@link OwnWrites}, Stage 27 (z2)).
      */
     public enum OwnTools {
-        /** The brain keeps its own editors and shell: a worker that changes code with them. */
+        /**
+         * The brain keeps its own editors, not its shell (28h z31: a worker does not run a shell itself, it hands the command to jawata's
+         * {@code shell} tool): a worker that changes code.
+         */
         KEPT,
         /**
          * They are withheld: the session is opened with them disallowed, and every permission request for an edit or a command is refused,
@@ -258,6 +261,9 @@ public final class AcpBrainSession {
      * hand the edit to one).
      */
     static final List<String> OWN_WRITERS = List.of("Edit", "Write", "MultiEdit", "NotebookEdit", "Bash", "BashOutput", "KillShell", "Task", "Agent");
+
+    /** The Claude adapter's own shell, withheld from every brain, a worker's too (28h z31). */
+    static final List<String> OWN_SHELL = List.of("Bash", "BashOutput", "KillShell");
 
     /** The kinds of tool call ACP gives an edit or a command; a permission request for one is refused when the brain's own tools are withheld. */
     static final Set<String> WRITING_KINDS = Set.of("edit", "delete", "move", "execute");
@@ -634,11 +640,8 @@ public final class AcpBrainSession {
             // resolveInitialPermissionMode); refusing bypass outright is what keeps a project's file from putting a hire in the mode that runs
             // without asking (the C27 audit, finding 1).
             options.put("allowDangerouslySkipPermissions", false);
-            if (ownTools != OwnTools.WITHHELD) {
-                return;
-            }
             ArrayNode disallowed = options.putArray("disallowedTools");
-            OWN_WRITERS.forEach(disallowed::add);
+            (ownTools == OwnTools.WITHHELD ? OWN_WRITERS : OWN_SHELL).forEach(disallowed::add);
         }
 
         /**
@@ -1235,10 +1238,15 @@ public final class AcpBrainSession {
             this.ownTools = ownTools;
         }
 
-        /** Whether a permission request asks for an edit or a command of the brain's own, which a brain whose own tools are withheld is refused. */
+        /** Whether a permission request asks for a tool of the brain's own that this brain is refused: edits and commands, or only commands. */
         private boolean withheld(JsonNode tool) {
-            return ownTools == OwnTools.WITHHELD && (WRITING_KINDS.contains(tool.path("kind").asText(""))
-                || OWN_WRITERS.contains(RunEffects.bareName(tool.path("title").asText(""))));
+            String kind = tool.path("kind").asText("");
+            String title = tool.path("title").asText("");
+            if (ownTools == OwnTools.WITHHELD) {
+                return WRITING_KINDS.contains(kind) || OWN_WRITERS.contains(RunEffects.bareName(title));
+            }
+            // a worker keeps its editors; a command of its own is refused, a jawata call is not one
+            return "execute".equals(kind) && !title.startsWith("mcp__") || OWN_SHELL.contains(RunEffects.bareName(title));
         }
 
         /** Readies the wire for the next prompt's answer: what streams from here on is that answer, not an earlier one or a history a load replayed. */
