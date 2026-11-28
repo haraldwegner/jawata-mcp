@@ -26,7 +26,7 @@ tool getting it subtly wrong.
   after every edit.
 - **Reversible** — every mutating tool returns an `undoChangeId`; one call rolls the change back.
 
-**51 MCP tools** cover the whole loop — navigate, analyse, refactor-and-apply, detect code smells
+**52 MCP tools** cover the whole loop — navigate, analyse, refactor-and-apply, detect code smells
 (Fowler / SOLID / Kerievsky), apply pattern-targeted refactorings, modernise, generate, manage
 dependencies (Maven + Gradle), compile the workspace, and detect + remove duplicate code.
 
@@ -230,7 +230,7 @@ gate to check its own edits before moving on — the post-edit loop a careful de
 
 > Front doors consolidate many operations behind a `kind` parameter — e.g. `extract(kind)`,
 > `inline(kind)`, `find_quality_issue(kind)`, `refactor_to_pattern(kind)` — so the loaded surface
-> stays small (42) while the capability behind it keeps growing by registration.
+> stays small (52) while the capability behind it keeps growing by registration.
 
 ### Every tool, in one list
 
@@ -258,7 +258,8 @@ ships, fails the build. The prose that follows groups the same names by what the
 | `plan_board` | `plan_steps` | `profile` |
 | `project` | `quick_fix` | `refactor_to_pattern` |
 | `refactoring` | `refresh_workspace` | `rename_symbol` |
-| `run_tests` | `search_symbols` | `validate_syntax` |
+| `run_tests` | `search_symbols` | `shell` |
+| `validate_syntax` | | |
 <!-- TOOLS:END -->
 
 
@@ -322,6 +323,7 @@ ships, fails the build. The prose that follows groups the same names by what the
 **Agents (the jawata agent and its seats)**
 - *Seats* — `hire`, `hire_wait` *(collect a hire's report from a client that runs this server without the jawata chat)*, `plan_board`, `plan_steps`, `brains` *(models / status / probe: the agent programs a seat can run on)*
 - *Principal's own tools* — `files` *(read and search any file, write only documents)*, `lookup` *(git status, log and diff, running processes)*, `git` *(commit a passed step; release on the person's word)*
+- *A worker's command line* — `shell` *(run a hired agent's command: no Java writes or searches, no git commit or push, no run of more than one test outside the tester)*
 
 **Learn (knowledge store)**
 - *Experience* — `experience` *(record / recall / primer / load / refresh / wipe / promote)* — the
@@ -339,7 +341,7 @@ ships, fails the build. The prose that follows groups the same names by what the
   class and method — which is exactly the key `get_call_hierarchy` and `find_references` take, so
   a runtime fact goes straight back into the compiler-accurate tools with no search in between.
 
-*51 tools total; front doors (`analyze`, `inspect`, `extract`, `inline`, `move`, `generate`,
+*52 tools total; front doors (`analyze`, `inspect`, `extract`, `inline`, `move`, `generate`,
 `find_quality_issue`, `find_pattern_usages`, `find_modernization`, `refactor_to_pattern`,
 `dependency`, `quick_fix`, `refactoring`, `project`, `debug`) each dispatch a `kind`/action, so the
 loaded surface stays small while capability grows by registration.*
