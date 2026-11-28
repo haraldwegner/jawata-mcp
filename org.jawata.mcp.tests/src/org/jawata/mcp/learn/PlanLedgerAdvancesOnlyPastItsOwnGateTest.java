@@ -240,7 +240,9 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
                 "offerOwnCall(String,String,JsonNode,Function)", "passedOutcomes(PlanId)",
                 // 28h Stage 28 (i): openSprint(String,List) opens a sprint plan entered by a pm and moves no step; marks(PlanId) is a READ of what the
                 // plan marks beside its chain. Neither moves a step, so the one-member rule for the step still holds.
-                "openSprint(String,List)", "marks(PlanId)")),
+                "openSprint(String,List)", "marks(PlanId)",
+                // 28h Stage 28 (i) slice 2: standingOf(String) is a READ of where the sprint plan an owner entered stands, returned as a copy; it moves no step.
+                "standingOf(String)")),
             published,
             "a member ARRIVING here is how an external write gets in, so the set is pinned"
                 + " rather than merely counted — and pinned by SIGNATURE, so an overload"

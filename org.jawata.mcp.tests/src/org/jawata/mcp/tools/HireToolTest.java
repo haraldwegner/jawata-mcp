@@ -3001,6 +3001,67 @@ class HireToolTest {
         };
     }
 
+    @Test
+    @DisplayName("28h Stage 28 (i) M4: a hire that entered a sprint plan while it ran answers with planStanding, passed and total as the ledger holds them")
+    @SuppressWarnings("unchecked")
+    void aHireThatEnteredASprintPlanAnswersWithItsStanding() throws Exception {
+        // A pm enters its sprint plan while its hire runs, owned by the hire's plan id. The stand-in brain cannot call plan_steps, so the gate of
+        // the hire's one step enters the plan in its place: it runs inside the hire, before the answer is accounted.
+        java.util.concurrent.atomic.AtomicReference<String> owner = new java.util.concurrent.atomic.AtomicReference<>();
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new Tool() {
+            @Override
+            public String getName() {
+                return "compile_workspace";
+            }
+
+            @Override
+            public String getDescription() {
+                return "a gate fixture that enters a sprint plan for the hire it gates";
+            }
+
+            @Override
+            public Map<String, Object> getInputSchema() {
+                return Map.of("type", "object", "properties", Map.of());
+            }
+
+            @Override
+            public ToolResponse execute(JsonNode arguments) {
+                String hirePlan = plans.view().stream().filter(plan -> plans.marks(plan.id()).isEmpty()).findFirst().orElseThrow().id().value();
+                if (owner.compareAndSet(null, hirePlan)) {
+                    org.jawata.mcp.step.PlanId entered = plans.openSprint("the sprint of " + hirePlan, List.of(
+                        new org.jawata.mcp.learn.PlannedStep("Compile", "compile_workspace", JSON.createObjectNode(), null, false, false),
+                        new org.jawata.mcp.learn.PlannedStep("Review", "get_diagnostics", JSON.createObjectNode(), null, true, false)));
+                    plans.ownedBy(entered, hirePlan);
+                }
+                return ToolResponse.success(Map.of("errorCount", 0));
+            }
+        });
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers().withSeparateStderr()), events, registry);
+
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertEquals(data.get("plan"), owner.get(), "the gate did not see the hire's own plan; the answer's keys: " + data.keySet());
+        assertTrue(data.get("planStanding") instanceof Map, "no planStanding in the answer; its keys: " + data.keySet());
+        Map<String, Object> standing = (Map<String, Object>) data.get("planStanding");
+        assertAll(
+            () -> assertEquals(0, standing.get("passed")),
+            () -> assertEquals(2, standing.get("total")),
+            () -> assertEquals(plans.standingOf(owner.get()).orElseThrow().asMap(), standing));
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M4, the control: a hire that entered no sprint plan answers with no planStanding key, never a null")
+    void aHireThatEnteredNoSprintPlanAnswersWithNoStanding() throws Exception {
+        HireTool hire = toolWith(new StandsIn(host, aBrainThatAnswers().withSeparateStderr()), events, aRegistryWithACleanGate());
+
+        Map<String, Object> data = dataOf(hire.execute(hireArgs(seatFile(CATALOGUER_SEAT))));
+
+        assertAll(
+            () -> assertTrue(data.containsKey("plan"), "the hire was not accounted; its keys: " + data.keySet()),
+            () -> assertFalse(data.containsKey("planStanding"), "a hire with no entered plan was given a planStanding: " + data.get("planStanding")));
+    }
+
     private static final class Finishing extends HireTool {
 
         Finishing(HostProcesses host, RuntimeArtifactStore artifacts, PlanLedger plans, java.util.function.Supplier<LearnerEventStore> journal,

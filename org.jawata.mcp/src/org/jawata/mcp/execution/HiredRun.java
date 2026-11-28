@@ -494,7 +494,8 @@ public final class HiredRun {
                     + ". Finish that work, hiring for it as your seat says, and answer again."));
             }
         }
-        return Optional.empty();
+        // every declared check has passed: what is left open is the plan the lead entered, which the lead's own plan id owns (28h Stage 28 (i), M3)
+        return PlanStandingSendBack.of(plans, HireRegistry.shared(), plan.value());
     }
 
     private Proposal conduct(BrainDialect dialect, HireSite base, String brief, List<String> tools,

@@ -355,10 +355,13 @@ public final class AcpBrainSession {
                     // Design step 9: with nothing out and nothing unread, a lead whose declared check is still open gets another turn that says
                     // so, as long as the turn before moved a check; a lead that moves nothing ends, and its checks say what is left open.
                     Optional<OpenCheck> open = openChecks.apply(last.text());
-                    if (open.isEmpty() || open.get().passed() <= passedWhenLastTold) {
+                    // An open step of the plan the lead entered (ofPlan) is exempt from the no-progress rule, which is for declared checks (M3).
+                    if (open.isEmpty() || (!open.get().ofPlan() && open.get().passed() <= passedWhenLastTold)) {
                         break;
                     }
-                    passedWhenLastTold = open.get().passed();
+                    if (!open.get().ofPlan()) {
+                        passedWhenLastTold = open.get().passed();
+                    }
                     next = open.get().told();
                 }
                 HiredBrain.Ceilings left = ceilings.maxToolSteps() > 0
@@ -415,7 +418,11 @@ public final class AcpBrainSession {
     }
 
     /** What a lead's declared checks still leave open after a turn (design step 9): how many have passed, and what its brain is told. */
-    public record OpenCheck(int passed, String told) {
+    public record OpenCheck(int passed, String told, boolean ofPlan) {
+
+        public OpenCheck(int passed, String told) {
+            this(passed, told, false);
+        }
     }
 
     /** How long a lead's wait for its hires' reports goes before it asks again whether its brain still lives. */

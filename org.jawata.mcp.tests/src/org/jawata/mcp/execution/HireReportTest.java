@@ -373,4 +373,101 @@ class HireReportTest {
         assertTrue(report.contains(
             "Ended because: timed out; brain exited with code 143; the answer was empty; checks: 1 of 2 passed"), report);
     }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M4: the short answer a lead is told, which is hire_wait's report, carries the planStanding of the hire's answer unchanged")
+    void theShortAnswerCarriesThePlanStandingUnchanged() throws Exception {
+        JsonNode answer = JSON.readTree("""
+            {"cleanExit":true,"answer":"REPORT: done",
+             "planStanding":{"passed":1,"total":3,"next":{"index":1,"title":"Compile","tool":"compile_workspace"},
+                             "nextCheckpoint":{"index":2,"title":"Review"},"forPerson":["Sign off"],
+                             "open":true,"checkpointReached":false,"personNext":false}}
+            """);
+
+        org.junit.jupiter.api.Assertions.assertEquals(answer.get("planStanding"), HireReport.shortOf(answer).get("planStanding"));
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M4: a hire that says it is finished, with a clean exit and every check passed, is still reported as not finished while its plan has open steps")
+    void aHireThatSaysItIsFinishedIsReportedAsNotFinishedWhileItsPlanIsOpen() throws Exception {
+        String report = reportOf("""
+            {"cleanExit":true,"answer":"I entered the plan.\\n\\nREPORT: all done","stepsPassed":2,"stepsDeclared":2,
+             "planStanding":{"passed":1,"total":3,"next":{"index":1,"title":"Compile","tool":"compile_workspace"},
+                             "nextCheckpoint":null,"forPerson":[],"open":true,"checkpointReached":false,"personNext":false}}
+            """);
+
+        assertAll(
+            () -> assertTrue(report.contains("State: done"), report),
+            () -> assertTrue(report.contains("Report: all done"), report),
+            () -> assertTrue(report.contains("Not finished: the plan has 2 open step(s)"), report));
+    }
+
+    /**
+     * The planStanding a hire's answer carries for a plan of three checked steps, the third a checkpoint, and two steps of the person, with
+     * its first step passed: taken from a real ledger, so the report is read against the shape the ledger writes.
+     */
+    private static JsonNode theStandingOfAnOpenPlan() {
+        org.jawata.mcp.learn.PlanLedger ledger = new org.jawata.mcp.learn.PlanLedger();
+        JsonNode none = JSON.createObjectNode();
+        org.jawata.mcp.step.PlanId id = ledger.openSprint("sprint", List.of(
+            new org.jawata.mcp.learn.PlannedStep("Enter", "plan_steps", none, null, false, false),
+            new org.jawata.mcp.learn.PlannedStep("Compile", "compile_workspace", none, null, false, false),
+            new org.jawata.mcp.learn.PlannedStep("Sign off", null, null, null, false, true),
+            new org.jawata.mcp.learn.PlannedStep("Review", "get_diagnostics", none, null, true, false),
+            new org.jawata.mcp.learn.PlannedStep("Release", null, null, null, false, true)));
+        ledger.ownedBy(id, "pm-1");
+        ledger.advanceIfGatePassed(id, new org.jawata.mcp.step.GateOutcome("plan_steps", none, 0, true));
+        return JSON.valueToTree(ledger.standingOf("pm-1").orElseThrow().asMap());
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M4: a hire whose answer carries the standing of an open plan gets the standing line and the not-finished line, directly after the State line and before the Checks line")
+    void aHireWithAnOpenPlanGetsTheStandingLineAndTheNotFinishedLineAfterItsState() {
+        com.fasterxml.jackson.databind.node.ObjectNode answer = JSON.createObjectNode().put("cleanExit", true).put("answer", "REPORT: done");
+        answer.set("planStanding", theStandingOfAnOpenPlan());
+        String report = HireReport.of(new HireRegistry.Event("finished", "plan-1", "Dora", "developer", "brief", "plan-ce", answer), List.of());
+
+        List<String> lines = report.lines().toList();
+        int state = lines.indexOf("State: done");
+        assertTrue(state >= 0, report);
+        assertAll(
+            () -> org.junit.jupiter.api.Assertions.assertEquals(
+                "Plan standing: 1 of 3 steps passed. Next: 2 Compile (compile_workspace). Next checkpoint: 3 Review. For the person: Sign off; Release.",
+                lines.get(state + 1), report),
+            () -> org.junit.jupiter.api.Assertions.assertEquals(
+                "Not finished: the plan has 2 open step(s); the hire's own claim that it is finished is not the plan's standing.",
+                lines.get(state + 2), report),
+            () -> assertTrue(lines.get(state + 3).startsWith("Checks: "), report));
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M4, the control: a hire whose answer has no planStanding gets neither line, and from its State line on the report is line for line what it was before")
+    void aHireWithNoPlanStandingGetsNeitherLine() throws Exception {
+        String report = reportOf("{\"cleanExit\":true,\"answer\":\"REPORT: done\"}");
+
+        List<String> lines = report.lines().toList();
+        assertFalse(report.contains("Plan standing:"), "a hire with no planStanding was given a standing line");
+        assertFalse(report.contains("Not finished:"), "a hire with no planStanding was told its plan is not finished");
+        org.junit.jupiter.api.Assertions.assertEquals(
+            List.of("State: done", "Checks: not recorded in the answer", "Files changed: not measured", "Money: no figure", "Time: no figure",
+                "Tokens: no figure", "Report: done", "Still out for you: nothing"),
+            lines.subList(lines.indexOf("State: done"), lines.size()));
+    }
+
+    @Test
+    @DisplayName("28h Stage 28 (i) M4: a hire whose plan is finished gets the standing line with none for the next step, the next checkpoint and the person, and no not-finished line")
+    void aHireWithAFinishedPlanGetsTheStandingLineAndNoNotFinishedLine() throws Exception {
+        String report = reportOf("""
+            {"cleanExit":true,"answer":"REPORT: done",
+             "planStanding":{"passed":3,"total":3,"next":null,"nextCheckpoint":null,"forPerson":[],
+                             "open":false,"checkpointReached":false,"personNext":false}}
+            """);
+
+        List<String> lines = report.lines().toList();
+        int state = lines.indexOf("State: done");
+        org.junit.jupiter.api.Assertions.assertEquals(
+            "Plan standing: 3 of 3 steps passed. Next: none. Next checkpoint: none. For the person: none.", lines.get(state + 1));
+        assertFalse(report.contains("Not finished:"), "a finished plan was reported as not finished");
+        org.junit.jupiter.api.Assertions.assertEquals("Checks: not recorded in the answer", lines.get(state + 2));
+    }
 }

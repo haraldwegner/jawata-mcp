@@ -35,7 +35,7 @@ public final class HireReport {
     private static final List<String> SENT_UP = List.of("hirer", "hired", "name", "fixes", "plan", "brain", "complete", "cleanExit",
         "stoppedBy", "timedOut", "exitCode", "stepsPassed", "stepsDeclared", "gates", "changedFileCount", "changedFiles", "verdict", "fullRunReasons",
         "instructionScore", "ownWrites", "ownCodePutBack", "attempt", "escalatesTo", "record", "error", "below", "orphanOf", "progressLines",
-        "replacement", "warnings");
+        "replacement", "warnings", "planStanding");
 
     /** The line that opens a brain's own summary: REPORT: or a heading of that word. */
     private static final Pattern REPORT_HEADING = Pattern.compile(
@@ -59,6 +59,14 @@ public final class HireReport {
             List<String> reasons = endedBecause(event.answer());
             text.append("Hire: ").append(event.name()).append(" · ").append(event.seat()).append(" (").append(event.planId()).append(")\n")
                 .append("State: ").append(told.path("state").asText()).append("\n");
+            JsonNode standing = told.path("planStanding");
+            if (standing.isObject()) {
+                text.append(standingLine(standing)).append("\n");
+                String notFinished = notFinishedLine(standing);
+                if (!notFinished.isEmpty()) {
+                    text.append(notFinished).append("\n");
+                }
+            }
             if (!reasons.isEmpty()) {
                 text.append("Ended because: ").append(String.join("; ", reasons)).append("\n");
             }
@@ -108,6 +116,40 @@ public final class HireReport {
         }
         text.append("Still out for you: ").append(stillOut.isEmpty() ? "nothing" : String.join(", ", stillOut));
         return text.toString();
+    }
+
+    /**
+     * Where the plan a pm entered stands, as one line of a hire's report (28h Stage 28 (i), M4): how many steps have passed, the next step, the
+     * next checkpoint and the person's steps. The step numbers in the line count from 1; the index in the answer counts from 0.
+     *
+     * @param planStanding the planStanding object of a hire's answer
+     * @return the line, without a line break
+     */
+    public static String standingLine(JsonNode planStanding) {
+        JsonNode next = planStanding.path("next");
+        JsonNode checkpoint = planStanding.path("nextCheckpoint");
+        java.util.StringJoiner forPerson = new java.util.StringJoiner("; ");
+        forPerson.setEmptyValue("none");
+        planStanding.path("forPerson").forEach(title -> forPerson.add(title.asText()));
+        String nextStep = next.isObject()
+            ? (next.path("index").asInt() + 1) + " " + next.path("title").asText() + " (" + next.path("tool").asText() + ")" : "none";
+        String nextCheckpoint = checkpoint.isObject() ? (checkpoint.path("index").asInt() + 1) + " " + checkpoint.path("title").asText() : "none";
+        return "Plan standing: " + planStanding.path("passed").asInt() + " of " + planStanding.path("total").asInt() + " steps passed. Next: "
+            + nextStep + ". Next checkpoint: " + nextCheckpoint + ". For the person: " + forPerson + ".";
+    }
+
+    /**
+     * The line that says the plan is not finished, whatever the hire says about itself (28h Stage 28 (i), M4).
+     *
+     * @param planStanding the planStanding object of a hire's answer
+     * @return the line, without a line break, or an empty string when the plan is not open
+     */
+    public static String notFinishedLine(JsonNode planStanding) {
+        if (!planStanding.path("open").asBoolean(false)) {
+            return "";
+        }
+        return "Not finished: the plan has " + (planStanding.path("total").asInt() - planStanding.path("passed").asInt())
+            + " open step(s); the hire's own claim that it is finished is not the plan's standing.";
     }
 
     /**

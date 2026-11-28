@@ -157,6 +157,9 @@ public final class PlanLedger {
         /** The session that opened the plan, or empty when nobody said: a plan's pending step is that session's to answer for (S10). */
         private String owner = "";
 
+        /** The number openSprint gave the plan when it was entered, counting up; 0 for a plan restored from the plan file. Entry order is never read off the access-ordered map. */
+        private long sequence;
+
         /** The tools the hired seat may call, or null when no list was given (S13): the choke refuses a call outside it. */
         private java.util.Set<String> allowed;
 
@@ -197,6 +200,9 @@ public final class PlanLedger {
 
     /** Where the entered sprint plans are kept, or null for a ledger that keeps its plans in memory only. */
     private final Path planFile;
+
+    /** How many sprint plans {@link #openSprint} has entered into this ledger: the source of each plan's sequence number. */
+    private long entered;
 
     /** A ledger that keeps its plans in memory only and writes nothing. */
     public PlanLedger() {
@@ -607,6 +613,7 @@ public final class PlanLedger {
         PlanId id = PlanId.mint();
         Entry entry = new Entry(List.copyOf(chain));
         entry.marks =new PlanMarks(name.strip(), titles, checkpoints, reserved);
+        entry.sequence = ++entered;
         plans.put(id, entry);
         dropEndedPlansPastTheLimit();
         persist();
@@ -726,5 +733,48 @@ public final class PlanLedger {
             entry.closed = stored.path("closed").asBoolean();
             plans.put(new PlanId(stored.path("id").asText()), entry);
         }
+    }
+
+    /**
+     * Where the sprint plan owned by {@code ownerPlanId} stands: how many chain steps have passed, the next step, the next checkpoint and what is
+     * left for the person.
+     *
+     * @param ownerPlanId the owner id the plan was recorded under by {@link #ownedBy}
+     * @return the standing, or empty when no plan is owned by that id
+     */
+    public synchronized Optional<Standing> standingOf(String ownerPlanId) {
+        if (ownerPlanId == null || ownerPlanId.isBlank()) {
+            return Optional.empty();
+        }
+        Entry newest = null;
+        for (Entry candidate : plans.values()) {
+            if (candidate.marks != null && candidate.owner.equals(ownerPlanId) && (newest == null || candidate.sequence > newest.sequence)) {
+                newest = candidate;
+            }
+        }
+        if (newest == null) {
+            return Optional.empty();
+        }
+        int passed = newest.currentStep + 1;
+        int total = newest.steps.size();
+        boolean open = passed < total;
+        Optional<Standing.Next> next = open
+            ? Optional.of(new Standing.Next(passed, newest.marks.titles().get(passed), newest.steps.get(passed).tool()))
+            : Optional.empty();
+        Optional<Standing.NextCheckpoint> nextCheckpoint = Optional.empty();
+        for (int checkpoint : newest.marks.checkpoints()) {
+            if (checkpoint >= passed) {
+                nextCheckpoint = Optional.of(new Standing.NextCheckpoint(checkpoint, newest.marks.titles().get(checkpoint)));
+                break;
+            }
+        }
+        boolean checkpointReached = newest.marks.checkpoints().contains(newest.currentStep);
+        List<String> forPerson = new ArrayList<>();
+        boolean personNext = false;
+        for (PlanMarks.Reserved reserved : newest.marks.reserved()) {
+            forPerson.add(reserved.title());
+            personNext |= open && reserved.after() == passed;
+        }
+        return Optional.of(new Standing(passed, total, next, nextCheckpoint, List.copyOf(forPerson), checkpointReached, personNext, open));
     }
 }
