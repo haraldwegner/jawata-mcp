@@ -148,6 +148,34 @@ class ShellToolTest {
     }
 
     @Test
+    @DisplayName("28h z31 piece 4: a hired worker's command that writes a Java file is refused unless it carries jawata-author:; other writes run")
+    void aWriteToJavaIsRefused() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeFalse(WINDOWS, "the commands are written for a POSIX shell");
+        running("developer", "plan-z31a-developer");
+
+        ToolResponse redirect = asCaller("plan-z31a-developer", command("echo x > Foo.java"));
+        ToolResponse script = asCaller("plan-z31a-developer", command("python3 -c \"open('Foo.java','w')\""));
+        ToolResponse inPlace = asCaller("plan-z31a-developer", command("sed -i s/a/b/ Foo.java"));
+        ToolResponse copy = asCaller("plan-z31a-developer", command("cp notes.txt Foo.java"));
+        ToolResponse read = asCaller("plan-z31a-developer", command("echo x > Foo.java # jawata-fallback: a read is not a write"));
+        ToolResponse declared = asCaller("plan-z31a-developer", command("echo x > Foo.java # jawata-author: no tool writes this file"));
+        ToolResponse text = asCaller("plan-z31a-developer", command("echo x > notes.txt"));
+        ToolResponse looked = asCaller("plan-z31a-developer", command("ls Foo.java"));
+        ToolResponse stranger = asCaller("z31a-nobody-registered", command("echo x > Foo.java"));
+
+        assertAll(
+            () -> assertEquals("JAVA_BY_JAWATA", code(redirect)),
+            () -> assertEquals("JAVA_BY_JAWATA", code(script)),
+            () -> assertEquals("JAVA_BY_JAWATA", code(inPlace)),
+            () -> assertEquals("JAVA_BY_JAWATA", code(copy)),
+            () -> assertEquals("JAVA_BY_JAWATA", code(read), "the read declaration does not open a write"),
+            () -> assertEquals("success", code(declared)),
+            () -> assertEquals("success", code(text)),
+            () -> assertEquals("success", code(looked)),
+            () -> assertEquals("success", code(stranger)));
+    }
+
+    @Test
     @DisplayName("28h z31: a command that runs more than a single test is refused while the machine is short of memory; another command still runs")
     void aWiderRunNeedsFreeMemory() {
         ShellTool shortOfMemory = new ShellTool(() -> java.util.OptionalLong.of(10));

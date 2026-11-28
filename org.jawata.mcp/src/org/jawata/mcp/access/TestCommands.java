@@ -11,7 +11,7 @@ import java.util.List;
 public final class TestCommands {
 
     /** Words in front of a program that only change how it runs. */
-    private static final List<String> WRAPPERS = List.of("timeout", "nice", "nohup", "env", "time", "stdbuf", "command", "exec");
+    private static final List<String> WRAPPERS = List.of("timeout", "nice", "nohup", "env", "time", "stdbuf", "command", "exec", "xargs");
 
     private static final List<String> MAVEN_GOALS = List.of("test", "verify", "install", "package", "integration-test", "deploy");
 
@@ -24,11 +24,7 @@ public final class TestCommands {
     }
 
     private static boolean wider(List<String> words) {
-        int at = 0;
-        while (at < words.size() && (words.get(at).matches("[A-Za-z_][A-Za-z0-9_]*=.*") || WRAPPERS.contains(name(words.get(at)))
-                || words.get(at).startsWith("-") || words.get(at).matches("\\d+[smhd]?"))) {
-            at++;
-        }
+        int at = programAt(words);
         if (at >= words.size()) {
             return false;
         }
@@ -58,6 +54,15 @@ public final class TestCommands {
             case "java" -> rest.contains("-runTests") && rest.stream().noneMatch(word -> word.startsWith("-Djawata.test.classlist="));
             default -> false;
         };
+    }
+
+    static int programAt(List<String> words) {
+        int at = 0;
+        while (at < words.size() && (words.get(at).matches("[A-Za-z_][A-Za-z0-9_]*=.*") || WRAPPERS.contains(name(words.get(at)))
+                || words.get(at).startsWith("-") || words.get(at).matches("\\d+[smhd]?"))) {
+            at++;
+        }
+        return at;
     }
 
     /** A shell runs what follows {@code -c} as a line of its own, or else the script it is given. */
@@ -90,7 +95,7 @@ public final class TestCommands {
         return false;
     }
 
-    private static String name(String word) {
+    static String name(String word) {
         return word.substring(Math.max(word.lastIndexOf('/'), word.lastIndexOf('\\')) + 1);
     }
 }

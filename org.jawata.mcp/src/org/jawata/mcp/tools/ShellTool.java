@@ -93,6 +93,10 @@ public final class ShellTool implements Tool {
         if (search.isPresent()) {
             return ToolResponse.error("JAVA_BY_JAWATA", search.get(), "search_symbols, find_references, analyze, inspect");
         }
+        Optional<String> write = seat.isPresent() ? org.jawata.mcp.access.JavaWrites.refusal(command) : Optional.empty();
+        if (write.isPresent()) {
+            return ToolResponse.error("JAVA_BY_JAWATA", write.get(), "rename_symbol, extract, move, refactoring");
+        }
         if (TestCommands.runsMoreThanOneTest(command)) {
             Optional<String> refused = new Hirer(SeatTree.standard(), Map.of(), java.util.Set.of()).refusePackageRun(seat);
             if (refused.isPresent()) {
