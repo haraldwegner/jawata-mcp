@@ -36,7 +36,7 @@ public class JawataEngine {
 	private RuntimeSessionRegistry runtimeSessions;
 
 	/** The one plan ledger: the hire path opens plans in it and the server checks read a hired seat's tool list from it (Sprint 28h, S12, D18), so both hold the same state. */
-	private final org.jawata.mcp.learn.PlanLedger planLedger = new org.jawata.mcp.learn.PlanLedger();
+	private final org.jawata.mcp.learn.PlanLedger planLedger;
 	private ToolRegistry toolRegistry;
 	private ExperienceStore experienceStore;
 	/**
@@ -84,9 +84,17 @@ public class JawataEngine {
 	 */
 	static final java.time.Duration BACKUP_CHECK_EVERY = java.time.Duration.ofHours(1);
 
+	/** The one plan ledger of an engine: kept in the workspace's own folder when the host gives one, else in memory only. */
+	static org.jawata.mcp.learn.PlanLedger planLedgerFor(EngineHost host) {
+		return host.directories().workspaceRoot()
+			.map(root -> new org.jawata.mcp.learn.PlanLedger(root.resolve("plan-ledger.json")))
+			.orElseGet(org.jawata.mcp.learn.PlanLedger::new);
+	}
+
 	public JawataEngine(EngineHost host, RefactoringChangeCache refactoringChangeCache,
 			RuntimeSessionRegistry runtimeSessions) {
 		this.host = host;
+		this.planLedger = planLedgerFor(host);
 		this.refactoringChangeCache = refactoringChangeCache;
 		this.runtimeSessions = runtimeSessions;
 	}

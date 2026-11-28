@@ -237,7 +237,10 @@ class PlanLedgerAdvancesOnlyPastItsOwnGateTest {
                 "allowTools(PlanId,Collection)", "allowance(String)",
                 // 28h z128: offerOwnCall(...) moves a step only through advanceIfGatePassed, with the call checked against the step's declared
                 // gate first, so the one-member rule for the step still holds. passedOutcomes(PlanId) is a READ that hands back a copy.
-                "offerOwnCall(String,String,JsonNode,Function)", "passedOutcomes(PlanId)")),
+                "offerOwnCall(String,String,JsonNode,Function)", "passedOutcomes(PlanId)",
+                // 28h Stage 28 (i): openSprint(String,List) opens a sprint plan entered by a pm and moves no step; marks(PlanId) is a READ of what the
+                // plan marks beside its chain. Neither moves a step, so the one-member rule for the step still holds.
+                "openSprint(String,List)", "marks(PlanId)")),
             published,
             "a member ARRIVING here is how an external write gets in, so the set is pinned"
                 + " rather than merely counted — and pinned by SIGNATURE, so an overload"

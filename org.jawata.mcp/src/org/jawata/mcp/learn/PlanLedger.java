@@ -1,5 +1,10 @@
 package org.jawata.mcp.learn;
 
+import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -13,6 +18,9 @@ import org.jawata.mcp.step.GateOutcome;
 import org.jawata.mcp.step.PlanId;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 /**
  * Which step of a plan has actually been passed, keyed by the plan
@@ -39,9 +47,18 @@ import com.fasterxml.jackson.databind.JsonNode;
  * is never ahead of a passing gate</em> is therefore a property of this type
  * rather than a convention its callers are trusted to keep.</p>
  *
- * <h2>It keeps nothing</h2>
+ * <h2>What it keeps</h2>
  *
- * <p>Deliberately in memory only, and that is a decision rather than an
+ * <p>A plan a pm enters with {@link #openSprint} is KEPT, when the ledger is built with {@link #PlanLedger(java.nio.file.Path)}: the entered
+ * plan, its name, its marks and the person's steps, and the gate outcomes that moved it, are written to the plan file after every entry, every
+ * advance and every close of such a plan (a temporary file beside it, moved over it), and are read when the ledger is built, so an entered plan
+ * and its passed steps survive an engine restart. A restored plan has its id, its passed steps and its closed flag, and its owner is EMPTY: the
+ * session that entered it is gone, and an empty owner is listed for every caller by {@link #pendingFor}. Restoring replays the stored outcomes
+ * through the same check {@link #advanceIfGatePassed} applies, so a restored plan is only where its gates took it. A plan file that cannot be
+ * read, or that does not replay, is not dropped silently: it is kept beside as {@code <file>.corrupt}, the ledger starts empty, and the log says
+ * so at WARNING. The plan file is the workspace's own; the learner-event store, which every resident on the machine shares, is not used.</p>
+ *
+ * <p>A plan a hire opens with {@link #open} is in memory only, and that is a decision rather than an
  * omission. The eviction journal this package already runs exists because an MCP
  * session's END IS UNOBSERVABLE — nothing tells the resident a client went away,
  * so the only available signal is the session falling out of the LRU. A plan's
@@ -143,6 +160,9 @@ public final class PlanLedger {
         /** The tools the hired seat may call, or null when no list was given (S13): the choke refuses a call outside it. */
         private java.util.Set<String> allowed;
 
+        /** What a sprint plan marks beside its chain (its name, titles, checkpoints and the person's steps), or null for a plan opened without them. */
+        private PlanMarks marks;
+
         Entry(List<GatedStep> steps) {
             this.steps = steps;
         }
@@ -170,6 +190,35 @@ public final class PlanLedger {
     public static final String ANSWER_GATE_PREFIX = "answer_gate:";
 
     private final LinkedHashMap<PlanId, Entry> plans = new LinkedHashMap<>(16, 0.75f, true);
+
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(PlanLedger.class);
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    /** Where the entered sprint plans are kept, or null for a ledger that keeps its plans in memory only. */
+    private final Path planFile;
+
+    /** A ledger that keeps its plans in memory only and writes nothing. */
+    public PlanLedger() {
+        this.planFile = null;
+    }
+
+    /** A ledger that also keeps the sprint plans entered through {@link #openSprint} in {@code planFile}, and restores them from it when it is built. */
+    public PlanLedger(Path planFile) {
+        this.planFile = planFile;
+        try {
+            load();
+        } catch (RuntimeException unrestorable) {
+            plans.clear();
+            Path kept = planFile.resolveSibling(planFile.getFileName() + ".corrupt");
+            try {
+                Files.move(planFile, kept, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException | RuntimeException notMoved) {
+                LOG.warn("the unrestorable sprint plan file {} could not be moved to {}: {}", planFile, kept, notMoved.toString());
+            }
+            LOG.warn("the sprint plan file {} could not be restored, so the ledger starts empty: {}", planFile, unrestorable.toString());
+        }
+    }
 
     /**
      * Keeps the ledger bounded without forgetting a running plan: past {@link #MAX_PLANS} the oldest ENDED plans go, and past
@@ -241,6 +290,14 @@ public final class PlanLedger {
         if (entry.closed) {
             return Advance.refused(entry.currentStep, "the plan is closed: the work it gated has ended");
         }
+        Advance result = advance(gate, entry);
+        if (result.advanced() && entry.marks != null) {
+            persist();
+        }
+        return result;
+    }
+
+    private Advance advance(GateOutcome gate, Entry entry) {
         int next = entry.currentStep + 1;
         if (next >= entry.steps.size()) {
             return Advance.refused(entry.currentStep,
@@ -382,6 +439,9 @@ public final class PlanLedger {
             return false;
         }
         entry.closed = true;
+        if (entry.marks != null) {
+            persist();
+        }
         return true;
     }
 
@@ -485,5 +545,186 @@ public final class PlanLedger {
             }
         }
         return mine;
+    }
+
+    /** Refused because an open plan already holds the name: it says which one. */
+    public static final class PlanExists extends IllegalStateException {
+
+        private final transient PlanId holder;
+
+        PlanExists(PlanId holder) {
+            super("an open plan already holds that name: " + holder.value());
+            this.holder = holder;
+        }
+
+        /** The identity of the open plan that holds the name. */
+        public PlanId planId() {
+            return holder;
+        }
+    }
+
+    /**
+     * Enters a sprint plan a pm made: the steps with a check become the chain whose gates the plan walks (indices 0..n-1, as {@link #open} requires),
+     * the person's steps are kept beside it with the number of chain steps before each, and the checkpoint marks are kept. Progress still moves only
+     * through {@link #advanceIfGatePassed}.
+     *
+     * @param name  the plan's name; compared after stripping, and an open plan already holding it refuses the entry
+     * @param steps the plan's steps in order, at least one with a check
+     * @return the new plan's identity
+     * @throws IllegalArgumentException if the name is blank, the list is empty, or no step carries a check
+     * @throws PlanExists               if an open plan already holds the name
+     */
+    public synchronized PlanId openSprint(String name, List<PlannedStep> steps) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("a sprint plan needs a name that is not blank");
+        }
+        if (steps == null || steps.isEmpty()) {
+            throw new IllegalArgumentException("a sprint plan with no steps has nothing to gate");
+        }
+        for (Map.Entry<PlanId, Entry> plan : plans.entrySet()) {
+            if (!plan.getValue().closed && plan.getValue().marks != null && plan.getValue().marks.name().equals(name.strip())) {
+                throw new PlanExists(plan.getKey());
+            }
+        }
+        List<GatedStep> chain = new ArrayList<>();
+        List<String> titles = new ArrayList<>();
+        List<Integer> checkpoints = new ArrayList<>();
+        List<PlanMarks.Reserved> reserved = new ArrayList<>();
+        for (PlannedStep step : steps) {
+            if (step.person()) {
+                reserved.add(new PlanMarks.Reserved(step.title(), chain.size()));
+            } else {
+                if (step.checkpoint()) {
+                    checkpoints.add(chain.size());
+                }
+                chain.add(new GatedStep(chain.size(), step.tool(), step.arguments(), step.expect()));
+                titles.add(step.title());
+            }
+        }
+        if (chain.isEmpty()) {
+            throw new IllegalArgumentException("a sprint plan of only the person's steps has nothing to gate");
+        }
+        PlanId id = PlanId.mint();
+        Entry entry = new Entry(List.copyOf(chain));
+        entry.marks =new PlanMarks(name.strip(), titles, checkpoints, reserved);
+        plans.put(id, entry);
+        dropEndedPlansPastTheLimit();
+        persist();
+        return id;
+    }
+
+    /**
+     * What a sprint plan marks beside its chain: its name, the titles of its chain steps, the checkpoints and the person's steps.
+     *
+     * @param id the plan
+     * @return the marks, or empty for an unknown plan and for a plan opened with {@link #open}, which has none
+     */
+    public synchronized Optional<PlanMarks> marks(PlanId id) {
+        Entry entry = id == null ? null : plans.get(id);
+        return entry == null ? Optional.empty() : Optional.ofNullable(entry.marks);
+    }
+
+    /**
+     * Writes every entered sprint plan to the plan file, when the ledger has one: a temporary file next to it, moved over it. A write that
+     * fails is logged and changes nothing in memory, so the plan stays valid.
+     */
+    private void persist() {
+        if (planFile == null) {
+            return;
+        }
+        try {
+            ObjectNode root = JSON.createObjectNode();
+            ArrayNode all = root.putArray("plans");
+            for (Map.Entry<PlanId, Entry> plan : plans.entrySet()) {
+                Entry entry = plan.getValue();
+                if (entry.marks == null) {
+                    continue;
+                }
+                ObjectNode stored = all.addObject();
+                stored.put("id", plan.getKey().value());
+                stored.put("name", entry.marks.name());
+                stored.put("closed", entry.closed);
+                ArrayNode steps = stored.putArray("steps");
+                for (GatedStep step : entry.steps) {
+                    ObjectNode storedStep = steps.addObject();
+                    storedStep.put("title", entry.marks.titles().get(step.index()));
+                    storedStep.put("tool", step.tool());
+                    storedStep.set("arguments", step.gateArguments());
+                    storedStep.set("expect", step.expect());
+                    storedStep.put("checkpoint", entry.marks.checkpoints().contains(step.index()));
+                }
+                ArrayNode person = stored.putArray("person");
+                for (PlanMarks.Reserved reserved : entry.marks.reserved()) {
+                    person.addObject().put("title", reserved.title()).put("after", reserved.after());
+                }
+                ArrayNode passed = stored.putArray("passed");
+                for (GateOutcome outcome : entry.passed) {
+                    ObjectNode storedOutcome = passed.addObject();
+                    storedOutcome.put("tool", outcome.tool());
+                    storedOutcome.set("arguments", outcome.arguments());
+                    storedOutcome.put("errorCount", outcome.errorCount());
+                    storedOutcome.put("succeeded", outcome.succeeded());
+                }
+            }
+            Path folder = planFile.toAbsolutePath().getParent();
+            if (folder != null) {
+                Files.createDirectories(folder);
+            }
+            Path temporary = planFile.resolveSibling(planFile.getFileName() + ".tmp");
+            Files.write(temporary, JSON.writerWithDefaultPrettyPrinter().writeValueAsBytes(root));
+            try {
+                Files.move(temporary, planFile, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException unsupported) {
+                Files.move(temporary, planFile, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException | RuntimeException failed) {
+            LOG.warn("the sprint plans could not be written to {}: {}", planFile, failed.toString());
+        }
+    }
+
+    /**
+     * Restores the sprint plans the plan file holds. Each plan's passed steps are replayed, in order, through {@link #advance} — the check
+     * {@link #advanceIfGatePassed} applies — so a restored plan is only where its gates took it, and a replay that is refused fails the load.
+     */
+    private void load() {
+        if (!Files.isRegularFile(planFile)) {
+            return;
+        }
+        JsonNode root;
+        try {
+            root = JSON.readTree(Files.readAllBytes(planFile));
+        } catch (IOException unreadable) {
+            throw new IllegalStateException("the sprint plan file " + planFile + " cannot be read", unreadable);
+        }
+        for (JsonNode stored : root.path("plans")) {
+            List<GatedStep> chain = new ArrayList<>();
+            List<String> titles = new ArrayList<>();
+            List<Integer> checkpoints = new ArrayList<>();
+            for (JsonNode step : stored.path("steps")) {
+                if (step.path("checkpoint").asBoolean()) {
+                    checkpoints.add(chain.size());
+                }
+                JsonNode expect = step.path("expect");
+                chain.add(new GatedStep(chain.size(), step.path("tool").asText(), step.path("arguments"), expect.isObject() ? expect : null));
+                titles.add(step.path("title").asText());
+            }
+            List<PlanMarks.Reserved> reserved = new ArrayList<>();
+            for (JsonNode person : stored.path("person")) {
+                reserved.add(new PlanMarks.Reserved(person.path("title").asText(), person.path("after").asInt()));
+            }
+            Entry entry = new Entry(List.copyOf(chain));
+            entry.marks = new PlanMarks(stored.path("name").asText(), titles, checkpoints, reserved);
+            for (JsonNode outcome : stored.path("passed")) {
+                JsonNode arguments = outcome.path("arguments");
+                GateOutcome replayed = new GateOutcome(outcome.path("tool").asText(), arguments.isObject() ? arguments : null,
+                    outcome.path("errorCount").asLong(), outcome.path("succeeded").asBoolean());
+                Advance moved = advance(replayed, entry);
+                if (!moved.advanced()) {
+                    throw new IllegalStateException("the sprint plan " + stored.path("id").asText() + " cannot be restored: " + moved.refusedBecause());
+                }
+            }
+            entry.closed = stored.path("closed").asBoolean();
+            plans.put(new PlanId(stored.path("id").asText()), entry);
+        }
     }
 }

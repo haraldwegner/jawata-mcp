@@ -4,13 +4,16 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import org.jawata.mcp.learn.GatedStep;
 import org.jawata.mcp.learn.PlanLedger;
+import org.jawata.mcp.learn.PlanMarks;
 import org.jawata.mcp.models.ToolResponse;
+import org.jawata.mcp.step.PlanId;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -82,7 +85,7 @@ public final class PlanBoardTool implements Tool {
                 "add " + BEGIN + " and " + END + " on lines of their own where the board goes; nothing is written without them");
         }
         List<PlanLedger.PlanView> view = plans.view();
-        String drawn = text.substring(0, begin + BEGIN.length()) + "\n" + render(view) + text.substring(end);
+        String drawn = text.substring(0, begin + BEGIN.length()) + "\n" + render(view, plans::marks) + text.substring(end);
         boolean rewritten = !drawn.equals(text);
         if (rewritten) {
             try {
@@ -99,27 +102,48 @@ public final class PlanBoardTool implements Tool {
         return ToolResponse.success(data);
     }
 
-    /** The board: one row per plan, each step with its gate and whether it passed, was never reached, or is still waiting. */
-    static String render(List<PlanLedger.PlanView> view) {
+    /** The board with what each entered plan marks beside its chain: the titles of its steps, its checkpoints and the person's steps. */
+    static String render(List<PlanLedger.PlanView> view, java.util.function.Function<PlanId, java.util.Optional<PlanMarks>> marks) {
         StringBuilder board = new StringBuilder("_Drawn by plan_board from the plan ledger; edit outside the markers._\n\n");
         if (view.isEmpty()) {
             return board.append("_The ledger holds no plans._\n").toString();
         }
         board.append("| plan | state | passed | steps |\n|---|---|---|---|\n");
         for (PlanLedger.PlanView plan : view) {
-            StringBuilder steps = new StringBuilder();
+            PlanMarks planMarks = marks.apply(plan.id()).orElse(null);
+            List<String> steps = new ArrayList<>();
             // 28h z23: an open plan no hire is running is nobody's work, so its steps are not drawn as waiting.
             boolean idle = !plan.closed() && !org.jawata.mcp.execution.HireRegistry.shared().isRunningPlan(plan.id().toString());
             for (GatedStep step : plan.steps()) {
-                if (steps.length() > 0) {
-                    steps.append("; ");
+                if (planMarks != null) {
+                    personStepsBefore(planMarks, step.index(), steps);
                 }
                 String state = step.index() <= plan.passedStep() ? "passed" : plan.closed() ? "not reached" : idle ? "not run" : "waiting";
-                steps.append(step.index()).append(' ').append(step.tool()).append(": ").append(state);
+                steps.add(planMarks == null
+                    ? step.index() + " " + step.tool() + ": " + state
+                    : step.index() + " " + planMarks.titles().get(step.index()) + (planMarks.checkpoints().contains(step.index()) ? " [checkpoint]" : "")
+                        + " (" + step.tool() + "): " + state);
+            }
+            if (planMarks != null) {
+                personStepsBefore(planMarks, plan.steps().size(), steps);
             }
             board.append("| ").append(plan.id()).append(" | ").append(plan.closed() ? "closed" : idle ? "open, no hire running" : "open").append(" | ")
-                .append(plan.passedStep() + 1).append(" of ").append(plan.steps().size()).append(" | ").append(steps).append(" |\n");
+                .append(plan.passedStep() + 1).append(" of ").append(plan.steps().size()).append(" | ").append(String.join("; ", steps)).append(" |\n");
         }
         return board.toString();
+    }
+
+    /** Adds the person's steps that stand just before the chain step with this index, in the order the plan holds them. */
+    private static void personStepsBefore(PlanMarks marks, int chainIndex, List<String> steps) {
+        for (PlanMarks.Reserved reserved : marks.reserved()) {
+            if (reserved.after() == chainIndex) {
+                steps.add("person: " + reserved.title() + ": waits for the person");
+            }
+        }
+    }
+
+    /** The board: one row per plan, each step with its gate and whether it passed, was never reached, or is still waiting. */
+    static String render(List<PlanLedger.PlanView> view) {
+        return render(view, id -> java.util.Optional.empty());
     }
 }

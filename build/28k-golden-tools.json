@@ -877,23 +877,6 @@
  {
   "inputSchema": {
    "properties": {
-    "all": {
-     "description": "Tell of the plans of every session, not only the caller's.",
-     "type": "boolean"
-    },
-    "precedentOverride": {
-     "description": "One line why to call despite a surfaced past failure; logged.",
-     "type": "string"
-    }
-   },
-   "required": [],
-   "type": "object"
-  },
-  "name": "plan_steps"
- },
- {
-  "inputSchema": {
-   "properties": {
     "precedentOverride": {
      "description": "One line why to call despite a surfaced past failure; logged.",
      "type": "string"
@@ -3610,6 +3593,80 @@
    "type": "object"
   },
   "name": "experience"
+ },
+ {
+  "inputSchema": {
+   "properties": {
+    "action": {
+     "description": "list (default) tells the pending steps; enter records a sprint plan's steps.",
+     "enum": [
+      "list",
+      "enter"
+     ],
+     "type": "string"
+    },
+    "all": {
+     "description": "Tell of the plans of every session, not only the caller's.",
+     "type": "boolean"
+    },
+    "name": {
+     "description": "enter: the plan's name; an open plan already holding it is refused.",
+     "type": "string"
+    },
+    "precedentOverride": {
+     "description": "One line why to call despite a surfaced past failure; logged.",
+     "type": "string"
+    },
+    "steps": {
+     "description": "enter: the plan's steps in order, at least one with a check.",
+     "items": {
+      "properties": {
+       "check": {
+        "description": "The gate that closes the step: its tool, arguments and expected answer. Absent only for a person step.",
+        "properties": {
+         "arguments": {
+          "description": "What the gate call must carry; default {}.",
+          "type": "object"
+         },
+         "expect": {
+          "description": "What the gate must find, as a hire's step states it; optional.",
+          "type": "object"
+         },
+         "tool": {
+          "description": "The gate tool whose passing call closes the step.",
+          "type": "string"
+         }
+        },
+        "required": [
+         "tool"
+        ],
+        "type": "object"
+       },
+       "checkpoint": {
+        "description": "Marks a checkpoint, reached when this step has passed.",
+        "type": "boolean"
+       },
+       "person": {
+        "description": "A step the person does; it has no check and holds nothing.",
+        "type": "boolean"
+       },
+       "title": {
+        "description": "What the step is.",
+        "type": "string"
+       }
+      },
+      "required": [
+       "title"
+      ],
+      "type": "object"
+     },
+     "type": "array"
+    }
+   },
+   "required": [],
+   "type": "object"
+  },
+  "name": "plan_steps"
  },
  {
   "inputSchema": {

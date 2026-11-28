@@ -67,9 +67,7 @@ public class ToolRegistry implements org.jawata.mcp.engine.ToolCalls {
         "validate_syntax",
         // Sprint 16b/A (v1.1.1): parametric read-only front doors whose names
         // match no detect prefix.
-        "analyze", "inspect",
-        // Sprint 28h S8: reads the plan ledger and changes nothing.
-        "plan_steps");
+        "analyze", "inspect");
 
     /**
      * The registered tools in publishing order. Replaced, never changed in place, so a call being served while a language arrives or
