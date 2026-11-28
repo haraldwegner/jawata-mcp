@@ -189,19 +189,24 @@ class ShellToolTest {
     }
 
     @Test
-    @DisplayName("28h z31: a developer's command that runs more than a single test is refused naming the seat; a single test runs; the test staff are not refused")
+    @DisplayName("28h z31: a command that runs more than a single test is refused to a developer and a test writer; the tester runs it")
     void aWiderTestRunIsTheTestStaffs() throws Exception {
         running("developer", "plan-z31w-developer");
         running("test-writer", "plan-z31w-writer");
+        running("tester", "plan-z31w-tester");
 
         ToolResponse suite = asCaller("plan-z31w-developer", command("bash build/run-suite.sh 4 --full"));
         ToolResponse single = asCaller("plan-z31w-developer", command("echo -Dtest=OneTest"));
         ToolResponse writer = asCaller("plan-z31w-writer", command("bash build/run-suite.sh 4 --full"));
+        ToolResponse writerSingle = asCaller("plan-z31w-writer", command("echo -Dtest=OneTest"));
+        ToolResponse tester = asCaller("plan-z31w-tester", command("bash build/run-suite.sh 4 --full"));
 
         assertAll(
             () -> assertEquals("PACKAGE_RUN_NOT_ALLOWED", code(suite)),
             () -> assertTrue(!suite.isSuccess() && suite.getError().getMessage().contains("developer"), "the refusal names the seat"),
             () -> assertEquals("success", code(single)),
-            () -> assertEquals("success", code(writer)));
+            () -> assertEquals("PACKAGE_RUN_NOT_ALLOWED", code(writer), "the test writer started a full run on its own"),
+            () -> assertEquals("success", code(writerSingle)),
+            () -> assertEquals("success", code(tester)));
     }
 }

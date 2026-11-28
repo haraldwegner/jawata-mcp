@@ -98,7 +98,10 @@ public final class ShellTool implements Tool {
             return ToolResponse.error("JAVA_BY_JAWATA", write.get(), "rename_symbol, extract, move, refactoring");
         }
         if (TestCommands.runsMoreThanOneTest(command)) {
-            Optional<String> refused = new Hirer(SeatTree.standard(), Map.of(), java.util.Set.of()).refusePackageRun(seat);
+            // in a shell a full run is the tester's alone: the test writer runs the tests it wrote one at a time or through run_tests (z31)
+            Optional<String> refused = seat.filter("test-writer"::equals)
+                .map(writer -> writer + " does not start a full test run in a shell: the tester does")
+                .or(() -> new Hirer(SeatTree.standard(), Map.of(), java.util.Set.of()).refusePackageRun(seat));
             if (refused.isPresent()) {
                 return ToolResponse.error("PACKAGE_RUN_NOT_ALLOWED", refused.get(), "run the one test your change reaches, or ask the test-manager");
             }
