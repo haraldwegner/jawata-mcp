@@ -121,4 +121,84 @@ class HireStalledStopTest {
             active.thread.join(5_000);
         }
     }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.Map<String, Object> waitedOn(String plan) throws Exception {
+        return (java.util.Map<String, Object>) new org.jawata.mcp.tools.HireWaitTool(HireRegistry.shared(), 1)
+            .execute(new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("hireId", plan)).getData();
+    }
+
+    @Test
+    @DisplayName("28h z201: a lead and its hire are not silent while a hire below them, at any depth, acts: nobody is told quiet or stopped, and hire_wait answers the smallest idle below")
+    void aChainIsNotSilentWhileItsDeepestHireActs() throws Exception {
+        Held lead = new Held("plan-z201-t1-lead", false, "");
+        assertTrue(lead.registered.await(5, TimeUnit.SECONDS), "the lead did not register");
+        Held child = new Held("plan-z201-t1-child", false, "plan-z201-t1-lead");
+        assertTrue(child.registered.await(5, TimeUnit.SECONDS), "the lead's hire did not register");
+        Held grandchild = new Held("plan-z201-t1-grandchild", true, "plan-z201-t1-child");
+        try {
+            assertTrue(grandchild.registered.await(5, TimeUnit.SECONDS), "the hire's hire did not register");
+            Thread.sleep(1_300);
+            grandchild.act.countDown();
+            Thread.sleep(200);
+
+            java.util.Map<String, Object> askedLead = waitedOn("plan-z201-t1-lead");
+            java.util.Map<String, Object> askedChild = waitedOn("plan-z201-t1-child");
+            List<String> told = HireRegistry.shared().noteQuiet(1);
+            List<String> stopped = HireRegistry.shared().stopStalled(1);
+
+            assertAll(
+                () -> assertEquals(List.of(), told, "a hire with a hire acting below it was told as quiet"),
+                () -> assertEquals(List.of(), stopped, "a hire with a hire acting below it was stopped"),
+                () -> assertEquals(false, askedLead.get("stalled"), "hire_wait called the lead stalled: " + askedLead),
+                () -> assertTrue(((Number) askedLead.get("idleSeconds")).longValue() < 1, "the lead's idle is its own, not the smallest below it: " + askedLead),
+                () -> assertEquals(false, askedChild.get("stalled"), "hire_wait called the middle hire stalled: " + askedChild),
+                () -> assertTrue(((Number) askedChild.get("idleSeconds")).longValue() < 1, "the middle hire's idle is its own, not the smallest below it: " + askedChild),
+                () -> assertTrue(lead.thread.isAlive(), "the lead is no longer running"),
+                () -> assertTrue(child.thread.isAlive(), "the middle hire is no longer running"),
+                () -> assertTrue(grandchild.thread.isAlive(), "the deepest hire is no longer running"));
+        } finally {
+            grandchild.release.countDown();
+            child.release.countDown();
+            lead.release.countDown();
+            grandchild.thread.join(5_000);
+            child.thread.join(5_000);
+            lead.thread.join(5_000);
+        }
+    }
+
+    @Test
+    @DisplayName("28h z201: when nothing in a chain of three has acted, hire_wait calls the lead stalled and the stop takes all three, the lead, its hire and that hire's hire")
+    void aChainWhereNothingActsIsStoppedWholeAndTheLeadIsToldStalled() throws Exception {
+        Held lead = new Held("plan-z201-t2-lead", false, "");
+        assertTrue(lead.registered.await(5, TimeUnit.SECONDS), "the lead did not register");
+        Held child = new Held("plan-z201-t2-child", false, "plan-z201-t2-lead");
+        assertTrue(child.registered.await(5, TimeUnit.SECONDS), "the lead's hire did not register");
+        Held grandchild = new Held("plan-z201-t2-grandchild", false, "plan-z201-t2-child");
+        try {
+            assertTrue(grandchild.registered.await(5, TimeUnit.SECONDS), "the hire's hire did not register");
+            Thread.sleep(1_300);
+
+            java.util.Map<String, Object> askedLead = waitedOn("plan-z201-t2-lead");
+            List<String> stopped = HireRegistry.shared().stopStalled(1);
+            lead.thread.join(5_000);
+            child.thread.join(5_000);
+            grandchild.thread.join(5_000);
+
+            assertAll(
+                () -> assertEquals(true, askedLead.get("stalled"), "hire_wait did not call a lead stalled whose whole chain is quiet: " + askedLead),
+                () -> assertEquals(3, stopped.size(), "the stop was to take the lead, its hire and that hire's hire: " + stopped),
+                () -> assertTrue(stopped.stream().allMatch(name -> name.endsWith(" · developer")), "each stopped hire is named by first name and seat: " + stopped),
+                () -> assertTrue(lead.interrupted.get(), "the lead's thread was not interrupted"),
+                () -> assertTrue(child.interrupted.get(), "the lead's hire's thread was not interrupted"),
+                () -> assertTrue(grandchild.interrupted.get(), "the deepest hire's thread was not interrupted"));
+        } finally {
+            grandchild.release.countDown();
+            child.release.countDown();
+            lead.release.countDown();
+            grandchild.thread.join(5_000);
+            child.thread.join(5_000);
+            lead.thread.join(5_000);
+        }
+    }
 }

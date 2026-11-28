@@ -1192,10 +1192,39 @@ public final class HireRegistry {
     public java.util.OptionalLong idleSecondsOf(String planId) {
         for (Running hire : running) {
             if (planId != null && !planId.isEmpty() && planId.equals(hire.planId)) {
-                return java.util.OptionalLong.of(Math.max(0, System.currentTimeMillis() - hire.lastActivityMs) / 1000);
+                return java.util.OptionalLong.of(effectiveIdleSeconds(hire, System.currentTimeMillis()));
             }
         }
         return java.util.OptionalLong.empty();
+    }
+
+    /** How many levels of hires below a hire are followed when judging it silent, so a cyclic lead link cannot loop (28h z201). */
+    private static final int LEVELS_BELOW = 16;
+
+    /**
+     * How long this running hire has been silent, in whole seconds, as of {@code now} (28h z201): the smallest idle among the hire and every running
+     * hire below it at any depth, found by following each hire's lead id down to the plan ids of the hires beneath it, at most {@value #LEVELS_BELOW}
+     * levels. A lead whose hire works is not silent, and a hire with nothing running below it has just its own idle. Never negative.
+     */
+    private long effectiveIdleSeconds(Running hire, long now) {
+        long latestActivityMs = hire.lastActivityMs;
+        java.util.Set<String> frontier = new java.util.HashSet<>();
+        if (!hire.planId.isEmpty()) {
+            frontier.add(hire.planId);
+        }
+        for (int level = 0; level < LEVELS_BELOW && !frontier.isEmpty(); level++) {
+            java.util.Set<String> next = new java.util.HashSet<>();
+            for (Running below : running) {
+                if (frontier.contains(below.leadId)) {
+                    latestActivityMs = Math.max(latestActivityMs, below.lastActivityMs);
+                    if (!below.planId.isEmpty()) {
+                        next.add(below.planId);
+                    }
+                }
+            }
+            frontier = next;
+        }
+        return Math.max(0, now - latestActivityMs) / 1000;
     }
 
     /** Keeps the reason a running hire gave for a full test run on that hire's record, for the pm that reads the hire (28h Stage 27, z27); a blank reason or a caller that is no running hire keeps nothing. */
@@ -1235,8 +1264,7 @@ public final class HireRegistry {
         synchronized (this) {
             long now = System.currentTimeMillis();
             for (Running hire : running) {
-                long idle = Math.max(0, now - hire.lastActivityMs) / 1000;
-                if (!hire.planId.isEmpty() && idle >= ceilingSeconds && hire.quietToldAtMs != hire.lastActivityMs && runningNamesFor(hire.planId).isEmpty()) {
+                if (!hire.planId.isEmpty() && effectiveIdleSeconds(hire, now) >= ceilingSeconds && hire.quietToldAtMs != hire.lastActivityMs) {
                     hire.quietToldAtMs = hire.lastActivityMs;
                     told.add(new Event("stalled", hire.planId, hire.name, hire.seat, hire.brief, hire.leadId, null, hire.background));
                 }
@@ -1257,9 +1285,10 @@ public final class HireRegistry {
         List<String> stoppedNames = new java.util.ArrayList<>();
         long now = System.currentTimeMillis();
         for (Running hire : running) {
-            long idle = Math.max(0, now - hire.lastActivityMs) / 1000;
-            // 28h z102: a lead with a hire running under it is waiting, not quiet.
-            if (!hire.planId.isEmpty() && idle >= ceilingSeconds && hire.stalledForSeconds < 0 && runningNamesFor(hire.planId).isEmpty()) {
+            // 28h z201: the effective idle replaces the z102 guard: a lead with a hire working below it, at any depth, is not silent, and a whole
+            // quiet chain is stopped, each hire judged by the smallest idle of itself and the hires below it.
+            long idle = effectiveIdleSeconds(hire, now);
+            if (!hire.planId.isEmpty() && idle >= ceilingSeconds && hire.stalledForSeconds < 0) {
                 hire.stalledForSeconds = idle;
                 stopped.add(hire.thread);
                 hire.onStop.forEach(Runnable::run);

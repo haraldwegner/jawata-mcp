@@ -99,9 +99,9 @@ public final class HireWaitTool implements Tool {
             // A hire that shows no sign of life is told to its principal here, which is where a client with no chat asks (28h Stage 27, z28).
             long idle = hires.idleSecondsOf(hireId).orElse(0);
             data.put("idleSeconds", idle);
-            // 28h z102: a lead with a hire running under it is waiting for it, not stalled, and the answer says for whom.
+            // 28h z201: the idle is the smallest of the hire and the hires below it, so a lead whose hire works is not stalled and one whose chain is quiet is; the answer still says what it waits for.
             List<String> waitingFor = hires.runningNamesFor(hireId);
-            data.put("stalled", waitingFor.isEmpty() && idle >= (stallSeconds >= 0 ? stallSeconds : hires.quietCeiling()));
+            data.put("stalled", idle >= (stallSeconds >= 0 ? stallSeconds : hires.quietCeiling()));
             if (!waitingFor.isEmpty()) {
                 data.put("waitingFor", waitingFor);
             }
