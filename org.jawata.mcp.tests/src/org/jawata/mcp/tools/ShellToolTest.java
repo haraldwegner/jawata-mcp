@@ -176,6 +176,34 @@ class ShellToolTest {
     }
 
     @Test
+    @DisplayName("28h z216: a hired worker's git commit or push in the shell is refused, however it is wrapped; other git commands run")
+    void gitCommitAndPushAreRefused() throws Exception {
+        running("developer", "plan-z216-developer");
+        running("tester", "plan-z216-tester");
+
+        ToolResponse commit = asCaller("plan-z216-developer", command("git commit -am done"));
+        ToolResponse push = asCaller("plan-z216-tester", command("git push origin main"));
+        ToolResponse elsewhere = asCaller("plan-z216-developer", command("git -C /tmp -c user.name=x commit -m done"));
+        ToolResponse chained = asCaller("plan-z216-developer", command("git add -A && git commit -m done"));
+        ToolResponse wrapped = asCaller("plan-z216-developer", command("bash -c 'git push'"));
+        ToolResponse status = asCaller("plan-z216-developer", command("git status"));
+        ToolResponse mentioned = asCaller("plan-z216-developer", command("echo git commit"));
+        ToolResponse searched = asCaller("plan-z216-developer", command("git log --grep push"));
+        ToolResponse stranger = asCaller("z216-nobody-registered", command("git push"));
+
+        assertAll(
+            () -> assertEquals("GIT_BY_JAWATA", code(commit)),
+            () -> assertEquals("GIT_BY_JAWATA", code(push)),
+            () -> assertEquals("GIT_BY_JAWATA", code(elsewhere)),
+            () -> assertEquals("GIT_BY_JAWATA", code(chained)),
+            () -> assertEquals("GIT_BY_JAWATA", code(wrapped)),
+            () -> assertEquals("success", code(status)),
+            () -> assertEquals("success", code(mentioned)),
+            () -> assertEquals("success", code(searched)),
+            () -> assertEquals("success", code(stranger)));
+    }
+
+    @Test
     @DisplayName("28h z31: a command that runs more than a single test is refused while the machine is short of memory; another command still runs")
     void aWiderRunNeedsFreeMemory() {
         ShellTool shortOfMemory = new ShellTool(() -> java.util.OptionalLong.of(10));

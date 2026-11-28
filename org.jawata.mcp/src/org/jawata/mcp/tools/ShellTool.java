@@ -97,6 +97,10 @@ public final class ShellTool implements Tool {
         if (write.isPresent()) {
             return ToolResponse.error("JAVA_BY_JAWATA", write.get(), "rename_symbol, extract, move, refactoring");
         }
+        Optional<String> record = seat.isPresent() ? org.jawata.mcp.access.GitCommands.refusal(command) : Optional.empty();
+        if (record.isPresent()) {
+            return ToolResponse.error("GIT_BY_JAWATA", record.get(), "report what you changed; the lead commits with the git tool");
+        }
         if (TestCommands.runsMoreThanOneTest(command)) {
             // in a shell a full run is the tester's alone: the test writer runs the tests it wrote one at a time or through run_tests (z31)
             Optional<String> refused = seat.filter("test-writer"::equals)
